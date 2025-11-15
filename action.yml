@@ -1,0 +1,235 @@
+name: "Droid Exec Action v1.0"
+description: "Flexible GitHub automation platform with Droid. Auto-detects mode based on event type: PR reviews, @droid mentions, or custom automation."
+branding:
+  icon: "at-sign"
+  color: "orange"
+
+inputs:
+  trigger_phrase:
+    description: "The trigger phrase to look for in comments or issue body"
+    required: false
+    default: "@droid"
+  assignee_trigger:
+    description: "The assignee username that triggers the action (e.g. @droid)"
+    required: false
+  label_trigger:
+    description: "The label that triggers the action (e.g. droid)"
+    required: false
+    default: "droid"
+  allowed_bots:
+    description: "Comma-separated list of allowed bot usernames, or '*' to allow all bots. Empty string (default) allows no bots."
+    required: false
+    default: ""
+  allowed_non_write_users:
+    description: "Comma-separated list of usernames to allow without write permissions, or '*' to allow all users. Only works when github_token input is provided. WARNING: Use with extreme caution - this bypasses security checks and should only be used for workflows with very limited permissions (e.g., issue labeling)."
+    required: false
+    default: ""
+
+  # Droid Exec configuration
+  settings:
+    description: "Droid Exec settings as JSON string or path to settings JSON file"
+    required: false
+    default: ""
+
+  # Auth configuration
+  factory_api_key:
+    description: "Factory API key (required for Droid Exec runtime)"
+    required: true
+  github_token:
+    description: "GitHub token with repo and pull request permissions (optional if using GitHub App)"
+    required: false
+
+  droid_args:
+    description: "Additional arguments to pass directly to Droid CLI"
+    required: false
+    default: ""
+  additional_permissions:
+    description: "Additional GitHub permissions to request (e.g., 'actions: read')"
+    required: false
+    default: ""
+  use_sticky_comment:
+    description: "Use just one comment to deliver issue/PR comments"
+    required: false
+    default: "false"
+  track_progress:
+    description: "Force tag mode with tracking comments for pull_request and issue events. Only applicable to pull_request (opened, synchronize, ready_for_review, reopened) and issue (opened, edited, labeled, assigned) events."
+    required: false
+    default: "false"
+  automatic_review:
+    description: "Automatically run the review flow for pull request contexts without requiring an explicit @droid review command. Only supported for PR-related events."
+    required: false
+    default: "false"
+  experimental_allowed_domains:
+    description: "Restrict network access to these domains only (newline-separated). If not set, no restrictions are applied. Provider domains are auto-detected."
+    required: false
+    default: ""
+  path_to_droid_executable:
+    description: "Optional path to a custom Droid CLI executable. If provided, skips automatic installation and uses this executable instead. WARNING: Using an older version may cause problems if the action begins taking advantage of new Droid Exec features. This input is typically not needed unless you're debugging something specific or have unique needs in your environment."
+    required: false
+    default: ""
+  path_to_bun_executable:
+    description: "Optional path to a custom Bun executable. If provided, skips automatic Bun installation and uses this executable instead. WARNING: Using an incompatible version may cause problems if the action requires specific Bun features. This input is typically not needed unless you're debugging something specific or have unique needs in your environment."
+    required: false
+    default: ""
+  show_full_output:
+    description: "Show full JSON output from Droid Exec. WARNING: This outputs ALL Droid messages including tool execution results which may contain secrets, API keys, or other sensitive information. These logs are publicly visible in GitHub Actions. Only enable for debugging in non-sensitive environments."
+    required: false
+    default: "false"
+
+outputs:
+  github_token:
+    description: "The GitHub token used by the action (Droid App token if available)"
+    value: ${{ steps.prepare.outputs.github_token }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Bun
+      if: inputs.path_to_bun_executable == ''
+      uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # https://github.com/oven-sh/setup-bun/releases/tag/v2.0.2
+      with:
+        bun-version: 1.2.11
+
+    - name: Setup Custom Bun Path
+      if: inputs.path_to_bun_executable != ''
+      shell: bash
+      run: |
+        echo "Using custom Bun executable: ${{ inputs.path_to_bun_executable }}"
+        # Add the directory containing the custom executable to PATH
+        BUN_DIR=$(dirname "${{ inputs.path_to_bun_executable }}")
+        echo "$BUN_DIR" >> "$GITHUB_PATH"
+
+    - name: Install Dependencies
+      shell: bash
+      run: |
+        cd ${GITHUB_ACTION_PATH}
+        bun install
+
+    - name: Prepare action
+      id: prepare
+      shell: bash
+      run: |
+        bun run ${GITHUB_ACTION_PATH}/src/entrypoints/prepare.ts
+      env:
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+        TRIGGER_PHRASE: ${{ inputs.trigger_phrase }}
+        ASSIGNEE_TRIGGER: ${{ inputs.assignee_trigger }}
+        LABEL_TRIGGER: ${{ inputs.label_trigger }}
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+        ALLOWED_BOTS: ${{ inputs.allowed_bots }}
+        ALLOWED_NON_WRITE_USERS: ${{ inputs.allowed_non_write_users }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        USE_STICKY_COMMENT: ${{ inputs.use_sticky_comment }}
+        DEFAULT_WORKFLOW_TOKEN: ${{ github.token }}
+        TRACK_PROGRESS: ${{ inputs.track_progress }}
+        AUTOMATIC_REVIEW: ${{ inputs.automatic_review }}
+        ADDITIONAL_PERMISSIONS: ${{ inputs.additional_permissions }}
+        DROID_ARGS: ${{ inputs.droid_args }}
+        ALL_INPUTS: ${{ toJson(inputs) }}
+
+    - name: Install Base Action Dependencies
+      if: steps.prepare.outputs.contains_trigger == 'true'
+      shell: bash
+      run: |
+        echo "Installing base-action dependencies..."
+        cd ${GITHUB_ACTION_PATH}/base-action
+        bun install
+        echo "Base-action dependencies installed"
+        cd -
+
+    - name: Install Droid CLI
+      if: steps.prepare.outputs.contains_trigger == 'true' && inputs.path_to_droid_executable == ''
+      shell: bash
+      run: |
+        echo "Installing Droid CLI..."
+        curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        "$HOME/.local/bin/droid" --version
+
+    - name: Setup Custom Droid Path
+      if: steps.prepare.outputs.contains_trigger == 'true' && inputs.path_to_droid_executable != ''
+      shell: bash
+      run: |
+        echo "Using custom Droid executable: ${{ inputs.path_to_droid_executable }}"
+        DROID_DIR=$(dirname "${{ inputs.path_to_droid_executable }}")
+        echo "$DROID_DIR" >> "$GITHUB_PATH"
+
+    - name: Setup Network Restrictions
+      if: steps.prepare.outputs.contains_trigger == 'true' && inputs.experimental_allowed_domains != ''
+      shell: bash
+      run: |
+        chmod +x ${GITHUB_ACTION_PATH}/scripts/setup-network-restrictions.sh
+        ${GITHUB_ACTION_PATH}/scripts/setup-network-restrictions.sh
+      env:
+        EXPERIMENTAL_ALLOWED_DOMAINS: ${{ inputs.experimental_allowed_domains }}
+
+    - name: Run Droid Exec
+      id: droid
+      if: steps.prepare.outputs.contains_trigger == 'true'
+      shell: bash
+      run: |
+
+        # Run the base-action
+        bun run ${GITHUB_ACTION_PATH}/base-action/src/index.ts
+      env:
+        # Base-action inputs
+        INPUT_PROMPT_FILE: ${{ runner.temp }}/droid-prompts/droid-prompt.txt
+        INPUT_SETTINGS: ${{ inputs.settings }}
+        INPUT_DROID_ARGS: ${{ steps.prepare.outputs.droid_args }}
+        INPUT_MCP_TOOLS: ${{ steps.prepare.outputs.mcp_tools }}
+        INPUT_EXPERIMENTAL_SLASH_COMMANDS_DIR: ${{ github.action_path }}/slash-commands
+        INPUT_ACTION_INPUTS_PRESENT: ${{ steps.prepare.outputs.action_inputs_present }}
+        INPUT_PATH_TO_DROID_EXECUTABLE: ${{ inputs.path_to_droid_executable }}
+        INPUT_PATH_TO_BUN_EXECUTABLE: ${{ inputs.path_to_bun_executable }}
+        INPUT_SHOW_FULL_OUTPUT: ${{ inputs.show_full_output }}
+
+        # Model configuration
+        GITHUB_TOKEN: ${{ steps.prepare.outputs.GITHUB_TOKEN }}
+        NODE_VERSION: ${{ env.NODE_VERSION }}
+        DETAILED_PERMISSION_MESSAGES: "1"
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+
+    - name: Update comment with job link
+      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.droid_comment_id && always()
+      shell: bash
+      run: |
+        bun run ${GITHUB_ACTION_PATH}/src/entrypoints/update-comment-link.ts
+      env:
+        REPOSITORY: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+        DROID_COMMENT_ID: ${{ steps.prepare.outputs.droid_comment_id }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_TOKEN: ${{ steps.prepare.outputs.GITHUB_TOKEN }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        TRIGGER_COMMENT_ID: ${{ github.event.comment.id }}
+        IS_PR: ${{ github.event.issue.pull_request != null || github.event_name == 'pull_request_target' || github.event_name == 'pull_request_review_comment' }}
+        DROID_SUCCESS: ${{ steps.droid.outputs.conclusion == 'success' }}
+        TRIGGER_USERNAME: ${{ github.event.comment.user.login || github.event.issue.user.login || github.event.pull_request.user.login || github.event.sender.login || github.triggering_actor || github.actor || '' }}
+        PREPARE_SUCCESS: ${{ steps.prepare.outcome == 'success' }}
+        PREPARE_ERROR: ${{ steps.prepare.outputs.prepare_error || '' }}
+        USE_STICKY_COMMENT: ${{ inputs.use_sticky_comment }}
+        TRACK_PROGRESS: ${{ inputs.track_progress }}
+        AUTOMATIC_REVIEW: ${{ inputs.automatic_review }}
+
+    - name: Upload debug artifacts
+      if: always() && steps.prepare.outputs.contains_trigger == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: droid-review-debug-${{ github.run_id }}
+        path: |
+          ~/.factory/logs/droid-log-single.log
+          ~/.factory/logs/console.log
+          ~/.factory/sessions/*
+        if-no-files-found: ignore
+        retention-days: 7
+
+    - name: Revoke app token
+      if: always() && inputs.github_token == '' && steps.prepare.outputs.skipped_due_to_workflow_validation_mismatch != 'true'
+      shell: bash
+      run: |
+        curl -L \
+          -X DELETE \
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer ${{ steps.prepare.outputs.GITHUB_TOKEN }}" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          ${GITHUB_API_URL:-https://api.github.com}/installation/token
