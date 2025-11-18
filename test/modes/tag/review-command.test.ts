@@ -9,7 +9,7 @@ import {
 import * as core from "@actions/core";
 import { prepareReviewMode } from "../../../src/tag/commands/review";
 import { createMockContext } from "../../mockContext";
-import * as fetcher from "../../../src/github/data/fetcher";
+
 import * as promptModule from "../../../src/create-prompt";
 import * as mcpInstaller from "../../../src/mcp/install-mcp-server";
 import * as comments from "../../../src/github/operations/comments/create-initial";
@@ -33,7 +33,7 @@ const MOCK_PR_DATA = {
 
 describe("prepareReviewMode", () => {
   const originalArgs = process.env.DROID_ARGS;
-  let fetchSpy: ReturnType<typeof spyOn>;
+  let graphqlSpy: ReturnType<typeof spyOn>;
   let promptSpy: ReturnType<typeof spyOn>;
   let mcpSpy: ReturnType<typeof spyOn>;
   let setOutputSpy: ReturnType<typeof spyOn>;
@@ -42,14 +42,7 @@ describe("prepareReviewMode", () => {
 
   beforeEach(() => {
     process.env.DROID_ARGS = "";
-    fetchSpy = spyOn(fetcher, "fetchGitHubData").mockResolvedValue({
-      contextData: MOCK_PR_DATA,
-      comments: [],
-      changedFiles: [],
-      changedFilesWithSHA: [],
-      reviewData: null,
-      imageUrlMap: new Map(),
-    } as any);
+
     promptSpy = spyOn(promptModule, "createPrompt").mockResolvedValue();
     mcpSpy = spyOn(mcpInstaller, "prepareMcpTools").mockResolvedValue(
       "mock-config",
@@ -64,7 +57,7 @@ describe("prepareReviewMode", () => {
   });
 
   afterEach(() => {
-    fetchSpy.mockRestore();
+    graphqlSpy?.mockRestore();
     promptSpy.mockRestore();
     mcpSpy.mockRestore();
     setOutputSpy.mockRestore();
@@ -86,19 +79,37 @@ describe("prepareReviewMode", () => {
       entityNumber: 24,
     });
 
-    const octokit = { rest: {}, graphql: () => {} } as any;
+    const octokit = { 
+      rest: {}, 
+      graphql: () => Promise.resolve({
+        repository: {
+          pullRequest: {
+            baseRefName: MOCK_PR_DATA.baseRefName,
+            headRefName: MOCK_PR_DATA.headRefName,
+            headRefOid: MOCK_PR_DATA.headRefOid,
+          }
+        }
+      })
+    } as any;
+
+    graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
+      repository: {
+        pullRequest: {
+          baseRefName: MOCK_PR_DATA.baseRefName,
+          headRefName: MOCK_PR_DATA.headRefName,
+          headRefOid: MOCK_PR_DATA.headRefOid,
+        }
+      }
+    });
 
     const result = await prepareReviewMode({
       context,
       octokit,
       githubToken: "token",
       trackingCommentId: 555,
-      triggerTime: "2024-01-01T00:00:00Z",
     });
 
-    expect(fetchSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ isPR: true }),
-    );
+    expect(graphqlSpy).toHaveBeenCalled();
     expect(promptSpy).toHaveBeenCalled();
     expect(mcpSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -152,7 +163,28 @@ describe("prepareReviewMode", () => {
       entityNumber: 25,
     });
 
-    const octokit = { rest: {}, graphql: () => {} } as any;
+    const octokit = { 
+      rest: {}, 
+      graphql: () => Promise.resolve({
+        repository: {
+          pullRequest: {
+            baseRefName: MOCK_PR_DATA.baseRefName,
+            headRefName: MOCK_PR_DATA.headRefName,
+            headRefOid: MOCK_PR_DATA.headRefOid,
+          }
+        }
+      })
+    } as any;
+
+    graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
+      repository: {
+        pullRequest: {
+          baseRefName: MOCK_PR_DATA.baseRefName,
+          headRefName: MOCK_PR_DATA.headRefName,
+          headRefOid: MOCK_PR_DATA.headRefOid,
+        }
+      }
+    });
 
     const result = await prepareReviewMode({
       context,

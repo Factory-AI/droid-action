@@ -9,7 +9,7 @@ import {
 import * as core from "@actions/core";
 import { prepareFillMode } from "../../../src/tag/commands/fill";
 import { createMockContext } from "../../mockContext";
-import * as fetcher from "../../../src/github/data/fetcher";
+import * as prFetcher from "../../../src/github/data/pr-fetcher";
 import * as promptModule from "../../../src/create-prompt";
 import * as mcpInstaller from "../../../src/mcp/install-mcp-server";
 
@@ -32,7 +32,7 @@ const MOCK_PR_DATA = {
 
 describe("prepareFillMode", () => {
   const originalArgs = process.env.DROID_ARGS;
-  let fetchSpy: ReturnType<typeof spyOn>;
+  let fetchPRSpy: ReturnType<typeof spyOn>;
   let promptSpy: ReturnType<typeof spyOn>;
   let mcpSpy: ReturnType<typeof spyOn>;
   let setOutputSpy: ReturnType<typeof spyOn>;
@@ -40,14 +40,13 @@ describe("prepareFillMode", () => {
 
   beforeEach(() => {
     process.env.DROID_ARGS = "";
-    fetchSpy = spyOn(fetcher, "fetchGitHubData").mockResolvedValue({
-      contextData: MOCK_PR_DATA,
-      comments: [],
-      changedFiles: [],
-      changedFilesWithSHA: [],
-      reviewData: null,
-      imageUrlMap: new Map(),
-    } as any);
+
+    fetchPRSpy = spyOn(prFetcher, "fetchPRBranchData").mockResolvedValue({
+      baseRefName: MOCK_PR_DATA.baseRefName,
+      headRefName: MOCK_PR_DATA.headRefName,
+      headRefOid: MOCK_PR_DATA.headRefOid,
+    });
+
     promptSpy = spyOn(promptModule, "createPrompt").mockResolvedValue();
     mcpSpy = spyOn(mcpInstaller, "prepareMcpTools").mockResolvedValue(
       "mock-config",
@@ -59,7 +58,7 @@ describe("prepareFillMode", () => {
   });
 
   afterEach(() => {
-    fetchSpy.mockRestore();
+    fetchPRSpy.mockRestore();
     promptSpy.mockRestore();
     mcpSpy.mockRestore();
     setOutputSpy.mockRestore();
@@ -87,12 +86,13 @@ describe("prepareFillMode", () => {
       octokit,
       githubToken: "token",
       trackingCommentId: 99,
-      triggerTime: "2024-01-01T00:00:00Z",
     });
 
-    expect(fetchSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ isPR: true }),
-    );
+    expect(fetchPRSpy).toHaveBeenCalledWith({
+      octokits: octokit,
+      repository: context.repository,
+      prNumber: 42,
+    });
     expect(promptSpy).toHaveBeenCalled();
     expect(mcpSpy).toHaveBeenCalledWith(
       expect.objectContaining({
