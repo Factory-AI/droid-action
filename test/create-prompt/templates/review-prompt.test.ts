@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { generateReviewPrompt } from "../../../src/create-prompt/templates/review-prompt";
 import type { PreparedContext } from "../../../src/create-prompt/types";
-import type { FetchDataResult } from "../../../src/github/data/fetcher";
 
 function createBaseContext(
   overrides: Partial<PreparedContext> = {},
@@ -22,42 +21,11 @@ function createBaseContext(
   } as PreparedContext;
 }
 
-function createBaseData(
-  overrides: Partial<FetchDataResult> = {},
-): FetchDataResult {
-  return {
-    contextData: {
-      title: "Review PR",
-      body: "Existing body",
-      author: { login: "author" },
-      baseRefName: "main",
-      headRefName: "feature/review",
-      headRefOid: "deadbeef",
-      createdAt: "2024-01-01T00:00:00Z",
-      additions: 5,
-      deletions: 1,
-      state: "OPEN",
-      commits: { totalCount: 1, nodes: [] },
-      files: { nodes: [] },
-      comments: { nodes: [] },
-      reviews: { nodes: [] },
-    },
-    comments: [],
-    changedFiles: [],
-    changedFilesWithSHA: [],
-    reviewData: null,
-    imageUrlMap: new Map(),
-    triggerDisplayName: "Reviewer",
-    ...overrides,
-  } as FetchDataResult;
-}
-
 describe("generateReviewPrompt", () => {
   it("includes objectives and procedure steps", () => {
     const context = createBaseContext();
-    const data = createBaseData();
 
-    const prompt = generateReviewPrompt(context, data);
+    const prompt = generateReviewPrompt(context);
 
     expect(prompt).toContain("Objectives:");
     expect(prompt).toContain("Re-check existing review comments");
@@ -69,7 +37,7 @@ describe("generateReviewPrompt", () => {
   });
 
   it("emphasizes accuracy gates and comment limits", () => {
-    const prompt = generateReviewPrompt(createBaseContext(), createBaseData());
+    const prompt = generateReviewPrompt(createBaseContext());
 
     expect(prompt).toContain("cap at 10 comments total");
     expect(prompt).toContain("Never raise purely stylistic");
@@ -79,7 +47,7 @@ describe("generateReviewPrompt", () => {
   });
 
   it("describes submission guidance", () => {
-    const prompt = generateReviewPrompt(createBaseContext(), createBaseData());
+    const prompt = generateReviewPrompt(createBaseContext());
 
     expect(prompt).toContain("Prefer github_inline_comment___create_inline_comment");
     expect(prompt).toContain("gh api repos/test-owner/test-repo/pulls/42/reviews");

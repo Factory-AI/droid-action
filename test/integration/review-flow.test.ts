@@ -11,7 +11,6 @@ import os from "node:os";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { prepareTagExecution } from "../../src/tag";
 import { createMockContext } from "../mockContext";
-import * as fetcher from "../../src/github/data/fetcher";
 import * as createInitial from "../../src/github/operations/comments/create-initial";
 import * as mcpInstaller from "../../src/mcp/install-mcp-server";
 import * as actorValidation from "../../src/github/validation/actor";
@@ -21,7 +20,7 @@ describe("review command integration", () => {
   const originalRunnerTemp = process.env.RUNNER_TEMP;
   const originalDroidArgs = process.env.DROID_ARGS;
   let tmpDir: string;
-  let fetchSpy: ReturnType<typeof spyOn>;
+  let graphqlSpy: ReturnType<typeof spyOn>;
   let createCommentSpy: ReturnType<typeof spyOn>;
   let mcpSpy: ReturnType<typeof spyOn>;
   let actorSpy: ReturnType<typeof spyOn>;
@@ -33,30 +32,7 @@ describe("review command integration", () => {
     process.env.RUNNER_TEMP = tmpDir;
     process.env.DROID_ARGS = "";
 
-    fetchSpy = spyOn(fetcher, "fetchGitHubData").mockResolvedValue({
-      contextData: {
-        title: "Implement review support",
-        body: "Adds automated review workflow",
-        author: { login: "dev" },
-        baseRefName: "main",
-        headRefName: "feature/review",
-        headRefOid: "def456",
-        createdAt: "2024-02-01T00:00:00Z",
-        additions: 10,
-        deletions: 2,
-        state: "OPEN",
-        commits: { totalCount: 2, nodes: [] },
-        files: { nodes: [] },
-        comments: { nodes: [] },
-        reviews: { nodes: [] },
-      },
-      comments: [],
-      changedFiles: [],
-      changedFilesWithSHA: [],
-      reviewData: { nodes: [] },
-      imageUrlMap: new Map(),
-      triggerDisplayName: "Reviewer",
-    } as any);
+
 
     createCommentSpy = spyOn(
       createInitial,
@@ -70,7 +46,7 @@ describe("review command integration", () => {
   });
 
   afterEach(async () => {
-    fetchSpy.mockRestore();
+    graphqlSpy?.mockRestore();
     createCommentSpy.mockRestore();
     mcpSpy.mockRestore();
     actorSpy.mockRestore();
@@ -119,7 +95,28 @@ describe("review command integration", () => {
       } as any,
     });
 
-    const octokit = { rest: {}, graphql: () => {} } as any;
+    const octokit = { 
+      rest: {}, 
+      graphql: () => Promise.resolve({
+        repository: {
+          pullRequest: {
+            baseRefName: "main",
+            headRefName: "feature/review",
+            headRefOid: "def456",
+          }
+        }
+      })
+    } as any;
+
+    graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
+      repository: {
+        pullRequest: {
+          baseRefName: "main",
+          headRefName: "feature/review", 
+          headRefOid: "def456",
+        }
+      }
+    });
 
     const result = await prepareTagExecution({
       context,
@@ -128,9 +125,7 @@ describe("review command integration", () => {
     });
 
     expect(result.commentId).toBe(202);
-    expect(fetchSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ isPR: true }),
-    );
+    expect(graphqlSpy).toHaveBeenCalled();
     expect(mcpSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         allowedTools: expect.arrayContaining([

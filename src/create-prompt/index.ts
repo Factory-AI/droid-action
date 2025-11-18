@@ -2,7 +2,6 @@
 
 import * as core from "@actions/core";
 import { writeFile, mkdir } from "fs/promises";
-import type { FetchDataResult } from "../github/data/fetcher";
 import type {
   IssuesEvent,
   IssuesAssignedEvent,
@@ -70,6 +69,7 @@ export function prepareContext(
   droidCommentId: string,
   baseBranch?: string,
   droidBranch?: string,
+  prBranchData?: { headRefName: string; headRefOid: string },
 ): PreparedContext {
   const repository = context.repository.full_name;
   const triggerPhrase = context.inputs.triggerPhrase || "@droid";
@@ -118,11 +118,17 @@ export function prepareContext(
     },
   );
 
-  return {
+  const result: PreparedContext = {
     ...commonFields,
     eventData,
     githubContext: context,
   };
+
+  if (prBranchData) {
+    result.prBranchData = prBranchData;
+  }
+
+  return result;
 }
 
 type EventBuilderExtras = {
@@ -278,15 +284,14 @@ function buildEventData(
 
 export type PromptGenerator = (
   context: PreparedContext,
-  githubData: FetchDataResult,
 ) => string;
 
 export type PromptCreationOptions = {
   githubContext: ParsedGitHubContext;
-  githubData: FetchDataResult;
   commentId: number;
   baseBranch?: string;
   droidBranch?: string;
+  prBranchData?: { headRefName: string; headRefOid: string };
   generatePrompt: PromptGenerator;
   allowedTools?: string[];
   disallowedTools?: string[];
@@ -295,10 +300,10 @@ export type PromptCreationOptions = {
 
 export async function createPrompt({
   githubContext,
-  githubData,
   commentId,
   baseBranch,
   droidBranch,
+  prBranchData,
   generatePrompt,
   allowedTools = [],
   disallowedTools = [],
@@ -311,13 +316,14 @@ export async function createPrompt({
       droidCommentId,
       baseBranch,
       droidBranch,
+      prBranchData,
     );
 
     await mkdir(`${process.env.RUNNER_TEMP || "/tmp"}/droid-prompts`, {
       recursive: true,
     });
 
-    const promptContent = generatePrompt(preparedContext, githubData);
+    const promptContent = generatePrompt(preparedContext);
 
     console.log("===== FINAL PROMPT =====");
     console.log(promptContent);

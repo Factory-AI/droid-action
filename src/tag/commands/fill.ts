@@ -1,12 +1,11 @@
 import * as core from "@actions/core";
 import type { GitHubContext } from "../../github/context";
-import { fetchGitHubData } from "../../github/data/fetcher";
+import { fetchPRBranchData } from "../../github/data/pr-fetcher";
 import { generateFillPrompt } from "../../create-prompt/templates/fill-prompt";
 import { createPrompt } from "../../create-prompt";
 import { prepareMcpTools } from "../../mcp/install-mcp-server";
 import { createInitialComment } from "../../github/operations/comments/create-initial";
 import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
-import type { GitHubPullRequest } from "../../github/types";
 import { isEntityContext } from "../../github/context";
 import type { Octokits } from "../../github/api/client";
 import type { PrepareResult } from "../../prepare/types";
@@ -16,7 +15,6 @@ type FillCommandOptions = {
   octokit: Octokits;
   githubToken: string;
   trackingCommentId?: number;
-  triggerTime?: string;
 };
 
 export async function prepareFillMode({
@@ -24,7 +22,6 @@ export async function prepareFillMode({
   octokit,
   githubToken,
   trackingCommentId,
-  triggerTime,
 }: FillCommandOptions): Promise<PrepareResult> {
   if (!isEntityContext(context)) {
     throw new Error("Fill command requires an entity event context");
@@ -36,16 +33,13 @@ export async function prepareFillMode({
 
   const commentId =
     trackingCommentId ?? (await createInitialComment(octokit.rest, context)).id;
-  const githubData = await fetchGitHubData({
+  
+  const prData = await fetchPRBranchData({
     octokits: octokit,
-    repository: `${context.repository.owner}/${context.repository.repo}`,
-    prNumber: context.entityNumber.toString(),
-    isPR: true,
-    triggerUsername: context.actor,
-    triggerTime,
+    repository: context.repository,
+    prNumber: context.entityNumber,
   });
 
-  const prData = githubData.contextData as GitHubPullRequest;
   const branchInfo = {
     baseBranch: prData.baseRefName,
     droidBranch: undefined,
@@ -54,10 +48,13 @@ export async function prepareFillMode({
 
   await createPrompt({
     githubContext: context,
-    githubData,
     commentId,
     baseBranch: branchInfo.baseBranch,
     droidBranch: branchInfo.droidBranch,
+    prBranchData: {
+      headRefName: prData.headRefName,
+      headRefOid: prData.headRefOid,
+    },
     generatePrompt: generateFillPrompt,
   });
   core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-fill");
