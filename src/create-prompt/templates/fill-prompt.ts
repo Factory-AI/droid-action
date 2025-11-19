@@ -1,9 +1,7 @@
 import type { PreparedContext } from "../types";
-import type { FetchDataResult } from "../../github/data/fetcher";
 
 export function generateFillPrompt(
   context: PreparedContext,
-  _githubData: FetchDataResult,
 ): string {
   const prNumber = context.eventData.isPR
     ? context.eventData.prNumber

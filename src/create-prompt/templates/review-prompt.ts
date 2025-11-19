@@ -1,10 +1,7 @@
 import type { PreparedContext } from "../types";
-import type { FetchDataResult } from "../../github/data/fetcher";
-import type { GitHubPullRequest } from "../../github/types";
 
 export function generateReviewPrompt(
   context: PreparedContext,
-  githubData: FetchDataResult,
 ): string {
   const prNumber = context.eventData.isPR
     ? context.eventData.prNumber
@@ -13,11 +10,9 @@ export function generateReviewPrompt(
       : "unknown";
 
   const repoFullName = context.repository;
-  const prData = githubData.contextData as GitHubPullRequest | undefined;
-  const headRefName = prData?.headRefName ?? "unknown";
-  const headSha = prData?.headRefOid ?? "unknown";
-  const baseRefName =
-    prData?.baseRefName ?? context.eventData.baseBranch ?? "unknown";
+  const headRefName = context.prBranchData?.headRefName ?? "unknown";
+  const headSha = context.prBranchData?.headRefOid ?? "unknown";
+  const baseRefName = context.eventData.baseBranch ?? "unknown";
 
   return `You are performing an automated code review for PR #${prNumber} in ${repoFullName}.
 The gh CLI is installed and authenticated via GH_TOKEN.

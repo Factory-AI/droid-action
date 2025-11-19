@@ -1,7 +1,6 @@
 import { checkContainsTrigger } from "../github/validation/trigger";
 import { checkHumanActor } from "../github/validation/actor";
 import { createInitialComment } from "../github/operations/comments/create-initial";
-import { extractTriggerTimestamp } from "../github/data/fetcher";
 import { isEntityContext } from "../github/context";
 import { extractCommandFromContext } from "../github/utils/command-parser";
 import { prepareFillMode } from "./commands/fill";
@@ -39,7 +38,6 @@ export async function prepareTagExecution({
 
   const commentData = await createInitialComment(octokit.rest, context);
   const commentId = commentData.id;
-  const triggerTime = extractTriggerTimestamp(context);
 
   if (context.inputs.automaticReview && !context.isPR) {
     throw new Error("automatic_review requires a pull request context");
@@ -53,7 +51,6 @@ export async function prepareTagExecution({
       octokit,
       githubToken,
       trackingCommentId: commentId,
-      triggerTime,
     });
   }
 
@@ -63,7 +60,6 @@ export async function prepareTagExecution({
       octokit,
       githubToken,
       trackingCommentId: commentId,
-      triggerTime,
     });
   }
 
@@ -77,7 +73,6 @@ export async function prepareTagExecution({
       octokit,
       githubToken,
       trackingCommentId: commentId,
-      triggerTime,
     });
   }
 
