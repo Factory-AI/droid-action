@@ -32,6 +32,7 @@ const MOCK_PR_DATA = {
 
 describe("prepareFillMode", () => {
   const originalArgs = process.env.DROID_ARGS;
+  const originalFillModel = process.env.FILL_MODEL;
   let fetchPRSpy: ReturnType<typeof spyOn>;
   let promptSpy: ReturnType<typeof spyOn>;
   let mcpSpy: ReturnType<typeof spyOn>;
@@ -40,6 +41,7 @@ describe("prepareFillMode", () => {
 
   beforeEach(() => {
     process.env.DROID_ARGS = "";
+    delete process.env.FILL_MODEL;
 
     fetchPRSpy = spyOn(prFetcher, "fetchPRBranchData").mockResolvedValue({
       baseRefName: MOCK_PR_DATA.baseRefName,
@@ -64,6 +66,11 @@ describe("prepareFillMode", () => {
     setOutputSpy.mockRestore();
     exportVariableSpy.mockRestore();
     process.env.DROID_ARGS = originalArgs;
+    if (originalFillModel !== undefined) {
+      process.env.FILL_MODEL = originalFillModel;
+    } else {
+      delete process.env.FILL_MODEL;
+    }
   });
 
   it("prepares limited toolset and prompt for fill command", async () => {
@@ -126,5 +133,65 @@ describe("prepareFillMode", () => {
         githubToken: "token",
       }),
     ).rejects.toThrow("Fill command is only supported on pull requests");
+  });
+
+  it("adds --model flag when FILL_MODEL is set", async () => {
+    process.env.FILL_MODEL = "gpt-5.1-codex";
+
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: {
+        comment: {
+          id: 101,
+          body: "@droid fill",
+        },
+      } as any,
+      entityNumber: 43,
+    });
+
+    const octokit = { rest: {}, graphql: () => {} } as any;
+
+    await prepareFillMode({
+      context,
+      octokit,
+      githubToken: "token",
+      trackingCommentId: 100,
+    });
+
+    const droidArgsCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "droid_args",
+    ) as [string, string] | undefined;
+    expect(droidArgsCall?.[1]).toContain("--model gpt-5.1-codex");
+  });
+
+  it("does not add --model flag when FILL_MODEL is empty", async () => {
+    process.env.FILL_MODEL = "";
+
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: {
+        comment: {
+          id: 102,
+          body: "@droid fill",
+        },
+      } as any,
+      entityNumber: 44,
+    });
+
+    const octokit = { rest: {}, graphql: () => {} } as any;
+
+    await prepareFillMode({
+      context,
+      octokit,
+      githubToken: "token",
+      trackingCommentId: 101,
+    });
+
+    const droidArgsCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "droid_args",
+    ) as [string, string] | undefined;
+    expect(droidArgsCall?.[1]).not.toContain("--model");
   });
 });

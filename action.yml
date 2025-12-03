@@ -63,6 +63,10 @@ inputs:
     description: "Override the model used for code review (e.g., 'claude-sonnet-4-5-20250929', 'gpt-5.1-codex'). Only applies to review flows."
     required: false
     default: ""
+  fill_model:
+    description: "Override the model used for PR description fill (e.g., 'claude-sonnet-4-5-20250929', 'gpt-5.1-codex'). Only applies to fill flows."
+    required: false
+    default: ""
   experimental_allowed_domains:
     description: "Restrict network access to these domains only (newline-separated). If not set, no restrictions are applied. Provider domains are auto-detected."
     required: false
@@ -128,6 +132,7 @@ runs:
         TRACK_PROGRESS: ${{ inputs.track_progress }}
         AUTOMATIC_REVIEW: ${{ inputs.automatic_review }}
         REVIEW_MODEL: ${{ inputs.review_model }}
+        FILL_MODEL: ${{ inputs.fill_model }}
         ADDITIONAL_PERMISSIONS: ${{ inputs.additional_permissions }}
         DROID_ARGS: ${{ inputs.droid_args }}
         ALL_INPUTS: ${{ toJson(inputs) }}

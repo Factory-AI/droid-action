@@ -91,6 +91,13 @@ export async function prepareFillMode({
 
   const droidArgParts: string[] = [];
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
+
+  // Add model override if specified
+  const fillModel = process.env.FILL_MODEL?.trim();
+  if (fillModel) {
+    droidArgParts.push(`--model ${fillModel}`);
+  }
+
   if (normalizedUserArgs) {
     droidArgParts.push(normalizedUserArgs);
   }
