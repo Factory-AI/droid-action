@@ -120,6 +120,7 @@ Once committed, tagging `@droid fill` or `@droid review` on an open PR will trig
 | --- | --- |
 | `factory_api_key` | **Required.** Grants Droid Exec permission to run via Factory. |
 | `github_token` | Optional override if you prefer a custom GitHub App/token. By default the installed app token is used. |
+| `review_model` | Optional. Override the model used for code review (e.g., `claude-sonnet-4-5-20250929`, `gpt-5.1-codex`). Only applies to review flows. |
 
 ## Troubleshooting & Support
 

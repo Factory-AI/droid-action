@@ -1,11 +1,4 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  spyOn,
-} from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as core from "@actions/core";
 import { prepareReviewMode } from "../../../src/tag/commands/review";
 import { createMockContext } from "../../mockContext";
@@ -33,6 +26,7 @@ const MOCK_PR_DATA = {
 
 describe("prepareReviewMode", () => {
   const originalArgs = process.env.DROID_ARGS;
+  const originalReviewModel = process.env.REVIEW_MODEL;
   let graphqlSpy: ReturnType<typeof spyOn>;
   let promptSpy: ReturnType<typeof spyOn>;
   let mcpSpy: ReturnType<typeof spyOn>;
@@ -42,15 +36,17 @@ describe("prepareReviewMode", () => {
 
   beforeEach(() => {
     process.env.DROID_ARGS = "";
+    delete process.env.REVIEW_MODEL;
 
     promptSpy = spyOn(promptModule, "createPrompt").mockResolvedValue();
     mcpSpy = spyOn(mcpInstaller, "prepareMcpTools").mockResolvedValue(
       "mock-config",
     );
     setOutputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
-    createInitialSpy = spyOn(comments, "createInitialComment").mockResolvedValue(
-      { id: 777 } as any,
-    );
+    createInitialSpy = spyOn(
+      comments,
+      "createInitialComment",
+    ).mockResolvedValue({ id: 777 } as any);
     exportVariableSpy = spyOn(core, "exportVariable").mockImplementation(
       () => {},
     );
@@ -64,6 +60,11 @@ describe("prepareReviewMode", () => {
     createInitialSpy.mockRestore();
     exportVariableSpy.mockRestore();
     process.env.DROID_ARGS = originalArgs;
+    if (originalReviewModel !== undefined) {
+      process.env.REVIEW_MODEL = originalReviewModel;
+    } else {
+      delete process.env.REVIEW_MODEL;
+    }
   });
 
   it("prepares review flow with limited toolset when tracking comment exists", async () => {
@@ -79,17 +80,18 @@ describe("prepareReviewMode", () => {
       entityNumber: 24,
     });
 
-    const octokit = { 
-      rest: {}, 
-      graphql: () => Promise.resolve({
-        repository: {
-          pullRequest: {
-            baseRefName: MOCK_PR_DATA.baseRefName,
-            headRefName: MOCK_PR_DATA.headRefName,
-            headRefOid: MOCK_PR_DATA.headRefOid,
-          }
-        }
-      })
+    const octokit = {
+      rest: {},
+      graphql: () =>
+        Promise.resolve({
+          repository: {
+            pullRequest: {
+              baseRefName: MOCK_PR_DATA.baseRefName,
+              headRefName: MOCK_PR_DATA.headRefName,
+              headRefOid: MOCK_PR_DATA.headRefOid,
+            },
+          },
+        }),
     } as any;
 
     graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
@@ -98,8 +100,8 @@ describe("prepareReviewMode", () => {
           baseRefName: MOCK_PR_DATA.baseRefName,
           headRefName: MOCK_PR_DATA.headRefName,
           headRefOid: MOCK_PR_DATA.headRefOid,
-        }
-      }
+        },
+      },
     });
 
     const result = await prepareReviewMode({
@@ -163,17 +165,18 @@ describe("prepareReviewMode", () => {
       entityNumber: 25,
     });
 
-    const octokit = { 
-      rest: {}, 
-      graphql: () => Promise.resolve({
-        repository: {
-          pullRequest: {
-            baseRefName: MOCK_PR_DATA.baseRefName,
-            headRefName: MOCK_PR_DATA.headRefName,
-            headRefOid: MOCK_PR_DATA.headRefOid,
-          }
-        }
-      })
+    const octokit = {
+      rest: {},
+      graphql: () =>
+        Promise.resolve({
+          repository: {
+            pullRequest: {
+              baseRefName: MOCK_PR_DATA.baseRefName,
+              headRefName: MOCK_PR_DATA.headRefName,
+              headRefOid: MOCK_PR_DATA.headRefOid,
+            },
+          },
+        }),
     } as any;
 
     graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
@@ -182,8 +185,8 @@ describe("prepareReviewMode", () => {
           baseRefName: MOCK_PR_DATA.baseRefName,
           headRefName: MOCK_PR_DATA.headRefName,
           headRefOid: MOCK_PR_DATA.headRefOid,
-        }
-      }
+        },
+      },
     });
 
     const result = await prepareReviewMode({
@@ -206,5 +209,109 @@ describe("prepareReviewMode", () => {
         githubToken: "token",
       }),
     ).rejects.toThrow("Review command is only supported on pull requests");
+  });
+
+  it("adds --model flag when REVIEW_MODEL is set", async () => {
+    process.env.REVIEW_MODEL = "claude-sonnet-4-5-20250929";
+
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: {
+        comment: {
+          id: 103,
+          body: "@droid review",
+        },
+      } as any,
+      entityNumber: 26,
+    });
+
+    const octokit = {
+      rest: {},
+      graphql: () =>
+        Promise.resolve({
+          repository: {
+            pullRequest: {
+              baseRefName: MOCK_PR_DATA.baseRefName,
+              headRefName: MOCK_PR_DATA.headRefName,
+              headRefOid: MOCK_PR_DATA.headRefOid,
+            },
+          },
+        }),
+    } as any;
+
+    graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
+      repository: {
+        pullRequest: {
+          baseRefName: MOCK_PR_DATA.baseRefName,
+          headRefName: MOCK_PR_DATA.headRefName,
+          headRefOid: MOCK_PR_DATA.headRefOid,
+        },
+      },
+    });
+
+    await prepareReviewMode({
+      context,
+      octokit,
+      githubToken: "token",
+      trackingCommentId: 556,
+    });
+
+    const droidArgsCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "droid_args",
+    ) as [string, string] | undefined;
+    expect(droidArgsCall?.[1]).toContain("--model claude-sonnet-4-5-20250929");
+  });
+
+  it("does not add --model flag when REVIEW_MODEL is empty", async () => {
+    process.env.REVIEW_MODEL = "";
+
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: {
+        comment: {
+          id: 104,
+          body: "@droid review",
+        },
+      } as any,
+      entityNumber: 27,
+    });
+
+    const octokit = {
+      rest: {},
+      graphql: () =>
+        Promise.resolve({
+          repository: {
+            pullRequest: {
+              baseRefName: MOCK_PR_DATA.baseRefName,
+              headRefName: MOCK_PR_DATA.headRefName,
+              headRefOid: MOCK_PR_DATA.headRefOid,
+            },
+          },
+        }),
+    } as any;
+
+    graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
+      repository: {
+        pullRequest: {
+          baseRefName: MOCK_PR_DATA.baseRefName,
+          headRefName: MOCK_PR_DATA.headRefName,
+          headRefOid: MOCK_PR_DATA.headRefOid,
+        },
+      },
+    });
+
+    await prepareReviewMode({
+      context,
+      octokit,
+      githubToken: "token",
+      trackingCommentId: 557,
+    });
+
+    const droidArgsCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "droid_args",
+    ) as [string, string] | undefined;
+    expect(droidArgsCall?.[1]).not.toContain("--model");
   });
 });

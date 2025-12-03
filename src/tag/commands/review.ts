@@ -100,6 +100,13 @@ export async function prepareReviewMode({
 
   const droidArgParts: string[] = [];
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
+
+  // Add model override if specified
+  const reviewModel = process.env.REVIEW_MODEL?.trim();
+  if (reviewModel) {
+    droidArgParts.push(`--model ${reviewModel}`);
+  }
+
   if (normalizedUserArgs) {
     droidArgParts.push(normalizedUserArgs);
   }
