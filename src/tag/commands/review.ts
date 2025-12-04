@@ -104,7 +104,7 @@ export async function prepareReviewMode({
   // Add model override if specified
   const reviewModel = process.env.REVIEW_MODEL?.trim();
   if (reviewModel) {
-    droidArgParts.push(`--model ${reviewModel}`);
+    droidArgParts.push(`--model "${reviewModel}"`);
   }
 
   if (normalizedUserArgs) {

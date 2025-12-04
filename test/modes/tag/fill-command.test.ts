@@ -162,7 +162,7 @@ describe("prepareFillMode", () => {
     const droidArgsCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "droid_args",
     ) as [string, string] | undefined;
-    expect(droidArgsCall?.[1]).toContain("--model gpt-5.1-codex");
+    expect(droidArgsCall?.[1]).toContain('--model "gpt-5.1-codex"');
   });
 
   it("does not add --model flag when FILL_MODEL is empty", async () => {

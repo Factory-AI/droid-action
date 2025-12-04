@@ -95,7 +95,7 @@ export async function prepareFillMode({
   // Add model override if specified
   const fillModel = process.env.FILL_MODEL?.trim();
   if (fillModel) {
-    droidArgParts.push(`--model ${fillModel}`);
+    droidArgParts.push(`--model "${fillModel}"`);
   }
 
   if (normalizedUserArgs) {
