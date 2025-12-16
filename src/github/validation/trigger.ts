@@ -3,7 +3,6 @@
 import * as core from "@actions/core";
 import {
   isIssuesEvent,
-  isIssuesAssignedEvent,
   isIssueCommentEvent,
   isPullRequestEvent,
   isPullRequestReviewEvent,
@@ -14,7 +13,7 @@ import { extractCommandFromContext } from "../utils/command-parser";
 
 export function checkContainsTrigger(context: ParsedGitHubContext): boolean {
   const {
-    inputs: { assigneeTrigger, labelTrigger, triggerPhrase },
+    inputs: { triggerPhrase },
   } = context;
 
   // Check for specific @droid commands (fill, review)
@@ -24,27 +23,26 @@ export function checkContainsTrigger(context: ParsedGitHubContext): boolean {
     return true;
   }
 
-  // Check for assignee trigger
-  if (isIssuesAssignedEvent(context)) {
-    // Remove @ symbol from assignee_trigger if present
-    let triggerUser = assigneeTrigger.replace(/^@/, "");
-    const assigneeUsername = context.payload.assignee?.login || "";
+  // TODO: Assignee trigger - disabled until instruct mode is implemented.
+  // Currently routes to review mode which throws on non-PR contexts.
+  // if (isIssuesAssignedEvent(context)) {
+  //   let triggerUser = assigneeTrigger.replace(/^@/, "");
+  //   const assigneeUsername = context.payload.assignee?.login || "";
+  //   if (triggerUser && assigneeUsername === triggerUser) {
+  //     console.log(`Issue assigned to trigger user '${triggerUser}'`);
+  //     return true;
+  //   }
+  // }
 
-    if (triggerUser && assigneeUsername === triggerUser) {
-      console.log(`Issue assigned to trigger user '${triggerUser}'`);
-      return true;
-    }
-  }
-
-  // Check for label trigger
-  if (isIssuesEvent(context) && context.eventAction === "labeled") {
-    const labelName = (context.payload as any).label?.name || "";
-
-    if (labelTrigger && labelName === labelTrigger) {
-      console.log(`Issue labeled with trigger label '${labelTrigger}'`);
-      return true;
-    }
-  }
+  // TODO: Label trigger - disabled until instruct mode is implemented.
+  // Currently routes to review mode which throws on non-PR contexts.
+  // if (isIssuesEvent(context) && context.eventAction === "labeled") {
+  //   const labelName = (context.payload as any).label?.name || "";
+  //   if (labelTrigger && labelName === labelTrigger) {
+  //     console.log(`Issue labeled with trigger label '${labelTrigger}'`);
+  //     return true;
+  //   }
+  // }
 
   // Check for issue body and title trigger on issue creation
   if (isIssuesEvent(context) && context.eventAction === "opened") {

@@ -14,7 +14,6 @@ import {
 } from "./mockContext";
 import type {
   IssueCommentEvent,
-  IssuesAssignedEvent,
   IssuesEvent,
   PullRequestEvent,
   PullRequestReviewEvent,
@@ -23,77 +22,18 @@ import type { ParsedGitHubContext } from "../src/github/context";
 
 describe("checkContainsTrigger", () => {
 
-  describe("assignee trigger", () => {
-    it("should return true when issue is assigned to the trigger user", () => {
+  // TODO: Assignee and label triggers are disabled until instruct mode is implemented.
+  // These tests verify the triggers are no-ops for now.
+  describe("assignee trigger (disabled)", () => {
+    it("should return false - trigger is disabled until instruct mode is implemented", () => {
       const context = mockIssueAssignedContext;
-      expect(checkContainsTrigger(context)).toBe(true);
-    });
-
-    it("should add @ symbol from assignee trigger", () => {
-      const context = {
-        ...mockIssueAssignedContext,
-        inputs: {
-          ...mockIssueAssignedContext.inputs,
-          assigneeTrigger: "droid-bot",
-        },
-      };
-      expect(checkContainsTrigger(context)).toBe(true);
-    });
-
-    it("should return false when issue is assigned to a different user", () => {
-      const context = {
-        ...mockIssueAssignedContext,
-        payload: {
-          ...mockIssueAssignedContext.payload,
-          assignee: {
-            ...(mockIssueAssignedContext.payload as IssuesAssignedEvent)
-              .assignee,
-            login: "otherUser",
-          },
-          issue: {
-            ...(mockIssueAssignedContext.payload as IssuesAssignedEvent).issue,
-            assignee: {
-              ...(mockIssueAssignedContext.payload as IssuesAssignedEvent).issue
-                .assignee,
-              login: "otherUser",
-            },
-          },
-        },
-      } as ParsedGitHubContext;
-
       expect(checkContainsTrigger(context)).toBe(false);
     });
   });
 
-  describe("label trigger", () => {
-    it("should return true when issue is labeled with the trigger label", () => {
+  describe("label trigger (disabled)", () => {
+    it("should return false - trigger is disabled until instruct mode is implemented", () => {
       const context = mockIssueLabeledContext;
-      expect(checkContainsTrigger(context)).toBe(true);
-    });
-
-    it("should return false when issue is labeled with a different label", () => {
-      const context = {
-        ...mockIssueLabeledContext,
-        payload: {
-          ...mockIssueLabeledContext.payload,
-          label: {
-            ...(mockIssueLabeledContext.payload as any).label,
-            name: "bug",
-          },
-        },
-      } as ParsedGitHubContext;
-      expect(checkContainsTrigger(context)).toBe(false);
-    });
-
-    it("should return false for non-labeled events", () => {
-      const context = {
-        ...mockIssueLabeledContext,
-        eventAction: "opened",
-        payload: {
-          ...mockIssueLabeledContext.payload,
-          action: "opened",
-        },
-      } as ParsedGitHubContext;
       expect(checkContainsTrigger(context)).toBe(false);
     });
   });
