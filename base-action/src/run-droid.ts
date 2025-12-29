@@ -121,12 +121,10 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
       const cfg = JSON.parse(options.mcpTools);
       const servers = cfg?.mcpServers || {};
       const serverNames = Object.keys(servers);
-
+      
       if (serverNames.length > 0) {
-        console.log(
-          `Registering ${serverNames.length} MCP servers: ${serverNames.join(", ")}`,
-        );
-
+        console.log(`Registering ${serverNames.length} MCP servers: ${serverNames.join(", ")}`);
+        
         for (const [name, def] of Object.entries<any>(servers)) {
           const cmd = [def.command, ...(def.args || [])]
             .filter(Boolean)
@@ -145,15 +143,12 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
             .join(" ");
 
           const addCmd = `droid mcp add ${name} "${cmd}" ${envFlags}`.trim();
-
+          
           try {
             await execAsync(addCmd, { env: { ...process.env } });
             console.log(`  ✓ Registered MCP server: ${name}`);
           } catch (e: any) {
-            console.error(
-              `  ✗ Failed to register MCP server ${name}:`,
-              e.message,
-            );
+            console.error(`  ✗ Failed to register MCP server ${name}:`, e.message);
             throw e;
           }
         }
@@ -189,19 +184,15 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
   // Log custom arguments if any
   if (options.droidArgs && options.droidArgs.trim() !== "") {
     console.log(`Custom Droid arguments: ${options.droidArgs}`);
-
+    
     // Check for deprecated MCP tool naming
-    const enabledToolsMatch = options.droidArgs.match(
-      /--enabled-tools\s+["\']?([^"\']+)["\']?/,
-    );
+    const enabledToolsMatch = options.droidArgs.match(/--enabled-tools\s+["\']?([^"\']+)["\']?/);
     if (enabledToolsMatch && enabledToolsMatch[1]) {
-      const tools = enabledToolsMatch[1].split(",").map((t) => t.trim());
-      const oldStyleTools = tools.filter((t) => t.startsWith("mcp__"));
-
+      const tools = enabledToolsMatch[1].split(",").map(t => t.trim());
+      const oldStyleTools = tools.filter(t => t.startsWith("mcp__"));
+      
       if (oldStyleTools.length > 0) {
-        console.warn(
-          `Warning: Found ${oldStyleTools.length} tools with deprecated mcp__ prefix. Update to new pattern (e.g., github_comment___update_droid_comment)`,
-        );
+        console.warn(`Warning: Found ${oldStyleTools.length} tools with deprecated mcp__ prefix. Update to new pattern (e.g., github_comment___update_droid_comment)`);
       }
     }
   }
@@ -256,10 +247,7 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
         const parsed = JSON.parse(line);
         if (!sessionId && typeof parsed === "object" && parsed !== null) {
           const detectedSessionId = parsed.session_id;
-          if (
-            typeof detectedSessionId === "string" &&
-            detectedSessionId.trim()
-          ) {
+          if (typeof detectedSessionId === "string" && detectedSessionId.trim()) {
             sessionId = detectedSessionId;
             console.log(`Detected Droid session: ${sessionId}`);
           }
@@ -284,6 +272,7 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
         // In non-full-output mode, suppress non-JSON output
       }
     });
+
   });
 
   // Handle stdout errors

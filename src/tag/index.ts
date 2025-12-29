@@ -14,10 +14,7 @@ export function shouldTriggerTag(context: GitHubContext): boolean {
   if (!isEntityContext(context)) {
     return false;
   }
-  if (
-    context.inputs.automaticReview ||
-    context.inputs.automaticSecurityReview
-  ) {
+  if (context.inputs.automaticReview || context.inputs.automaticSecurityReview) {
     return context.isPR;
   }
   return checkContainsTrigger(context);
@@ -43,10 +40,7 @@ export async function prepareTagExecution({
   const commentData = await createInitialComment(octokit.rest, context);
   const commentId = commentData.id;
 
-  if (
-    context.inputs.automaticReview &&
-    context.inputs.automaticSecurityReview
-  ) {
+  if (context.inputs.automaticReview && context.inputs.automaticSecurityReview) {
     throw new Error(
       "automatic_review and automatic_security_review cannot both be true",
     );
@@ -57,9 +51,7 @@ export async function prepareTagExecution({
   }
 
   if (context.inputs.automaticSecurityReview && !context.isPR) {
-    throw new Error(
-      "automatic_security_review requires a pull request context",
-    );
+    throw new Error("automatic_security_review requires a pull request context");
   }
 
   const commandContext = extractCommandFromContext(context);

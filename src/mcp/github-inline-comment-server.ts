@@ -59,9 +59,9 @@ server.tool(
       .optional()
       .default("RIGHT")
       .describe(
-        "Side of the diff to comment on: LEFT (old code) or RIGHT (new code). " +
-          "IMPORTANT: Use RIGHT for comments on new/modified code. " +
-          "Only use LEFT when specifically referencing code being removed.",
+        "Side of the diff to comment on: LEFT (old code) or RIGHT (new code). " +  
+        "IMPORTANT: Use RIGHT for comments on new/modified code. " +  
+        "Only use LEFT when specifically referencing code being removed."  
       ),
     commit_id: z
       .string()

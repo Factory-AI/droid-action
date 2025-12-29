@@ -93,6 +93,7 @@ export async function prepareMcpTools(
       },
     };
 
+
     // Include inline comment server for PRs when requested via allowed tools
     if (
       isEntityContext(context) &&
@@ -117,7 +118,9 @@ export async function prepareMcpTools(
 
     const hasWorkflowToken = !!process.env.DEFAULT_WORKFLOW_TOKEN;
     const shouldIncludeCIServer =
-      isEntityContext(context) && context.isPR && hasWorkflowToken;
+      isEntityContext(context) &&
+      context.isPR &&
+      hasWorkflowToken;
 
     if (shouldIncludeCIServer) {
       // Verify the token actually has actions:read permission

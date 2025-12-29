@@ -1,6 +1,8 @@
 import type { PreparedContext } from "../types";
 
-export function generateReviewPrompt(context: PreparedContext): string {
+export function generateReviewPrompt(
+  context: PreparedContext,
+): string {
   const prNumber = context.eventData.isPR
     ? context.eventData.prNumber
     : context.githubContext && "entityNumber" in context.githubContext

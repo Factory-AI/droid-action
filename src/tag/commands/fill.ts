@@ -33,7 +33,7 @@ export async function prepareFillMode({
 
   const commentId =
     trackingCommentId ?? (await createInitialComment(octokit.rest, context)).id;
-
+  
   const prData = await fetchPRBranchData({
     octokits: octokit,
     repository: context.repository,

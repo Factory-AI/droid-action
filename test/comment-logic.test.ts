@@ -279,7 +279,9 @@ describe("updateCommentBody", () => {
       };
 
       const result = updateCommentBody(input);
-      expect(result).toContain("**Droid finished @testuser's task in 1m 15s**");
+      expect(result).toContain(
+        "**Droid finished @testuser's task in 1m 15s**",
+      );
     });
 
     it("includes duration in error header", () => {

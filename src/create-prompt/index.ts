@@ -108,12 +108,15 @@ export function prepareContext(
     commonFields.droidBranch = droidBranch;
   }
 
-  const eventData = buildEventData(context, {
-    commentId,
-    commentBody,
-    baseBranch,
-    droidBranch,
-  });
+  const eventData = buildEventData(
+    context,
+    {
+      commentId,
+      commentBody,
+      baseBranch,
+      droidBranch,
+    },
+  );
 
   const result: PreparedContext = {
     ...commonFields,
@@ -279,7 +282,9 @@ function buildEventData(
   }
 }
 
-export type PromptGenerator = (context: PreparedContext) => string;
+export type PromptGenerator = (
+  context: PreparedContext,
+) => string;
 
 export type PromptCreationOptions = {
   githubContext: ParsedGitHubContext;
