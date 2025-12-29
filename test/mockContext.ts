@@ -19,6 +19,7 @@ const defaultInputs = {
   allowedNonWriteUsers: "",
   trackProgress: false,
   automaticReview: false,
+  automaticSecurityReview: false,
 };
 
 const defaultRepository = {

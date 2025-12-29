@@ -90,6 +90,7 @@ type BaseContext = {
     allowedNonWriteUsers: string;
     trackProgress: boolean;
     automaticReview: boolean;
+    automaticSecurityReview: boolean;
   };
 };
 
@@ -140,6 +141,7 @@ export function parseGitHubContext(): GitHubContext {
       allowedNonWriteUsers: process.env.ALLOWED_NON_WRITE_USERS ?? "",
       trackProgress: process.env.TRACK_PROGRESS === "true",
       automaticReview: process.env.AUTOMATIC_REVIEW === "true",
+      automaticSecurityReview: process.env.AUTOMATIC_SECURITY_REVIEW === "true",
     },
   };
 

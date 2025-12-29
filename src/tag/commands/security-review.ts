@@ -1,34 +1,36 @@
 import * as core from "@actions/core";
 import type { GitHubContext } from "../../github/context";
 import { fetchPRBranchData } from "../../github/data/pr-fetcher";
-import { generateFillPrompt } from "../../create-prompt/templates/fill-prompt";
 import { createPrompt } from "../../create-prompt";
 import { prepareMcpTools } from "../../mcp/install-mcp-server";
 import { createInitialComment } from "../../github/operations/comments/create-initial";
 import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
 import { isEntityContext } from "../../github/context";
+import { generateSecurityReviewPrompt } from "../../create-prompt/templates/security-review-prompt";
 import type { Octokits } from "../../github/api/client";
 import type { PrepareResult } from "../../prepare/types";
 
-type FillCommandOptions = {
+type SecurityReviewCommandOptions = {
   context: GitHubContext;
   octokit: Octokits;
   githubToken: string;
   trackingCommentId?: number;
 };
 
-export async function prepareFillMode({
+export async function prepareSecurityReviewMode({
   context,
   octokit,
   githubToken,
   trackingCommentId,
-}: FillCommandOptions): Promise<PrepareResult> {
+}: SecurityReviewCommandOptions): Promise<PrepareResult> {
   if (!isEntityContext(context)) {
-    throw new Error("Fill command requires an entity event context");
+    throw new Error("Security review command requires an entity event context");
   }
 
   if (!context.isPR) {
-    throw new Error("Fill command is only supported on pull requests");
+    throw new Error(
+      "Security review command is only supported on pull requests",
+    );
   }
 
   const commentId =
@@ -55,9 +57,9 @@ export async function prepareFillMode({
       headRefName: prData.headRefName,
       headRefOid: prData.headRefOid,
     },
-    generatePrompt: generateFillPrompt,
+    generatePrompt: generateSecurityReviewPrompt,
   });
-  core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-fill");
+  core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-security-review");
 
   const rawUserArgs = process.env.DROID_ARGS || "";
   const normalizedUserArgs = normalizeDroidArgs(rawUserArgs);
@@ -72,11 +74,20 @@ export async function prepareFillMode({
     "LS",
     "Execute",
     "github_comment___update_droid_comment",
-    "github_pr___update_pr_description",
+    "github_inline_comment___create_inline_comment",
+  ];
+
+  const reviewTools = [
+    "github_pr___list_review_comments",
+    "github_pr___submit_review",
+    "github_pr___delete_comment",
+    "github_pr___minimize_comment",
+    "github_pr___reply_to_comment",
+    "github_pr___resolve_review_thread",
   ];
 
   const allowedTools = Array.from(
-    new Set([...baseTools, ...userAllowedMCPTools]),
+    new Set([...baseTools, ...reviewTools, ...userAllowedMCPTools]),
   );
 
   const mcpTools = await prepareMcpTools({
@@ -93,9 +104,9 @@ export async function prepareFillMode({
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
 
   // Add model override if specified
-  const fillModel = process.env.FILL_MODEL?.trim();
-  if (fillModel) {
-    droidArgParts.push(`--model "${fillModel}"`);
+  const reviewModel = process.env.REVIEW_MODEL?.trim();
+  if (reviewModel) {
+    droidArgParts.push(`--model "${reviewModel}"`);
   }
 
   if (normalizedUserArgs) {

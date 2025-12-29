@@ -26,6 +26,7 @@ export function collectActionInputsPresence(): void {
     experimental_allowed_domains: "",
     track_progress: "false",
     automatic_review: "false",
+    automatic_security_review: "false",
   };
 
   const allInputsJson = process.env.ALL_INPUTS;

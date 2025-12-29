@@ -68,6 +68,7 @@ describe("checkWritePermissions", () => {
       allowedNonWriteUsers: "",
       trackProgress: false,
       automaticReview: false,
+      automaticSecurityReview: false,
     },
   });
 

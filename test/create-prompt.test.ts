@@ -26,6 +26,7 @@ describe("prepareContext", () => {
       allowedNonWriteUsers: "",
       trackProgress: false,
       automaticReview: false,
+      automaticSecurityReview: false,
     },
   } as const;
 

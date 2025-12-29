@@ -41,45 +41,57 @@ async function exchangeForAppToken(oidcToken: string): Promise<string> {
 
     // Handle the simplified flat error response format
     const errorCode = responseJson.error || `http_${response.status}`;
-    const errorMessage = responseJson.message || responseJson.detail || responseJson.error || "Unknown error";
+    const errorMessage =
+      responseJson.message ||
+      responseJson.detail ||
+      responseJson.error ||
+      "Unknown error";
     const specificErrorCode = responseJson.error_code;
     const repository = responseJson.repository;
 
     // Check for specific error codes that should skip the action
-    if (errorCode === "workflow_validation_failed" || 
-        specificErrorCode === "workflow_not_found_on_default_branch") {
-      core.warning(`Skipping action due to workflow validation: ${errorMessage}`);
+    if (
+      errorCode === "workflow_validation_failed" ||
+      specificErrorCode === "workflow_not_found_on_default_branch"
+    ) {
+      core.warning(
+        `Skipping action due to workflow validation: ${errorMessage}`,
+      );
       console.log(
         "Action skipped due to workflow validation error. This is expected when adding Droid workflows to new repositories or on PRs with workflow changes. If you're seeing this, your workflow will begin working once you merge your PR.",
       );
       core.setOutput("skipped_due_to_workflow_validation_mismatch", "true");
       process.exit(0);
     }
-    
+
     // Handle GitHub App not installed error with helpful message
     if (errorCode === "app_not_installed") {
       const repo = repository || "this repository";
       console.error(
         `The Factory GitHub App is not installed for ${repo}. ` +
-        `Please install it at: https://github.com/apps/factory-ai`
+          `Please install it at: https://github.com/apps/factory-ai`,
       );
       throw new Error(errorMessage);
     }
-    
+
     // Handle rate limiting with retry suggestion
     if (errorCode === "rate_limited") {
       console.error(
-        `GitHub API rate limit exceeded. Please wait a few minutes and try again.`
+        `GitHub API rate limit exceeded. Please wait a few minutes and try again.`,
       );
       throw new Error(errorMessage);
     }
-    
+
     // Handle OIDC verification errors
     if (errorCode === "oidc_verification_failed") {
       if (specificErrorCode === "token_expired") {
-        console.error("OIDC token has expired. The workflow may be taking too long.");
+        console.error(
+          "OIDC token has expired. The workflow may be taking too long.",
+        );
       } else if (specificErrorCode === "audience_mismatch") {
-        console.error("OIDC token audience mismatch. This is likely a configuration issue.");
+        console.error(
+          "OIDC token audience mismatch. This is likely a configuration issue.",
+        );
       } else if (specificErrorCode === "invalid_signature") {
         console.error("OIDC token signature verification failed.");
       }
@@ -89,7 +101,7 @@ async function exchangeForAppToken(oidcToken: string): Promise<string> {
     console.error(
       `App token exchange failed: ${response.status} ${response.statusText} - ${errorMessage}`,
       errorCode !== errorMessage ? `(Code: ${errorCode})` : "",
-      specificErrorCode ? `(Specific: ${specificErrorCode})` : ""
+      specificErrorCode ? `(Specific: ${specificErrorCode})` : "",
     );
     throw new Error(errorMessage);
   }
@@ -99,7 +111,7 @@ async function exchangeForAppToken(oidcToken: string): Promise<string> {
     token?: string;
     expires_at?: string;
   };
-  
+
   if (!appTokenData.token) {
     throw new Error("App token not found in response");
   }

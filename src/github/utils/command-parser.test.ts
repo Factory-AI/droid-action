@@ -27,6 +27,7 @@ const baseContext: Omit<ParsedGitHubContext, "eventName" | "payload"> = {
     allowedNonWriteUsers: "",
     trackProgress: false,
     automaticReview: false,
+    automaticSecurityReview: false,
   },
   entityNumber: 1,
   isPR: true,
@@ -69,6 +70,24 @@ describe("Command Parser", () => {
       const result = parseDroidCommand("Can you @droid review this PR?");
       expect(result?.command).toBe("review");
       expect(result?.raw).toBe("@droid review");
+    });
+
+    it("should detect @droid security-review", () => {
+      const result = parseDroidCommand("Please @droid security-review this PR");
+      expect(result?.command).toBe("security-review");
+      expect(result?.raw).toBe("@droid security-review");
+    });
+
+    it("should detect @droid security review (space separated)", () => {
+      const result = parseDroidCommand("Please @droid security review this PR");
+      expect(result?.command).toBe("security-review");
+      expect(result?.raw).toBe("@droid security review");
+    });
+
+    it("should be case insensitive for @droid security review", () => {
+      const result = parseDroidCommand("@DROID SECURITY REVIEW");
+      expect(result?.command).toBe("security-review");
+      expect(result?.raw).toBe("@DROID SECURITY REVIEW");
     });
 
     it("should prioritize specific commands over default", () => {
@@ -125,17 +144,14 @@ describe("Command Parser", () => {
 
   describe("extractCommandFromContext", () => {
     it("should extract from PR body", () => {
-      const context = createContext(
-        "pull_request",
-        {
-          action: "opened",
-          pull_request: {
-            body: "PR description\n\n@droid fill",
-            number: 1,
-            title: "PR",
-          },
-        } as unknown as PullRequestEvent,
-      );
+      const context = createContext("pull_request", {
+        action: "opened",
+        pull_request: {
+          body: "PR description\n\n@droid fill",
+          number: 1,
+          title: "PR",
+        },
+      } as unknown as PullRequestEvent);
       const result = extractCommandFromContext(context);
       expect(result?.command).toBe("fill");
       expect(result?.location).toBe("body");
@@ -160,20 +176,17 @@ describe("Command Parser", () => {
     });
 
     it("should extract from issue comment", () => {
-      const context = createContext(
-        "issue_comment",
-        {
-          action: "created",
-          comment: {
-            body: "@droid fill please",
-            created_at: "2024-01-01T00:00:00Z",
-          },
-          issue: {
-            number: 1,
-            pull_request: { url: "" },
-          },
-        } as unknown as IssueCommentEvent,
-      );
+      const context = createContext("issue_comment", {
+        action: "created",
+        comment: {
+          body: "@droid fill please",
+          created_at: "2024-01-01T00:00:00Z",
+        },
+        issue: {
+          number: 1,
+          pull_request: { url: "" },
+        },
+      } as unknown as IssueCommentEvent);
       const result = extractCommandFromContext(context);
       expect(result?.command).toBe("fill");
       expect(result?.location).toBe("comment");
@@ -181,19 +194,16 @@ describe("Command Parser", () => {
     });
 
     it("should extract from PR review comment", () => {
-      const context = createContext(
-        "pull_request_review_comment",
-        {
-          action: "created",
-          comment: {
-            body: "Can you @droid review this section?",
-            created_at: "2024-01-01T00:00:00Z",
-          },
-          pull_request: {
-            number: 1,
-          },
-        } as unknown as PullRequestReviewCommentEvent,
-      );
+      const context = createContext("pull_request_review_comment", {
+        action: "created",
+        comment: {
+          body: "Can you @droid review this section?",
+          created_at: "2024-01-01T00:00:00Z",
+        },
+        pull_request: {
+          number: 1,
+        },
+      } as unknown as PullRequestReviewCommentEvent);
       const result = extractCommandFromContext(context);
       expect(result?.command).toBe("review");
       expect(result?.location).toBe("comment");
@@ -201,37 +211,45 @@ describe("Command Parser", () => {
     });
 
     it("should extract from PR review body", () => {
-      const context = createContext(
-        "pull_request_review",
-        {
-          action: "submitted",
-          review: {
-            body: "LGTM but @droid fill the description",
-            submitted_at: "2024-01-01T00:00:00Z",
-          },
-          pull_request: {
-            number: 1,
-          },
-        } as unknown as PullRequestReviewEvent,
-      );
+      const context = createContext("pull_request_review", {
+        action: "submitted",
+        review: {
+          body: "LGTM but @droid fill the description",
+          submitted_at: "2024-01-01T00:00:00Z",
+        },
+        pull_request: {
+          number: 1,
+        },
+      } as unknown as PullRequestReviewEvent);
       const result = extractCommandFromContext(context);
       expect(result?.command).toBe("fill");
       expect(result?.location).toBe("comment");
       expect(result?.timestamp).toBe("2024-01-01T00:00:00Z");
     });
 
+    it("should extract security-review from PR body", () => {
+      const context = createContext("pull_request", {
+        action: "opened",
+        pull_request: {
+          body: "PR description\n\n@droid security-review",
+          number: 1,
+          title: "PR",
+        },
+      } as unknown as PullRequestEvent);
+      const result = extractCommandFromContext(context);
+      expect(result?.command).toBe("security-review");
+      expect(result?.location).toBe("body");
+    });
+
     it("should return null for events without commands", () => {
-      const context = createContext(
-        "pull_request",
-        {
-          action: "opened",
-          pull_request: {
-            body: "Regular PR description",
-            number: 1,
-            title: "PR",
-          },
-        } as unknown as PullRequestEvent,
-      );
+      const context = createContext("pull_request", {
+        action: "opened",
+        pull_request: {
+          body: "Regular PR description",
+          number: 1,
+          title: "PR",
+        },
+      } as unknown as PullRequestEvent);
       const result = extractCommandFromContext(context);
       expect(result).toBeNull();
     });
@@ -247,17 +265,14 @@ describe("Command Parser", () => {
     });
 
     it("should handle missing body gracefully", () => {
-      const context = createContext(
-        "pull_request",
-        {
-          action: "opened",
-          pull_request: {
-            body: null,
-            number: 1,
-            title: "PR",
-          },
-        } as unknown as PullRequestEvent,
-      );
+      const context = createContext("pull_request", {
+        action: "opened",
+        pull_request: {
+          body: null,
+          number: 1,
+          title: "PR",
+        },
+      } as unknown as PullRequestEvent);
       const result = extractCommandFromContext(context);
       expect(result).toBeNull();
     });
@@ -273,20 +288,17 @@ describe("Command Parser", () => {
     });
 
     it("should extract default command when no specific command", () => {
-      const context = createContext(
-        "issue_comment",
-        {
-          action: "created",
-          comment: {
-            body: "@droid can you help with this?",
-            created_at: "2024-01-01T00:00:00Z",
-          },
-          issue: {
-            number: 1,
-            pull_request: { url: "" },
-          },
-        } as unknown as IssueCommentEvent,
-      );
+      const context = createContext("issue_comment", {
+        action: "created",
+        comment: {
+          body: "@droid can you help with this?",
+          created_at: "2024-01-01T00:00:00Z",
+        },
+        issue: {
+          number: 1,
+          pull_request: { url: "" },
+        },
+      } as unknown as IssueCommentEvent);
       const result = extractCommandFromContext(context);
       expect(result?.command).toBe("default");
       expect(result?.location).toBe("comment");
