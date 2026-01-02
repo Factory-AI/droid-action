@@ -99,9 +99,7 @@ describe("setupDroidSettings", () => {
   });
 
   test("should throw error for non-existent file path", async () => {
-    expect(() =>
-      setupDroidSettings("/non/existent/file.json", testHomeDir),
-    ).toThrow();
+    expect(() => setupDroidSettings("/non/existent/file.json", testHomeDir)).toThrow();
   });
 
   test("should handle empty string input", async () => {

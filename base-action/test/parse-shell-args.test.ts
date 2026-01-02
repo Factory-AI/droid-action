@@ -8,8 +8,14 @@ describe("shell-quote parseShellArgs", () => {
   });
 
   test("should parse simple arguments", () => {
-    expect(parseShellArgs("--auto medium")).toEqual(["--auto", "medium"]);
-    expect(parseShellArgs("-s session-123")).toEqual(["-s", "session-123"]);
+    expect(parseShellArgs("--auto medium")).toEqual([
+      "--auto",
+      "medium",
+    ]);
+    expect(parseShellArgs("-s session-123")).toEqual([
+      "-s",
+      "session-123",
+    ]);
   });
 
   test("should handle double quotes", () => {
@@ -21,11 +27,10 @@ describe("shell-quote parseShellArgs", () => {
   });
 
   test("should handle single quotes", () => {
-    expect(parseShellArgs("--file '/tmp/prompt.md'")).toEqual([
-      "--file",
-      "/tmp/prompt.md",
-    ]);
-    expect(parseShellArgs("'arg with spaces'")).toEqual(["arg with spaces"]);
+    expect(parseShellArgs("--file '/tmp/prompt.md'"))
+      .toEqual(["--file", "/tmp/prompt.md"]);
+    expect(parseShellArgs("'arg with spaces'"))
+      .toEqual(["arg with spaces"]);
   });
   test("should handle escaped characters", () => {
     expect(parseShellArgs("arg\\ with\\ spaces")).toEqual(["arg with spaces"]);

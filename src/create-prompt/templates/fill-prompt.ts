@@ -1,6 +1,8 @@
 import type { PreparedContext } from "../types";
 
-export function generateFillPrompt(context: PreparedContext): string {
+export function generateFillPrompt(
+  context: PreparedContext,
+): string {
   const prNumber = context.eventData.isPR
     ? context.eventData.prNumber
     : context.githubContext && "entityNumber" in context.githubContext

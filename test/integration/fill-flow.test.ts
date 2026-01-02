@@ -1,4 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  spyOn,
+} from "bun:test";
 import path from "node:path";
 import os from "node:os";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -86,18 +93,17 @@ describe("fill command integration", () => {
       } as any,
     });
 
-    const octokit = {
-      rest: {},
-      graphql: () =>
-        Promise.resolve({
-          repository: {
-            pullRequest: {
-              baseRefName: "main",
-              headRefName: "feature/fill",
-              headRefOid: "abc123",
-            },
-          },
-        }),
+    const octokit = { 
+      rest: {}, 
+      graphql: () => Promise.resolve({
+        repository: {
+          pullRequest: {
+            baseRefName: "main",
+            headRefName: "feature/fill",
+            headRefOid: "abc123",
+          }
+        }
+      }) 
     } as any;
 
     graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
@@ -106,8 +112,8 @@ describe("fill command integration", () => {
           baseRefName: "main",
           headRefName: "feature/fill",
           headRefOid: "abc123",
-        },
-      },
+        }
+      }
     });
 
     const result = await prepareTagExecution({

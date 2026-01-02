@@ -9,9 +9,8 @@ import type {
   PullRequestReviewEvent,
 } from "@octokit/webhooks-types";
 
-type ContextOverrides = Partial<Omit<ParsedGitHubContext, "payload">> & {
-  payload?: unknown;
-};
+type ContextOverrides =
+  Partial<Omit<ParsedGitHubContext, "payload">> & { payload?: unknown };
 
 const defaultPayload = {
   action: "created",
@@ -28,9 +27,7 @@ const defaultPayload = {
 } as unknown as IssueCommentEvent;
 
 // Helper function to create a mock context
-function createMockContext(
-  overrides: ContextOverrides = {},
-): ParsedGitHubContext {
+function createMockContext(overrides: ContextOverrides = {}): ParsedGitHubContext {
   return {
     runId: "run-1",
     eventName: "issue_comment",
@@ -74,7 +71,7 @@ describe("checkContainsTrigger with commands", () => {
         },
       } as unknown as PullRequestEvent,
     });
-
+    
     expect(checkContainsTrigger(context)).toBe(true);
   });
 
@@ -88,7 +85,7 @@ describe("checkContainsTrigger with commands", () => {
         },
       } as unknown as IssueCommentEvent,
     });
-
+    
     expect(checkContainsTrigger(context)).toBe(true);
   });
 
@@ -105,7 +102,7 @@ describe("checkContainsTrigger with commands", () => {
         },
       } as unknown as PullRequestReviewCommentEvent,
     });
-
+    
     expect(checkContainsTrigger(context)).toBe(true);
   });
 
@@ -122,7 +119,7 @@ describe("checkContainsTrigger with commands", () => {
         },
       } as unknown as PullRequestReviewEvent,
     });
-
+    
     expect(checkContainsTrigger(context)).toBe(true);
   });
 
@@ -150,7 +147,7 @@ describe("checkContainsTrigger with commands", () => {
         },
       } as unknown as IssueCommentEvent,
     });
-
+    
     // This should still trigger because of the existing trigger phrase logic
     // but now it will be handled as default command
     expect(checkContainsTrigger(context)).toBe(true);
@@ -166,7 +163,7 @@ describe("checkContainsTrigger with commands", () => {
         },
       } as unknown as IssueCommentEvent,
     });
-
+    
     expect(checkContainsTrigger(context)).toBe(true);
   });
 
@@ -180,7 +177,7 @@ describe("checkContainsTrigger with commands", () => {
         },
       } as unknown as IssueCommentEvent,
     });
-
+    
     expect(checkContainsTrigger(context)).toBe(false);
   });
 
@@ -197,7 +194,7 @@ describe("checkContainsTrigger with commands", () => {
         },
       } as unknown as IssuesEvent,
     });
-
+    
     expect(checkContainsTrigger(context)).toBe(true);
   });
 });

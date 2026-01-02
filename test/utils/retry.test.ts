@@ -5,14 +5,14 @@ describe("retryWithBackoff", () => {
   let timeoutSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
-    timeoutSpy = spyOn(globalThis, "setTimeout").mockImplementation(((
-      handler: Parameters<typeof setTimeout>[0],
-    ) => {
-      if (typeof handler === "function") {
-        handler();
-      }
-      return 0 as unknown as ReturnType<typeof setTimeout>;
-    }) as unknown as typeof setTimeout);
+    timeoutSpy = spyOn(globalThis, "setTimeout").mockImplementation(
+      ((handler: Parameters<typeof setTimeout>[0]) => {
+        if (typeof handler === "function") {
+          handler();
+        }
+        return 0 as unknown as ReturnType<typeof setTimeout>;
+      }) as unknown as typeof setTimeout,
+    );
   });
 
   afterEach(() => {
@@ -64,9 +64,7 @@ describe("retryWithBackoff", () => {
 
     expect(attempts).toBe(2);
     expect(timeoutSpy).toHaveBeenCalledTimes(1);
-    const firstCall = timeoutSpy.mock.calls[0] as
-      | Parameters<typeof setTimeout>
-      | undefined;
+    const firstCall = timeoutSpy.mock.calls[0] as Parameters<typeof setTimeout> | undefined;
     expect(firstCall?.[1]).toBe(5);
   });
 });

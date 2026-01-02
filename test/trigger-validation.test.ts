@@ -21,6 +21,7 @@ import type {
 import type { ParsedGitHubContext } from "../src/github/context";
 
 describe("checkContainsTrigger", () => {
+
   // TODO: Assignee and label triggers are disabled until instruct mode is implemented.
   // These tests verify the triggers are no-ops for now.
   describe("assignee trigger (disabled)", () => {

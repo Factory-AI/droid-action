@@ -73,6 +73,7 @@ async function run() {
     if (result?.mcpTools) {
       core.setOutput("mcp_tools", result.mcpTools);
     }
+
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     core.setFailed(`Prepare step failed with error: ${errorMessage}`);

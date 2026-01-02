@@ -34,14 +34,15 @@ describe("setupGitHubToken", () => {
     process.env.OVERRIDE_GITHUB_TOKEN = "override-token";
 
     const setOutputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
-    const getIdTokenSpy = spyOn(core, "getIDToken").mockResolvedValue(
-      "oidc-token",
-    );
+    const getIdTokenSpy = spyOn(core, "getIDToken").mockResolvedValue("oidc-token");
 
     const result = await setupGitHubToken();
 
     expect(result).toBe("override-token");
-    expect(setOutputSpy).toHaveBeenCalledWith("GITHUB_TOKEN", "override-token");
+    expect(setOutputSpy).toHaveBeenCalledWith(
+      "GITHUB_TOKEN",
+      "override-token",
+    );
     expect(getIdTokenSpy).not.toHaveBeenCalled();
 
     setOutputSpy.mockRestore();
@@ -58,9 +59,7 @@ describe("setupGitHubToken", () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     const setOutputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
-    const getIdTokenSpy = spyOn(core, "getIDToken").mockResolvedValue(
-      "oidc-token",
-    );
+    const getIdTokenSpy = spyOn(core, "getIDToken").mockResolvedValue("oidc-token");
     const retrySpy = spyOn(retryModule, "retryWithBackoff").mockImplementation(
       <T>(operation: () => Promise<T>) => operation(),
     );
