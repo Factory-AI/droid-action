@@ -60,29 +60,11 @@ export async function prepareSecurityScanMode({
     "Glob",
     "LS",
     "Execute",
-    "Edit",
-    "Create",
-    "ApplyPatch",
     "github_comment___update_droid_comment",
   ];
 
-  const gitTools = [
-    "git_status",
-    "git_diff",
-    "git_commit",
-    "git_log",
-    "git_checkout",
-    "git_branch",
-    "git_push",
-  ];
-
-  const prTools = [
-    "github_pr___create_pr",
-    "github_pr___update_pr_description",
-  ];
-
   const allowedTools = Array.from(
-    new Set([...baseTools, ...gitTools, ...prTools, ...userAllowedMCPTools]),
+    new Set([...baseTools, ...userAllowedMCPTools]),
   );
 
   const mcpTools = await prepareMcpTools({

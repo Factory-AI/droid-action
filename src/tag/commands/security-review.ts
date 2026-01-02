@@ -76,9 +76,6 @@ export async function prepareSecurityReviewMode({
     "Glob",
     "LS",
     "Execute",
-    "Edit",
-    "Create",
-    "ApplyPatch",
     "github_comment___update_droid_comment",
     "github_inline_comment___create_inline_comment",
   ];
@@ -92,15 +89,8 @@ export async function prepareSecurityReviewMode({
     "github_pr___resolve_review_thread",
   ];
 
-  const gitTools = ["git_status", "git_diff", "git_commit", "git_log"];
-
   const allowedTools = Array.from(
-    new Set([
-      ...baseTools,
-      ...reviewTools,
-      ...gitTools,
-      ...userAllowedMCPTools,
-    ]),
+    new Set([...baseTools, ...reviewTools, ...userAllowedMCPTools]),
   );
 
   const mcpTools = await prepareMcpTools({

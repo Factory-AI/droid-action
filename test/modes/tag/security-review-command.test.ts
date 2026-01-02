@@ -103,18 +103,11 @@ describe("prepareSecurityReviewMode", () => {
       expect.objectContaining({
         allowedTools: expect.arrayContaining([
           "Execute",
-          "Edit",
-          "Create",
-          "ApplyPatch",
           "github_comment___update_droid_comment",
           "github_inline_comment___create_inline_comment",
           "github_pr___list_review_comments",
           "github_pr___submit_review",
           "github_pr___resolve_review_thread",
-          "git_status",
-          "git_diff",
-          "git_commit",
-          "git_log",
         ]),
       }),
     );
