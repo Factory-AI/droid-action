@@ -1,63 +1,52 @@
 import * as core from "@actions/core";
 import type { GitHubContext } from "../../github/context";
-import { fetchPRBranchData } from "../../github/data/pr-fetcher";
-import { generateFillPrompt } from "../../create-prompt/templates/fill-prompt";
 import { createPrompt } from "../../create-prompt";
 import { prepareMcpTools } from "../../mcp/install-mcp-server";
-import { createInitialComment } from "../../github/operations/comments/create-initial";
 import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
 import { isEntityContext } from "../../github/context";
+import { generateSecurityReportPrompt } from "../../create-prompt/templates/security-report-prompt";
 import type { Octokits } from "../../github/api/client";
 import type { PrepareResult } from "../../prepare/types";
 
-type FillCommandOptions = {
+export type ScanScope = { type: "full" } | { type: "scheduled"; days: number };
+
+type SecurityScanCommandOptions = {
   context: GitHubContext;
   octokit: Octokits;
   githubToken: string;
-  trackingCommentId?: number;
+  scanScope: ScanScope;
 };
 
-export async function prepareFillMode({
+export async function prepareSecurityScanMode({
   context,
-  octokit,
+  octokit: _octokit,
   githubToken,
-  trackingCommentId,
-}: FillCommandOptions): Promise<PrepareResult> {
+  scanScope,
+}: SecurityScanCommandOptions): Promise<PrepareResult> {
   if (!isEntityContext(context)) {
-    throw new Error("Fill command requires an entity event context");
+    throw new Error("Security scan command requires an entity event context");
   }
 
-  if (!context.isPR) {
-    throw new Error("Fill command is only supported on pull requests");
-  }
-
-  const commentId =
-    trackingCommentId ?? (await createInitialComment(octokit.rest, context)).id;
-
-  const prData = await fetchPRBranchData({
-    octokits: octokit,
-    repository: context.repository,
-    prNumber: context.entityNumber,
-  });
+  const date = new Date().toISOString().split("T")[0];
+  const branchName = `droid/security-report-${date}`;
 
   const branchInfo = {
-    baseBranch: prData.baseRefName,
-    droidBranch: undefined,
-    currentBranch: prData.headRefName,
+    baseBranch: "main",
+    droidBranch: branchName,
+    currentBranch: branchName,
   };
 
   await createPrompt({
     githubContext: context,
-    commentId,
     baseBranch: branchInfo.baseBranch,
     droidBranch: branchInfo.droidBranch,
-    prBranchData: {
-      headRefName: prData.headRefName,
-      headRefOid: prData.headRefOid,
-    },
-    generatePrompt: generateFillPrompt,
+    generatePrompt: (ctx) =>
+      generateSecurityReportPrompt(ctx, scanScope, branchName),
   });
-  core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-fill");
+  core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-security-scan");
+
+  // Signal that security skills should be installed
+  core.setOutput("install_security_skills", "true");
 
   const rawUserArgs = process.env.DROID_ARGS || "";
   const normalizedUserArgs = normalizeDroidArgs(rawUserArgs);
@@ -71,19 +60,35 @@ export async function prepareFillMode({
     "Glob",
     "LS",
     "Execute",
+    "Edit",
+    "Create",
+    "ApplyPatch",
     "github_comment___update_droid_comment",
+  ];
+
+  const gitTools = [
+    "git_status",
+    "git_diff",
+    "git_commit",
+    "git_log",
+    "git_checkout",
+    "git_branch",
+    "git_push",
+  ];
+
+  const prTools = [
+    "github_pr___create_pr",
     "github_pr___update_pr_description",
   ];
 
   const allowedTools = Array.from(
-    new Set([...baseTools, ...userAllowedMCPTools]),
+    new Set([...baseTools, ...gitTools, ...prTools, ...userAllowedMCPTools]),
   );
 
   const mcpTools = await prepareMcpTools({
     githubToken,
     owner: context.repository.owner,
     repo: context.repository.repo,
-    droidCommentId: commentId.toString(),
     allowedTools,
     mode: "tag",
     context,
@@ -92,10 +97,11 @@ export async function prepareFillMode({
   const droidArgParts: string[] = [];
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
 
-  // Add model override if specified
-  const fillModel = process.env.FILL_MODEL?.trim();
-  if (fillModel) {
-    droidArgParts.push(`--model "${fillModel}"`);
+  // Add model override if specified (prefer SECURITY_MODEL, fallback to REVIEW_MODEL)
+  const securityModel =
+    process.env.SECURITY_MODEL?.trim() || process.env.REVIEW_MODEL?.trim();
+  if (securityModel) {
+    droidArgParts.push(`--model "${securityModel}"`);
   }
 
   if (normalizedUserArgs) {
@@ -106,7 +112,6 @@ export async function prepareFillMode({
   core.setOutput("mcp_tools", mcpTools);
 
   return {
-    commentId,
     branchInfo,
     mcpTools,
   };

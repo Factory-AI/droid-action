@@ -17,6 +17,7 @@ const MOCK_PR_DATA = {
 describe("prepareSecurityReviewMode", () => {
   const originalArgs = process.env.DROID_ARGS;
   const originalReviewModel = process.env.REVIEW_MODEL;
+  const originalSecurityModel = process.env.SECURITY_MODEL;
   let fetchPRSpy: ReturnType<typeof spyOn>;
   let promptSpy: ReturnType<typeof spyOn>;
   let mcpSpy: ReturnType<typeof spyOn>;
@@ -27,6 +28,7 @@ describe("prepareSecurityReviewMode", () => {
   beforeEach(() => {
     process.env.DROID_ARGS = "";
     delete process.env.REVIEW_MODEL;
+    delete process.env.SECURITY_MODEL;
 
     fetchPRSpy = spyOn(prFetcher, "fetchPRBranchData").mockResolvedValue({
       baseRefName: MOCK_PR_DATA.baseRefName,
@@ -62,6 +64,11 @@ describe("prepareSecurityReviewMode", () => {
     } else {
       delete process.env.REVIEW_MODEL;
     }
+    if (originalSecurityModel !== undefined) {
+      process.env.SECURITY_MODEL = originalSecurityModel;
+    } else {
+      delete process.env.SECURITY_MODEL;
+    }
   });
 
   it("prepares security review flow with limited toolset when tracking comment exists", async () => {
@@ -96,11 +103,18 @@ describe("prepareSecurityReviewMode", () => {
       expect.objectContaining({
         allowedTools: expect.arrayContaining([
           "Execute",
+          "Edit",
+          "Create",
+          "ApplyPatch",
           "github_comment___update_droid_comment",
           "github_inline_comment___create_inline_comment",
           "github_pr___list_review_comments",
           "github_pr___submit_review",
           "github_pr___resolve_review_thread",
+          "git_status",
+          "git_diff",
+          "git_commit",
+          "git_log",
         ]),
       }),
     );
@@ -232,5 +246,97 @@ describe("prepareSecurityReviewMode", () => {
       (call: unknown[]) => call[0] === "droid_args",
     ) as [string, string] | undefined;
     expect(droidArgsCall?.[1]).not.toContain("--model");
+  });
+
+  it("outputs install_security_skills flag", async () => {
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: {
+        comment: {
+          id: 105,
+          body: "@droid security-review",
+        },
+      } as any,
+      entityNumber: 28,
+    });
+
+    const octokit = { rest: {}, graphql: () => {} } as any;
+
+    await prepareSecurityReviewMode({
+      context,
+      octokit,
+      githubToken: "token",
+      trackingCommentId: 558,
+    });
+
+    const installSkillsCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "install_security_skills",
+    ) as [string, string] | undefined;
+    expect(installSkillsCall?.[1]).toBe("true");
+  });
+
+  it("prefers SECURITY_MODEL over REVIEW_MODEL", async () => {
+    process.env.SECURITY_MODEL = "gpt-5.1-codex";
+    process.env.REVIEW_MODEL = "claude-sonnet-4-5-20250929";
+
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: {
+        comment: {
+          id: 106,
+          body: "@droid security-review",
+        },
+      } as any,
+      entityNumber: 29,
+    });
+
+    const octokit = { rest: {}, graphql: () => {} } as any;
+
+    await prepareSecurityReviewMode({
+      context,
+      octokit,
+      githubToken: "token",
+      trackingCommentId: 559,
+    });
+
+    const droidArgsCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "droid_args",
+    ) as [string, string] | undefined;
+    expect(droidArgsCall?.[1]).toContain('--model "gpt-5.1-codex"');
+    expect(droidArgsCall?.[1]).not.toContain("claude-sonnet");
+  });
+
+  it("falls back to REVIEW_MODEL when SECURITY_MODEL is not set", async () => {
+    process.env.REVIEW_MODEL = "claude-sonnet-4-5-20250929";
+
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: {
+        comment: {
+          id: 107,
+          body: "@droid security-review",
+        },
+      } as any,
+      entityNumber: 30,
+    });
+
+    const octokit = { rest: {}, graphql: () => {} } as any;
+
+    await prepareSecurityReviewMode({
+      context,
+      octokit,
+      githubToken: "token",
+      trackingCommentId: 560,
+    });
+
+    const droidArgsCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "droid_args",
+    ) as [string, string] | undefined;
+    expect(droidArgsCall?.[1]).toContain(
+      '--model "claude-sonnet-4-5-20250929"',
+    );
   });
 });

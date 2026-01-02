@@ -1,11 +1,4 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  spyOn,
-} from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as core from "@actions/core";
 import { prepareFillMode } from "../../../src/tag/commands/fill";
 import { createMockContext } from "../../mockContext";

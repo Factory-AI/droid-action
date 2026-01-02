@@ -27,6 +27,13 @@ export function collectActionInputsPresence(): void {
     track_progress: "false",
     automatic_review: "false",
     automatic_security_review: "false",
+    security_model: "",
+    security_severity_threshold: "medium",
+    security_block_on_critical: "true",
+    security_block_on_high: "false",
+    security_notify_team: "",
+    security_scan_schedule: "false",
+    security_scan_days: "7",
   };
 
   const allInputsJson = process.env.ALL_INPUTS;

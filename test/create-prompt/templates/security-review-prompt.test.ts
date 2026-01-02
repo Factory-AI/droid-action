@@ -22,12 +22,16 @@ function createBaseContext(
 }
 
 describe("generateSecurityReviewPrompt", () => {
-  it("includes security objectives and gh CLI procedure", () => {
+  it("includes security context and skill workflow", () => {
     const prompt = generateSecurityReviewPrompt(createBaseContext());
 
     expect(prompt).toContain("security-focused code review");
-    expect(prompt).toContain("Objectives:");
-    expect(prompt).toContain("high-severity security issues");
+    expect(prompt).toContain("## Security Skills Available");
+    expect(prompt).toContain("threat-model-generation");
+    expect(prompt).toContain("commit-security-scan");
+    expect(prompt).toContain("vulnerability-validation");
+    expect(prompt).toContain("security-patch-generation");
+    expect(prompt).toContain("## Review Workflow");
     expect(prompt).toContain("gh pr diff 42 --repo test-owner/test-repo");
     expect(prompt).toContain(
       "gh api repos/test-owner/test-repo/pulls/42/files",
@@ -36,12 +40,43 @@ describe("generateSecurityReviewPrompt", () => {
     expect(prompt).toContain("github_pr___submit_review");
   });
 
-  it("lists security scope items", () => {
+  it("lists STRIDE security categories", () => {
     const prompt = generateSecurityReviewPrompt(createBaseContext());
 
-    expect(prompt).toContain("Injection");
-    expect(prompt).toContain("SSRF");
-    expect(prompt).toContain("Secrets");
-    expect(prompt).toContain("Crypto");
+    expect(prompt).toContain("Spoofing");
+    expect(prompt).toContain("Tampering");
+    expect(prompt).toContain("Repudiation");
+    expect(prompt).toContain("Information Disclosure");
+    expect(prompt).toContain("Denial of Service");
+    expect(prompt).toContain("Elevation of Privilege");
+  });
+
+  it("includes severity definitions", () => {
+    const prompt = generateSecurityReviewPrompt(createBaseContext());
+
+    expect(prompt).toContain("CRITICAL");
+    expect(prompt).toContain("HIGH");
+    expect(prompt).toContain("MEDIUM");
+    expect(prompt).toContain("LOW");
+  });
+
+  it("includes security configuration from context", () => {
+    const contextWithConfig = createBaseContext({
+      githubContext: {
+        inputs: {
+          securitySeverityThreshold: "high",
+          securityBlockOnCritical: true,
+          securityBlockOnHigh: true,
+          securityNotifyTeam: "@org/security-team",
+        },
+      } as any,
+    });
+
+    const prompt = generateSecurityReviewPrompt(contextWithConfig);
+
+    expect(prompt).toContain("Severity Threshold: high");
+    expect(prompt).toContain("Block on Critical: true");
+    expect(prompt).toContain("Block on High: true");
+    expect(prompt).toContain("@org/security-team");
   });
 });

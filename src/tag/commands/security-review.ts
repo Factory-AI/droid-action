@@ -61,6 +61,9 @@ export async function prepareSecurityReviewMode({
   });
   core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-security-review");
 
+  // Signal that security skills should be installed
+  core.setOutput("install_security_skills", "true");
+
   const rawUserArgs = process.env.DROID_ARGS || "";
   const normalizedUserArgs = normalizeDroidArgs(rawUserArgs);
   const userAllowedMCPTools = parseAllowedTools(normalizedUserArgs).filter(
@@ -73,6 +76,9 @@ export async function prepareSecurityReviewMode({
     "Glob",
     "LS",
     "Execute",
+    "Edit",
+    "Create",
+    "ApplyPatch",
     "github_comment___update_droid_comment",
     "github_inline_comment___create_inline_comment",
   ];
@@ -86,8 +92,15 @@ export async function prepareSecurityReviewMode({
     "github_pr___resolve_review_thread",
   ];
 
+  const gitTools = ["git_status", "git_diff", "git_commit", "git_log"];
+
   const allowedTools = Array.from(
-    new Set([...baseTools, ...reviewTools, ...userAllowedMCPTools]),
+    new Set([
+      ...baseTools,
+      ...reviewTools,
+      ...gitTools,
+      ...userAllowedMCPTools,
+    ]),
   );
 
   const mcpTools = await prepareMcpTools({
@@ -103,10 +116,11 @@ export async function prepareSecurityReviewMode({
   const droidArgParts: string[] = [];
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
 
-  // Add model override if specified
-  const reviewModel = process.env.REVIEW_MODEL?.trim();
-  if (reviewModel) {
-    droidArgParts.push(`--model "${reviewModel}"`);
+  // Add model override if specified (prefer SECURITY_MODEL, fallback to REVIEW_MODEL)
+  const securityModel =
+    process.env.SECURITY_MODEL?.trim() || process.env.REVIEW_MODEL?.trim();
+  if (securityModel) {
+    droidArgParts.push(`--model "${securityModel}"`);
   }
 
   if (normalizedUserArgs) {
