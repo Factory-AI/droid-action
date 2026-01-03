@@ -1,3 +1,4 @@
+import * as core from "@actions/core";
 import { checkContainsTrigger } from "../github/validation/trigger";
 import { checkHumanActor } from "../github/validation/actor";
 import { createInitialComment } from "../github/operations/comments/create-initial";
@@ -77,15 +78,6 @@ export async function prepareTagExecution({
 
   await checkHumanActor(octokit.rest, context);
 
-  if (
-    context.inputs.automaticReview &&
-    context.inputs.automaticSecurityReview
-  ) {
-    throw new Error(
-      "automatic_review and automatic_security_review cannot both be true",
-    );
-  }
-
   if (context.inputs.automaticReview && !context.isPR) {
     throw new Error("automatic_review requires a pull request context");
   }
@@ -111,7 +103,37 @@ export async function prepareTagExecution({
   );
   const commentId = commentData.id;
 
+  // Handle parallel review mode when both flags are set
+  if (context.inputs.automaticReview && context.inputs.automaticSecurityReview) {
+    // Output flags for parallel workflow jobs
+    const runCodeReview = true;
+    let runSecurityReview = true;
+
+    // Check if security review already exists on this PR (run once behavior)
+    const hasExisting = await hasExistingSecurityReview(octokit, context);
+    if (hasExisting) {
+      console.log("Security review already exists on this PR, skipping security");
+      runSecurityReview = false;
+    }
+
+    // Set outputs for downstream jobs
+    core.setOutput("run_code_review", runCodeReview.toString());
+    core.setOutput("run_security_review", runSecurityReview.toString());
+
+    // For parallel mode, return early - individual jobs will run their own reviews
+    return {
+      skipped: false,
+      branchInfo: {
+        baseBranch: "",
+        currentBranch: "",
+      },
+      mcpTools: "",
+    };
+  }
+
   if (context.inputs.automaticReview) {
+    core.setOutput("run_code_review", "true");
+    core.setOutput("run_security_review", "false");
     return prepareReviewMode({
       context,
       octokit,
@@ -136,6 +158,8 @@ export async function prepareTagExecution({
       };
     }
 
+    core.setOutput("run_code_review", "false");
+    core.setOutput("run_security_review", "true");
     return prepareSecurityReviewMode({
       context,
       octokit,
