@@ -6,8 +6,9 @@ inputs:
     description: "Factory API key"
     required: true
   github_token:
-    description: "GitHub token"
-    required: true
+    description: "GitHub token (optional - will use OIDC if not provided)"
+    required: false
+    default: ""
   tracking_comment_id:
     description: "ID of the tracking comment to update"
     required: true
@@ -60,6 +61,15 @@ runs:
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
         "$HOME/.local/bin/droid" --version
 
+    - name: Get GitHub Token
+      id: token
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../src/entrypoints/get-token.ts
+      env:
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+
     - name: Install Security Skills
       shell: bash
       run: |
@@ -98,7 +108,7 @@ runs:
       run: |
         bun run ${{ github.action_path }}/../src/entrypoints/generate-review-prompt.ts
       env:
-        GITHUB_TOKEN: ${{ inputs.github_token }}
+        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
         DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
         SECURITY_MODEL: ${{ inputs.security_model }}
         SECURITY_SEVERITY_THRESHOLD: ${{ inputs.security_severity_threshold }}
@@ -116,5 +126,5 @@ runs:
         INPUT_DROID_ARGS: ${{ steps.prompt.outputs.droid_args }}
         INPUT_MCP_TOOLS: ${{ steps.prompt.outputs.mcp_tools }}
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
-        GITHUB_TOKEN: ${{ inputs.github_token }}
+        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
         DROID_OUTPUT_FILE: ${{ inputs.output_file }}
