@@ -1,0 +1,108 @@
+name: "Droid Prepare"
+description: "Initialize Droid review - creates tracking comment and detects review modes"
+
+inputs:
+  factory_api_key:
+    description: "Factory API key"
+    required: true
+  github_token:
+    description: "GitHub token"
+    required: false
+  automatic_review:
+    description: "Run automatic code review"
+    required: false
+    default: "false"
+  automatic_security_review:
+    description: "Run automatic security review"
+    required: false
+    default: "false"
+
+outputs:
+  github_token:
+    description: "GitHub token (from OIDC or input)"
+    value: ${{ steps.prepare.outputs.github_token }}
+  comment_id:
+    description: "Tracking comment ID"
+    value: ${{ steps.prepare.outputs.droid_comment_id }}
+  run_code_review:
+    description: "Whether to run code review"
+    value: ${{ steps.detect.outputs.run_code_review }}
+  run_security_review:
+    description: "Whether to run security review"
+    value: ${{ steps.detect.outputs.run_security_review }}
+  contains_trigger:
+    description: "Whether a trigger was detected"
+    value: ${{ steps.prepare.outputs.contains_trigger }}
+  pr_number:
+    description: "PR number"
+    value: ${{ steps.prepare.outputs.pr_number }}
+  base_branch:
+    description: "Base branch name"
+    value: ${{ steps.prepare.outputs.base_branch }}
+  head_branch:
+    description: "Head branch name"
+    value: ${{ steps.prepare.outputs.head_branch }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Bun
+      uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+      with:
+        bun-version: 1.2.11
+
+    - name: Install Dependencies
+      shell: bash
+      run: |
+        cd ${{ github.action_path }}/..
+        bun install
+
+    - name: Prepare
+      id: prepare
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../src/entrypoints/prepare.ts
+      env:
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+        AUTOMATIC_REVIEW: ${{ inputs.automatic_review }}
+        AUTOMATIC_SECURITY_REVIEW: ${{ inputs.automatic_security_review }}
+        TRIGGER_PHRASE: "@droid"
+        ALLOWED_BOTS: ""
+        ALLOWED_NON_WRITE_USERS: ""
+        USE_STICKY_COMMENT: "false"
+        TRACK_PROGRESS: "false"
+
+    - name: Detect Review Types
+      id: detect
+      shell: bash
+      run: |
+        # Detect which reviews to run based on inputs and command
+        RUN_CODE_REVIEW="false"
+        RUN_SECURITY_REVIEW="false"
+        
+        # Check automatic flags
+        if [ "${{ inputs.automatic_review }}" = "true" ]; then
+          RUN_CODE_REVIEW="true"
+        fi
+        
+        if [ "${{ inputs.automatic_security_review }}" = "true" ]; then
+          RUN_SECURITY_REVIEW="true"
+        fi
+        
+        # Check for @droid commands in comment/PR body
+        COMMENT_BODY="${{ github.event.comment.body }}"
+        PR_BODY="${{ github.event.pull_request.body }}"
+        
+        if [[ "$COMMENT_BODY" == *"@droid security"* ]] || [[ "$PR_BODY" == *"@droid security"* ]]; then
+          RUN_SECURITY_REVIEW="true"
+        elif [[ "$COMMENT_BODY" == *"@droid review"* ]] || [[ "$PR_BODY" == *"@droid review"* ]]; then
+          RUN_CODE_REVIEW="true"
+        elif [[ "$COMMENT_BODY" == *"@droid"* ]] || [[ "$PR_BODY" == *"@droid"* ]]; then
+          # Default @droid triggers code review
+          RUN_CODE_REVIEW="true"
+        fi
+        
+        echo "run_code_review=$RUN_CODE_REVIEW" >> $GITHUB_OUTPUT
+        echo "run_security_review=$RUN_SECURITY_REVIEW" >> $GITHUB_OUTPUT
+        echo "Detected: code_review=$RUN_CODE_REVIEW, security_review=$RUN_SECURITY_REVIEW"

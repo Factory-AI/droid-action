@@ -1,0 +1,53 @@
+name: "Droid Combine Results"
+description: "Combine code review and security review results into a single summary"
+
+inputs:
+  github_token:
+    description: "GitHub token"
+    required: true
+  tracking_comment_id:
+    description: "ID of the tracking comment to update"
+    required: true
+  code_review_results:
+    description: "Path to code review results JSON (optional)"
+    required: false
+    default: ""
+  security_results:
+    description: "Path to security results JSON (optional)"
+    required: false
+    default: ""
+  code_review_status:
+    description: "Code review job status (success/failure/skipped)"
+    required: false
+    default: "skipped"
+  security_review_status:
+    description: "Security review job status (success/failure/skipped)"
+    required: false
+    default: "skipped"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Bun
+      uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+      with:
+        bun-version: 1.2.11
+
+    - name: Install Dependencies
+      shell: bash
+      run: |
+        cd ${{ github.action_path }}/..
+        bun install
+
+    - name: Combine and Update Comment
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../src/entrypoints/combine-reviews.ts
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
+        CODE_REVIEW_RESULTS: ${{ inputs.code_review_results }}
+        SECURITY_RESULTS: ${{ inputs.security_results }}
+        CODE_REVIEW_STATUS: ${{ inputs.code_review_status }}
+        SECURITY_REVIEW_STATUS: ${{ inputs.security_review_status }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
