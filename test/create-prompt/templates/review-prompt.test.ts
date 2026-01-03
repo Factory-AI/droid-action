@@ -28,12 +28,11 @@ describe("generateReviewPrompt", () => {
     const prompt = generateReviewPrompt(context);
 
     expect(prompt).toContain("Objectives:");
-    expect(prompt).toContain("Re-check existing review comments");
+    expect(prompt).toContain("Review the current PR diff");
     expect(prompt).toContain("gh pr diff 42 --repo test-owner/test-repo");
     expect(prompt).toContain("gh api repos/test-owner/test-repo/pulls/42/files");
-    expect(prompt).toContain("github_inline_comment___create_inline_comment");
-    expect(prompt).toContain("github_pr___resolve_review_thread");
-    expect(prompt).toContain("every substantive comment must be inline on the changed line");
+    expect(prompt).toContain("code-review-results.json");
+    expect(prompt).toContain("Do NOT post inline comments");
   });
 
   it("emphasizes accuracy gates and comment limits", () => {
@@ -46,14 +45,12 @@ describe("generateReviewPrompt", () => {
     expect(prompt).toContain("Never repeat or re-raise an issue previously highlighted");
   });
 
-  it("describes submission guidance", () => {
+  it("describes output format", () => {
     const prompt = generateReviewPrompt(createBaseContext());
 
-    expect(prompt).toContain("github_inline_comment___create_inline_comment");
+    expect(prompt).toContain("code-review-results.json");
     expect(prompt).toContain("github_comment___update_droid_comment");
-    expect(prompt).toContain("github_pr___submit_review");
-    expect(prompt).toContain("github_pr___resolve_review_thread");
-    expect(prompt).toContain("DO NOT create new summary comments");
-    expect(prompt).toContain("update the existing tracking comment");
+    expect(prompt).toContain("JSON file");
+    expect(prompt).toContain("Inline comments will be posted after all reviews complete");
   });
 });

@@ -36,8 +36,8 @@ describe("generateSecurityReviewPrompt", () => {
     expect(prompt).toContain(
       "gh api repos/test-owner/test-repo/pulls/42/files",
     );
-    expect(prompt).toContain("github_inline_comment___create_inline_comment");
-    expect(prompt).toContain("github_pr___submit_review");
+    expect(prompt).toContain("security-review-results.json");
+    expect(prompt).toContain("Do NOT post inline comments");
   });
 
   it("lists STRIDE security categories", () => {

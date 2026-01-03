@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * Generate review prompt for standalone review/security actions
+ * Generate combine prompt for finalizing parallel reviews
  */
 
 import * as core from "@actions/core";
@@ -10,24 +10,24 @@ import { parseGitHubContext, isEntityContext } from "../github/context";
 import { fetchPRBranchData } from "../github/data/pr-fetcher";
 import { createPrompt } from "../create-prompt";
 import { prepareMcpTools } from "../mcp/install-mcp-server";
-import { generateReviewPrompt } from "../create-prompt/templates/review-prompt";
-import { generateSecurityReviewPrompt } from "../create-prompt/templates/security-review-prompt";
+import { generateCombinePrompt } from "../create-prompt/templates/combine-prompt";
 import { normalizeDroidArgs, parseAllowedTools } from "../utils/parse-tools";
 
 async function run() {
   try {
     const githubToken = process.env.GITHUB_TOKEN!;
-    const reviewType = process.env.REVIEW_TYPE || "code";
     const commentId = parseInt(process.env.DROID_COMMENT_ID || "0");
+    const codeReviewResults = process.env.CODE_REVIEW_RESULTS || "";
+    const securityResults = process.env.SECURITY_RESULTS || "";
 
     const context = parseGitHubContext();
     
     if (!isEntityContext(context)) {
-      throw new Error("Review requires entity context (PR or issue)");
+      throw new Error("Combine requires entity context (PR or issue)");
     }
 
     if (!context.isPR) {
-      throw new Error("Review is only supported on pull requests");
+      throw new Error("Combine is only supported on pull requests");
     }
 
     const octokit = createOctokit(githubToken);
@@ -38,30 +38,19 @@ async function run() {
       prNumber: context.entityNumber,
     });
 
-    const branchInfo = {
-      baseBranch: prData.baseRefName,
-      currentBranch: prData.headRefName,
-    };
-
-    // Select prompt generator based on review type
-    const generatePrompt = reviewType === "security" 
-      ? generateSecurityReviewPrompt 
-      : generateReviewPrompt;
-
+    // Generate combine prompt with paths to result files
     await createPrompt({
       githubContext: context,
       commentId,
-      baseBranch: branchInfo.baseBranch,
+      baseBranch: prData.baseRefName,
       prBranchData: {
         headRefName: prData.headRefName,
         headRefOid: prData.headRefOid,
       },
-      generatePrompt,
+      generatePrompt: (ctx) => generateCombinePrompt(ctx, codeReviewResults, securityResults),
     });
 
-    // Set run type
-    const runType = reviewType === "security" ? "droid-security-review" : "droid-review";
-    core.exportVariable("DROID_EXEC_RUN_TYPE", runType);
+    core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-combine");
 
     const rawUserArgs = process.env.DROID_ARGS || "";
     const normalizedUserArgs = normalizeDroidArgs(rawUserArgs);
@@ -69,8 +58,7 @@ async function run() {
       (tool) => tool.startsWith("github_") && tool.includes("___"),
     );
 
-    // Base tools for analysis only - NO inline comment tools
-    // Inline comments will be posted by the finalize step to avoid overlaps
+    // Combine step has all tools including inline comments
     const baseTools = [
       "Read",
       "Grep",
@@ -78,11 +66,11 @@ async function run() {
       "LS",
       "Execute",
       "github_comment___update_droid_comment",
+      "github_inline_comment___create_inline_comment",
     ];
 
-    // Review tools for reading existing comments only
     const reviewTools = [
-      "github_pr___list_review_comments",
+      "github_pr___submit_review",
     ];
 
     const allowedTools = Array.from(
@@ -101,33 +89,22 @@ async function run() {
 
     const droidArgParts: string[] = [];
     // Only include built-in tools in --enabled-tools
-    // MCP tools are discovered dynamically from registered servers
     const builtInTools = allowedTools.filter(t => !t.includes("___"));
     if (builtInTools.length > 0) {
       droidArgParts.push(`--enabled-tools "${builtInTools.join(",")}"`);
-    }
-
-    // Add model override if specified
-    const model = reviewType === "security" 
-      ? (process.env.SECURITY_MODEL?.trim() || process.env.REVIEW_MODEL?.trim())
-      : process.env.REVIEW_MODEL?.trim();
-    
-    if (model) {
-      droidArgParts.push(`--model "${model}"`);
     }
 
     if (normalizedUserArgs) {
       droidArgParts.push(normalizedUserArgs);
     }
 
-    // Output for next step - use core.setOutput which handles GITHUB_OUTPUT internally
     core.setOutput("droid_args", droidArgParts.join(" ").trim());
     core.setOutput("mcp_tools", mcpTools);
 
-    console.log(`Generated ${reviewType} review prompt`);
+    console.log(`Generated combine prompt`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    core.setFailed(`Generate prompt failed: ${errorMessage}`);
+    core.setFailed(`Generate combine prompt failed: ${errorMessage}`);
     process.exit(1);
   }
 }

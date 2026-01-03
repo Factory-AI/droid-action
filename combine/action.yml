@@ -1,9 +1,9 @@
 name: "Droid Combine Results"
-description: "Combine code review and security review results into a single summary"
+description: "Combine code review and security review results, post inline comments, update summary"
 
 inputs:
-  github_token:
-    description: "GitHub token"
+  factory_api_key:
+    description: "Factory API key"
     required: true
   tracking_comment_id:
     description: "ID of the tracking comment to update"
@@ -38,16 +38,44 @@ runs:
       run: |
         cd ${{ github.action_path }}/..
         bun install
+        cd ${{ github.action_path }}/../base-action
+        bun install
 
-    - name: Combine and Update Comment
+    - name: Install Droid CLI
       shell: bash
       run: |
-        bun run ${{ github.action_path }}/../src/entrypoints/combine-reviews.ts
+        curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        "$HOME/.local/bin/droid" --version
+
+    - name: Get GitHub Token
+      id: token
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../src/entrypoints/get-token.ts
       env:
-        GITHUB_TOKEN: ${{ inputs.github_token }}
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+
+    - name: Generate Combine Prompt
+      id: prompt
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../src/entrypoints/generate-combine-prompt.ts
+      env:
+        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
         DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
         CODE_REVIEW_RESULTS: ${{ inputs.code_review_results }}
         SECURITY_RESULTS: ${{ inputs.security_results }}
         CODE_REVIEW_STATUS: ${{ inputs.code_review_status }}
         SECURITY_REVIEW_STATUS: ${{ inputs.security_review_status }}
-        GITHUB_RUN_ID: ${{ github.run_id }}
+
+    - name: Run Combine
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../base-action/src/index.ts
+      env:
+        INPUT_PROMPT_FILE: ${{ runner.temp }}/droid-prompts/droid-prompt.txt
+        INPUT_DROID_ARGS: ${{ steps.prompt.outputs.droid_args }}
+        INPUT_MCP_TOOLS: ${{ steps.prompt.outputs.mcp_tools }}
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}

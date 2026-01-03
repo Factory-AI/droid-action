@@ -25,35 +25,19 @@ Context:
 - PR Base Ref: ${baseRefName}
 
 Objectives:
-1) Re-check existing review comments and resolve threads when the issue is fixed (fall back to a brief "resolved" reply only if the thread cannot be marked resolved).
-2) Review the current PR diff and surface only clear, high-severity issues.
-3) Leave concise inline comments (1-2 sentences) on bugs introduced by the PR. You may also comment on unchanged lines if the PR's changes expose or trigger issues there—but explain the connection clearly.
+1) Review the current PR diff and surface only clear, high-severity issues.
+2) Output findings in JSON format for later processing (DO NOT post inline comments directly).
+3) Update the tracking comment with a summary.
 
 Procedure:
 - Run: gh pr view ${prNumber} --repo ${repoFullName} --json comments,reviews
 - Run: gh pr diff ${prNumber} --repo ${repoFullName}
 - Run: gh api repos/${repoFullName}/pulls/${prNumber}/files --paginate --jq '.[] | {filename,patch,additions,deletions}'
-- Prefer github_inline_comment___create_inline_comment with side="RIGHT" to post inline findings on changed/added lines
-- Compute exact diff positions (path + position) for each issue; every substantive comment must be inline on the changed line (no new top-level issue comments).
-- Detect prior top-level "no issues" comments authored by this bot (e.g., "no issues", "No issues found", "LGTM", including emoji-prefixed variants).
-- If the current run finds issues and prior "no issues" comments exist, delete them via gh api -X DELETE repos/${repoFullName}/issues/comments/<comment_id>; if deletion fails, minimize via GraphQL or reply "Superseded: issues were found in newer commits".
-- If a previously reported issue appears resolved by nearby changes, call github_pr___resolve_review_thread (when permitted) to mark it resolved; otherwise provide a brief reply within that thread noting the resolution.
+- Analyze the diff for issues
+- Write findings to \`code-review-results.json\` in the current directory
 
-Preferred MCP tools (when available):
-- github_comment___update_droid_comment - **UPDATE the tracking comment with your final summary** (REQUIRED)
-- github_inline_comment___create_inline_comment to post inline feedback anchored to the diff
-- github_pr___submit_review to batch-submit inline review comments
-- github_pr___delete_comment to remove outdated "no issues" comments
-- github_pr___minimize_comment when deletion is unavailable but minimization is acceptable
-- github_pr___reply_to_comment to acknowledge resolved threads
-- github_pr___resolve_review_thread to formally resolve threads once issues are fixed
-
-Diff Side Selection (CRITICAL):  
-- When calling github_inline_comment___create_inline_comment, ALWAYS specify the 'side' parameter  
-- Use side="RIGHT" for comments on NEW or MODIFIED code (what the PR adds/changes)  
-- Use side="LEFT" ONLY when commenting on code being REMOVED (only if you need to reference the old implementation)  
-- The 'line' parameter refers to the line number on the specified side of the diff  
-- Ensure the line numbers you use correspond to the side you choose;
+IMPORTANT: Do NOT post inline comments directly. Instead, write findings to a JSON file.
+The finalize step will post all inline comments to avoid overlapping with security review comments.
 
 Analysis scope (prioritize high-confidence findings):
 - Correctness bugs and boundary errors
@@ -78,25 +62,31 @@ Commenting rules:
 - Maximum 10 inline comments total; one issue per comment.
 - Anchor findings to the relevant diff hunk so reviewers see the context immediately.
 - Focus on defects introduced or exposed by the PR's changes; if a new bug manifests on an unchanged line, you may post inline comments on those unchanged lines but clearly explain how the submitted changes trigger it.
-- Match the side parameter to the code segment you're referencing (default to RIGHT for new code) and provide line numbers from that same side
 - Tone should be deferential—write like a junior developer seeking confirmation; keep comments concise and respectful.
 - For low confidence findings, ask a question; for medium/high confidence, state the issue concretely.
-- Only include explicit code suggestions when you are absolutely certain the replacement is correct and safe.
 
-Submission:
-- **DO NOT create new summary comments** - update the existing tracking comment instead.
-- Use \`github_comment___update_droid_comment\` to replace the tracking comment body with your summary.
-- Use \`github_pr___submit_review\` ONLY to batch-submit inline comments (with minimal/empty body).
-- This ensures ONE comment per review, not multiple.
+Output:
+1. Write findings to \`code-review-results.json\` with this structure:
+\`\`\`json
+{
+  "type": "code",
+  "findings": [
+    {
+      "id": "CR-001",
+      "type": "bug|issue|suggestion",
+      "severity": "high|medium|low",
+      "file": "path/to/file.ts",
+      "line": 45,
+      "side": "RIGHT",
+      "description": "Brief description of the issue",
+      "suggestion": "Optional code fix"
+    }
+  ],
+  "summary": "Brief overall summary"
+}
+\`\`\`
 
-Output rules:
-- If no issues found: Update tracking comment with "✅ Code Review Complete - No issues found"
-- If issues found: 
-  1. Post inline comments for each finding (max 10)
-  2. Submit review to batch the inline comments  
-  3. Update tracking comment with summary
-
-Summary format (for tracking comment update via github_comment___update_droid_comment):
+2. Update the tracking comment with a summary using \`github_comment___update_droid_comment\`:
 \`\`\`markdown
 ## 📝 Code Review Summary
 
@@ -110,6 +100,10 @@ Summary format (for tracking comment update via github_comment___update_droid_co
 | ID | Type | File | Line | Description |
 |----|------|------|------|-------------|
 | CR-001 | Bug | auth.ts | 45 | Null pointer exception |
+
+*Inline comments will be posted after all reviews complete.*
 \`\`\`
+
+IMPORTANT: Do NOT post inline comments. Only write to the JSON file and update the tracking comment.
 `;
 }

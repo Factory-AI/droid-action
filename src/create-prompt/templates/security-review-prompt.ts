@@ -107,56 +107,35 @@ You have access to these Factory security skills (installed in ~/.factory/skills
 | **MEDIUM** | Requires specific conditions, moderate impact | CSRF, info disclosure, missing rate limits |
 | **LOW** | Difficult to exploit, low impact | Verbose errors, missing security headers |
 
-## MCP Tools Reference
+## Output Requirements
 
-- \`github_comment___update_droid_comment\` - **UPDATE the tracking comment with your final summary** (REQUIRED)
-- \`github_inline_comment___create_inline_comment\` - Post inline findings (use side="RIGHT" for new code)
-- \`github_pr___submit_review\` - Submit inline comments as a batch review
-- \`github_pr___delete_comment\` / \`github_pr___minimize_comment\` - Remove outdated comments
-- \`github_pr___reply_to_comment\` - Reply to existing threads
-- \`github_pr___resolve_review_thread\` - Resolve fixed issues
+IMPORTANT: Do NOT post inline comments directly. Instead, write findings to a JSON file.
+The finalize step will post all inline comments to avoid overlapping with code review comments.
 
-## Inline Comment Format
-
-For each finding, use this format:
+1. Write findings to \`security-review-results.json\` with this structure:
+\`\`\`json
+{
+  "type": "security",
+  "findings": [
+    {
+      "id": "SEC-001",
+      "severity": "CRITICAL|HIGH|MEDIUM|LOW",
+      "type": "SQL Injection",
+      "stride": "T",
+      "cwe": "CWE-89",
+      "file": "path/to/file.ts",
+      "line": 55,
+      "side": "RIGHT",
+      "description": "Brief description of the vulnerability",
+      "suggestion": "Optional code fix"
+    }
+  ],
+  "summary": "Brief overall summary",
+  "block_pr": ${blockOnCritical || blockOnHigh ? "true if CRITICAL/HIGH found" : "false"}
+}
 \`\`\`
-**[SEVERITY]** [Vulnerability Type] (CWE-XXX)
 
-**STRIDE Category:** [S/T/R/I/D/E]
-
-**Analysis:** [1-2 sentence explanation of the issue]
-
-**Suggested Fix:**
-\`\`\`diff
-- vulnerable code
-+ secure code
-\`\`\`
-
-[Link to CWE reference]
-\`\`\`
-
-## Review Submission Rules
-
-1. **Review Type Based on Findings:**
-   - CRITICAL findings${blockOnCritical ? " → REQUEST_CHANGES" : " → COMMENT"}
-   - HIGH findings${blockOnHigh ? " → REQUEST_CHANGES" : " → COMMENT"}
-   - MEDIUM/LOW findings → COMMENT only
-
-2. **Output Strategy (IMPORTANT):**
-   - **DO NOT create new summary comments** - update the existing tracking comment instead
-   - Use \`github_comment___update_droid_comment\` to replace the tracking comment body with your summary
-   - Use \`github_pr___submit_review\` ONLY to batch-submit inline comments (with minimal/empty body)
-   - This ensures ONE comment per review, not multiple
-
-3. **No Issues Found:**
-   - Update tracking comment with brief "No security issues found" message
-
-4. **Issues Found:**
-   - Post inline comments for each finding (max 10)
-   - Submit review to batch the inline comments
-   - Update tracking comment with the full summary table
-
-${notifyTeam ? `5. **Critical Findings:** Mention ${notifyTeam} in the summary` : ""}
+2. Update the tracking comment using \`github_comment___update_droid_comment\`
 
 ## Summary Format (for tracking comment update)
 
