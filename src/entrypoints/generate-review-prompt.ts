@@ -103,7 +103,12 @@ async function run() {
     });
 
     const droidArgParts: string[] = [];
-    droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
+    // Only include built-in tools in --enabled-tools
+    // MCP tools are discovered dynamically from registered servers
+    const builtInTools = allowedTools.filter(t => !t.includes("___"));
+    if (builtInTools.length > 0) {
+      droidArgParts.push(`--enabled-tools "${builtInTools.join(",")}"`);
+    }
 
     // Add model override if specified
     const model = reviewType === "security" 
