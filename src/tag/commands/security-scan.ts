@@ -1,5 +1,6 @@
 import * as core from "@actions/core";
 import type { GitHubContext } from "../../github/context";
+import { fetchRepoDefaultBranch } from "../../github/data/pr-fetcher";
 import { createPrompt } from "../../create-prompt";
 import { prepareMcpTools } from "../../mcp/install-mcp-server";
 import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
@@ -19,7 +20,7 @@ type SecurityScanCommandOptions = {
 
 export async function prepareSecurityScanMode({
   context,
-  octokit: _octokit,
+  octokit,
   githubToken,
   scanScope,
 }: SecurityScanCommandOptions): Promise<PrepareResult> {
@@ -27,11 +28,17 @@ export async function prepareSecurityScanMode({
     throw new Error("Security scan command requires an entity event context");
   }
 
+  // Fetch the repository's default branch (could be main, master, develop, etc.)
+  const defaultBranch = await fetchRepoDefaultBranch({
+    octokits: octokit,
+    repository: context.repository,
+  });
+
   const date = new Date().toISOString().split("T")[0];
   const branchName = `droid/security-report-${date}`;
 
   const branchInfo = {
-    baseBranch: "main",
+    baseBranch: defaultBranch,
     droidBranch: branchName,
     currentBranch: branchName,
   };

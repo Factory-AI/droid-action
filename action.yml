@@ -237,17 +237,42 @@ runs:
           security/vulnerability-validation \
           security/security-patch-generation 2>/dev/null || true
 
-        # Copy skills to ~/.factory/skills/
+        # Copy skills to ~/.factory/skills/ and track installed count
+        INSTALLED_COUNT=0
         for skill in threat-model-generation commit-security-scan vulnerability-validation security-patch-generation; do
           if [ -d "security/$skill" ]; then
             cp -r "security/$skill" "$SKILLS_DIR/"
             echo "  Installed skill: $skill"
+            INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
+          else
+            echo "  Warning: Skill not found in repo: $skill"
           fi
         done
 
         # Cleanup
         rm -rf "$TEMP_DIR"
-        echo "Security skills installation complete"
+
+        # Verify at least one skill was installed
+        if [ "$INSTALLED_COUNT" -eq 0 ]; then
+          echo "Warning: No security skills were installed. The skills may not exist in the Factory-AI/skills repository."
+          echo "Security review will proceed but may have limited functionality."
+        else
+          echo "Security skills installation complete ($INSTALLED_COUNT skills installed)"
+        fi
+
+        # Verify skills exist in the target directory
+        echo "Verifying installed skills in $SKILLS_DIR..."
+        VERIFIED_COUNT=0
+        for skill in threat-model-generation commit-security-scan vulnerability-validation security-patch-generation; do
+          if [ -d "$SKILLS_DIR/$skill" ]; then
+            echo "  Verified: $skill"
+            VERIFIED_COUNT=$((VERIFIED_COUNT + 1))
+          fi
+        done
+
+        if [ "$VERIFIED_COUNT" -ne "$INSTALLED_COUNT" ]; then
+          echo "Warning: Skill verification mismatch. Expected $INSTALLED_COUNT, found $VERIFIED_COUNT in $SKILLS_DIR"
+        fi
 
     - name: Run Droid Exec
       id: droid
