@@ -5,7 +5,6 @@
  */
 
 import * as core from "@actions/core";
-import { appendFileSync } from "fs";
 import { createOctokit } from "../github/api/client";
 import { parseGitHubContext, isEntityContext } from "../github/context";
 import { fetchPRBranchData } from "../github/data/pr-fetcher";
@@ -119,15 +118,7 @@ async function run() {
       droidArgParts.push(normalizedUserArgs);
     }
 
-    // Output for next step
-    const githubOutput = process.env.GITHUB_OUTPUT;
-    if (githubOutput) {
-      appendFileSync(githubOutput, `droid_args=${droidArgParts.join(" ").trim()}\n`);
-      // Use heredoc format for multi-line mcp_tools JSON
-      const delimiter = `EOF_${Date.now()}`;
-      appendFileSync(githubOutput, `mcp_tools<<${delimiter}\n${mcpTools}\n${delimiter}\n`);
-    }
-
+    // Output for next step - use core.setOutput which handles GITHUB_OUTPUT internally
     core.setOutput("droid_args", droidArgParts.join(" ").trim());
     core.setOutput("mcp_tools", mcpTools);
 
