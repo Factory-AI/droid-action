@@ -123,13 +123,13 @@ describe("checkContainsTrigger with commands", () => {
     expect(checkContainsTrigger(context)).toBe(true);
   });
 
-  it("should trigger on @droid security-review in issue comment", () => {
+  it("should trigger on @droid security in issue comment", () => {
     const context = createMockContext({
       eventName: "issue_comment",
       eventAction: "created",
       payload: {
         comment: {
-          body: "Can you @droid security-review this PR?",
+          body: "Can you @droid security this PR?",
         },
       } as unknown as IssueCommentEvent,
     });

@@ -143,7 +143,7 @@ export async function prepareTagExecution({
     });
   }
 
-  if (commandContext?.command === "security-review") {
+  if (commandContext?.command === "security") {
     return prepareSecurityReviewMode({
       context,
       octokit,

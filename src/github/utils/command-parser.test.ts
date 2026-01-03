@@ -79,22 +79,21 @@ describe("Command Parser", () => {
       expect(result?.raw).toBe("@droid review");
     });
 
-    it("should detect @droid security-review", () => {
-      const result = parseDroidCommand("Please @droid security-review this PR");
-      expect(result?.command).toBe("security-review");
-      expect(result?.raw).toBe("@droid security-review");
+    it("should detect @droid security", () => {
+      const result = parseDroidCommand("Please @droid security this PR");
+      expect(result?.command).toBe("security");
+      expect(result?.raw).toBe("@droid security");
     });
 
-    it("should detect @droid security review (space separated)", () => {
-      const result = parseDroidCommand("Please @droid security review this PR");
-      expect(result?.command).toBe("security-review");
-      expect(result?.raw).toBe("@droid security review");
+    it("should detect @droid security at end of text", () => {
+      const result = parseDroidCommand("Please run @droid security");
+      expect(result?.command).toBe("security");
+      expect(result?.raw).toBe("@droid security");
     });
 
-    it("should be case insensitive for @droid security review", () => {
-      const result = parseDroidCommand("@DROID SECURITY REVIEW");
-      expect(result?.command).toBe("security-review");
-      expect(result?.raw).toBe("@DROID SECURITY REVIEW");
+    it("should be case insensitive for @droid security", () => {
+      const result = parseDroidCommand("@DROID SECURITY");
+      expect(result?.command).toBe("security");
     });
 
     it("should detect @droid security --full", () => {
@@ -103,25 +102,13 @@ describe("Command Parser", () => {
       expect(result?.raw).toBe("@droid security --full");
     });
 
-    it("should detect @droid security-review --full", () => {
-      const result = parseDroidCommand("@droid security-review --full");
-      expect(result?.command).toBe("security-full");
-      expect(result?.raw).toBe("@droid security-review --full");
-    });
-
-    it("should detect @droid security review --full (space separated)", () => {
-      const result = parseDroidCommand("@droid security review --full");
-      expect(result?.command).toBe("security-full");
-      expect(result?.raw).toBe("@droid security review --full");
-    });
-
     it("should be case insensitive for @droid security --full", () => {
       const result = parseDroidCommand("@DROID SECURITY --FULL");
       expect(result?.command).toBe("security-full");
     });
 
-    it("should prioritize security-full over security-review", () => {
-      const result = parseDroidCommand("@droid security-review --full this repo");
+    it("should prioritize security-full over security", () => {
+      const result = parseDroidCommand("@droid security --full this repo");
       expect(result?.command).toBe("security-full");
     });
 
@@ -274,20 +261,20 @@ describe("Command Parser", () => {
       expect(result?.timestamp).toBe("2024-01-01T00:00:00Z");
     });
 
-    it("should extract security-review from PR body", () => {
+    it("should extract security from PR body", () => {
       const context = createContext(
         "pull_request",
         {
           action: "opened",
           pull_request: {
-            body: "PR description\n\n@droid security-review",
+            body: "PR description\n\n@droid security",
             number: 1,
             title: "PR",
           },
         } as unknown as PullRequestEvent,
       );
       const result = extractCommandFromContext(context);
-      expect(result?.command).toBe("security-review");
+      expect(result?.command).toBe("security");
       expect(result?.location).toBe("body");
     });
 

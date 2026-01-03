@@ -4,7 +4,7 @@
 
 import type { GitHubContext } from "../context";
 
-export type DroidCommand = 'fill' | 'review' | 'security-review' | 'security-full' | 'default';
+export type DroidCommand = 'fill' | 'review' | 'security' | 'security-full' | 'default';
 
 export interface ParsedCommand {
   command: DroidCommand;
@@ -44,8 +44,7 @@ export function parseDroidCommand(text: string): ParsedCommand | null {
   }
 
   // Check for @droid security --full command (case insensitive)
-  // Accept "@droid security --full" or "@droid security-review --full"
-  const securityFullMatch = text.match(/@droid\s+security(?:-review)?(?:\s+review)?\s+--full/i);
+  const securityFullMatch = text.match(/@droid\s+security\s+--full/i);
   if (securityFullMatch) {
     return {
       command: 'security-full',
@@ -54,13 +53,13 @@ export function parseDroidCommand(text: string): ParsedCommand | null {
     };
   }
 
-  // Check for @droid security review command (case insensitive)
-  // Accept both "@droid security-review" and "@droid security review"
-  const securityReviewMatch = text.match(/@droid\s+security(?:-|\s+)review/i);
-  if (securityReviewMatch) {
+  // Check for @droid security command (case insensitive)
+  // Must check after security-full to avoid false matches
+  const securityMatch = text.match(/@droid\s+security(?:\s|$|[^-\w])/i);
+  if (securityMatch) {
     return {
-      command: 'security-review',
-      raw: securityReviewMatch[0],
+      command: 'security',
+      raw: securityMatch[0].trim(),
       location: 'body', // Will be set by caller
     };
   }
