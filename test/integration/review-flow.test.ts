@@ -124,44 +124,111 @@ describe("review command integration", () => {
       githubToken: "token",
     });
 
-    expect(result.commentId).toBe(202);
-    expect(graphqlSpy).toHaveBeenCalled();
-    expect(mcpSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        allowedTools: expect.arrayContaining([
-          "github_pr___list_review_comments",
-          "github_pr___submit_review",
-          "github_inline_comment___create_inline_comment",
-          "github_pr___resolve_review_thread",
-        ]),
-      }),
-    );
-
-    const promptPath = path.join(
-      process.env.RUNNER_TEMP!,
-      "droid-prompts",
-      "droid-prompt.txt",
-    );
-    const prompt = await readFile(promptPath, "utf8");
-
-    expect(prompt).toContain("You are performing an automated code review");
-    expect(prompt).toContain("code-review-results.json");
-    expect(prompt).toContain("cap at 10 comments total");
-    expect(prompt).toContain("gh pr view 7 --repo test-owner/test-repo --json comments,reviews");
-    expect(prompt).toContain("False positives are very undesirable");
-    expect(prompt).toContain("Do NOT post inline comments");
-
-    const droidArgsCall = setOutputSpy.mock.calls.find(
-      (call: unknown[]) => call[0] === "droid_args",
+    // In the parallel workflow, @droid review sets output flags and returns early
+    // The actual review is done by downstream workflow jobs
+    expect(result.skipped).toBe(false);
+    
+    // Verify output flags were set correctly for code review only
+    const runCodeReviewCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "run_code_review",
+    ) as [string, string] | undefined;
+    const runSecurityReviewCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "run_security_review",
     ) as [string, string] | undefined;
 
-    expect(droidArgsCall?.[1]).toContain(
-      "github_pr___list_review_comments",
-    );
-    expect(droidArgsCall?.[1]).toContain("github_pr___submit_review");
-    expect(droidArgsCall?.[1]).toContain(
-      "github_inline_comment___create_inline_comment",
-    );
-    expect(droidArgsCall?.[1]).toContain("github_pr___resolve_review_thread");
+    expect(runCodeReviewCall?.[1]).toBe("true");
+    expect(runSecurityReviewCall?.[1]).toBe("false");
+  });
+
+  it("sets both review flags for @droid review security", async () => {
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      actor: "human-reviewer",
+      entityNumber: 7,
+      repository: {
+        owner: "test-owner",
+        repo: "test-repo",
+        full_name: "test-owner/test-repo",
+      },
+      payload: {
+        comment: {
+          id: 888,
+          body: "@droid review security",
+          user: { login: "human-reviewer" },
+          created_at: "2024-02-02T00:00:00Z",
+        },
+        issue: {
+          number: 7,
+          pull_request: {},
+        },
+      } as any,
+    });
+
+    const octokit = { rest: {} } as any;
+
+    const result = await prepareTagExecution({
+      context,
+      octokit,
+      githubToken: "token",
+    });
+
+    expect(result.skipped).toBe(false);
+    
+    const runCodeReviewCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "run_code_review",
+    ) as [string, string] | undefined;
+    const runSecurityReviewCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "run_security_review",
+    ) as [string, string] | undefined;
+
+    expect(runCodeReviewCall?.[1]).toBe("true");
+    expect(runSecurityReviewCall?.[1]).toBe("true");
+  });
+
+  it("sets security flag only for @droid security", async () => {
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      actor: "human-reviewer",
+      entityNumber: 7,
+      repository: {
+        owner: "test-owner",
+        repo: "test-repo",
+        full_name: "test-owner/test-repo",
+      },
+      payload: {
+        comment: {
+          id: 888,
+          body: "@droid security",
+          user: { login: "human-reviewer" },
+          created_at: "2024-02-02T00:00:00Z",
+        },
+        issue: {
+          number: 7,
+          pull_request: {},
+        },
+      } as any,
+    });
+
+    const octokit = { rest: {} } as any;
+
+    const result = await prepareTagExecution({
+      context,
+      octokit,
+      githubToken: "token",
+    });
+
+    expect(result.skipped).toBe(false);
+    
+    const runCodeReviewCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "run_code_review",
+    ) as [string, string] | undefined;
+    const runSecurityReviewCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "run_security_review",
+    ) as [string, string] | undefined;
+
+    expect(runCodeReviewCall?.[1]).toBe("false");
+    expect(runSecurityReviewCall?.[1]).toBe("true");
   });
 });

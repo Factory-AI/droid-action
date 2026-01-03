@@ -177,13 +177,31 @@ export async function prepareTagExecution({
     });
   }
 
+  // Handle explicit commands - set output flags for parallel workflow jobs
+  if (commandContext?.command === "review-security") {
+    core.setOutput("run_code_review", "true");
+    core.setOutput("run_security_review", "true");
+    return {
+      skipped: false,
+      branchInfo: {
+        baseBranch: "",
+        currentBranch: "",
+      },
+      mcpTools: "",
+    };
+  }
+
   if (commandContext?.command === "security") {
-    return prepareSecurityReviewMode({
-      context,
-      octokit,
-      githubToken,
-      trackingCommentId: commentId,
-    });
+    core.setOutput("run_code_review", "false");
+    core.setOutput("run_security_review", "true");
+    return {
+      skipped: false,
+      branchInfo: {
+        baseBranch: "",
+        currentBranch: "",
+      },
+      mcpTools: "",
+    };
   }
 
   if (commandContext?.command === "security-full") {
@@ -195,17 +213,22 @@ export async function prepareTagExecution({
     });
   }
 
+  // @droid review or @droid (default) = code review only
   if (
     commandContext?.command === "review" ||
     !commandContext ||
     commandContext.command === "default"
   ) {
-    return prepareReviewMode({
-      context,
-      octokit,
-      githubToken,
-      trackingCommentId: commentId,
-    });
+    core.setOutput("run_code_review", "true");
+    core.setOutput("run_security_review", "false");
+    return {
+      skipped: false,
+      branchInfo: {
+        baseBranch: "",
+        currentBranch: "",
+      },
+      mcpTools: "",
+    };
   }
 
   throw new Error(`Unexpected command: ${commandContext?.command}`);

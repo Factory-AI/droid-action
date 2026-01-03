@@ -79,6 +79,28 @@ describe("Command Parser", () => {
       expect(result?.raw).toBe("@droid review");
     });
 
+    it("should detect @droid review security (combined)", () => {
+      const result = parseDroidCommand("@droid review security");
+      expect(result?.command).toBe("review-security");
+      expect(result?.raw).toBe("@droid review security");
+    });
+
+    it("should detect @droid security review (combined)", () => {
+      const result = parseDroidCommand("@droid security review");
+      expect(result?.command).toBe("review-security");
+      expect(result?.raw).toBe("@droid security review");
+    });
+
+    it("should be case insensitive for combined commands", () => {
+      const result = parseDroidCommand("@DROID REVIEW SECURITY");
+      expect(result?.command).toBe("review-security");
+    });
+
+    it("should prioritize combined over individual review", () => {
+      const result = parseDroidCommand("@droid review security please");
+      expect(result?.command).toBe("review-security");
+    });
+
     it("should detect @droid security", () => {
       const result = parseDroidCommand("Please @droid security this PR");
       expect(result?.command).toBe("security");
