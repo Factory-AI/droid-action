@@ -123,7 +123,9 @@ async function run() {
     const githubOutput = process.env.GITHUB_OUTPUT;
     if (githubOutput) {
       appendFileSync(githubOutput, `droid_args=${droidArgParts.join(" ").trim()}\n`);
-      appendFileSync(githubOutput, `mcp_tools=${mcpTools}\n`);
+      // Use heredoc format for multi-line mcp_tools JSON
+      const delimiter = `EOF_${Date.now()}`;
+      appendFileSync(githubOutput, `mcp_tools<<${delimiter}\n${mcpTools}\n${delimiter}\n`);
     }
 
     core.setOutput("droid_args", droidArgParts.join(" ").trim());
