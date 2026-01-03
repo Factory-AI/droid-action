@@ -44,7 +44,7 @@ IMPORTANT: Do NOT use github_pr___submit_review. Only update the tracking commen
 The tracking comment IS the summary - do not create any other summary comments.
 
 \`\`\`markdown
-## 🔍 Combined Review Summary
+## Code review completed
 
 ### Code Review
 | Category | Count |
@@ -61,7 +61,7 @@ The tracking comment IS the summary - do not create any other summary comments.
 | 🟡 MEDIUM | X |
 | 🟢 LOW | X |
 
-### All Findings
+### Findings
 | ID | Type | Severity | File | Line | Description |
 |----|------|----------|------|------|-------------|
 | ... | ... | ... | ... | ... | ... |
