@@ -48,7 +48,7 @@ You have access to these Factory security skills (installed in ~/.factory/skills
 1. **threat-model-generation** - Generate STRIDE-based threat model for the repository
 2. **commit-security-scan** - Scan code for security vulnerabilities
 3. **vulnerability-validation** - Validate findings, assess exploitability, filter false positives
-4. **security-patch-generation** - Generate secure code fixes for confirmed vulnerabilities
+4. **security-review** - Comprehensive security review and patch generation
 
 ## Workflow
 
@@ -81,7 +81,7 @@ For each file:
 
 ### Step 5: Generate Patches
 - For each confirmed finding that can be auto-fixed:
-  - Invoke **security-patch-generation** skill
+  - Invoke **security-review** skill to generate patches
   - Apply the patch to the codebase
   - Commit the fix with message: \`fix(security): [VULN-XXX] Brief description\`
 
@@ -184,7 +184,7 @@ The report file should follow this structure:
 ### Scan Metadata
 - ${scanScope.type === "full" ? "Files" : "Commits"} Scanned: N
 - Scan Duration: Xm Ys
-- Skills Used: threat-model-generation, commit-security-scan, vulnerability-validation, security-patch-generation
+- Skills Used: threat-model-generation, commit-security-scan, vulnerability-validation, security-review
 
 ### References
 - [CWE Database](https://cwe.mitre.org/)

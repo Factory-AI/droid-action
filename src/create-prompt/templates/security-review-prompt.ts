@@ -43,7 +43,7 @@ You have access to these Factory security skills (installed in ~/.factory/skills
 1. **threat-model-generation** - Generate STRIDE-based threat model for the repository
 2. **commit-security-scan** - Scan code changes for security vulnerabilities
 3. **vulnerability-validation** - Validate findings, assess exploitability, filter false positives
-4. **security-patch-generation** - Generate secure code fixes for confirmed vulnerabilities
+4. **security-review** - Comprehensive security review and patch generation
 
 ## Review Workflow
 
@@ -75,7 +75,7 @@ You have access to these Factory security skills (installed in ~/.factory/skills
 - For each confirmed finding at or above ${severityThreshold} severity:
   - Post inline comment using \`github_inline_comment___create_inline_comment\`
   - Include: severity, STRIDE category, CWE ID, clear explanation, suggested fix
-- For auto-fixable issues: Invoke **security-patch-generation** skill
+- For auto-fixable issues: Invoke **security-review** skill to generate patches
 - Commit any generated patches to the PR branch
 
 ## Security Scope (STRIDE Categories)

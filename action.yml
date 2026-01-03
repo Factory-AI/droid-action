@@ -232,16 +232,16 @@ runs:
 
         cd "$TEMP_DIR"
         git sparse-checkout set \
-          security/threat-model-generation \
-          security/commit-security-scan \
-          security/vulnerability-validation \
-          security/security-patch-generation 2>/dev/null || true
+          skills/threat-model-generation \
+          skills/commit-security-scan \
+          skills/vulnerability-validation \
+          skills/security-review 2>/dev/null || true
 
         # Copy skills to ~/.factory/skills/ and track installed count
         INSTALLED_COUNT=0
-        for skill in threat-model-generation commit-security-scan vulnerability-validation security-patch-generation; do
-          if [ -d "security/$skill" ]; then
-            cp -r "security/$skill" "$SKILLS_DIR/"
+        for skill in threat-model-generation commit-security-scan vulnerability-validation security-review; do
+          if [ -d "skills/$skill" ]; then
+            cp -r "skills/$skill" "$SKILLS_DIR/"
             echo "  Installed skill: $skill"
             INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
           else
@@ -263,7 +263,7 @@ runs:
         # Verify skills exist in the target directory
         echo "Verifying installed skills in $SKILLS_DIR..."
         VERIFIED_COUNT=0
-        for skill in threat-model-generation commit-security-scan vulnerability-validation security-patch-generation; do
+        for skill in threat-model-generation commit-security-scan vulnerability-validation security-review; do
           if [ -d "$SKILLS_DIR/$skill" ]; then
             echo "  Verified: $skill"
             VERIFIED_COUNT=$((VERIFIED_COUNT + 1))

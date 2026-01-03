@@ -30,7 +30,7 @@ describe("generateSecurityReviewPrompt", () => {
     expect(prompt).toContain("threat-model-generation");
     expect(prompt).toContain("commit-security-scan");
     expect(prompt).toContain("vulnerability-validation");
-    expect(prompt).toContain("security-patch-generation");
+    expect(prompt).toContain("security-review");
     expect(prompt).toContain("## Review Workflow");
     expect(prompt).toContain("gh pr diff 42 --repo test-owner/test-repo");
     expect(prompt).toContain(

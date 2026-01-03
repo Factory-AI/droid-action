@@ -84,7 +84,7 @@ describe("generateSecurityReportPrompt", () => {
     expect(prompt).toContain("threat-model-generation");
     expect(prompt).toContain("commit-security-scan");
     expect(prompt).toContain("vulnerability-validation");
-    expect(prompt).toContain("security-patch-generation");
+    expect(prompt).toContain("security-review");
   });
 
   test("includes PR creation instructions", () => {
