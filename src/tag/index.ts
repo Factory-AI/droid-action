@@ -77,9 +77,6 @@ export async function prepareTagExecution({
 
   await checkHumanActor(octokit.rest, context);
 
-  const commentData = await createInitialComment(octokit.rest, context);
-  const commentId = commentData.id;
-
   if (
     context.inputs.automaticReview &&
     context.inputs.automaticSecurityReview
@@ -100,6 +97,19 @@ export async function prepareTagExecution({
   }
 
   const commandContext = extractCommandFromContext(context);
+
+  // Determine if this is a security-related command for the initial comment
+  const isSecurityCommand =
+    context.inputs.automaticSecurityReview ||
+    commandContext?.command === "security" ||
+    commandContext?.command === "security-full";
+
+  const commentData = await createInitialComment(
+    octokit.rest,
+    context,
+    isSecurityCommand ? "security" : "default",
+  );
+  const commentId = commentData.id;
 
   if (context.inputs.automaticReview) {
     return prepareReviewMode({

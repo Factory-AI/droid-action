@@ -18,11 +18,18 @@ export function createBranchLink(
   return `\n[View branch](${branchUrl})`;
 }
 
+export type CommentType = "default" | "security";
+
 export function createCommentBody(
   jobRunLink: string,
   branchLink: string = "",
+  type: CommentType = "default",
 ): string {
-  return `Droid is working…
+  const message = type === "security" 
+    ? "Droid is running a security check…" 
+    : "Droid is working…";
+  
+  return `${message}
 
 ${jobRunLink}${branchLink}`;
 }
