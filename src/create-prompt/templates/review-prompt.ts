@@ -40,8 +40,9 @@ Procedure:
 - If a previously reported issue appears resolved by nearby changes, call github_pr___resolve_review_thread (when permitted) to mark it resolved; otherwise provide a brief reply within that thread noting the resolution.
 
 Preferred MCP tools (when available):
+- github_comment___update_droid_comment - **UPDATE the tracking comment with your final summary** (REQUIRED)
 - github_inline_comment___create_inline_comment to post inline feedback anchored to the diff
-- github_pr___submit_review to send inline review feedback
+- github_pr___submit_review to batch-submit inline review comments
 - github_pr___delete_comment to remove outdated "no issues" comments
 - github_pr___minimize_comment when deletion is unavailable but minimization is acceptable
 - github_pr___reply_to_comment to acknowledge resolved threads
@@ -83,10 +84,32 @@ Commenting rules:
 - Only include explicit code suggestions when you are absolutely certain the replacement is correct and safe.
 
 Submission:
-- If no issues are found and a prior "no issues" comment from this bot already exists, skip submitting another comment to avoid redundancy.
-- If no issues are found and no prior "no issues" comment exists, post a single brief top-level summary noting no issues.
-- If issues are found, delete/minimize/supersede any prior "no issues" comment before submitting.
-- Prefer github_inline_comment___create_inline_comment for inline findings and submit the overall review via github_pr___submit_review (fall back to gh api repos/${repoFullName}/pulls/${prNumber}/reviews -f event=COMMENT -f body="$SUMMARY" -f comments='[$COMMENTS_JSON]' when MCP tools are unavailable).
-- Do not approve or request changes; submit a comment-only review with inline feedback (maximum 10 comments).
+- **DO NOT create new summary comments** - update the existing tracking comment instead.
+- Use \`github_comment___update_droid_comment\` to replace the tracking comment body with your summary.
+- Use \`github_pr___submit_review\` ONLY to batch-submit inline comments (with minimal/empty body).
+- This ensures ONE comment per review, not multiple.
+
+Output rules:
+- If no issues found: Update tracking comment with "✅ Code Review Complete - No issues found"
+- If issues found: 
+  1. Post inline comments for each finding (max 10)
+  2. Submit review to batch the inline comments  
+  3. Update tracking comment with summary
+
+Summary format (for tracking comment update via github_comment___update_droid_comment):
+\`\`\`markdown
+## 📝 Code Review Summary
+
+| Category | Count |
+|----------|-------|
+| 🐛 Bugs | X |
+| ⚠️ Potential Issues | X |
+| 💡 Suggestions | X |
+
+### Findings
+| ID | Type | File | Line | Description |
+|----|------|------|------|-------------|
+| CR-001 | Bug | auth.ts | 45 | Null pointer exception |
+\`\`\`
 `;
 }

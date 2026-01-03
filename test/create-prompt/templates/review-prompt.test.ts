@@ -49,11 +49,11 @@ describe("generateReviewPrompt", () => {
   it("describes submission guidance", () => {
     const prompt = generateReviewPrompt(createBaseContext());
 
-    expect(prompt).toContain("Prefer github_inline_comment___create_inline_comment");
-    expect(prompt).toContain("gh api repos/test-owner/test-repo/pulls/42/reviews");
-    expect(prompt).toContain("Do not approve or request changes");
+    expect(prompt).toContain("github_inline_comment___create_inline_comment");
+    expect(prompt).toContain("github_comment___update_droid_comment");
     expect(prompt).toContain("github_pr___submit_review");
     expect(prompt).toContain("github_pr___resolve_review_thread");
-    expect(prompt).toContain("skip submitting another comment to avoid redundancy");
+    expect(prompt).toContain("DO NOT create new summary comments");
+    expect(prompt).toContain("update the existing tracking comment");
   });
 });

@@ -109,8 +109,9 @@ You have access to these Factory security skills (installed in ~/.factory/skills
 
 ## MCP Tools Reference
 
+- \`github_comment___update_droid_comment\` - **UPDATE the tracking comment with your final summary** (REQUIRED)
 - \`github_inline_comment___create_inline_comment\` - Post inline findings (use side="RIGHT" for new code)
-- \`github_pr___submit_review\` - Submit the overall review
+- \`github_pr___submit_review\` - Submit inline comments as a batch review
 - \`github_pr___delete_comment\` / \`github_pr___minimize_comment\` - Remove outdated comments
 - \`github_pr___reply_to_comment\` - Reply to existing threads
 - \`github_pr___resolve_review_thread\` - Resolve fixed issues
@@ -141,34 +142,41 @@ For each finding, use this format:
    - HIGH findings${blockOnHigh ? " → REQUEST_CHANGES" : " → COMMENT"}
    - MEDIUM/LOW findings → COMMENT only
 
-2. **No Issues Found:**
-   - Check for existing "no issues" comment from this bot
-   - If exists: Skip (avoid duplicate comments)
-   - If not exists: Post brief "No security issues found" summary
+2. **Output Strategy (IMPORTANT):**
+   - **DO NOT create new summary comments** - update the existing tracking comment instead
+   - Use \`github_comment___update_droid_comment\` to replace the tracking comment body with your summary
+   - Use \`github_pr___submit_review\` ONLY to batch-submit inline comments (with minimal/empty body)
+   - This ensures ONE comment per review, not multiple
 
-3. **Issues Found:**
-   - Delete/minimize any prior "no issues" comments
+3. **No Issues Found:**
+   - Update tracking comment with brief "No security issues found" message
+
+4. **Issues Found:**
    - Post inline comments for each finding (max 10)
-   - Submit review with summary table
+   - Submit review to batch the inline comments
+   - Update tracking comment with the full summary table
 
-${notifyTeam ? `4. **Critical Findings:** Mention ${notifyTeam} in the summary comment` : ""}
+${notifyTeam ? `5. **Critical Findings:** Mention ${notifyTeam} in the summary` : ""}
 
-## Summary Comment Format
+## Summary Format (for tracking comment update)
+
+Use \`github_comment___update_droid_comment\` to update the tracking comment with this format:
 
 \`\`\`markdown
-## Security Review Summary
+## 🔐 Security Review Summary
 
 | Severity | Count |
 |----------|-------|
-| CRITICAL | X |
-| HIGH | X |
-| MEDIUM | X |
-| LOW | X |
+| 🚨 CRITICAL | X |
+| 🔴 HIGH | X |
+| 🟡 MEDIUM | X |
+| 🟢 LOW | X |
 
 ### Findings
-| ID | Severity | Type | File | Line |
-|----|----------|------|------|------|
-| VULN-001 | CRITICAL | [Type] | [file.ts] | [line] |
+| ID | Severity | Type | File | Line | Reference |
+|----|----------|------|------|------|-----------|
+| SEC-001 | CRITICAL | SQL Injection | auth.ts | 55 | [CWE-89](https://cwe.mitre.org/data/definitions/89.html) |
+| SEC-002 | HIGH | XSS | client.ts | 98 | [CWE-79](https://cwe.mitre.org/data/definitions/79.html) |
 
 ${notifyTeam ? `cc ${notifyTeam}` : ""}
 \`\`\`
