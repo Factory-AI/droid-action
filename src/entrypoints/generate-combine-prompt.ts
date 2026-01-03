@@ -58,7 +58,8 @@ async function run() {
       (tool) => tool.startsWith("github_") && tool.includes("___"),
     );
 
-    // Combine step has all tools including inline comments
+    // Combine step has tools for inline comments and tracking comment update
+    // NO github_pr___submit_review - it creates duplicate summary comments
     const baseTools = [
       "Read",
       "Grep",
@@ -69,12 +70,8 @@ async function run() {
       "github_inline_comment___create_inline_comment",
     ];
 
-    const reviewTools = [
-      "github_pr___submit_review",
-    ];
-
     const allowedTools = Array.from(
-      new Set([...baseTools, ...reviewTools, ...userAllowedMCPTools]),
+      new Set([...baseTools, ...userAllowedMCPTools]),
     );
 
     const mcpTools = await prepareMcpTools({

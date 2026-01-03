@@ -38,9 +38,10 @@ The gh CLI is installed and authenticated via GH_TOKEN.
    - Include severity, description, and suggested fix where available
    - For security findings, include CWE reference
 
-4. Submit the review using github_pr___submit_review
+4. Update the tracking comment with combined summary using github_comment___update_droid_comment:
 
-5. Update the tracking comment with combined summary using github_comment___update_droid_comment:
+IMPORTANT: Do NOT use github_pr___submit_review. Only update the tracking comment and post inline comments.
+The tracking comment IS the summary - do not create any other summary comments.
 
 \`\`\`markdown
 ## 🔍 Combined Review Summary
@@ -69,10 +70,11 @@ The gh CLI is installed and authenticated via GH_TOKEN.
 \`\`\`
 
 ## Available Tools
-- github_comment___update_droid_comment - Update tracking comment
-- github_inline_comment___create_inline_comment - Post inline comments
-- github_pr___submit_review - Submit review with inline comments
+- github_comment___update_droid_comment - Update tracking comment (this is the ONLY place for the summary)
+- github_inline_comment___create_inline_comment - Post inline comments on specific lines
 - Read, Grep, Glob, LS, Execute - File operations
+
+DO NOT use github_pr___submit_review - it creates duplicate summary comments.
 
 ## Important
 - If no results files exist or they're empty, report "No issues found"
