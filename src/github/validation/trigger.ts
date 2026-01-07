@@ -18,8 +18,10 @@ export function checkContainsTrigger(context: ParsedGitHubContext): boolean {
 
   // Check for specific @droid commands (fill, review)
   const command = extractCommandFromContext(context);
-  if (command && ['fill', 'review', 'security'].includes(command.command)) {
-    console.log(`Detected @droid ${command.command} command, triggering action`);
+  if (command && ["fill", "review", "security"].includes(command.command)) {
+    console.log(
+      `Detected @droid ${command.command} command, triggering action`,
+    );
     return true;
   }
 

@@ -72,7 +72,9 @@ describe("parseEnvVarsWithContext", () => {
       test("should throw error when DROID_BRANCH is missing", () => {
         expect(() =>
           prepareContext(mockIssueCommentContext, "12345", "main"),
-        ).toThrow("issue_comment on issues requires droidBranch and baseBranch");
+        ).toThrow(
+          "issue_comment on issues requires droidBranch and baseBranch",
+        );
       });
 
       test("should throw error when BASE_BRANCH is missing", () => {
@@ -83,7 +85,9 @@ describe("parseEnvVarsWithContext", () => {
             undefined,
             "droid/issue-67890-20240101-1200",
           ),
-        ).toThrow("issue_comment on issues requires droidBranch and baseBranch");
+        ).toThrow(
+          "issue_comment on issues requires droidBranch and baseBranch",
+        );
       });
     });
 

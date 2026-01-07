@@ -88,12 +88,16 @@ export async function fetchRepoDefaultBranch({
     );
 
     if (!result.repository.defaultBranchRef) {
-      throw new Error(`Default branch not found for ${repository.owner}/${repository.repo}`);
+      throw new Error(
+        `Default branch not found for ${repository.owner}/${repository.repo}`,
+      );
     }
 
     return result.repository.defaultBranchRef.name;
   } catch (error) {
     console.error(`Failed to fetch default branch:`, error);
-    throw new Error(`Failed to fetch default branch for ${repository.owner}/${repository.repo}`);
+    throw new Error(
+      `Failed to fetch default branch for ${repository.owner}/${repository.repo}`,
+    );
   }
 }

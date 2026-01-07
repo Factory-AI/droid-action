@@ -21,7 +21,7 @@ async function run() {
     const commentId = parseInt(process.env.DROID_COMMENT_ID || "0");
 
     const context = parseGitHubContext();
-    
+
     if (!isEntityContext(context)) {
       throw new Error("Review requires entity context (PR or issue)");
     }
@@ -44,9 +44,10 @@ async function run() {
     };
 
     // Select prompt generator based on review type
-    const generatePrompt = reviewType === "security" 
-      ? generateSecurityReviewPrompt 
-      : generateReviewPrompt;
+    const generatePrompt =
+      reviewType === "security"
+        ? generateSecurityReviewPrompt
+        : generateReviewPrompt;
 
     await createPrompt({
       githubContext: context,
@@ -60,7 +61,8 @@ async function run() {
     });
 
     // Set run type
-    const runType = reviewType === "security" ? "droid-security-review" : "droid-review";
+    const runType =
+      reviewType === "security" ? "droid-security-review" : "droid-review";
     core.exportVariable("DROID_EXEC_RUN_TYPE", runType);
 
     const rawUserArgs = process.env.DROID_ARGS || "";
@@ -81,9 +83,7 @@ async function run() {
     ];
 
     // Review tools for reading existing comments only
-    const reviewTools = [
-      "github_pr___list_review_comments",
-    ];
+    const reviewTools = ["github_pr___list_review_comments"];
 
     const allowedTools = Array.from(
       new Set([...baseTools, ...reviewTools, ...userAllowedMCPTools]),
@@ -102,16 +102,17 @@ async function run() {
     const droidArgParts: string[] = [];
     // Only include built-in tools in --enabled-tools
     // MCP tools are discovered dynamically from registered servers
-    const builtInTools = allowedTools.filter(t => !t.includes("___"));
+    const builtInTools = allowedTools.filter((t) => !t.includes("___"));
     if (builtInTools.length > 0) {
       droidArgParts.push(`--enabled-tools "${builtInTools.join(",")}"`);
     }
 
     // Add model override if specified
-    const model = reviewType === "security" 
-      ? (process.env.SECURITY_MODEL?.trim() || process.env.REVIEW_MODEL?.trim())
-      : process.env.REVIEW_MODEL?.trim();
-    
+    const model =
+      reviewType === "security"
+        ? process.env.SECURITY_MODEL?.trim() || process.env.REVIEW_MODEL?.trim()
+        : process.env.REVIEW_MODEL?.trim();
+
     if (model) {
       droidArgParts.push(`--model "${model}"`);
     }
