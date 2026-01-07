@@ -38,7 +38,12 @@ The gh CLI is installed and authenticated via GH_TOKEN.
    - Include severity, description, and suggested fix where available
    - For security findings, include CWE reference
 
-4. Update the tracking comment with combined summary using github_comment___update_droid_comment:
+4. Analyze the PR diff to generate:
+   - A concise 1-2 sentence summary of what the PR does
+   - 3-5 key changes extracted from the diff
+   - The most important files changed (up to 5-7 files)
+
+5. Update the tracking comment with combined summary using github_comment___update_droid_comment:
 
 IMPORTANT: Do NOT use github_pr___submit_review. Only update the tracking comment and post inline comments.
 The tracking comment IS the summary - do not create any other summary comments.
@@ -46,9 +51,21 @@ The tracking comment IS the summary - do not create any other summary comments.
 \`\`\`markdown
 ## Code review completed
 
+### Summary
+{Brief 1-2 sentence description of what this PR does}
+
+### Key Changes
+- {Change 1}
+- {Change 2}
+- {Change 3}
+
+### Important Files Changed
+- \`path/to/file1.ts\` - {Brief description of changes}
+- \`path/to/file2.ts\` - {Brief description of changes}
+
 ### Code Review
-| Category | Count |
-|----------|-------|
+| Type | Count |
+|------|-------|
 | 🐛 Bugs | X |
 | ⚠️ Issues | X |
 | 💡 Suggestions | X |
@@ -62,9 +79,9 @@ The tracking comment IS the summary - do not create any other summary comments.
 | 🟢 LOW | X |
 
 ### Findings
-| ID | Type | Severity | File | Line | Description |
-|----|------|----------|------|------|-------------|
-| ... | ... | ... | ... | ... | ... |
+| ID | Type | Severity | File | Description |
+|----|------|----------|------|-------------|
+| ... | ... | ... | ... | ... |
 
 [View workflow run](link)
 \`\`\`

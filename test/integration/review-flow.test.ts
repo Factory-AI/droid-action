@@ -1,14 +1,7 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  spyOn,
-} from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import path from "node:path";
 import os from "node:os";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { prepareTagExecution } from "../../src/tag";
 import { createMockContext } from "../mockContext";
 import * as createInitial from "../../src/github/operations/comments/create-initial";
@@ -31,8 +24,6 @@ describe("review command integration", () => {
     tmpDir = await mkdtemp(path.join(os.tmpdir(), "review-int-"));
     process.env.RUNNER_TEMP = tmpDir;
     process.env.DROID_ARGS = "";
-
-
 
     createCommentSpy = spyOn(
       createInitial,
@@ -95,27 +86,28 @@ describe("review command integration", () => {
       } as any,
     });
 
-    const octokit = { 
-      rest: {}, 
-      graphql: () => Promise.resolve({
-        repository: {
-          pullRequest: {
-            baseRefName: "main",
-            headRefName: "feature/review",
-            headRefOid: "def456",
-          }
-        }
-      })
+    const octokit = {
+      rest: {},
+      graphql: () =>
+        Promise.resolve({
+          repository: {
+            pullRequest: {
+              baseRefName: "main",
+              headRefName: "feature/review",
+              headRefOid: "def456",
+            },
+          },
+        }),
     } as any;
 
     graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
       repository: {
         pullRequest: {
           baseRefName: "main",
-          headRefName: "feature/review", 
+          headRefName: "feature/review",
           headRefOid: "def456",
-        }
-      }
+        },
+      },
     });
 
     const result = await prepareTagExecution({
@@ -127,7 +119,7 @@ describe("review command integration", () => {
     // In the parallel workflow, @droid review sets output flags and returns early
     // The actual review is done by downstream workflow jobs
     expect(result.skipped).toBe(false);
-    
+
     // Verify output flags were set correctly for code review only
     const runCodeReviewCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "run_code_review",
@@ -174,7 +166,7 @@ describe("review command integration", () => {
     });
 
     expect(result.skipped).toBe(false);
-    
+
     const runCodeReviewCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "run_code_review",
     ) as [string, string] | undefined;
@@ -220,7 +212,7 @@ describe("review command integration", () => {
     });
 
     expect(result.skipped).toBe(false);
-    
+
     const runCodeReviewCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "run_code_review",
     ) as [string, string] | undefined;

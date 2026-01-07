@@ -30,7 +30,9 @@ describe("generateReviewPrompt", () => {
     expect(prompt).toContain("Objectives:");
     expect(prompt).toContain("Review the current PR diff");
     expect(prompt).toContain("gh pr diff 42 --repo test-owner/test-repo");
-    expect(prompt).toContain("gh api repos/test-owner/test-repo/pulls/42/files");
+    expect(prompt).toContain(
+      "gh api repos/test-owner/test-repo/pulls/42/files",
+    );
     expect(prompt).toContain("code-review-results.json");
     expect(prompt).toContain("Do NOT post inline comments");
   });
@@ -42,15 +44,22 @@ describe("generateReviewPrompt", () => {
     expect(prompt).toContain("Never raise purely stylistic");
     expect(prompt).toContain("Maximum 10 inline comments");
     expect(prompt).toContain("False positives are very undesirable");
-    expect(prompt).toContain("Never repeat or re-raise an issue previously highlighted");
+    expect(prompt).toContain(
+      "Never repeat or re-raise an issue previously highlighted",
+    );
   });
 
-  it("describes output format", () => {
+  it("describes output format with Greptile-style summary", () => {
     const prompt = generateReviewPrompt(createBaseContext());
 
     expect(prompt).toContain("code-review-results.json");
     expect(prompt).toContain("github_comment___update_droid_comment");
-    expect(prompt).toContain("JSON file");
-    expect(prompt).toContain("Inline comments will be posted after all reviews complete");
+    expect(prompt).toContain(
+      "Inline comments will be posted after all reviews complete",
+    );
+    expect(prompt).toContain("### Summary");
+    expect(prompt).toContain("### Key Changes");
+    expect(prompt).toContain("### Important Files Changed");
+    expect(prompt).toContain("### Review Findings");
   });
 });

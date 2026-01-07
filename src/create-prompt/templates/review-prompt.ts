@@ -1,8 +1,6 @@
 import type { PreparedContext } from "../types";
 
-export function generateReviewPrompt(
-  context: PreparedContext,
-): string {
+export function generateReviewPrompt(context: PreparedContext): string {
   const prNumber = context.eventData.isPR
     ? context.eventData.prNumber
     : context.githubContext && "entityNumber" in context.githubContext
@@ -66,10 +64,25 @@ Commenting rules:
 - For low confidence findings, ask a question; for medium/high confidence, state the issue concretely.
 
 Output:
-1. Write findings to \`code-review-results.json\` with this structure:
+1. Analyze the PR to generate:
+   - A concise 1-2 sentence summary of what the PR does
+   - 3-5 key changes extracted from the diff
+   - The most important files changed (up to 5-7 files)
+
+2. Write findings to \`code-review-results.json\` with this structure:
 \`\`\`json
 {
   "type": "code",
+  "summary": "Brief 1-2 sentence description of what this PR does",
+  "keyChanges": [
+    "Added new authentication flow",
+    "Refactored database queries for performance",
+    "Fixed validation bug in user input"
+  ],
+  "importantFiles": [
+    { "path": "src/auth/login.ts", "description": "New OAuth implementation" },
+    { "path": "src/db/queries.ts", "description": "Query optimization" }
+  ],
   "findings": [
     {
       "id": "CR-001",
@@ -81,25 +94,30 @@ Output:
       "description": "Brief description of the issue",
       "suggestion": "Optional code fix"
     }
-  ],
-  "summary": "Brief overall summary"
+  ]
 }
 \`\`\`
 
-2. Update the tracking comment with a summary using \`github_comment___update_droid_comment\`:
+3. Update the tracking comment with a summary using \`github_comment___update_droid_comment\`:
 \`\`\`markdown
-## 📝 Code Review Summary
+## Code review completed
 
-| Category | Count |
-|----------|-------|
-| 🐛 Bugs | X |
-| ⚠️ Potential Issues | X |
-| 💡 Suggestions | X |
+### Summary
+{Brief 1-2 sentence description of what this PR does}
 
-### Findings
-| ID | Type | File | Line | Description |
-|----|------|------|------|-------------|
-| CR-001 | Bug | auth.ts | 45 | Null pointer exception |
+### Key Changes
+- {Change 1}
+- {Change 2}
+- {Change 3}
+
+### Important Files Changed
+- \`path/to/file1.ts\` - {Brief description of changes}
+- \`path/to/file2.ts\` - {Brief description of changes}
+
+### Review Findings
+| ID | Type | Severity | File | Description |
+|----|------|----------|------|-------------|
+| CR-001 | Bug | high | auth.ts:45 | Null pointer exception |
 
 *Inline comments will be posted after all reviews complete.*
 \`\`\`
