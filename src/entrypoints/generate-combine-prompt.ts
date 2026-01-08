@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * Generate combine prompt for finalizing reviews
+ * Generate combine prompt for finalizing parallel reviews
  */
 
 import * as core from "@actions/core";
@@ -18,6 +18,7 @@ async function run() {
     const githubToken = process.env.GITHUB_TOKEN!;
     const commentId = parseInt(process.env.DROID_COMMENT_ID || "0");
     const codeReviewResults = process.env.CODE_REVIEW_RESULTS || "";
+    const securityResults = process.env.SECURITY_RESULTS || "";
 
     const context = parseGitHubContext();
 
@@ -40,13 +41,14 @@ async function run() {
     // Generate combine prompt with paths to result files
     await createPrompt({
       githubContext: context,
-      commentId: commentId || undefined,
+      commentId,
       baseBranch: prData.baseRefName,
       prBranchData: {
         headRefName: prData.headRefName,
         headRefOid: prData.headRefOid,
       },
-      generatePrompt: (ctx) => generateCombinePrompt(ctx, codeReviewResults),
+      generatePrompt: (ctx) =>
+        generateCombinePrompt(ctx, codeReviewResults, securityResults),
     });
 
     core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-combine");
@@ -77,7 +79,7 @@ async function run() {
       githubToken,
       owner: context.repository.owner,
       repo: context.repository.repo,
-      droidCommentId: commentId ? commentId.toString() : undefined,
+      droidCommentId: commentId.toString(),
       allowedTools,
       mode: "tag",
       context,
