@@ -62,7 +62,7 @@ inputs:
   review_model:
     description: "Override the model used for code review (e.g., 'claude-sonnet-4-5-20250929', 'gpt-5.1-codex'). Only applies to review flows."
     required: false
-    default: ""
+    default: "gpt-5.2"
   fill_model:
     description: "Override the model used for PR description fill (e.g., 'claude-sonnet-4-5-20250929', 'gpt-5.1-codex'). Only applies to fill flows."
     required: false
