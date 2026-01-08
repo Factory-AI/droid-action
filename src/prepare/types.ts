@@ -9,6 +9,8 @@ export type PrepareResult = {
     currentBranch: string;
   };
   mcpTools: string;
+  skipped?: boolean;
+  reason?: string;
 };
 
 export type PrepareOptions = {
