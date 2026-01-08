@@ -91,6 +91,17 @@ Your review comments should be:
 7. Immediately graspable by the original author
 8. Avoid excessive flattery
 
+Output Format:
+Structure your findings with:
+- Clear titles (≤ 80 chars, imperative mood)
+- Explanation of why this is a problem
+- File path and line numbers where applicable
+- Priority level [P0-P3]
+
+Provide an overall assessment:
+- Whether the changes are correct or incorrect
+- 1-3 sentence overall explanation
+
 Cross-reference capability:
 - When reviewing tests, search for related constants and configurations (e.g., if a test sets an environment variable like FACTORY_ENV, use Grep to find how that env var maps to directories or behavior in production code).
 - Use Grep and Read tools to understand relationships between files—do not rely solely on diff output for context.
