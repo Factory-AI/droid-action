@@ -59,13 +59,16 @@ Diff Side Selection (CRITICAL):
 - The 'line' parameter refers to the line number on the specified side of the diff  
 - Ensure the line numbers you use correspond to the side you choose;
 
-Analysis scope (prioritize high-confidence findings):
-- Correctness bugs and boundary errors
-- Missing validation or contract misuse
-- Concurrency or async hazards
-- Evidence-based performance regressions (e.g., N+1 queries)
-- Resource leaks or dead/unreachable code affecting behavior
-- Regression risks relative to existing behavior or tests
+Key Guidelines for Bug Detection:
+Only flag an issue as a bug if:
+1. It meaningfully impacts the accuracy, performance, security, or maintainability of the code.
+2. The bug is discrete and actionable (not a general issue).
+3. Fixing the bug does not demand a level of rigor not present in the rest of the codebase.
+4. The bug was introduced in the PR (pre-existing bugs should not be flagged).
+5. The author would likely fix the issue if made aware of it.
+6. The bug does not rely on unstated assumptions.
+7. Must identify provably affected code parts (not speculation).
+8. The bug is clearly not intentional.
 
 Cross-reference capability:
 - When reviewing tests, search for related constants and configurations (e.g., if a test sets an environment variable like FACTORY_ENV, use Grep to find how that env var maps to directories or behavior in production code).
