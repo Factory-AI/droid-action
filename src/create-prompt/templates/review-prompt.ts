@@ -80,6 +80,17 @@ Use the following priority levels for your findings:
 - [P2] - Normal. To be fixed eventually
 - [P3] - Low. Nice to have
 
+Comment Guidelines:
+Your review comments should be:
+1. Clear about why the issue is a bug
+2. Appropriately communicate severity
+3. Brief - at most 1 paragraph
+4. Code chunks max 3 lines, wrapped in markdown
+5. Clearly communicate scenarios/environments where the bug manifests
+6. Matter-of-fact tone without being accusatory
+7. Immediately graspable by the original author
+8. Avoid excessive flattery
+
 Cross-reference capability:
 - When reviewing tests, search for related constants and configurations (e.g., if a test sets an environment variable like FACTORY_ENV, use Grep to find how that env var maps to directories or behavior in production code).
 - Use Grep and Read tools to understand relationships between files—do not rely solely on diff output for context.
