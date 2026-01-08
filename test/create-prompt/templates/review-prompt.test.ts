@@ -28,12 +28,13 @@ describe("generateReviewPrompt", () => {
     const prompt = generateReviewPrompt(context);
 
     expect(prompt).toContain("Objectives:");
-    expect(prompt).toContain("Re-check existing review comments");
+    expect(prompt).toContain("Review the current PR diff");
     expect(prompt).toContain("gh pr diff 42 --repo test-owner/test-repo");
-    expect(prompt).toContain("gh api repos/test-owner/test-repo/pulls/42/files");
-    expect(prompt).toContain("github_inline_comment___create_inline_comment");
-    expect(prompt).toContain("github_pr___resolve_review_thread");
-    expect(prompt).toContain("every substantive comment must be inline on the changed line");
+    expect(prompt).toContain(
+      "gh api repos/test-owner/test-repo/pulls/42/files",
+    );
+    expect(prompt).toContain("code-review-results.json");
+    expect(prompt).toContain("Do NOT post inline comments");
   });
 
   it("emphasizes accuracy gates and comment limits", () => {
@@ -43,17 +44,22 @@ describe("generateReviewPrompt", () => {
     expect(prompt).toContain("Never raise purely stylistic");
     expect(prompt).toContain("Maximum 10 inline comments");
     expect(prompt).toContain("False positives are very undesirable");
-    expect(prompt).toContain("Never repeat or re-raise an issue previously highlighted");
+    expect(prompt).toContain(
+      "Never repeat or re-raise an issue previously highlighted",
+    );
   });
 
-  it("describes submission guidance", () => {
+  it("describes output format with JSON structure", () => {
     const prompt = generateReviewPrompt(createBaseContext());
 
-    expect(prompt).toContain("Prefer github_inline_comment___create_inline_comment");
-    expect(prompt).toContain("gh api repos/test-owner/test-repo/pulls/42/reviews");
-    expect(prompt).toContain("Do not approve or request changes");
-    expect(prompt).toContain("github_pr___submit_review");
-    expect(prompt).toContain("github_pr___resolve_review_thread");
-    expect(prompt).toContain("skip submitting another comment to avoid redundancy");
+    expect(prompt).toContain("code-review-results.json");
+    expect(prompt).toContain("github_comment___update_droid_comment");
+    expect(prompt).toContain(
+      "Inline comments will be posted after all reviews complete",
+    );
+    expect(prompt).toContain("### Summary");
+    expect(prompt).toContain("### Key Changes");
+    expect(prompt).toContain("### Important Files Changed");
+    expect(prompt).toContain("### Review Findings");
   });
 });

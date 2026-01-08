@@ -32,8 +32,6 @@ describe("review command integration", () => {
     process.env.RUNNER_TEMP = tmpDir;
     process.env.DROID_ARGS = "";
 
-
-
     createCommentSpy = spyOn(
       createInitial,
       "createInitialComment",
@@ -95,27 +93,28 @@ describe("review command integration", () => {
       } as any,
     });
 
-    const octokit = { 
-      rest: {}, 
-      graphql: () => Promise.resolve({
-        repository: {
-          pullRequest: {
-            baseRefName: "main",
-            headRefName: "feature/review",
-            headRefOid: "def456",
-          }
-        }
-      })
+    const octokit = {
+      rest: {},
+      graphql: () =>
+        Promise.resolve({
+          repository: {
+            pullRequest: {
+              baseRefName: "main",
+              headRefName: "feature/review",
+              headRefOid: "def456",
+            },
+          },
+        }),
     } as any;
 
     graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
       repository: {
         pullRequest: {
           baseRefName: "main",
-          headRefName: "feature/review", 
+          headRefName: "feature/review",
           headRefOid: "def456",
-        }
-      }
+        },
+      },
     });
 
     const result = await prepareTagExecution({
@@ -144,21 +143,22 @@ describe("review command integration", () => {
     );
     const prompt = await readFile(promptPath, "utf8");
 
+    // New prompt outputs to JSON file instead of posting inline comments directly
     expect(prompt).toContain("You are performing an automated code review");
-    expect(prompt).toContain("github_inline_comment___create_inline_comment");
+    expect(prompt).toContain("code-review-results.json");
     expect(prompt).toContain("cap at 10 comments total");
-    expect(prompt).toContain("gh pr view 7 --repo test-owner/test-repo --json comments,reviews");
+    expect(prompt).toContain(
+      "gh pr view 7 --repo test-owner/test-repo --json comments,reviews",
+    );
     expect(prompt).toContain("False positives are very undesirable");
-    expect(prompt).toContain("every substantive comment must be inline on the changed line");
-    expect(prompt).toContain("github_pr___resolve_review_thread");
+    expect(prompt).toContain("Do NOT post inline comments");
+    expect(prompt).toContain("github_comment___update_droid_comment");
 
     const droidArgsCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "droid_args",
     ) as [string, string] | undefined;
 
-    expect(droidArgsCall?.[1]).toContain(
-      "github_pr___list_review_comments",
-    );
+    expect(droidArgsCall?.[1]).toContain("github_pr___list_review_comments");
     expect(droidArgsCall?.[1]).toContain("github_pr___submit_review");
     expect(droidArgsCall?.[1]).toContain(
       "github_inline_comment___create_inline_comment",
