@@ -24,6 +24,11 @@ Context:
 - PR Head SHA: ${headSha}
 - PR Base Ref: ${baseRefName}
 
+First, checkout the PR branch to access the full codebase:
+- Run: gh pr checkout ${prNumber} --repo ${repoFullName}
+
+This ensures you can read any file in the PR's branch, not just the diff output.
+
 Objectives:
 1) Re-check existing review comments and resolve threads when the issue is fixed (fall back to a brief "resolved" reply only if the thread cannot be marked resolved).
 2) Review the current PR diff and surface only clear, high-severity issues.
@@ -61,6 +66,12 @@ Analysis scope (prioritize high-confidence findings):
 - Evidence-based performance regressions (e.g., N+1 queries)
 - Resource leaks or dead/unreachable code affecting behavior
 - Regression risks relative to existing behavior or tests
+
+Cross-reference capability:
+- When reviewing tests, search for related constants and configurations (e.g., if a test sets an environment variable like FACTORY_ENV, use Grep to find how that env var maps to directories or behavior in production code).
+- Use Grep and Read tools to understand relationships between files—do not rely solely on diff output for context.
+- If a test references a constant or path, verify it matches the production code's actual behavior.
+- For any suspicious pattern, search the codebase to confirm your understanding before flagging an issue.
 
 Accuracy gates:
 - Base findings strictly on the current diff and minimal repo context available via gh/MCP; avoid speculation.
