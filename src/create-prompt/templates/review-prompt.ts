@@ -31,7 +31,7 @@ This ensures you can read any file in the PR's branch, not just the diff output.
 
 Objectives:
 1) Re-check existing review comments and resolve threads when the issue is fixed (fall back to a brief "resolved" reply only if the thread cannot be marked resolved).
-2) Review the current PR diff and surface only clear, high-severity issues.
+2) Review the PR diff and surface all bugs that meet the detection criteria below.
 3) Leave concise inline comments (1-2 sentences) on bugs introduced by the PR. You may also comment on unchanged lines if the PR's changes expose or trigger issues there—but explain the connection clearly.
 
 Procedure:
