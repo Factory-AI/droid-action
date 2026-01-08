@@ -66,7 +66,7 @@ export function buildDisallowedToolsString(
 
 export function prepareContext(
   context: ParsedGitHubContext,
-  droidCommentId: string,
+  droidCommentId?: string,
   baseBranch?: string,
   droidBranch?: string,
   prBranchData?: { headRefName: string; headRefOid: string },
@@ -108,15 +108,12 @@ export function prepareContext(
     commonFields.droidBranch = droidBranch;
   }
 
-  const eventData = buildEventData(
-    context,
-    {
-      commentId,
-      commentBody,
-      baseBranch,
-      droidBranch,
-    },
-  );
+  const eventData = buildEventData(context, {
+    commentId,
+    commentBody,
+    baseBranch,
+    droidBranch,
+  });
 
   const result: PreparedContext = {
     ...commonFields,
@@ -282,13 +279,11 @@ function buildEventData(
   }
 }
 
-export type PromptGenerator = (
-  context: PreparedContext,
-) => string;
+export type PromptGenerator = (context: PreparedContext) => string;
 
 export type PromptCreationOptions = {
   githubContext: ParsedGitHubContext;
-  commentId: number;
+  commentId?: number;
   baseBranch?: string;
   droidBranch?: string;
   prBranchData?: { headRefName: string; headRefOid: string };
@@ -310,7 +305,7 @@ export async function createPrompt({
   includeActionsTools = false,
 }: PromptCreationOptions) {
   try {
-    const droidCommentId = commentId.toString();
+    const droidCommentId = commentId?.toString();
     const preparedContext = prepareContext(
       githubContext,
       droidCommentId,
