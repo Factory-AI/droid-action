@@ -12,6 +12,10 @@ inputs:
     description: "Run automatic code review"
     required: false
     default: "false"
+  automatic_security_review:
+    description: "Run automatic security review"
+    required: false
+    default: "false"
 
 outputs:
   github_token:
@@ -23,6 +27,9 @@ outputs:
   run_code_review:
     description: "Whether to run code review"
     value: ${{ steps.detect.outputs.run_code_review }}
+  run_security_review:
+    description: "Whether to run security review"
+    value: ${{ steps.detect.outputs.run_security_review }}
   contains_trigger:
     description: "Whether a trigger was detected"
     value: ${{ steps.prepare.outputs.contains_trigger }}
@@ -59,6 +66,7 @@ runs:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
         AUTOMATIC_REVIEW: ${{ inputs.automatic_review }}
+        AUTOMATIC_SECURITY_REVIEW: ${{ inputs.automatic_security_review }}
         TRIGGER_PHRASE: "@droid"
         ALLOWED_BOTS: ""
         ALLOWED_NON_WRITE_USERS: ""
@@ -69,9 +77,19 @@ runs:
       id: detect
       shell: bash
       run: |
+        # Use outputs from prepare step (set by src/tag/index.ts)
+        # Fall back to input flags if outputs not set
         RUN_CODE="${{ steps.prepare.outputs.run_code_review }}"
+        RUN_SEC="${{ steps.prepare.outputs.run_security_review }}"
+
+        # Default to input flags if prepare didn't set outputs
         if [ -z "$RUN_CODE" ]; then
           RUN_CODE="${{ inputs.automatic_review }}"
         fi
+        if [ -z "$RUN_SEC" ]; then
+          RUN_SEC="${{ inputs.automatic_security_review }}"
+        fi
+
         echo "run_code_review=$RUN_CODE" >> $GITHUB_OUTPUT
-        echo "Detected: code_review=$RUN_CODE"
+        echo "run_security_review=$RUN_SEC" >> $GITHUB_OUTPUT
+        echo "Detected: code_review=$RUN_CODE, security_review=$RUN_SEC"

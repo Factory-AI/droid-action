@@ -6,7 +6,11 @@
  */
 
 import { appendFileSync } from "fs";
-import { createJobRunLink, createCommentBody } from "./common";
+import {
+  createJobRunLink,
+  createCommentBody,
+  type CommentType,
+} from "./common";
 import {
   isPullRequestReviewCommentEvent,
   isPullRequestEvent,
@@ -19,11 +23,12 @@ const DROID_APP_BOT_ID = 209825114;
 export async function createInitialComment(
   octokit: Octokit,
   context: ParsedGitHubContext,
+  commentType: CommentType = "default",
 ) {
   const { owner, repo } = context.repository;
 
   const jobRunLink = createJobRunLink(owner, repo, context.runId);
-  const initialBody = createCommentBody(jobRunLink);
+  const initialBody = createCommentBody(jobRunLink, "", commentType);
 
   try {
     let response;

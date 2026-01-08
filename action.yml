@@ -59,6 +59,38 @@ inputs:
     description: "Automatically run the review flow for pull request contexts without requiring an explicit @droid review command. Only supported for PR-related events."
     required: false
     default: "false"
+  automatic_security_review:
+    description: "Automatically run the security review flow for pull request contexts without requiring an explicit @droid security-review command. Only supported for PR-related events."
+    required: false
+    default: "false"
+  security_model:
+    description: "Override the model used for security review (e.g., 'claude-sonnet-4-5-20250929', 'gpt-5.1-codex'). Only applies to security review flows."
+    required: false
+    default: ""
+  security_severity_threshold:
+    description: "Minimum severity to report in security reviews (critical, high, medium, low). Findings below this threshold will be filtered out."
+    required: false
+    default: "medium"
+  security_block_on_critical:
+    description: "Submit REQUEST_CHANGES review when critical severity findings are detected."
+    required: false
+    default: "true"
+  security_block_on_high:
+    description: "Submit REQUEST_CHANGES review when high severity findings are detected."
+    required: false
+    default: "false"
+  security_notify_team:
+    description: "GitHub team to @mention on critical findings (e.g., '@org/security-team')."
+    required: false
+    default: ""
+  security_scan_schedule:
+    description: "Enable scheduled security scans. Set to 'true' for schedule events to trigger full repository scans."
+    required: false
+    default: "false"
+  security_scan_days:
+    description: "Number of days of commits to scan for scheduled security scans. Only applies when security_scan_schedule is enabled."
+    required: false
+    default: "7"
   review_model:
     description: "Override the model used for code review (e.g., 'claude-sonnet-4-5-20250929', 'gpt-5.1-codex'). Only applies to review flows."
     required: false
@@ -131,6 +163,14 @@ runs:
         DEFAULT_WORKFLOW_TOKEN: ${{ github.token }}
         TRACK_PROGRESS: ${{ inputs.track_progress }}
         AUTOMATIC_REVIEW: ${{ inputs.automatic_review }}
+        AUTOMATIC_SECURITY_REVIEW: ${{ inputs.automatic_security_review }}
+        SECURITY_MODEL: ${{ inputs.security_model }}
+        SECURITY_SEVERITY_THRESHOLD: ${{ inputs.security_severity_threshold }}
+        SECURITY_BLOCK_ON_CRITICAL: ${{ inputs.security_block_on_critical }}
+        SECURITY_BLOCK_ON_HIGH: ${{ inputs.security_block_on_high }}
+        SECURITY_NOTIFY_TEAM: ${{ inputs.security_notify_team }}
+        SECURITY_SCAN_SCHEDULE: ${{ inputs.security_scan_schedule }}
+        SECURITY_SCAN_DAYS: ${{ inputs.security_scan_days }}
         REVIEW_MODEL: ${{ inputs.review_model }}
         FILL_MODEL: ${{ inputs.fill_model }}
         ADDITIONAL_PERMISSIONS: ${{ inputs.additional_permissions }}
@@ -172,6 +212,67 @@ runs:
         ${GITHUB_ACTION_PATH}/scripts/setup-network-restrictions.sh
       env:
         EXPERIMENTAL_ALLOWED_DOMAINS: ${{ inputs.experimental_allowed_domains }}
+
+    - name: Install Security Skills
+      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.install_security_skills == 'true'
+      shell: bash
+      run: |
+        echo "Installing security skills from Factory-AI/skills..."
+        SKILLS_DIR="$HOME/.factory/skills"
+        mkdir -p "$SKILLS_DIR"
+
+        # Clone public skills repo (sparse checkout for efficiency)
+        TEMP_DIR=$(mktemp -d)
+        git clone --filter=blob:none --sparse \
+          "https://github.com/Factory-AI/skills.git" \
+          "$TEMP_DIR" 2>/dev/null || {
+          echo "Warning: Could not clone skills repo. Security skills will not be available."
+          exit 0
+        }
+
+        cd "$TEMP_DIR"
+        git sparse-checkout set \
+          skills/threat-model-generation \
+          skills/commit-security-scan \
+          skills/vulnerability-validation \
+          skills/security-review 2>/dev/null || true
+
+        # Copy skills to ~/.factory/skills/ and track installed count
+        INSTALLED_COUNT=0
+        for skill in threat-model-generation commit-security-scan vulnerability-validation security-review; do
+          if [ -d "skills/$skill" ]; then
+            cp -r "skills/$skill" "$SKILLS_DIR/"
+            echo "  Installed skill: $skill"
+            INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
+          else
+            echo "  Warning: Skill not found in repo: $skill"
+          fi
+        done
+
+        # Cleanup
+        rm -rf "$TEMP_DIR"
+
+        # Verify at least one skill was installed
+        if [ "$INSTALLED_COUNT" -eq 0 ]; then
+          echo "Warning: No security skills were installed. The skills may not exist in the Factory-AI/skills repository."
+          echo "Security review will proceed but may have limited functionality."
+        else
+          echo "Security skills installation complete ($INSTALLED_COUNT skills installed)"
+        fi
+
+        # Verify skills exist in the target directory
+        echo "Verifying installed skills in $SKILLS_DIR..."
+        VERIFIED_COUNT=0
+        for skill in threat-model-generation commit-security-scan vulnerability-validation security-review; do
+          if [ -d "$SKILLS_DIR/$skill" ]; then
+            echo "  Verified: $skill"
+            VERIFIED_COUNT=$((VERIFIED_COUNT + 1))
+          fi
+        done
+
+        if [ "$VERIFIED_COUNT" -ne "$INSTALLED_COUNT" ]; then
+          echo "Warning: Skill verification mismatch. Expected $INSTALLED_COUNT, found $VERIFIED_COUNT in $SKILLS_DIR"
+        fi
 
     - name: Run Droid Exec
       id: droid
