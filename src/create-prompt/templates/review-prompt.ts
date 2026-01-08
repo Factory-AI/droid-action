@@ -59,6 +59,9 @@ Diff Side Selection (CRITICAL):
 - The 'line' parameter refers to the line number on the specified side of the diff  
 - Ensure the line numbers you use correspond to the side you choose;
 
+How Many Findings to Return:
+Output all findings that the original author would fix if they knew about it. If there is no finding that a person would definitely love to see and fix, prefer outputting no findings. Do not stop at the first qualifying finding. Continue until you've listed every qualifying finding.
+
 Key Guidelines for Bug Detection:
 Only flag an issue as a bug if:
 1. It meaningfully impacts the accuracy, performance, security, or maintainability of the code.
@@ -70,6 +73,13 @@ Only flag an issue as a bug if:
 7. Must identify provably affected code parts (not speculation).
 8. The bug is clearly not intentional.
 
+Priority Levels:
+Use the following priority levels for your findings:
+- [P0] - Drop everything to fix. Blocking release/operations
+- [P1] - Urgent. Should be addressed in next cycle
+- [P2] - Normal. To be fixed eventually
+- [P3] - Low. Nice to have
+
 Cross-reference capability:
 - When reviewing tests, search for related constants and configurations (e.g., if a test sets an environment variable like FACTORY_ENV, use Grep to find how that env var maps to directories or behavior in production code).
 - Use Grep and Read tools to understand relationships between files—do not rely solely on diff output for context.
@@ -77,9 +87,7 @@ Cross-reference capability:
 - For any suspicious pattern, search the codebase to confirm your understanding before flagging an issue.
 
 Accuracy gates:
-- Base findings strictly on the current diff and minimal repo context available via gh/MCP; avoid speculation.
-- Prioritize high-severity/high-confidence issues; cap at 10 comments total.
-- False positives are very undesirable—only surface an issue when you are genuinely confident.
+- Base findings strictly on the current diff and repo context available via gh/MCP; avoid speculation.
 - If confidence is low, phrase a single concise clarifying question instead of asserting a bug.
 - Never raise purely stylistic or preference-only concerns.
 
@@ -88,7 +96,7 @@ Deduplication policy:
 - Do not open a new thread for a previously reported issue; resolve the existing thread via github_pr___resolve_review_thread when possible, otherwise leave a brief reply in that discussion and move on.
 
 Commenting rules:
-- Maximum 10 inline comments total; one issue per comment.
+- One issue per comment.
 - Anchor findings to the relevant diff hunk so reviewers see the context immediately.
 - Focus on defects introduced or exposed by the PR's changes; if a new bug manifests on an unchanged line, you may post inline comments on those unchanged lines but clearly explain how the submitted changes trigger it.
 - Match the side parameter to the code segment you're referencing (default to RIGHT for new code) and provide line numbers from that same side
@@ -101,6 +109,6 @@ Submission:
 - If no issues are found and no prior "no issues" comment exists, post a single brief top-level summary noting no issues.
 - If issues are found, delete/minimize/supersede any prior "no issues" comment before submitting.
 - Prefer github_inline_comment___create_inline_comment for inline findings and submit the overall review via github_pr___submit_review (fall back to gh api repos/${repoFullName}/pulls/${prNumber}/reviews -f event=COMMENT -f body="$SUMMARY" -f comments='[$COMMENTS_JSON]' when MCP tools are unavailable).
-- Do not approve or request changes; submit a comment-only review with inline feedback (maximum 10 comments).
+- Do not approve or request changes; submit a comment-only review with inline feedback.
 `;
 }
