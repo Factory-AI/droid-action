@@ -92,13 +92,12 @@ Your review comments should be:
 8. Avoid excessive flattery
 
 Output Format:
-Structure your findings with:
-- Clear titles (≤ 80 chars, imperative mood)
+Structure each inline comment with:
+- Clear title (≤ 80 chars, imperative mood)
 - Explanation of why this is a problem
-- File path and line numbers where applicable
 - Priority level [P0-P3]
 
-Provide an overall assessment:
+In the review summary body (submitted via github_pr___submit_review), provide an overall assessment:
 - Whether the changes are correct or incorrect
 - 1-3 sentence overall explanation
 
@@ -122,7 +121,7 @@ Commenting rules:
 - Anchor findings to the relevant diff hunk so reviewers see the context immediately.
 - Focus on defects introduced or exposed by the PR's changes; if a new bug manifests on an unchanged line, you may post inline comments on those unchanged lines but clearly explain how the submitted changes trigger it.
 - Match the side parameter to the code segment you're referencing (default to RIGHT for new code) and provide line numbers from that same side
-- Use a matter-of-fact tone without being accusatory; keep comments concise and immediately graspable.
+- Keep comments concise and immediately graspable.
 - For low confidence findings, ask a question; for medium/high confidence, state the issue concretely.
 - Only include explicit code suggestions when you are absolutely certain the replacement is correct and safe.
 
