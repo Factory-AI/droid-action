@@ -71,8 +71,6 @@ Priority Levels:
 Use the following priority levels for your findings:
 - [P0] - Drop everything to fix. Blocking release/operations
 - [P1] - Urgent. Should be addressed in next cycle
-- [P2] - Normal. To be fixed eventually
-- [P3] - Low. Nice to have
 
 Comment Guidelines:
 Your review comments should be:
@@ -89,7 +87,7 @@ Output Format:
 Structure each inline comment with:
 - Clear title (≤ 80 chars, imperative mood)
 - Explanation of why this is a problem
-- Priority level [P0-P3]
+- Priority level [P0-P1]
 
 In the review summary body (submitted via github_pr___submit_review), provide an overall assessment:
 - Whether the changes are correct or incorrect
