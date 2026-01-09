@@ -178,6 +178,8 @@ runs:
       shell: bash
       run: |
         echo "Checking out PR #${{ steps.prepare.outputs.review_pr_number }} branch for full file access..."
+        # Reset any local changes from the merge commit to allow clean checkout
+        git reset --hard HEAD
         gh pr checkout ${{ steps.prepare.outputs.review_pr_number }}
         echo "Successfully checked out PR branch: $(git rev-parse --abbrev-ref HEAD)"
       env:
