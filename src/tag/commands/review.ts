@@ -113,6 +113,8 @@ export async function prepareReviewMode({
 
   core.setOutput("droid_args", droidArgParts.join(" ").trim());
   core.setOutput("mcp_tools", mcpTools);
+  core.setOutput("review_pr_number", context.entityNumber.toString());
+  core.setOutput("droid_comment_id", commentId.toString());
 
   return {
     commentId,

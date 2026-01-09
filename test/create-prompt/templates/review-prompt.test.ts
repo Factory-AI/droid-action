@@ -36,13 +36,15 @@ describe("generateReviewPrompt", () => {
     expect(prompt).toContain("every substantive comment must be inline on the changed line");
   });
 
-  it("emphasizes accuracy gates and comment limits", () => {
+  it("emphasizes accuracy gates and bug detection guidelines", () => {
     const prompt = generateReviewPrompt(createBaseContext());
 
-    expect(prompt).toContain("cap at 10 comments total");
+    expect(prompt).toContain("How Many Findings to Return:");
+    expect(prompt).toContain("Output all findings that the original author would fix");
+    expect(prompt).toContain("Key Guidelines for Bug Detection:");
+    expect(prompt).toContain("Priority Levels:");
+    expect(prompt).toContain("[P0]");
     expect(prompt).toContain("Never raise purely stylistic");
-    expect(prompt).toContain("Maximum 10 inline comments");
-    expect(prompt).toContain("False positives are very undesirable");
     expect(prompt).toContain("Never repeat or re-raise an issue previously highlighted");
   });
 
