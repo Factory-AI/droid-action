@@ -30,8 +30,17 @@ Objectives:
 
 Procedure:
 - Run: gh pr view ${prNumber} --repo ${repoFullName} --json comments,reviews
-- Run: gh pr diff ${prNumber} --repo ${repoFullName}
-- Run: gh api repos/${repoFullName}/pulls/${prNumber}/files --paginate --jq '.[] | {filename,patch,additions,deletions}'
+- Prefer reviewing the local git diff since the PR branch is already checked out:
+  - Ensure you have the base branch ref locally (fetch if needed).
+  - Find merge base between HEAD and the base branch.
+  - Run git diff from that merge base to HEAD to see exactly what would merge.
+  - Example:
+    - git fetch origin ${baseRefName}:refs/remotes/origin/${baseRefName}
+    - MERGE_BASE=$(git merge-base HEAD refs/remotes/origin/${baseRefName})
+    - git diff $MERGE_BASE..HEAD
+- Use gh PR diff/file APIs only as a fallback when local git diff is not possible:
+  - gh pr diff ${prNumber} --repo ${repoFullName}
+  - gh api repos/${repoFullName}/pulls/${prNumber}/files --paginate --jq '.[] | {filename,patch,additions,deletions}'
 - Prefer github_inline_comment___create_inline_comment with side="RIGHT" to post inline findings on changed/added lines
 - Compute exact diff positions (path + position) for each issue; every substantive comment must be inline on the changed line (no new top-level issue comments).
 - Detect prior top-level "no issues" comments authored by this bot (e.g., "no issues", "No issues found", "LGTM", including emoji-prefixed variants).
