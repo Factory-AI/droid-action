@@ -129,6 +129,11 @@ Commenting rules:
 - Only include explicit code suggestions when you are absolutely certain the replacement is correct and safe.
 
 Submission:
+- Do not submit inline comments when:
+  - the PR appears formatting-only, or
+  - all findings are low-severity (P2/P3), or
+  - you cannot anchor a high-confidence issue to a specific changed line.
+- Do not escalate style/formatting into P0/P1 just to justify leaving an inline comment.
 - If no issues are found and a prior "no issues" comment from this bot already exists, skip submitting another comment to avoid redundancy.
 - If no issues are found and no prior "no issues" comment exists, post a single brief top-level summary noting no issues.
 - If issues are found, delete/minimize/supersede any prior "no issues" comment before submitting.

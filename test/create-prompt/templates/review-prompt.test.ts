@@ -61,5 +61,9 @@ describe("generateReviewPrompt", () => {
     expect(prompt).toContain("github_pr___submit_review");
     expect(prompt).toContain("github_pr___resolve_review_thread");
     expect(prompt).toContain("skip submitting another comment to avoid redundancy");
+    expect(prompt).toContain("Do not submit inline comments");
+    expect(prompt).toContain(
+      "Do not escalate style/formatting into P0/P1 just to justify leaving an inline comment",
+    );
   });
 });
