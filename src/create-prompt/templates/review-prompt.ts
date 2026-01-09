@@ -71,6 +71,8 @@ Priority Levels:
 Use the following priority levels for your findings:
 - [P0] - Drop everything to fix. Blocking release/operations
 - [P1] - Urgent. Should be addressed in next cycle
+- [P2] - Normal. To be fixed eventually
+- [P3] - Low. Nice to have
 
 Comment Guidelines:
 Your review comments should be:
@@ -85,7 +87,7 @@ Your review comments should be:
 
 Output Format:
 Structure each inline comment as:
-**[P0/P1] Clear title (≤ 80 chars, imperative mood)**
+**[P0-P3] Clear title (≤ 80 chars, imperative mood)**
 (blank line)
 Explanation of why this is a problem (1 paragraph max).
 
