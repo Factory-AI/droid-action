@@ -84,10 +84,10 @@ Your review comments should be:
 8. Avoid excessive flattery
 
 Output Format:
-Structure each inline comment with:
-- Clear title (≤ 80 chars, imperative mood)
-- Explanation of why this is a problem
-- Priority level [P0-P1]
+Structure each inline comment as:
+**[P0/P1] Clear title (≤ 80 chars, imperative mood)**
+(blank line)
+Explanation of why this is a problem (1 paragraph max).
 
 In the review summary body (submitted via github_pr___submit_review), provide an overall assessment:
 - Whether the changes are correct or incorrect
