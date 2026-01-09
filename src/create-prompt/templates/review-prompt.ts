@@ -1,8 +1,6 @@
 import type { PreparedContext } from "../types";
 
-export function generateReviewPrompt(
-  context: PreparedContext,
-): string {
+export function generateReviewPrompt(context: PreparedContext): string {
   const prNumber = context.eventData.isPR
     ? context.eventData.prNumber
     : context.githubContext && "entityNumber" in context.githubContext
@@ -23,11 +21,7 @@ Context:
 - PR Head Ref: ${headRefName}
 - PR Head SHA: ${headSha}
 - PR Base Ref: ${baseRefName}
-
-First, checkout the PR branch to access the full codebase:
-- Run: gh pr checkout ${prNumber} --repo ${repoFullName}
-
-This ensures you can read any file in the PR's branch, not just the diff output.
+- The PR branch has already been checked out. You have full access to read any file in the codebase, not just the diff output.
 
 Objectives:
 1) Re-check existing review comments and resolve threads when the issue is fixed (fall back to a brief "resolved" reply only if the thread cannot be marked resolved).
