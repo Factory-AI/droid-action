@@ -46,7 +46,9 @@ Procedure:
 - Detect prior top-level "no issues" comments authored by this bot (e.g., "no issues", "No issues found", "LGTM", including emoji-prefixed variants).
 - If the current run finds issues and prior "no issues" comments exist, delete them via gh api -X DELETE repos/${repoFullName}/issues/comments/<comment_id>; if deletion fails, minimize via GraphQL or reply "Superseded: issues were found in newer commits".
 - IMPORTANT: Do NOT delete comment ID ${context.droidCommentId} - this is the tracking comment for the current run.
-- If a previously reported issue appears resolved by nearby changes, call github_pr___resolve_review_thread (when permitted) to mark it resolved; otherwise provide a brief reply within that thread noting the resolution.
+- Thread resolution rule (CRITICAL): NEVER resolve review threads.
+  - Do NOT call github_pr___resolve_review_thread under any circumstances.
+  - If a previously reported issue appears fixed, leave the thread unresolved.
 
 Preferred MCP tools (when available):
 - github_inline_comment___create_inline_comment to post inline feedback anchored to the diff
