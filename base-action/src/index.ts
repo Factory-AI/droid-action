@@ -22,6 +22,7 @@ async function run() {
 
     await runDroid(promptConfig.path, {
       droidArgs: process.env.INPUT_DROID_ARGS,
+      reasoningEffort: process.env.INPUT_REASONING_EFFORT,
       allowedTools: process.env.INPUT_ALLOWED_TOOLS,
       disallowedTools: process.env.INPUT_DISALLOWED_TOOLS,
       maxTurns: process.env.INPUT_MAX_TURNS,
