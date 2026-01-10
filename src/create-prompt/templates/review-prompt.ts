@@ -30,13 +30,25 @@ Objectives:
 
 Procedure:
 - Run: gh pr view ${prNumber} --repo ${repoFullName} --json comments,reviews
-- Run: gh pr diff ${prNumber} --repo ${repoFullName}
-- Run: gh api repos/${repoFullName}/pulls/${prNumber}/files --paginate --jq '.[] | {filename,patch,additions,deletions}'
+- Prefer reviewing the local git diff since the PR branch is already checked out:
+  - Ensure you have the base branch ref locally (fetch if needed).
+  - Find merge base between HEAD and the base branch.
+  - Run git diff from that merge base to HEAD to see exactly what would merge.
+  - Example:
+    - git fetch origin ${baseRefName}:refs/remotes/origin/${baseRefName}
+    - MERGE_BASE=$(git merge-base HEAD refs/remotes/origin/${baseRefName})
+    - git diff $MERGE_BASE..HEAD
+- Use gh PR diff/file APIs only as a fallback when local git diff is not possible:
+  - gh pr diff ${prNumber} --repo ${repoFullName}
+  - gh api repos/${repoFullName}/pulls/${prNumber}/files --paginate --jq '.[] | {filename,patch,additions,deletions}'
 - Prefer github_inline_comment___create_inline_comment with side="RIGHT" to post inline findings on changed/added lines
 - Compute exact diff positions (path + position) for each issue; every substantive comment must be inline on the changed line (no new top-level issue comments).
 - Detect prior top-level "no issues" comments authored by this bot (e.g., "no issues", "No issues found", "LGTM", including emoji-prefixed variants).
 - If the current run finds issues and prior "no issues" comments exist, delete them via gh api -X DELETE repos/${repoFullName}/issues/comments/<comment_id>; if deletion fails, minimize via GraphQL or reply "Superseded: issues were found in newer commits".
-- If a previously reported issue appears resolved by nearby changes, call github_pr___resolve_review_thread (when permitted) to mark it resolved; otherwise provide a brief reply within that thread noting the resolution.
+- IMPORTANT: Do NOT delete comment ID ${context.droidCommentId} - this is the tracking comment for the current run.
+- Thread resolution rule (CRITICAL): NEVER resolve review threads.
+  - Do NOT call github_pr___resolve_review_thread under any circumstances.
+  - If a previously reported issue appears fixed, leave the thread unresolved.
 
 Preferred MCP tools (when available):
 - github_inline_comment___create_inline_comment to post inline feedback anchored to the diff
@@ -74,8 +86,6 @@ Use the following priority levels to categorize findings:
 - [P2] - Normal. To be fixed eventually
 - [P3] - Low. Nice to have
 
-IMPORTANT: Only post P0 and P1 findings as inline comments. Do NOT post P2 or P3 findings—they are too minor to warrant review noise. If all your findings are P2/P3, post no inline comments and note "no high-severity issues found" in the summary.
-
 Comment Guidelines:
 Your review comments should be:
 1. Clear about why the issue is a bug
@@ -88,8 +98,8 @@ Your review comments should be:
 8. Avoid excessive flattery
 
 Output Format:
-Structure each inline comment as (P0/P1 only):
-**[P0/P1] Clear title (≤ 80 chars, imperative mood)**
+Structure each inline comment as:
+**[P0-P3] Clear title (≤ 80 chars, imperative mood)**
 (blank line)
 Explanation of why this is a problem (1 paragraph max).
 
@@ -122,6 +132,11 @@ Commenting rules:
 - Only include explicit code suggestions when you are absolutely certain the replacement is correct and safe.
 
 Submission:
+- Do not submit inline comments when:
+  - the PR appears formatting-only, or
+  - all findings are low-severity (P2/P3), or
+  - you cannot anchor a high-confidence issue to a specific changed line.
+- Do not escalate style/formatting into P0/P1 just to justify leaving an inline comment.
 - If no issues are found and a prior "no issues" comment from this bot already exists, skip submitting another comment to avoid redundancy.
 - If no issues are found and no prior "no issues" comment exists, post a single brief top-level summary noting no issues.
 - If issues are found, delete/minimize/supersede any prior "no issues" comment before submitting.

@@ -29,7 +29,11 @@ describe("generateReviewPrompt", () => {
 
     expect(prompt).toContain("Objectives:");
     expect(prompt).toContain("Re-check existing review comments");
-    expect(prompt).toContain("gh pr diff 42 --repo test-owner/test-repo");
+    expect(prompt).toContain("git merge-base");
+    expect(prompt).toContain("git diff");
+    expect(prompt).toContain(
+      "gh pr diff 42 --repo test-owner/test-repo",
+    );
     expect(prompt).toContain("gh api repos/test-owner/test-repo/pulls/42/files");
     expect(prompt).toContain("github_inline_comment___create_inline_comment");
     expect(prompt).toContain("github_pr___resolve_review_thread");
@@ -57,5 +61,9 @@ describe("generateReviewPrompt", () => {
     expect(prompt).toContain("github_pr___submit_review");
     expect(prompt).toContain("github_pr___resolve_review_thread");
     expect(prompt).toContain("skip submitting another comment to avoid redundancy");
+    expect(prompt).toContain("Do not submit inline comments");
+    expect(prompt).toContain(
+      "Do not escalate style/formatting into P0/P1 just to justify leaving an inline comment",
+    );
   });
 });
