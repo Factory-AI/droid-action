@@ -9,6 +9,14 @@ This GitHub Action powers the Factory **Droid** app. It watches your pull reques
 
 Everything runs inside GitHub Actions using your Factory API key, so the bot never leaves your repository and operates with the permissions you grant.
 
+## What Happens When You Tag `@droid`
+
+1. **Trigger detection** – The action scans issue comments, PR descriptions, and review comments for `@droid` commands.
+2. **Context gathering** – Droid collects the PR metadata, existing comments, changed files, and any PR description template in your repository.
+3. **Prompt generation** – We compose a precise prompt instructing Droid what to do and which GitHub MCP tools it may use.
+4. **Execution** – The action runs `droid exec` with full repository context. MCP tools are pre-registered so Droid can call the GitHub APIs safely.
+5. **Results** – For fill, Droid updates the PR body. For review/security, it posts inline feedback and a summary comment.
+
 ## Installation
 
 1. **Install the Droid GitHub App**
@@ -96,6 +104,8 @@ jobs:
           automatic_review: true
           automatic_security_review: true
 ```
+
+Once committed, tagging `@droid fill`, `@droid review`, or `@droid security` on an open PR will trigger the bot automatically, and non-draft PRs will also receive automatic reviews if `droid-review.yml` is enabled.
 
 ## Using the Commands
 
