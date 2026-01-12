@@ -72,6 +72,8 @@ jobs:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
 ```
 
+Once committed, tagging `@droid fill`, `@droid review`, or `@droid security` on an open PR will trigger the bot automatically.
+
 `droid-review.yml` (automatic reviews on PRs):
 
 ```yaml
@@ -82,8 +84,35 @@ on:
     types: [opened, ready_for_review, reopened]
 
 jobs:
-  droid-review:
+  prepare:
     if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    outputs:
+      comment_id: ${{ steps.prepare.outputs.comment_id }}
+      run_code_review: ${{ steps.prepare.outputs.run_code_review }}
+      run_security_review: ${{ steps.prepare.outputs.run_security_review }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Prepare
+        id: prepare
+        uses: Factory-AI/droid-action/prepare@v1
+        with:
+          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          automatic_review: true
+          automatic_security_review: true
+
+  code-review:
+    needs: prepare
+    if: needs.prepare.outputs.run_code_review == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -97,15 +126,103 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Run Droid Auto Review
-        uses: Factory-AI/droid-action@v1
+      - name: Run Code Review
+        uses: Factory-AI/droid-action/review@v1
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
-          automatic_review: true
-          automatic_security_review: true
+          tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}
+          output_file: ${{ runner.temp }}/code-review-results.json
+
+      - name: Upload Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-review-results
+          path: ${{ runner.temp }}/code-review-results.json
+          if-no-files-found: ignore
+
+  security-review:
+    needs: prepare
+    if: needs.prepare.outputs.run_security_review == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Run Security Review
+        uses: Factory-AI/droid-action/security@v1
+        with:
+          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}
+          output_file: ${{ runner.temp }}/security-review-results.json
+
+      - name: Upload Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-review-results
+          path: ${{ runner.temp }}/security-review-results.json
+          if-no-files-found: ignore
+
+  combine:
+    needs: [prepare, code-review, security-review]
+    if: |
+      always() &&
+      needs.prepare.outputs.run_code_review == 'true' &&
+      needs.prepare.outputs.run_security_review == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Download Code Review Results
+        uses: actions/download-artifact@v4
+        with:
+          name: code-review-results
+          path: ${{ runner.temp }}
+        continue-on-error: true
+
+      - name: Download Security Review Results
+        uses: actions/download-artifact@v4
+        with:
+          name: security-review-results
+          path: ${{ runner.temp }}
+        continue-on-error: true
+
+      - name: Combine Results
+        uses: Factory-AI/droid-action/combine@v1
+        with:
+          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}
+          code_review_results: ${{ runner.temp }}/code-review-results.json
+          code_review_status: ${{ needs.code-review.result }}
+          security_review_results: ${{ runner.temp }}/security-review-results.json
+          security_review_status: ${{ needs.security-review.result }}
 ```
 
-Once committed, tagging `@droid fill`, `@droid review`, or `@droid security` on an open PR will trigger the bot automatically, and non-draft PRs will also receive automatic reviews if `droid-review.yml` is enabled.
+Set `automatic_review` and `automatic_security_review` to control which reviews run automatically on non-draft PRs:
+
+| `automatic_review` | `automatic_security_review` | Behavior                        |
+| ------------------ | --------------------------- | ------------------------------- |
+| `true`             | `false`                     | Code review only                |
+| `false`            | `true`                      | Security review only            |
+| `true`             | `true`                      | Both reviews + combined summary |
+
+The combine step only runs when both reviews are enabled, merging findings into a single summary comment.
 
 ## Using the Commands
 
