@@ -4,8 +4,7 @@ This GitHub Action powers the Factory **Droid** app. It watches your pull reques
 
 - `@droid fill` — turns a bare pull request into a polished description that matches your template or our opinionated fallback.
 - `@droid review` — performs an automated code review, surfaces potential bugs, and leaves inline comments directly on the diff.
-- `@droid security` — performs a security-focused code review using STRIDE methodology, identifying vulnerabilities and suggesting fixes.
-- `@droid review security` — runs both code review and security review in parallel for comprehensive feedback.
+- `@droid security` — performs an automated security review using STRIDE methodology, identifying vulnerabilities and suggesting fixes.
 - `@droid security --full` — performs a full repository security scan and creates a PR with the report.
 
 Everything runs inside GitHub Actions using your Factory API key, so the bot never leaves your repository and operates with the permissions you grant.
@@ -18,17 +17,6 @@ Everything runs inside GitHub Actions using your Factory API key, so the bot nev
 4. **Execution** – The action runs `droid exec` with full repository context. MCP tools are pre-registered so Droid can call the GitHub APIs safely.
 5. **Results** – For fill, Droid updates the PR body. For review/security, it posts inline feedback and a summary comment.
 
-### Parallel Review Flow
-
-When both code review and security review are enabled (via `@droid review security` or automatic flags), the action uses a parallel workflow:
-
-1. **Prepare** – Creates a tracking comment and detects which reviews to run
-2. **Code Review** – Analyzes code quality, bugs, and best practices (runs in parallel)
-3. **Security Review** – Analyzes security vulnerabilities using STRIDE methodology (runs in parallel)
-4. **Combine** – Merges results from both reviews, deduplicates findings, and posts inline comments
-
-The combine step only runs when both reviews are enabled. If only one review type is active, it posts results directly without the combine step.
-
 ## Installation
 
 1. **Install the Droid GitHub App**
@@ -38,7 +26,7 @@ The combine step only runs when both reviews are enabled. If only one review typ
 3. **Add the Action Workflows**
    - Create workflow files under `.github/workflows/` based on your needs.
 
-### Basic Setup (Single Action)
+### Setup
 
 `droid.yml` (responds to explicit `@droid` mentions):
 
@@ -117,140 +105,6 @@ jobs:
           automatic_security_review: true # Enable both for comprehensive reviews
 ```
 
-### Advanced Setup (Parallel Workflow with Sub-Actions)
-
-For maximum efficiency with both code and security reviews, use the modular sub-actions to run reviews in parallel:
-
-```yaml
-name: Droid Parallel Review
-
-on:
-  pull_request:
-    types: [opened, ready_for_review, reopened]
-
-jobs:
-  prepare:
-    if: github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-      issues: write
-      id-token: write
-    outputs:
-      comment_id: ${{ steps.prepare.outputs.comment_id }}
-      run_code_review: ${{ steps.prepare.outputs.run_code_review }}
-      run_security_review: ${{ steps.prepare.outputs.run_security_review }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Prepare
-        id: prepare
-        uses: Factory-AI/droid-action/prepare@v1
-        with:
-          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
-          automatic_review: true
-          automatic_security_review: true
-
-  code-review:
-    needs: prepare
-    if: needs.prepare.outputs.run_code_review == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-      issues: write
-      id-token: write
-      actions: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Run Code Review
-        uses: Factory-AI/droid-action/review@v1
-        with:
-          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
-          tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}
-          output_file: ${{ runner.temp }}/code-review-results.json
-
-      - name: Upload Results
-        uses: actions/upload-artifact@v4
-        with:
-          name: code-review-results
-          path: ${{ runner.temp }}/code-review-results.json
-
-  security-review:
-    needs: prepare
-    if: needs.prepare.outputs.run_security_review == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-      issues: write
-      id-token: write
-      actions: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Run Security Review
-        uses: Factory-AI/droid-action/security@v1
-        with:
-          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
-          tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}
-          security_severity_threshold: medium
-          output_file: ${{ runner.temp }}/security-results.json
-
-      - name: Upload Results
-        uses: actions/upload-artifact@v4
-        with:
-          name: security-results
-          path: ${{ runner.temp }}/security-results.json
-
-  combine:
-    needs: [prepare, code-review, security-review]
-    # Only run combine when BOTH reviews were executed
-    if: |
-      always() &&
-      needs.prepare.outputs.run_code_review == 'true' &&
-      needs.prepare.outputs.run_security_review == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-      issues: write
-      id-token: write
-      actions: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Download Code Review Results
-        uses: actions/download-artifact@v4
-        with:
-          name: code-review-results
-          path: ${{ runner.temp }}
-        continue-on-error: true
-
-      - name: Download Security Results
-        uses: actions/download-artifact@v4
-        with:
-          name: security-results
-          path: ${{ runner.temp }}
-        continue-on-error: true
-
-      - name: Combine Results
-        uses: Factory-AI/droid-action/combine@v1
-        with:
-          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
-          tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}
-          code_review_results: ${{ runner.temp }}/code-review-results.json
-          security_results: ${{ runner.temp }}/security-results.json
-          code_review_status: ${{ needs.code-review.result }}
-          security_review_status: ${{ needs.security-review.result }}
-```
-
 ## Using the Commands
 
 ### `@droid fill`
@@ -271,12 +125,6 @@ jobs:
 - Droid performs a security-focused review using STRIDE methodology (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege).
 - Findings include severity levels, CWE references, and suggested fixes.
 - Security reviews run once per PR to avoid duplicate scans on subsequent commits.
-
-### `@droid review security` or `@droid security review`
-
-- Triggers both code review and security review to run in parallel.
-- Results are combined and deduplicated before posting inline comments.
-- Provides comprehensive coverage of both code quality and security concerns.
 
 ### `@droid security --full`
 
@@ -314,17 +162,6 @@ jobs:
 | `security_notify_team`        | `""`     | GitHub team to @mention on critical findings (e.g., `@org/security-team`).                                        |
 | `security_scan_schedule`      | `false`  | Enable scheduled security scans for `schedule` events.                                                            |
 | `security_scan_days`          | `7`      | Number of days of commits to scan for scheduled security scans.                                                   |
-
-## Sub-Actions
-
-For advanced workflows, you can use the modular sub-actions directly:
-
-| Sub-Action                         | Purpose                                                                                                                         |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `Factory-AI/droid-action/prepare`  | Creates tracking comment and detects which review modes to run. Outputs `comment_id`, `run_code_review`, `run_security_review`. |
-| `Factory-AI/droid-action/review`   | Runs code review. Requires `tracking_comment_id`. Outputs findings to `output_file`.                                            |
-| `Factory-AI/droid-action/security` | Runs security review. Requires `tracking_comment_id`. Installs security skills automatically.                                   |
-| `Factory-AI/droid-action/combine`  | Combines results from parallel reviews, deduplicates findings, posts inline comments. Only needed when both reviews run.        |
 
 ## Security Skills
 
