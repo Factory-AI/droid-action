@@ -214,16 +214,6 @@ jobs:
           security_review_status: ${{ needs.security-review.result }}
 ```
 
-Set `automatic_review` and `automatic_security_review` to control which reviews run automatically on non-draft PRs:
-
-| `automatic_review` | `automatic_security_review` | Behavior                        |
-| ------------------ | --------------------------- | ------------------------------- |
-| `true`             | `false`                     | Code review only                |
-| `false`            | `true`                      | Security review only            |
-| `true`             | `true`                      | Both reviews + combined summary |
-
-The combine step only runs when both reviews are enabled, merging findings into a single summary comment.
-
 ## Using the Commands
 
 ### `@droid fill`
