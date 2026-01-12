@@ -265,6 +265,7 @@ describe("prepareReviewMode", () => {
 
   it("does not add --model flag when REVIEW_MODEL is empty", async () => {
     process.env.REVIEW_MODEL = "";
+    delete process.env.REASONING_EFFORT;
 
     const context = createMockContext({
       eventName: "issue_comment",
@@ -312,6 +313,8 @@ describe("prepareReviewMode", () => {
     const droidArgsCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "droid_args",
     ) as [string, string] | undefined;
-    expect(droidArgsCall?.[1]).not.toContain("--model");
+    // When neither REVIEW_MODEL nor REASONING_EFFORT is provided, we default to gpt-5.2 at high reasoning.
+    expect(droidArgsCall?.[1]).toContain('--model "gpt-5.2"');
+    expect(droidArgsCall?.[1]).toContain('--reasoning-effort "high"');
   });
 });
