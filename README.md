@@ -214,6 +214,8 @@ jobs:
           security_review_status: ${{ needs.security-review.result }}
 ```
 
+Set `automatic_review` and `automatic_security_review` to control which reviews run automatically on non-draft PRs.
+
 ## Using the Commands
 
 ### `@droid fill`
