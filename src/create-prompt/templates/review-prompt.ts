@@ -24,34 +24,29 @@ Context:
 - The PR branch has already been checked out. You have full access to read any file in the codebase, not just the diff output.
 
 Objectives:
-1) Re-check existing review comments and resolve threads when the issue is fixed (fall back to a brief "resolved" reply only if the thread cannot be marked resolved).
-2) Review the PR diff and surface all bugs that meet the detection criteria below.
-3) Leave concise inline comments (1-2 sentences) on bugs introduced by the PR. You may also comment on unchanged lines if the PR's changes expose or trigger issues there—but explain the connection clearly.
+1) Review the PR diff and surface all bugs that meet the detection criteria below.
+2) Output findings in JSON format for later processing (DO NOT post inline comments directly).
+3) Update the tracking comment with a summary.
 
 Procedure:
 - Run: gh pr view ${prNumber} --repo ${repoFullName} --json comments,reviews
-- Run: gh pr diff ${prNumber} --repo ${repoFullName}
-- Run: gh api repos/${repoFullName}/pulls/${prNumber}/files --paginate --jq '.[] | {filename,patch,additions,deletions}'
-- Prefer github_inline_comment___create_inline_comment with side="RIGHT" to post inline findings on changed/added lines
-- Compute exact diff positions (path + position) for each issue; every substantive comment must be inline on the changed line (no new top-level issue comments).
-- Detect prior top-level "no issues" comments authored by this bot (e.g., "no issues", "No issues found", "LGTM", including emoji-prefixed variants).
-- If the current run finds issues and prior "no issues" comments exist, delete them via gh api -X DELETE repos/${repoFullName}/issues/comments/<comment_id>; if deletion fails, minimize via GraphQL or reply "Superseded: issues were found in newer commits".
-- If a previously reported issue appears resolved by nearby changes, call github_pr___resolve_review_thread (when permitted) to mark it resolved; otherwise provide a brief reply within that thread noting the resolution.
+- Prefer reviewing the local git diff since the PR branch is already checked out:
+  - Ensure you have the base branch ref locally (fetch if needed).
+  - Find merge base between HEAD and the base branch.
+  - Run git diff from that merge base to HEAD to see exactly what would merge.
+  - Example:
+    - git fetch origin ${baseRefName}:refs/remotes/origin/${baseRefName}
+    - MERGE_BASE=$(git merge-base HEAD refs/remotes/origin/${baseRefName})
+    - git diff $MERGE_BASE..HEAD
+- Use gh PR diff/file APIs only as a fallback when local git diff is not possible:
+  - gh pr diff ${prNumber} --repo ${repoFullName}
+  - gh api repos/${repoFullName}/pulls/${prNumber}/files --paginate --jq '.[] | {filename,patch,additions,deletions}'
+- Analyze the diff for issues
+- Write findings to \`code-review-results.json\` in the current directory
+- IMPORTANT: Do NOT delete comment ID ${context.droidCommentId} - this is the tracking comment for the current run.
 
-Preferred MCP tools (when available):
-- github_inline_comment___create_inline_comment to post inline feedback anchored to the diff
-- github_pr___submit_review to send inline review feedback
-- github_pr___delete_comment to remove outdated "no issues" comments
-- github_pr___minimize_comment when deletion is unavailable but minimization is acceptable
-- github_pr___reply_to_comment to acknowledge resolved threads
-- github_pr___resolve_review_thread to formally resolve threads once issues are fixed
-
-Diff Side Selection (CRITICAL):  
-- When calling github_inline_comment___create_inline_comment, ALWAYS specify the 'side' parameter  
-- Use side="RIGHT" for comments on NEW or MODIFIED code (what the PR adds/changes)  
-- Use side="LEFT" ONLY when commenting on code being REMOVED (only if you need to reference the old implementation)  
-- The 'line' parameter refers to the line number on the specified side of the diff  
-- Ensure the line numbers you use correspond to the side you choose;
+IMPORTANT: Do NOT post inline comments directly. Instead, write findings to a JSON file.
+The finalize step will post all inline comments to avoid overlapping with security review comments.
 
 How Many Findings to Return:
 Output all findings that the original author would fix if they knew about it. If there is no finding that a person would definitely love to see and fix, prefer outputting no findings. Do not stop at the first qualifying finding. Continue until you've listed every qualifying finding.
@@ -74,8 +69,6 @@ Use the following priority levels to categorize findings:
 - [P2] - Normal. To be fixed eventually
 - [P3] - Low. Nice to have
 
-IMPORTANT: Only post P0 and P1 findings as inline comments. Do NOT post P2 or P3 findings—they are too minor to warrant review noise. If all your findings are P2/P3, post no inline comments and note "no high-severity issues found" in the summary.
-
 Comment Guidelines:
 Your review comments should be:
 1. Clear about why the issue is a bug
@@ -88,8 +81,8 @@ Your review comments should be:
 8. Avoid excessive flattery
 
 Output Format:
-Structure each inline comment as (P0/P1 only):
-**[P0/P1] Clear title (≤ 80 chars, imperative mood)**
+Structure each inline comment as:
+**[P0-P3] Clear title (≤ 80 chars, imperative mood)**
 (blank line)
 Explanation of why this is a problem (1 paragraph max).
 
@@ -116,16 +109,68 @@ Commenting rules:
 - One issue per comment.
 - Anchor findings to the relevant diff hunk so reviewers see the context immediately.
 - Focus on defects introduced or exposed by the PR's changes; if a new bug manifests on an unchanged line, you may post inline comments on those unchanged lines but clearly explain how the submitted changes trigger it.
-- Match the side parameter to the code segment you're referencing (default to RIGHT for new code) and provide line numbers from that same side
 - Keep comments concise and immediately graspable.
 - For low confidence findings, ask a question; for medium/high confidence, state the issue concretely.
-- Only include explicit code suggestions when you are absolutely certain the replacement is correct and safe.
 
-Submission:
-- If no issues are found and a prior "no issues" comment from this bot already exists, skip submitting another comment to avoid redundancy.
-- If no issues are found and no prior "no issues" comment exists, post a single brief top-level summary noting no issues.
-- If issues are found, delete/minimize/supersede any prior "no issues" comment before submitting.
-- Prefer github_inline_comment___create_inline_comment for inline findings and submit the overall review via github_pr___submit_review (fall back to gh api repos/${repoFullName}/pulls/${prNumber}/reviews -f event=COMMENT -f body="$SUMMARY" -f comments='[$COMMENTS_JSON]' when MCP tools are unavailable).
-- Do not approve or request changes; submit a comment-only review with inline feedback.
+Output:
+1. Analyze the PR to generate:
+   - A concise 1-2 sentence summary of what the PR does
+   - 3-5 key changes extracted from the diff
+   - The most important files changed (up to 5-7 files)
+
+2. Write findings to \`code-review-results.json\` with this structure:
+\`\`\`json
+{
+  "type": "code",
+  "summary": "Brief 1-2 sentence description of what this PR does",
+  "keyChanges": [
+    "Added new authentication flow",
+    "Refactored database queries for performance",
+    "Fixed validation bug in user input"
+  ],
+  "importantFiles": [
+    { "path": "src/auth/login.ts", "description": "New OAuth implementation" },
+    { "path": "src/db/queries.ts", "description": "Query optimization" }
+  ],
+  "findings": [
+    {
+      "id": "CR-001",
+      "type": "bug|issue|suggestion",
+      "severity": "high|medium|low",
+      "file": "path/to/file.ts",
+      "line": 45,
+      "side": "RIGHT",
+      "description": "Brief description of the issue",
+      "suggestion": "Optional code fix"
+    }
+  ]
+}
+\`\`\`
+
+3. Update the tracking comment with a summary using \`github_comment___update_droid_comment\`:
+\`\`\`markdown
+## Code review completed
+
+### Summary
+{Brief 1-2 sentence description of what this PR does}
+
+### Key Changes
+- {Change 1}
+- {Change 2}
+- {Change 3}
+
+### Important Files Changed
+- \`path/to/file1.ts\` - {Brief description of changes}
+- \`path/to/file2.ts\` - {Brief description of changes}
+
+### Review Findings
+| ID | Type | Severity | File | Description |
+|----|------|----------|------|-------------|
+| CR-001 | Bug | high | auth.ts:45 | Null pointer exception |
+
+*Inline comments will be posted after all reviews complete.*
+\`\`\`
+
+IMPORTANT: Do NOT post inline comments. Only write to the JSON file and update the tracking comment.
 `;
 }
