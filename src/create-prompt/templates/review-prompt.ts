@@ -81,35 +81,25 @@ Follow these phases IN ORDER. Do not skip to submitting findings until you compl
    - For PRs >200 lines: explicitly confirm all sections have been reviewed
 
 ## Phase 3: Submit Review
-- Prefer github_inline_comment___create_inline_comment with side="RIGHT" to post inline findings on changed/added lines
-- Compute exact diff positions (path + position) for each issue; every substantive comment must be inline on the changed line (no new top-level issue comments).
-- Detect prior top-level "no issues" comments authored by this bot (e.g., "no issues", "No issues found", "LGTM", including emoji-prefixed variants).
-- If the current run finds issues and prior "no issues" comments exist, delete them via gh api -X DELETE repos/${repoFullName}/issues/comments/<comment_id>; if deletion fails, minimize via GraphQL or reply "Superseded: issues were found in newer commits".
-- IMPORTANT: Do NOT delete comment ID ${context.droidCommentId} - this is the tracking comment for the current run.
-Preferred MCP tools (when available):
-- github_inline_comment___create_inline_comment to post inline feedback anchored to the diff
-- github_pr___submit_review to send inline review feedback
-- github_pr___delete_comment to remove outdated "no issues" comments
-- github_pr___minimize_comment when deletion is unavailable but minimization is acceptable
-- github_pr___reply_to_comment to reply to existing threads (e.g., acknowledge fixed issues)
+Submit findings from Phase 2 using the rules below.
 
-Diff Side Selection (CRITICAL):  
-- When calling github_inline_comment___create_inline_comment, ALWAYS specify the 'side' parameter  
-- Use side="RIGHT" for comments on NEW or MODIFIED code (what the PR adds/changes)  
-- Use side="LEFT" ONLY when commenting on code being REMOVED (only if you need to reference the old implementation)  
-- The 'line' parameter refers to the line number on the specified side of the diff  
-- Ensure the line numbers you use correspond to the side you choose;
+When NOT to submit:
+- PR appears formatting-only
+- Cannot anchor a high-confidence issue to a specific changed line
+- Do not escalate style/formatting into P0/P1 just to justify submitting
 
-Submission:
-- Do not submit inline comments when:
-  - the PR appears formatting-only, or
-  - you cannot anchor a high-confidence issue to a specific changed line.
-- Submit all findings P0-P3 that meet the bug detection criteria. Low-severity issues (P2/P3) should still be submitted if they would cause runtime errors, incorrect behavior, or security vulnerabilities.
-- Do not escalate style/formatting into P0/P1 just to justify leaving an inline comment.
-- If no issues are found and a prior "no issues" comment from this bot already exists, skip submitting another comment to avoid redundancy.
-- If no issues are found and no prior "no issues" comment exists, post a single brief top-level summary noting no issues.
-- If issues are found, delete/minimize/supersede any prior "no issues" comment before submitting.
-- Prefer github_inline_comment___create_inline_comment for inline findings and submit the overall review via github_pr___submit_review (fall back to gh api repos/${repoFullName}/pulls/${prNumber}/reviews -f event=COMMENT -f body="$SUMMARY" -f comments='[$COMMENTS_JSON]' when MCP tools are unavailable).
-- Do not approve or request changes; submit a comment-only review with inline feedback.
+Tools and format:
+- Use github_inline_comment___create_inline_comment for inline findings (path + side + line)
+- Use github_pr___submit_review to submit the overall review
+- Use github_pr___delete_comment or github_pr___minimize_comment for outdated comments
+- Use github_pr___reply_to_comment to reply to existing threads
+- Side selection: use RIGHT for new/modified code, LEFT only for removed code
+- Do not approve or request changes; submit comment-only reviews
+
+"No issues" handling:
+- If no issues found and a prior "no issues" comment exists: skip (avoid redundancy)
+- If no issues found and no prior comment exists: post a single brief summary
+- If issues found and prior "no issues" comment exists: delete/minimize it before submitting
+- Do NOT delete comment ID ${context.droidCommentId} (tracking comment for current run)
 `;
 }
