@@ -182,20 +182,6 @@ export async function prepareTagExecution({
     });
   }
 
-  // Handle explicit commands - set output flags for parallel workflow jobs
-  if (commandContext?.command === "review-security") {
-    core.setOutput("run_code_review", "true");
-    core.setOutput("run_security_review", "true");
-    return {
-      skipped: false,
-      branchInfo: {
-        baseBranch: "",
-        currentBranch: "",
-      },
-      mcpTools: "",
-    };
-  }
-
   if (commandContext?.command === "security") {
     core.setOutput("run_code_review", "false");
     core.setOutput("run_security_review", "true");

@@ -132,52 +132,6 @@ describe("review command integration", () => {
     expect(runSecurityReviewCall?.[1]).toBe("false");
   });
 
-  it("sets both review flags for @droid review security", async () => {
-    const context = createMockContext({
-      eventName: "issue_comment",
-      isPR: true,
-      actor: "human-reviewer",
-      entityNumber: 7,
-      repository: {
-        owner: "test-owner",
-        repo: "test-repo",
-        full_name: "test-owner/test-repo",
-      },
-      payload: {
-        comment: {
-          id: 888,
-          body: "@droid review security",
-          user: { login: "human-reviewer" },
-          created_at: "2024-02-02T00:00:00Z",
-        },
-        issue: {
-          number: 7,
-          pull_request: {},
-        },
-      } as any,
-    });
-
-    const octokit = { rest: {} } as any;
-
-    const result = await prepareTagExecution({
-      context,
-      octokit,
-      githubToken: "token",
-    });
-
-    expect(result.skipped).toBe(false);
-
-    const runCodeReviewCall = setOutputSpy.mock.calls.find(
-      (call: unknown[]) => call[0] === "run_code_review",
-    ) as [string, string] | undefined;
-    const runSecurityReviewCall = setOutputSpy.mock.calls.find(
-      (call: unknown[]) => call[0] === "run_security_review",
-    ) as [string, string] | undefined;
-
-    expect(runCodeReviewCall?.[1]).toBe("true");
-    expect(runSecurityReviewCall?.[1]).toBe("true");
-  });
-
   it("sets security flag only for @droid security", async () => {
     const context = createMockContext({
       eventName: "issue_comment",
