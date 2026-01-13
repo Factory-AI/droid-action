@@ -2,7 +2,7 @@ import type { GitHubContext } from "../github/context";
 
 export type CommonFields = {
   repository: string;
-  droidCommentId: string;
+  droidCommentId?: string;
   triggerPhrase: string;
   triggerUsername?: string;
   droidBranch?: string;
