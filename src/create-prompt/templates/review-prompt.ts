@@ -24,7 +24,7 @@ Context:
 - The PR branch has already been checked out. You have full access to read any file in the codebase, not just the diff output.
 
 Objectives:
-1) Re-check existing review comments and resolve threads when the issue is fixed (fall back to a brief "resolved" reply only if the thread cannot be marked resolved).
+1) Re-check existing review comments; if a previously reported issue appears fixed, leave a brief "resolved" reply (do NOT programmatically resolve threads).
 2) Review the PR diff and surface all bugs that meet the detection criteria below.
 3) Leave concise inline comments (1-2 sentences) on bugs introduced by the PR. You may also comment on unchanged lines if the PR's changes expose or trigger issues there—but explain the connection clearly.
 
@@ -86,17 +86,12 @@ Follow these phases IN ORDER. Do not skip to submitting findings until you compl
 - Detect prior top-level "no issues" comments authored by this bot (e.g., "no issues", "No issues found", "LGTM", including emoji-prefixed variants).
 - If the current run finds issues and prior "no issues" comments exist, delete them via gh api -X DELETE repos/${repoFullName}/issues/comments/<comment_id>; if deletion fails, minimize via GraphQL or reply "Superseded: issues were found in newer commits".
 - IMPORTANT: Do NOT delete comment ID ${context.droidCommentId} - this is the tracking comment for the current run.
-- Thread resolution rule (CRITICAL): NEVER resolve review threads.
-  - Do NOT call github_pr___resolve_review_thread under any circumstances.
-  - If a previously reported issue appears fixed, leave the thread unresolved.
-
 Preferred MCP tools (when available):
 - github_inline_comment___create_inline_comment to post inline feedback anchored to the diff
 - github_pr___submit_review to send inline review feedback
 - github_pr___delete_comment to remove outdated "no issues" comments
 - github_pr___minimize_comment when deletion is unavailable but minimization is acceptable
-- github_pr___reply_to_comment to acknowledge resolved threads
-- github_pr___resolve_review_thread to formally resolve threads once issues are fixed
+- github_pr___reply_to_comment to reply to existing threads (e.g., acknowledge fixed issues)
 
 Diff Side Selection (CRITICAL):  
 - When calling github_inline_comment___create_inline_comment, ALWAYS specify the 'side' parameter  
