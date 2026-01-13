@@ -54,6 +54,7 @@ Follow these phases IN ORDER. Do not skip to submitting findings until you compl
    - When reviewing tests, search for related constants and configurations
    - Use Grep and Read tools to understand relationships between files—do not rely solely on diff output
    - If a test references a constant or path, verify it matches the production code's actual behavior
+   - Example: if a test sets an env var, Grep where it is consumed to verify behavior matches production
 5. Import verification:
    - For new imports, use Grep to verify the imported symbol actually exists in the codebase or is a valid external package
    - Flag any import that references a non-existent symbol as a bug (will cause ImportError/ModuleNotFoundError at runtime)
@@ -79,6 +80,7 @@ Follow these phases IN ORDER. Do not skip to submitting findings until you compl
    - If the PR touches multiple files, have you analyzed interactions between changes?
    - When you found a bug pattern, did you search for the same pattern elsewhere in the diff?
    - For PRs >200 lines: explicitly confirm all sections have been reviewed
+   - Return all actionable findings discovered; do not stop after the first issues
 
 ## Phase 3: Submit Review
 Submit findings from Phase 2 using the rules below.
@@ -93,7 +95,8 @@ Tools and format:
 - Use github_pr___submit_review to submit the overall review
 - Use github_pr___delete_comment or github_pr___minimize_comment for outdated comments
 - Use github_pr___reply_to_comment to reply to existing threads
-- Side selection: use RIGHT for new/modified code, LEFT only for removed code
+- Side selection: use RIGHT for new/modified code, LEFT only for removed code. Line numbers must correspond to the chosen side.
+- Do not call github_pr___resolve_review_thread
 - Do not approve or request changes; submit comment-only reviews
 
 "No issues" handling:
