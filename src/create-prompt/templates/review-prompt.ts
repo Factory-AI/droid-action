@@ -50,6 +50,12 @@ Follow these phases IN ORDER. Do not skip to submitting findings until you compl
    - Trace data flow to confirm the bug path exists
    - Check if the pattern exists elsewhere in the codebase (may be intentional)
 3. Continue until you have reviewed every changed line in every file
+4. Thorough analysis checklist (complete before moving to Phase 3):
+   - Do NOT submit after finding only 2-3 issues - a common failure mode is stopping too early
+   - Have you examined every modified function/method in each changed file?
+   - If the PR touches multiple files, have you analyzed interactions between changes?
+   - When you found a bug pattern, did you search for the same pattern elsewhere in the diff?
+   - For PRs >200 lines: explicitly confirm all sections have been reviewed
 
 ## Phase 3: Submit Review
 - Prefer github_inline_comment___create_inline_comment with side="RIGHT" to post inline findings on changed/added lines
@@ -75,9 +81,6 @@ Diff Side Selection (CRITICAL):
 - Use side="LEFT" ONLY when commenting on code being REMOVED (only if you need to reference the old implementation)  
 - The 'line' parameter refers to the line number on the specified side of the diff  
 - Ensure the line numbers you use correspond to the side you choose;
-
-How Many Findings to Return:
-Output all findings that the original author would fix if they knew about it. If there is no finding that a person would definitely love to see and fix, prefer outputting no findings. Do not stop at the first qualifying finding. Continue until you've listed every qualifying finding.
 
 Key Guidelines for Bug Detection:
 Only flag an issue as a bug if:
