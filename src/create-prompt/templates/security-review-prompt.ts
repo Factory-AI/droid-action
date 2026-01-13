@@ -49,10 +49,8 @@ You have access to these Factory security skills (installed in ~/.factory/skills
 
 ### Step 1: Threat Model Check
 - Check if \`.factory/threat-model.md\` exists in the repository
-- If missing: Invoke the **threat-model-generation** skill to create one, then commit it to the PR branch
-- If exists: Check the file's last modified date
-  - If >90 days old: Post a warning comment suggesting regeneration, but proceed with scan
-  - If current: Use it as context for the security scan
+- If missing: Note this in the summary (threat model generation is done separately, not during PR review)
+- If exists: Use it as context for the security scan
 
 ### Step 2: Security Scan
 - Invoke the **commit-security-scan** skill on the PR diff
@@ -71,12 +69,11 @@ You have access to these Factory security skills (installed in ~/.factory/skills
   - Impact: What's the potential damage?
 - Filter out false positives and findings below the severity threshold (${severityThreshold})
 
-### Step 4: Report & Patch
+### Step 4: Report Findings
 - For each confirmed finding at or above ${severityThreshold} severity:
-  - Post inline comment using \`github_inline_comment___create_inline_comment\`
+  - Record in the JSON output file
   - Include: severity, STRIDE category, CWE ID, clear explanation, suggested fix
-- For auto-fixable issues: Invoke **security-review** skill to generate patches
-- Commit any generated patches to the PR branch
+- For auto-fixable issues: Include the suggested patch in the finding's suggestion field
 
 ## Security Scope (STRIDE Categories)
 
