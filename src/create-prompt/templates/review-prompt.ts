@@ -91,11 +91,10 @@ When NOT to submit:
 - Do not escalate style/formatting into P0/P1 just to justify submitting
 
 Tools and format:
-- Use github_inline_comment___create_inline_comment for inline findings (path + side + line)
+- Use the inline comment tool (github_inline_comment___create_inline_comment) to post inline findings. Anchor comments using path + side + line, where line is the PR diff line number on that side (RIGHT = new/modified code, LEFT = removed code). For multi-line comments, use startLine + line.
 - Use github_pr___submit_review to submit the overall review
 - Use github_pr___delete_comment or github_pr___minimize_comment for outdated comments
 - Use github_pr___reply_to_comment to reply to existing threads
-- Side selection: use RIGHT for new/modified code, LEFT only for removed code. Line numbers must correspond to the chosen side.
 - Do not call github_pr___resolve_review_thread
 - Do not approve or request changes; submit comment-only reviews
 
