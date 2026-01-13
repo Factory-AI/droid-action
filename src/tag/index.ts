@@ -104,7 +104,10 @@ export async function prepareTagExecution({
   const commentId = commentData.id;
 
   // Handle parallel review mode when both flags are set
-  if (context.inputs.automaticReview && context.inputs.automaticSecurityReview) {
+  if (
+    context.inputs.automaticReview &&
+    context.inputs.automaticSecurityReview
+  ) {
     // Output flags for parallel workflow jobs
     const runCodeReview = true;
     let runSecurityReview = true;
@@ -112,7 +115,9 @@ export async function prepareTagExecution({
     // Check if security review already exists on this PR (run once behavior)
     const hasExisting = await hasExistingSecurityReview(octokit, context);
     if (hasExisting) {
-      console.log("Security review already exists on this PR, skipping security");
+      console.log(
+        "Security review already exists on this PR, skipping security",
+      );
       runSecurityReview = false;
     }
 

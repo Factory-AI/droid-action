@@ -25,10 +25,11 @@ export function createCommentBody(
   branchLink: string = "",
   type: CommentType = "default",
 ): string {
-  const message = type === "security" 
-    ? "Droid is running a security check…" 
-    : "Droid is working…";
-  
+  const message =
+    type === "security"
+      ? "Droid is running a security check…"
+      : "Droid is working…";
+
   return `${message}
 
 ${jobRunLink}${branchLink}`;

@@ -21,7 +21,7 @@ async function run() {
     const securityResults = process.env.SECURITY_RESULTS || "";
 
     const context = parseGitHubContext();
-    
+
     if (!isEntityContext(context)) {
       throw new Error("Combine requires entity context (PR or issue)");
     }
@@ -47,7 +47,8 @@ async function run() {
         headRefName: prData.headRefName,
         headRefOid: prData.headRefOid,
       },
-      generatePrompt: (ctx) => generateCombinePrompt(ctx, codeReviewResults, securityResults),
+      generatePrompt: (ctx) =>
+        generateCombinePrompt(ctx, codeReviewResults, securityResults),
     });
 
     core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-combine");
@@ -86,7 +87,7 @@ async function run() {
 
     const droidArgParts: string[] = [];
     // Only include built-in tools in --enabled-tools
-    const builtInTools = allowedTools.filter(t => !t.includes("___"));
+    const builtInTools = allowedTools.filter((t) => !t.includes("___"));
     if (builtInTools.length > 0) {
       droidArgParts.push(`--enabled-tools "${builtInTools.join(",")}"`);
     }

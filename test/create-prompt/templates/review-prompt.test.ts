@@ -28,7 +28,9 @@ describe("generateReviewPrompt", () => {
     const prompt = generateReviewPrompt(context);
 
     expect(prompt).toContain("Objectives:");
-    expect(prompt).toContain("Review the current PR diff");
+    expect(prompt).toContain("Review the PR diff");
+    expect(prompt).toContain("git merge-base");
+    expect(prompt).toContain("git diff");
     expect(prompt).toContain("gh pr diff 42 --repo test-owner/test-repo");
     expect(prompt).toContain(
       "gh api repos/test-owner/test-repo/pulls/42/files",
@@ -37,13 +39,17 @@ describe("generateReviewPrompt", () => {
     expect(prompt).toContain("Do NOT post inline comments");
   });
 
-  it("emphasizes accuracy gates and comment limits", () => {
+  it("emphasizes accuracy gates and bug detection guidelines", () => {
     const prompt = generateReviewPrompt(createBaseContext());
 
-    expect(prompt).toContain("cap at 10 comments total");
+    expect(prompt).toContain("How Many Findings to Return:");
+    expect(prompt).toContain(
+      "Output all findings that the original author would fix",
+    );
+    expect(prompt).toContain("Key Guidelines for Bug Detection:");
+    expect(prompt).toContain("Priority Levels:");
+    expect(prompt).toContain("[P0]");
     expect(prompt).toContain("Never raise purely stylistic");
-    expect(prompt).toContain("Maximum 10 inline comments");
-    expect(prompt).toContain("False positives are very undesirable");
     expect(prompt).toContain(
       "Never repeat or re-raise an issue previously highlighted",
     );

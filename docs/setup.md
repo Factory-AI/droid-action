@@ -6,7 +6,7 @@
 
 1. Install the Droid GitHub app to your repository: https://github.com/apps/factory-droid
 2. Add `FACTORY_API_KEY` to your repository secrets. You can generate an API key at https://app.factory.ai/settings/api-keys
-3. Copy the workflow file from [`examples/droid.yml`](../examples/droid.yml) into your repository's `.github/workflows/`
+3. Copy the workflow files from [`.github/workflows/droid.yml`](../.github/workflows/droid.yml) and [`.github/workflows/droid-review.yml`](../.github/workflows/droid-review.yml) into your repository's `.github/workflows/`
 
 ## Security Best Practices
 

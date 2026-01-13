@@ -11,7 +11,7 @@ import { setupGitHubToken } from "../github/token";
 async function run() {
   try {
     const overrideToken = process.env.OVERRIDE_GITHUB_TOKEN?.trim();
-    
+
     let token: string;
     if (overrideToken) {
       console.log("Using provided GitHub token");

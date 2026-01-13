@@ -6,7 +6,11 @@
  */
 
 import { appendFileSync } from "fs";
-import { createJobRunLink, createCommentBody, type CommentType } from "./common";
+import {
+  createJobRunLink,
+  createCommentBody,
+  type CommentType,
+} from "./common";
 import {
   isPullRequestReviewCommentEvent,
   isPullRequestEvent,

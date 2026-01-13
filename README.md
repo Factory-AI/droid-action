@@ -24,7 +24,7 @@ Everything runs inside GitHub Actions using your Factory API key, so the bot nev
 2. **Create a Factory API Key**
    - Generate a token at [https://app.factory.ai/settings/api-keys](https://app.factory.ai/settings/api-keys) and save it as `FACTORY_API_KEY` in your repository or organization secrets.
 3. **Add the Action Workflows**
-   - Create workflow files under `.github/workflows/` based on your needs.
+   - Create two workflow files under `.github/workflows/` to separate on-demand tagging from automatic PR reviews, based on your needs.
 
 ### Setup
 

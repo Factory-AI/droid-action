@@ -22,14 +22,14 @@ async function run() {
 
     await runDroid(promptConfig.path, {
       droidArgs: process.env.INPUT_DROID_ARGS,
+      reasoningEffort: process.env.INPUT_REASONING_EFFORT,
       allowedTools: process.env.INPUT_ALLOWED_TOOLS,
       disallowedTools: process.env.INPUT_DISALLOWED_TOOLS,
       maxTurns: process.env.INPUT_MAX_TURNS,
       mcpTools: process.env.INPUT_MCP_TOOLS,
       systemPrompt: process.env.INPUT_SYSTEM_PROMPT,
       appendSystemPrompt: process.env.INPUT_APPEND_SYSTEM_PROMPT,
-      pathToDroidExecutable:
-        process.env.INPUT_PATH_TO_DROID_EXECUTABLE,
+      pathToDroidExecutable: process.env.INPUT_PATH_TO_DROID_EXECUTABLE,
       showFullOutput: process.env.INPUT_SHOW_FULL_OUTPUT,
     });
   } catch (error) {

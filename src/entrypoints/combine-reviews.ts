@@ -54,10 +54,7 @@ function generateCombinedSummary(
   sections.push("## 🔍 PR Review Summary\n");
 
   // Status overview
-  const statusTable = [
-    "| Review Type | Status |",
-    "|-------------|--------|",
-  ];
+  const statusTable = ["| Review Type | Status |", "|-------------|--------|"];
 
   if (codeStatus !== "skipped") {
     const codeIcon = codeStatus === "success" ? "✅" : "❌";
@@ -82,12 +79,14 @@ function generateCombinedSummary(
 
     for (const finding of codeResults.findings.slice(0, 10)) {
       sections.push(
-        `| ${finding.id} | ${finding.type} | \`${finding.file}\` | ${finding.line} | ${finding.description} |`
+        `| ${finding.id} | ${finding.type} | \`${finding.file}\` | ${finding.line} | ${finding.description} |`,
       );
     }
 
     if (codeResults.findings.length > 10) {
-      sections.push(`\n*...and ${codeResults.findings.length - 10} more findings*`);
+      sections.push(
+        `\n*...and ${codeResults.findings.length - 10} more findings*`,
+      );
     }
     sections.push("");
   } else if (codeStatus === "success") {
@@ -108,7 +107,8 @@ function generateCombinedSummary(
     };
 
     for (const finding of securityResults.findings) {
-      const sev = (finding.severity?.toUpperCase() || "MEDIUM") as keyof typeof severityCounts;
+      const sev = (finding.severity?.toUpperCase() ||
+        "MEDIUM") as keyof typeof severityCounts;
       if (sev in severityCounts) {
         severityCounts[sev]++;
       }
@@ -116,10 +116,14 @@ function generateCombinedSummary(
 
     sections.push("| Severity | Count |");
     sections.push("|----------|-------|");
-    if (severityCounts.CRITICAL > 0) sections.push(`| 🚨 CRITICAL | ${severityCounts.CRITICAL} |`);
-    if (severityCounts.HIGH > 0) sections.push(`| 🔴 HIGH | ${severityCounts.HIGH} |`);
-    if (severityCounts.MEDIUM > 0) sections.push(`| 🟡 MEDIUM | ${severityCounts.MEDIUM} |`);
-    if (severityCounts.LOW > 0) sections.push(`| 🟢 LOW | ${severityCounts.LOW} |`);
+    if (severityCounts.CRITICAL > 0)
+      sections.push(`| 🚨 CRITICAL | ${severityCounts.CRITICAL} |`);
+    if (severityCounts.HIGH > 0)
+      sections.push(`| 🔴 HIGH | ${severityCounts.HIGH} |`);
+    if (severityCounts.MEDIUM > 0)
+      sections.push(`| 🟡 MEDIUM | ${severityCounts.MEDIUM} |`);
+    if (severityCounts.LOW > 0)
+      sections.push(`| 🟢 LOW | ${severityCounts.LOW} |`);
     sections.push("");
 
     // Findings table
@@ -127,16 +131,18 @@ function generateCombinedSummary(
     sections.push("|----|----------|------|------|------|-----------|");
 
     for (const finding of securityResults.findings.slice(0, 10)) {
-      const cweLink = finding.cwe 
+      const cweLink = finding.cwe
         ? `[${finding.cwe}](https://cwe.mitre.org/data/definitions/${finding.cwe.replace("CWE-", "")}.html)`
         : "-";
       sections.push(
-        `| ${finding.id} | ${finding.severity || "MEDIUM"} | ${finding.type} | \`${finding.file}\` | ${finding.line} | ${cweLink} |`
+        `| ${finding.id} | ${finding.severity || "MEDIUM"} | ${finding.type} | \`${finding.file}\` | ${finding.line} | ${cweLink} |`,
       );
     }
 
     if (securityResults.findings.length > 10) {
-      sections.push(`\n*...and ${securityResults.findings.length - 10} more findings*`);
+      sections.push(
+        `\n*...and ${securityResults.findings.length - 10} more findings*`,
+      );
     }
     sections.push("");
   } else if (securityStatus === "success") {
@@ -192,7 +198,9 @@ async function run() {
       body: summary,
     });
 
-    console.log(`✅ Updated tracking comment ${commentId} with combined summary`);
+    console.log(
+      `✅ Updated tracking comment ${commentId} with combined summary`,
+    );
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     core.setFailed(`Combine reviews failed: ${errorMessage}`);
