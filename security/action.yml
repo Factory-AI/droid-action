@@ -1,0 +1,130 @@
+name: "Droid Security Review"
+description: "Run Droid security review on a PR"
+
+inputs:
+  factory_api_key:
+    description: "Factory API key"
+    required: true
+  github_token:
+    description: "GitHub token (optional - will use OIDC if not provided)"
+    required: false
+    default: ""
+  tracking_comment_id:
+    description: "ID of the tracking comment to update"
+    required: true
+  security_model:
+    description: "Model to use for security review"
+    required: false
+    default: ""
+  security_severity_threshold:
+    description: "Minimum severity to report"
+    required: false
+    default: "medium"
+  security_block_on_critical:
+    description: "Block PR on critical findings"
+    required: false
+    default: "true"
+  security_block_on_high:
+    description: "Block PR on high findings"
+    required: false
+    default: "false"
+  output_file:
+    description: "Path to write security results JSON"
+    required: false
+    default: ""
+
+outputs:
+  conclusion:
+    description: "Review conclusion (success/failure)"
+    value: ${{ steps.review.outputs.conclusion }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Bun
+      uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+      with:
+        bun-version: 1.2.11
+
+    - name: Install Dependencies
+      shell: bash
+      run: |
+        cd ${{ github.action_path }}/..
+        bun install
+        cd ${{ github.action_path }}/../base-action
+        bun install
+
+    - name: Install Droid CLI
+      shell: bash
+      run: |
+        curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        "$HOME/.local/bin/droid" --version
+
+    - name: Get GitHub Token
+      id: token
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../src/entrypoints/get-token.ts
+      env:
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+
+    - name: Install Security Skills
+      shell: bash
+      run: |
+        echo "Installing security skills from Factory-AI/skills..."
+        SKILLS_DIR="$HOME/.factory/skills"
+        mkdir -p "$SKILLS_DIR"
+
+        TEMP_DIR=$(mktemp -d)
+        git clone --filter=blob:none --sparse \
+          "https://github.com/Factory-AI/skills.git" \
+          "$TEMP_DIR" 2>/dev/null || {
+          echo "Warning: Could not clone skills repo."
+          exit 0
+        }
+
+        cd "$TEMP_DIR"
+        git sparse-checkout set \
+          skills/threat-model-generation \
+          skills/commit-security-scan \
+          skills/vulnerability-validation \
+          skills/security-review 2>/dev/null || true
+
+        for skill in threat-model-generation commit-security-scan vulnerability-validation security-review; do
+          if [ -d "skills/$skill" ]; then
+            cp -r "skills/$skill" "$SKILLS_DIR/"
+            echo "  Installed skill: $skill"
+          fi
+        done
+
+        rm -rf "$TEMP_DIR"
+        echo "Security skills installation complete"
+
+    - name: Generate Security Prompt
+      id: prompt
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../src/entrypoints/generate-review-prompt.ts
+      env:
+        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+        DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
+        SECURITY_MODEL: ${{ inputs.security_model }}
+        SECURITY_SEVERITY_THRESHOLD: ${{ inputs.security_severity_threshold }}
+        SECURITY_BLOCK_ON_CRITICAL: ${{ inputs.security_block_on_critical }}
+        SECURITY_BLOCK_ON_HIGH: ${{ inputs.security_block_on_high }}
+        REVIEW_TYPE: "security"
+
+    - name: Run Security Review
+      id: review
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../base-action/src/index.ts
+      env:
+        INPUT_PROMPT_FILE: ${{ runner.temp }}/droid-prompts/droid-prompt.txt
+        INPUT_DROID_ARGS: ${{ steps.prompt.outputs.droid_args }}
+        INPUT_MCP_TOOLS: ${{ steps.prompt.outputs.mcp_tools }}
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+        DROID_OUTPUT_FILE: ${{ inputs.output_file }}
