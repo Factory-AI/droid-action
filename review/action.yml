@@ -1,0 +1,83 @@
+name: "Droid Code Review"
+description: "Run Droid code review on a PR"
+
+inputs:
+  factory_api_key:
+    description: "Factory API key"
+    required: true
+  github_token:
+    description: "GitHub token (optional - will use OIDC if not provided)"
+    required: false
+    default: ""
+  tracking_comment_id:
+    description: "ID of the tracking comment to update"
+    required: true
+  review_model:
+    description: "Model to use for review"
+    required: false
+    default: ""
+  output_file:
+    description: "Path to write review results JSON"
+    required: false
+    default: ""
+
+outputs:
+  conclusion:
+    description: "Review conclusion (success/failure)"
+    value: ${{ steps.review.outputs.conclusion }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Bun
+      uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+      with:
+        bun-version: 1.2.11
+
+    - name: Install Dependencies
+      shell: bash
+      run: |
+        cd ${{ github.action_path }}/..
+        bun install
+        cd ${{ github.action_path }}/../base-action
+        bun install
+
+    - name: Install Droid CLI
+      shell: bash
+      run: |
+        curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        "$HOME/.local/bin/droid" --version
+
+    - name: Get GitHub Token
+      id: token
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../src/entrypoints/get-token.ts
+      env:
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+
+    - name: Generate Review Prompt
+      id: prompt
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../src/entrypoints/generate-review-prompt.ts
+      env:
+        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+        DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
+        REVIEW_MODEL: ${{ inputs.review_model }}
+        REVIEW_TYPE: "code"
+
+    - name: Run Code Review
+      id: review
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../base-action/src/index.ts
+      env:
+        INPUT_PROMPT_FILE: ${{ runner.temp }}/droid-prompts/droid-prompt.txt
+        INPUT_DROID_ARGS: ${{ steps.prompt.outputs.droid_args }}
+        INPUT_MCP_TOOLS: ${{ steps.prompt.outputs.mcp_tools }}
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+        DROID_OUTPUT_FILE: ${{ inputs.output_file }}

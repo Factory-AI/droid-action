@@ -2,8 +2,8 @@
 
 This GitHub Action powers the Factory **Droid** app. It watches your pull requests for the two supported commands and runs a full Droid Exec session to help you ship faster:
 
-* `@droid fill` — turns a bare pull request into a polished description that matches your template or our opinionated fallback.
-* `@droid review` — performs an automated code review, surfaces potential bugs, and leaves inline comments directly on the diff.
+- `@droid fill` — turns a bare pull request into a polished description that matches your template or our opinionated fallback.
+- `@droid review` — performs an automated code review, surfaces potential bugs, and leaves inline comments directly on the diff.
 
 Everything runs inside GitHub Actions using your Factory API key, so the bot never leaves your repository and operates with the permissions you grant.
 
@@ -18,11 +18,11 @@ Everything runs inside GitHub Actions using your Factory API key, so the bot nev
 ## Installation
 
 1. **Install the Droid GitHub App**
-   * Install from the Factory dashboard and grant it access to the repositories where you want Droid to operate.
+   - Install from the Factory dashboard and grant it access to the repositories where you want Droid to operate.
 2. **Create a Factory API Key**
-   * Generate a token at [https://app.factory.ai/settings/api-keys](https://app.factory.ai/settings/api-keys) and save it as `FACTORY_API_KEY` in your repository or organization secrets.
+   - Generate a token at [https://app.factory.ai/settings/api-keys](https://app.factory.ai/settings/api-keys) and save it as `FACTORY_API_KEY` in your repository or organization secrets.
 3. **Add the Action Workflows**
-   * Create two workflow files under `.github/workflows/` to separate on-demand tagging from automatic PR reviews.
+   - Create two workflow files under `.github/workflows/` to separate on-demand tagging from automatic PR reviews.
 
 `droid.yml` (responds to explicit `@droid` mentions):
 
@@ -105,26 +105,28 @@ Once committed, tagging `@droid fill` or `@droid review` on an open PR will trig
 ## Using the Commands
 
 ### `@droid fill`
-* Place the command in the PR description or in a top-level comment.
-* Droid searches for common PR template locations (`.github/pull_request_template.md`, etc.). When a template exists, it fills the sections; otherwise it writes a structured summary (overview, changes, testing, rollout).
-* The original request is replaced with the generated description so reviewers can merge immediately.
+
+- Place the command in the PR description or in a top-level comment.
+- Droid searches for common PR template locations (`.github/pull_request_template.md`, etc.). When a template exists, it fills the sections; otherwise it writes a structured summary (overview, changes, testing, rollout).
+- The original request is replaced with the generated description so reviewers can merge immediately.
 
 ### `@droid review`
-* Mention `@droid review` in a PR comment.
-* Droid inspects the diff, prioritizes potential bugs or high-impact issues, and leaves inline comments directly on the changed lines.
-* A short summary comment is posted in the original thread highlighting the findings and linking to any inline feedback.
+
+- Mention `@droid review` in a PR comment.
+- Droid inspects the diff, prioritizes potential bugs or high-impact issues, and leaves inline comments directly on the changed lines.
+- A short summary comment is posted in the original thread highlighting the findings and linking to any inline feedback.
 
 ## Configuration Essentials
 
-| Input | Purpose |
-| --- | --- |
-| `factory_api_key` | **Required.** Grants Droid Exec permission to run via Factory. |
-| `github_token` | Optional override if you prefer a custom GitHub App/token. By default the installed app token is used. |
-| `review_model` | Optional. Override the model used for code review (e.g., `claude-sonnet-4-5-20250929`, `gpt-5.1-codex`). Only applies to review flows. |
-| `fill_model` | Optional. Override the model used for PR description fill (e.g., `claude-sonnet-4-5-20250929`, `gpt-5.1-codex`). Only applies to fill flows. |
+| Input             | Purpose                                                                                                                                      |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `factory_api_key` | **Required.** Grants Droid Exec permission to run via Factory.                                                                               |
+| `github_token`    | Optional override if you prefer a custom GitHub App/token. By default the installed app token is used.                                       |
+| `review_model`    | Optional. Override the model used for code review (e.g., `claude-sonnet-4-5-20250929`, `gpt-5.1-codex`). Only applies to review flows.       |
+| `fill_model`      | Optional. Override the model used for PR description fill (e.g., `claude-sonnet-4-5-20250929`, `gpt-5.1-codex`). Only applies to fill flows. |
 
 ## Troubleshooting & Support
 
-* Check the workflow run linked from the Droid tracking comment for execution logs.
-* Verify that the workflow file and repository allow the GitHub App to run (branch protections can block bots).
-* Need more detail? Start with the [Setup Guide](./docs/setup.md) or [FAQ](./docs/faq.md).
+- Check the workflow run linked from the Droid tracking comment for execution logs.
+- Verify that the workflow file and repository allow the GitHub App to run (branch protections can block bots).
+- Need more detail? Start with the [Setup Guide](./docs/setup.md) or [FAQ](./docs/faq.md).
