@@ -9,6 +9,7 @@ import * as mcpInstaller from "../../src/mcp/install-mcp-server";
 import * as actorValidation from "../../src/github/validation/actor";
 import * as promptModule from "../../src/create-prompt";
 import * as core from "@actions/core";
+import * as childProcess from "node:child_process";
 
 describe("review command integration", () => {
   const originalRunnerTemp = process.env.RUNNER_TEMP;
@@ -21,6 +22,7 @@ describe("review command integration", () => {
   let setOutputSpy: ReturnType<typeof spyOn>;
   let exportVarSpy: ReturnType<typeof spyOn>;
   let promptSpy: ReturnType<typeof spyOn>;
+  let execSyncSpy: ReturnType<typeof spyOn>;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(path.join(os.tmpdir(), "review-int-"));
@@ -37,6 +39,16 @@ describe("review command integration", () => {
     promptSpy = spyOn(promptModule, "createPrompt").mockResolvedValue();
     setOutputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
     exportVarSpy = spyOn(core, "exportVariable").mockImplementation(() => {});
+
+    execSyncSpy = spyOn(childProcess, "execSync").mockImplementation(
+      ((cmd: string) => {
+        if (cmd.includes("merge-base")) return "abc123def456\n";
+        if (cmd.includes("git --no-pager diff")) {
+          return "diff --git a/file.ts b/file.ts\n+added line\n";
+        }
+        return "";
+      }) as typeof childProcess.execSync,
+    );
   });
 
   afterEach(async () => {
@@ -47,6 +59,7 @@ describe("review command integration", () => {
     promptSpy.mockRestore();
     setOutputSpy.mockRestore();
     exportVarSpy.mockRestore();
+    execSyncSpy.mockRestore();
 
     if (process.env.RUNNER_TEMP) {
       await rm(process.env.RUNNER_TEMP, { recursive: true, force: true });
@@ -90,18 +103,24 @@ describe("review command integration", () => {
       } as any,
     });
 
-    const octokit = {
-      rest: {},
-      graphql: () =>
-        Promise.resolve({
-          repository: {
-            pullRequest: {
-              baseRefName: "main",
-              headRefName: "feature/review",
-              headRefOid: "def456",
-            },
-          },
-        }),
+    const octokit = { 
+      rest: {
+        issues: {
+          listComments: () => Promise.resolve({ data: [] }),
+        },
+        pulls: {
+          listReviewComments: () => Promise.resolve({ data: [] }),
+        },
+      }, 
+      graphql: () => Promise.resolve({
+        repository: {
+          pullRequest: {
+            baseRefName: "main",
+            headRefName: "feature/review",
+            headRefOid: "def456",
+          }
+        }
+      })
     } as any;
 
     graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({

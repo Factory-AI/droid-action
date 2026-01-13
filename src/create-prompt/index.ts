@@ -15,14 +15,20 @@ import {
   isPullRequestReviewCommentEvent,
 } from "../github/context";
 import type { ParsedGitHubContext } from "../github/context";
-import type { CommonFields, PreparedContext, EventData } from "./types";
+import type {
+  CommonFields,
+  PreparedContext,
+  EventData,
+  ReviewArtifacts,
+} from "./types";
 
-export type { CommonFields, PreparedContext } from "./types";
+export type { CommonFields, PreparedContext, ReviewArtifacts } from "./types";
 
 const BASE_ALLOWED_TOOLS = [
   "Execute",
   "Edit",
   "Create",
+  "ApplyPatch",
   "Read",
   "Glob",
   "Grep",
@@ -70,6 +76,7 @@ export function prepareContext(
   baseBranch?: string,
   droidBranch?: string,
   prBranchData?: { headRefName: string; headRefOid: string },
+  reviewArtifacts?: ReviewArtifacts,
 ): PreparedContext {
   const repository = context.repository.full_name;
   const triggerPhrase = context.inputs.triggerPhrase || "@droid";
@@ -123,6 +130,10 @@ export function prepareContext(
 
   if (prBranchData) {
     result.prBranchData = prBranchData;
+  }
+
+  if (reviewArtifacts) {
+    result.reviewArtifacts = reviewArtifacts;
   }
 
   return result;
@@ -291,6 +302,7 @@ export type PromptCreationOptions = {
   allowedTools?: string[];
   disallowedTools?: string[];
   includeActionsTools?: boolean;
+  reviewArtifacts?: ReviewArtifacts;
 };
 
 export async function createPrompt({
@@ -303,6 +315,7 @@ export async function createPrompt({
   allowedTools = [],
   disallowedTools = [],
   includeActionsTools = false,
+  reviewArtifacts,
 }: PromptCreationOptions) {
   try {
     const droidCommentId = commentId?.toString();
@@ -312,6 +325,7 @@ export async function createPrompt({
       baseBranch,
       droidBranch,
       prBranchData,
+      reviewArtifacts,
     );
 
     await mkdir(`${process.env.RUNNER_TEMP || "/tmp"}/droid-prompts`, {

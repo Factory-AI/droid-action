@@ -94,6 +94,7 @@ mock.module("child_process", () => ({
     });
   },
   spawn: mockSpawn,
+  execSync: (_cmd: string) => "",
 }));
 
 type RunDroidModule = typeof import("../src/run-droid");
