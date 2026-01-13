@@ -113,6 +113,11 @@ Cross-reference capability:
 - If a test references a constant or path, verify it matches the production code's actual behavior.
 - For any suspicious pattern, search the codebase to confirm your understanding before flagging an issue.
 
+Import verification:
+- For new imports added in the diff, use Grep to verify the imported symbol (class, function, constant) actually exists in the codebase or is a valid external package.
+- For imports from the same project, confirm the symbol is exported from the source file.
+- Flag any import that references a non-existent symbol as a bug (will cause ImportError/ModuleNotFoundError at runtime).
+
 Accuracy gates:
 - Base findings strictly on the current diff and repo context available via gh/MCP; avoid speculation.
 - If confidence is low, phrase a single concise clarifying question instead of asserting a bug.
