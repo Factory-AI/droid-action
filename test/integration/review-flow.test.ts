@@ -145,14 +145,13 @@ describe("review command integration", () => {
     const prompt = await readFile(promptPath, "utf8");
 
     expect(prompt).toContain("You are performing an automated code review");
-    expect(prompt).toContain("github_inline_comment___create_inline_comment");
     expect(prompt).toContain("How Many Findings to Return:");
     expect(prompt).toContain("Output all findings that the original author would fix");
     expect(prompt).toContain("Key Guidelines for Bug Detection:");
     expect(prompt).toContain("Priority Levels:");
     expect(prompt).toContain("gh pr view 7 --repo test-owner/test-repo --json comments,reviews");
-    expect(prompt).toContain("every substantive comment must be inline on the changed line");
-    expect(prompt).toContain("github_pr___resolve_review_thread");
+    expect(prompt).toContain("code-review-results.json");
+    expect(prompt).toContain("Do NOT post inline comments");
 
     const droidArgsCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "droid_args",
