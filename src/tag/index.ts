@@ -152,6 +152,8 @@ export async function prepareTagExecution({
     const hasExisting = await hasExistingSecurityReview(octokit, context);
     if (hasExisting) {
       console.log("Security review already exists on this PR, skipping");
+      core.setOutput("run_code_review", "false");
+      core.setOutput("run_security_review", "false");
       return {
         skipped: true,
         reason: "security_review_exists",

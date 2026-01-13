@@ -94,11 +94,11 @@ jobs:
 
   combine:
     needs: [prepare, code-review, security-review]
-    # Only run combine when BOTH code review AND security review were executed
+    # Run combine when EITHER code review OR security review was executed
     if: |
       always() &&
-      needs.prepare.outputs.run_code_review == 'true' &&
-      needs.prepare.outputs.run_security_review == 'true'
+      (needs.prepare.outputs.run_code_review == 'true' ||
+       needs.prepare.outputs.run_security_review == 'true')
     runs-on: ubuntu-latest
     permissions:
       contents: write

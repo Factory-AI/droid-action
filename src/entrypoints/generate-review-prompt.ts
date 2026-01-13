@@ -20,6 +20,10 @@ async function run() {
     const reviewType = process.env.REVIEW_TYPE || "code";
     const commentId = parseInt(process.env.DROID_COMMENT_ID || "0");
 
+    if (!commentId) {
+      throw new Error("DROID_COMMENT_ID is required and must be non-zero");
+    }
+
     const context = parseGitHubContext();
 
     if (!isEntityContext(context)) {
