@@ -29,18 +29,29 @@ Objectives:
 3) Leave concise inline comments (1-2 sentences) on bugs introduced by the PR. You may also comment on unchanged lines if the PR's changes expose or trigger issues there—but explain the connection clearly.
 
 Procedure:
-- Run: gh pr view ${prNumber} --repo ${repoFullName} --json comments,reviews
-- Prefer reviewing the local git diff since the PR branch is already checked out:
-  - Ensure you have the base branch ref locally (fetch if needed).
-  - Find merge base between HEAD and the base branch.
-  - Run git diff from that merge base to HEAD to see exactly what would merge.
-  - Example:
-    - git fetch origin ${baseRefName}:refs/remotes/origin/${baseRefName}
-    - MERGE_BASE=$(git merge-base HEAD refs/remotes/origin/${baseRefName})
-    - git diff $MERGE_BASE..HEAD
-- Use gh PR diff/file APIs only as a fallback when local git diff is not possible:
-  - gh pr diff ${prNumber} --repo ${repoFullName}
-  - gh api repos/${repoFullName}/pulls/${prNumber}/files --paginate --jq '.[] | {filename,patch,additions,deletions}'
+Follow these phases IN ORDER. Do not skip to submitting findings until you complete Phase 1.
+
+## Phase 1: Context Gathering (REQUIRED before making any findings)
+1. Check existing comments: gh pr view ${prNumber} --repo ${repoFullName} --json comments,reviews
+2. Get the full diff:
+   - git fetch origin ${baseRefName}:refs/remotes/origin/${baseRefName}
+   - MERGE_BASE=$(git merge-base HEAD refs/remotes/origin/${baseRefName})
+   - git diff $MERGE_BASE..HEAD
+3. For EACH file in the diff, gather context:
+   - For new imports: Grep to verify the imported symbol exists
+   - For new/modified functions: Grep for callers to understand usage patterns
+   - For functions that process data: Read surrounding code to understand expected types
+4. Do NOT identify bugs yet - focus only on understanding the changes.
+
+## Phase 2: Issue Identification (ONLY AFTER Phase 1 is complete)
+1. Review ALL changed lines systematically - Do NOT stop after finding just a few issues
+2. For each potential issue:
+   - Verify with Grep/Read before flagging (do not speculate)
+   - Trace data flow to confirm the bug path exists
+   - Check if the pattern exists elsewhere in the codebase (may be intentional)
+3. Continue until you have reviewed every changed line in every file
+
+## Phase 3: Submit Review
 - Prefer github_inline_comment___create_inline_comment with side="RIGHT" to post inline findings on changed/added lines
 - Compute exact diff positions (path + position) for each issue; every substantive comment must be inline on the changed line (no new top-level issue comments).
 - Detect prior top-level "no issues" comments authored by this bot (e.g., "no issues", "No issues found", "LGTM", including emoji-prefixed variants).
