@@ -134,8 +134,8 @@ Commenting rules:
 Submission:
 - Do not submit inline comments when:
   - the PR appears formatting-only, or
-  - all findings are low-severity (P2/P3), or
   - you cannot anchor a high-confidence issue to a specific changed line.
+- Submit all findings P0-P3 that meet the bug detection criteria. Low-severity issues (P2/P3) should still be submitted if they would cause runtime errors, incorrect behavior, or security vulnerabilities.
 - Do not escalate style/formatting into P0/P1 just to justify leaving an inline comment.
 - If no issues are found and a prior "no issues" comment from this bot already exists, skip submitting another comment to avoid redundancy.
 - If no issues are found and no prior "no issues" comment exists, post a single brief top-level summary noting no issues.
