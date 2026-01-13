@@ -101,10 +101,22 @@ export async function prepareReviewMode({
   const droidArgParts: string[] = [];
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
 
-  // Add model override if specified
   const reviewModel = process.env.REVIEW_MODEL?.trim();
-  if (reviewModel) {
-    droidArgParts.push(`--model "${reviewModel}"`);
+  const reasoningEffort = process.env.REASONING_EFFORT?.trim();
+
+  // Default behavior (behind the scenes): if neither is provided, run GPT-5.2 at high reasoning.
+  if (!reviewModel && !reasoningEffort) {
+    droidArgParts.push(`--model "gpt-5.2"`);
+    droidArgParts.push(`--reasoning-effort "high"`);
+  } else {
+    // Add model override if specified
+    if (reviewModel) {
+      droidArgParts.push(`--model "${reviewModel}"`);
+    }
+    // Add reasoning effort override if specified
+    if (reasoningEffort) {
+      droidArgParts.push(`--reasoning-effort "${reasoningEffort}"`);
+    }
   }
 
   if (normalizedUserArgs) {

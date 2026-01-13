@@ -19,6 +19,11 @@ inputs:
     required: false
     default: ""
 
+  reasoning_effort:
+    description: "Optional reasoning effort to pass to Droid Exec via --reasoning-effort (e.g., 'low', 'medium', 'high', 'xhigh'). If empty, no --reasoning-effort flag is passed."
+    required: false
+    default: ""
+
   # Action settings
   droid_args:
     description: "Additional arguments to pass directly to Droid CLI (e.g., '--auto', '--enabled-tools read,edit')"
@@ -113,6 +118,7 @@ runs:
         INPUT_PROMPT_FILE: ${{ inputs.prompt_file }}
         INPUT_SETTINGS: ${{ inputs.settings }}
         INPUT_DROID_ARGS: ${{ inputs.droid_args }}
+        INPUT_REASONING_EFFORT: ${{ inputs.reasoning_effort }}
         INPUT_PATH_TO_DROID_EXECUTABLE: ${{ inputs.path_to_droid_executable }}
         INPUT_PATH_TO_BUN_EXECUTABLE: ${{ inputs.path_to_bun_executable }}
         INPUT_SHOW_FULL_OUTPUT: ${{ inputs.show_full_output }}
