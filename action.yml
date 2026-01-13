@@ -94,6 +94,10 @@ inputs:
   review_model:
     description: "Override the model used for code review (e.g., 'claude-sonnet-4-5-20250929', 'gpt-5.1-codex'). Only applies to review flows."
     required: false
+    default: "gpt-5.2"
+  reasoning_effort:
+    description: "Override reasoning effort for review flows (passed to Droid Exec as --reasoning-effort). If empty and review_model is also empty, the action defaults internally to gpt-5.2 at high reasoning."
+    required: false
     default: ""
   fill_model:
     description: "Override the model used for PR description fill (e.g., 'claude-sonnet-4-5-20250929', 'gpt-5.1-codex'). Only applies to fill flows."
@@ -172,6 +176,7 @@ runs:
         SECURITY_SCAN_SCHEDULE: ${{ inputs.security_scan_schedule }}
         SECURITY_SCAN_DAYS: ${{ inputs.security_scan_days }}
         REVIEW_MODEL: ${{ inputs.review_model }}
+        REASONING_EFFORT: ${{ inputs.reasoning_effort }}
         FILL_MODEL: ${{ inputs.fill_model }}
         ADDITIONAL_PERMISSIONS: ${{ inputs.additional_permissions }}
         DROID_ARGS: ${{ inputs.droid_args }}
@@ -273,6 +278,18 @@ runs:
         if [ "$VERIFIED_COUNT" -ne "$INSTALLED_COUNT" ]; then
           echo "Warning: Skill verification mismatch. Expected $INSTALLED_COUNT, found $VERIFIED_COUNT in $SKILLS_DIR"
         fi
+
+    - name: Checkout PR branch for review
+      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.review_pr_number != ''
+      shell: bash
+      run: |
+        echo "Checking out PR #${{ steps.prepare.outputs.review_pr_number }} branch for full file access..."
+        # Reset any local changes from the merge commit to allow clean checkout
+        git reset --hard HEAD
+        gh pr checkout ${{ steps.prepare.outputs.review_pr_number }}
+        echo "Successfully checked out PR branch: $(git rev-parse --abbrev-ref HEAD)"
+      env:
+        GH_TOKEN: ${{ steps.prepare.outputs.github_token }}
 
     - name: Run Droid Exec
       id: droid

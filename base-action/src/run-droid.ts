@@ -68,6 +68,7 @@ function sanitizeJsonOutput(
 
 export type DroidOptions = {
   droidArgs?: string;
+  reasoningEffort?: string;
   pathToDroidExecutable?: string;
   allowedTools?: string;
   disallowedTools?: string;
@@ -89,6 +90,11 @@ export function prepareRunConfig(
   options: DroidOptions,
 ): PreparedConfig {
   const droidArgs = [...BASE_ARGS];
+
+  // Add reasoning effort only when explicitly requested
+  if (options.reasoningEffort?.trim()) {
+    droidArgs.push("--reasoning-effort", options.reasoningEffort.trim());
+  }
 
   // Parse and add user's custom Droid arguments
   if (options.droidArgs?.trim()) {
