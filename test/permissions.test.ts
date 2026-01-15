@@ -74,8 +74,6 @@ describe("checkWritePermissions", () => {
       securityBlockOnCritical: true,
       securityBlockOnHigh: false,
       securityNotifyTeam: "",
-      securityScanSchedule: false,
-      securityScanDays: 7,
     },
   });
 

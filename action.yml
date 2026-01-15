@@ -83,14 +83,6 @@ inputs:
     description: "GitHub team to @mention on critical findings (e.g., '@org/security-team')."
     required: false
     default: ""
-  security_scan_schedule:
-    description: "Enable scheduled security scans. Set to 'true' for schedule events to trigger full repository scans."
-    required: false
-    default: "false"
-  security_scan_days:
-    description: "Number of days of commits to scan for scheduled security scans. Only applies when security_scan_schedule is enabled."
-    required: false
-    default: "7"
   review_model:
     description: "Override the model used for code review (e.g., 'claude-sonnet-4-5-20250929', 'gpt-5.1-codex'). Only applies to review flows."
     required: false
@@ -169,8 +161,6 @@ runs:
         SECURITY_BLOCK_ON_CRITICAL: ${{ inputs.security_block_on_critical }}
         SECURITY_BLOCK_ON_HIGH: ${{ inputs.security_block_on_high }}
         SECURITY_NOTIFY_TEAM: ${{ inputs.security_notify_team }}
-        SECURITY_SCAN_SCHEDULE: ${{ inputs.security_scan_schedule }}
-        SECURITY_SCAN_DAYS: ${{ inputs.security_scan_days }}
         REVIEW_MODEL: ${{ inputs.review_model }}
         FILL_MODEL: ${{ inputs.fill_model }}
         ADDITIONAL_PERMISSIONS: ${{ inputs.additional_permissions }}

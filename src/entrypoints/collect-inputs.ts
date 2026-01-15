@@ -32,8 +32,6 @@ export function collectActionInputsPresence(): void {
     security_block_on_critical: "true",
     security_block_on_high: "false",
     security_notify_team: "",
-    security_scan_schedule: "false",
-    security_scan_days: "7",
   };
 
   const allInputsJson = process.env.ALL_INPUTS;

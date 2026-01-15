@@ -25,8 +25,6 @@ const defaultInputs = {
   securityBlockOnCritical: true,
   securityBlockOnHigh: false,
   securityNotifyTeam: "",
-  securityScanSchedule: false,
-  securityScanDays: 7,
 };
 
 const defaultRepository = {

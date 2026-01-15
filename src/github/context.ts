@@ -96,8 +96,6 @@ type BaseContext = {
     securityBlockOnCritical: boolean;
     securityBlockOnHigh: boolean;
     securityNotifyTeam: string;
-    securityScanSchedule: boolean;
-    securityScanDays: number;
   };
 };
 
@@ -156,11 +154,6 @@ export function parseGitHubContext(): GitHubContext {
         process.env.SECURITY_BLOCK_ON_CRITICAL !== "false",
       securityBlockOnHigh: process.env.SECURITY_BLOCK_ON_HIGH === "true",
       securityNotifyTeam: process.env.SECURITY_NOTIFY_TEAM ?? "",
-      securityScanSchedule: process.env.SECURITY_SCAN_SCHEDULE === "true",
-      securityScanDays: Math.max(
-        1,
-        parseInt(process.env.SECURITY_SCAN_DAYS ?? "7", 10) || 7,
-      ),
     },
   };
 

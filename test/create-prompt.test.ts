@@ -32,8 +32,6 @@ describe("prepareContext", () => {
       securityBlockOnCritical: true,
       securityBlockOnHigh: false,
       securityNotifyTeam: "",
-      securityScanSchedule: false,
-      securityScanDays: 7,
     },
   } as const;
 
