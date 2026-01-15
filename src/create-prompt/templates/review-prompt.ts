@@ -49,7 +49,7 @@ Follow these phases **in order**. Do not submit findings until Phase 1 and Phase
 
    * \`git fetch origin ${baseRefName}:refs/remotes/origin/${baseRefName}\`
    * \`MERGE_BASE=$(git merge-base HEAD refs/remotes/origin/${baseRefName})\`
-   * \`git diff $MERGE_BASE..HEAD\`
+   * \`git --no-pager diff $MERGE_BASE..HEAD\`
 
 3. For **each file in the diff**, gather context:
 
@@ -158,6 +158,7 @@ One short paragraph explaining *why* this is a bug and *how* it manifests.
 
 * PR is formatting-only
 * You cannot anchor a high-confidence issue to a specific changed line
+* All findings are low-severity (P2/P3)
 * All findings fail the Reporting Gate above
 
 ### Tools & mechanics
