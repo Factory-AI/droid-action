@@ -12,6 +12,12 @@ export function generateReviewPrompt(context: PreparedContext): string {
   const headSha = context.prBranchData?.headRefOid ?? "unknown";
   const baseRefName = context.eventData.baseBranch ?? "unknown";
 
+  const diffPath =
+    context.reviewArtifacts?.diffPath ?? "$RUNNER_TEMP/droid-prompts/pr.diff";
+  const commentsPath =
+    context.reviewArtifacts?.commentsPath ??
+    "$RUNNER_TEMP/droid-prompts/existing_comments.json";
+
   return `You are performing an automated code review for PR #${prNumber} in ${repoFullName}.
 The gh CLI is installed and authenticated via GH_TOKEN.
 
@@ -23,6 +29,29 @@ The gh CLI is installed and authenticated via GH_TOKEN.
 * PR Head SHA: ${headSha}
 * PR Base Ref: ${baseRefName}
 * The PR branch has already been checked out. You have full access to read any file in the codebase, not just the diff output.
+
+### Pre-computed Review Artifacts
+
+The following files have been pre-computed and contain the COMPLETE data for this PR:
+
+* **Full PR Diff**: \`${diffPath}\` - Contains the COMPLETE diff of ALL changed files (already computed via \`git merge-base\` and \`git diff\`)
+* **Existing Comments**: \`${commentsPath}\` - Contains all existing PR comments and reviews in JSON format
+
+**IMPORTANT**: Use these pre-computed files instead of running git or gh commands to fetch diff/comments. This ensures you have access to the COMPLETE data without truncation.
+
+---
+
+## CRITICAL INSTRUCTION
+
+**DO NOT STOP UNTIL YOU HAVE REVIEWED EVERY SINGLE CHANGED FILE IN THE DIFF.**
+
+You MUST:
+1. Read the ENTIRE \`${diffPath}\` file first (use offset/limit if needed for large files)
+2. Create a mental checklist of ALL files that were changed
+3. Review EACH file systematically - do not skip any file
+4. Only submit your review AFTER you have analyzed every single changed file
+
+If the diff is large, work through it methodically. Do not rush. Do not skip files. The quality of your review depends on thoroughness.
 
 ---
 
@@ -42,22 +71,24 @@ Follow these phases **in order**. Do not submit findings until Phase 1 and Phase
 
 ## Phase 1: Context Gathering (REQUIRED — do not report bugs yet)
 
-1. Inspect existing comments:
-   \`gh pr view ${prNumber} --repo ${repoFullName} --json comments,reviews\`
+1. **Read existing comments** from the pre-computed file:
+   \`Read ${commentsPath}\`
 
-2. Compute the exact merge diff:
+2. **Read the COMPLETE diff** from the pre-computed file:
+   \`Read ${diffPath}\`
+   
+   If the file is large (>2400 lines), read it in chunks using offset/limit parameters.
+   **DO NOT proceed until you have read the ENTIRE diff.**
 
-   * \`git fetch origin ${baseRefName}:refs/remotes/origin/${baseRefName}\`
-   * \`MERGE_BASE=$(git merge-base HEAD refs/remotes/origin/${baseRefName})\`
-   * \`git --no-pager diff $MERGE_BASE..HEAD\`
+3. **List all changed files** - After reading the diff, explicitly list every file that was changed. This is your checklist.
 
-3. For **each file in the diff**, gather context:
+4. For **each file in the diff**, gather context:
 
    * New imports → Grep to confirm the symbol exists
    * New/modified functions → Grep for callers to understand usage
    * Data-processing code → Read surrounding code to infer expected types
 
-4. Do **not** identify or report bugs yet. This phase is for understanding only.
+5. Do **not** identify or report bugs yet. This phase is for understanding only.
 
 ---
 

@@ -29,10 +29,58 @@ describe("generateReviewPrompt", () => {
 
     expect(prompt).toContain("## Objectives");
     expect(prompt).toContain("Re-check existing review comments");
-    expect(prompt).toContain("git merge-base");
-    expect(prompt).toContain("git --no-pager diff $MERGE_BASE..HEAD");
     expect(prompt).toContain("github_inline_comment___create_inline_comment");
-    expect(prompt).toContain("**Do NOT call** `github_pr___resolve_review_thread`");
+    expect(prompt).toContain(
+      "**Do NOT call** `github_pr___resolve_review_thread`",
+    );
+  });
+
+  it("includes pre-computed artifact references when provided", () => {
+    const context = createBaseContext({
+      reviewArtifacts: {
+        diffPath: "/tmp/test/pr.diff",
+        commentsPath: "/tmp/test/existing_comments.json",
+      },
+    });
+
+    const prompt = generateReviewPrompt(context);
+
+    expect(prompt).toContain("### Pre-computed Review Artifacts");
+    expect(prompt).toContain("/tmp/test/pr.diff");
+    expect(prompt).toContain("/tmp/test/existing_comments.json");
+    expect(prompt).toContain("COMPLETE diff");
+  });
+
+  it("includes critical instruction to review all files", () => {
+    const context = createBaseContext();
+
+    const prompt = generateReviewPrompt(context);
+
+    expect(prompt).toContain("## CRITICAL INSTRUCTION");
+    expect(prompt).toContain(
+      "DO NOT STOP UNTIL YOU HAVE REVIEWED EVERY SINGLE CHANGED FILE",
+    );
+    expect(prompt).toContain("Review EACH file systematically");
+  });
+
+  it("instructs to read from pre-computed files in Phase 1", () => {
+    const context = createBaseContext({
+      reviewArtifacts: {
+        diffPath: "/tmp/droid/pr.diff",
+        commentsPath: "/tmp/droid/comments.json",
+      },
+    });
+
+    const prompt = generateReviewPrompt(context);
+
+    expect(prompt).toContain(
+      "Read existing comments** from the pre-computed file",
+    );
+    expect(prompt).toContain("Read /tmp/droid/comments.json");
+    expect(prompt).toContain(
+      "Read the COMPLETE diff** from the pre-computed file",
+    );
+    expect(prompt).toContain("Read /tmp/droid/pr.diff");
   });
 
   it("emphasizes accuracy gates and bug detection guidelines", () => {
@@ -48,7 +96,9 @@ describe("generateReviewPrompt", () => {
   it("describes submission guidance", () => {
     const prompt = generateReviewPrompt(createBaseContext());
 
-    expect(prompt).toContain("Use `github_inline_comment___create_inline_comment`");
+    expect(prompt).toContain(
+      "Use `github_inline_comment___create_inline_comment`",
+    );
     expect(prompt).toContain("Do **not** approve or request changes");
     expect(prompt).toContain("github_pr___submit_review");
     expect(prompt).toContain("### When NOT to submit");

@@ -6,6 +6,8 @@ import { createMockContext } from "../../mockContext";
 import * as promptModule from "../../../src/create-prompt";
 import * as mcpInstaller from "../../../src/mcp/install-mcp-server";
 import * as comments from "../../../src/github/operations/comments/create-initial";
+import * as childProcess from "child_process";
+import * as fsPromises from "fs/promises";
 
 const MOCK_PR_DATA = {
   title: "PR for review",
@@ -27,16 +29,21 @@ const MOCK_PR_DATA = {
 describe("prepareReviewMode", () => {
   const originalArgs = process.env.DROID_ARGS;
   const originalReviewModel = process.env.REVIEW_MODEL;
+  const originalRunnerTemp = process.env.RUNNER_TEMP;
   let graphqlSpy: ReturnType<typeof spyOn>;
   let promptSpy: ReturnType<typeof spyOn>;
   let mcpSpy: ReturnType<typeof spyOn>;
   let setOutputSpy: ReturnType<typeof spyOn>;
   let createInitialSpy: ReturnType<typeof spyOn>;
   let exportVariableSpy: ReturnType<typeof spyOn>;
+  let execSyncSpy: ReturnType<typeof spyOn>;
+  let writeFileSpy: ReturnType<typeof spyOn>;
+  let mkdirSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
     process.env.DROID_ARGS = "";
     delete process.env.REVIEW_MODEL;
+    process.env.RUNNER_TEMP = "/tmp/test-runner";
 
     promptSpy = spyOn(promptModule, "createPrompt").mockResolvedValue();
     mcpSpy = spyOn(mcpInstaller, "prepareMcpTools").mockResolvedValue(
@@ -50,6 +57,21 @@ describe("prepareReviewMode", () => {
     exportVariableSpy = spyOn(core, "exportVariable").mockImplementation(
       () => {},
     );
+    // Mock execSync for git commands
+    execSyncSpy = spyOn(childProcess, "execSync").mockImplementation(
+      ((cmd: string) => {
+        if (cmd.includes("merge-base")) {
+          return "abc123def456\n";
+        }
+        if (cmd.includes("diff")) {
+          return "diff --git a/file.ts b/file.ts\n+added line\n";
+        }
+        return "";
+      }) as typeof childProcess.execSync,
+    );
+    // Mock file system operations
+    writeFileSpy = spyOn(fsPromises, "writeFile").mockResolvedValue();
+    mkdirSpy = spyOn(fsPromises, "mkdir").mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -59,11 +81,19 @@ describe("prepareReviewMode", () => {
     setOutputSpy.mockRestore();
     createInitialSpy.mockRestore();
     exportVariableSpy.mockRestore();
+    execSyncSpy.mockRestore();
+    writeFileSpy.mockRestore();
+    mkdirSpy.mockRestore();
     process.env.DROID_ARGS = originalArgs;
     if (originalReviewModel !== undefined) {
       process.env.REVIEW_MODEL = originalReviewModel;
     } else {
       delete process.env.REVIEW_MODEL;
+    }
+    if (originalRunnerTemp !== undefined) {
+      process.env.RUNNER_TEMP = originalRunnerTemp;
+    } else {
+      delete process.env.RUNNER_TEMP;
     }
   });
 
@@ -81,7 +111,14 @@ describe("prepareReviewMode", () => {
     });
 
     const octokit = {
-      rest: {},
+      rest: {
+        issues: {
+          listComments: () => Promise.resolve({ data: [] }),
+        },
+        pulls: {
+          listReviewComments: () => Promise.resolve({ data: [] }),
+        },
+      },
       graphql: () =>
         Promise.resolve({
           repository: {
@@ -166,7 +203,14 @@ describe("prepareReviewMode", () => {
     });
 
     const octokit = {
-      rest: {},
+      rest: {
+        issues: {
+          listComments: () => Promise.resolve({ data: [] }),
+        },
+        pulls: {
+          listReviewComments: () => Promise.resolve({ data: [] }),
+        },
+      },
       graphql: () =>
         Promise.resolve({
           repository: {
@@ -227,7 +271,14 @@ describe("prepareReviewMode", () => {
     });
 
     const octokit = {
-      rest: {},
+      rest: {
+        issues: {
+          listComments: () => Promise.resolve({ data: [] }),
+        },
+        pulls: {
+          listReviewComments: () => Promise.resolve({ data: [] }),
+        },
+      },
       graphql: () =>
         Promise.resolve({
           repository: {
@@ -260,7 +311,9 @@ describe("prepareReviewMode", () => {
     const droidArgsCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "droid_args",
     ) as [string, string] | undefined;
-    expect(droidArgsCall?.[1]).toContain('--model "claude-sonnet-4-5-20250929"');
+    expect(droidArgsCall?.[1]).toContain(
+      '--model "claude-sonnet-4-5-20250929"',
+    );
   });
 
   it("does not add --model flag when REVIEW_MODEL is empty", async () => {
@@ -280,7 +333,14 @@ describe("prepareReviewMode", () => {
     });
 
     const octokit = {
-      rest: {},
+      rest: {
+        issues: {
+          listComments: () => Promise.resolve({ data: [] }),
+        },
+        pulls: {
+          listReviewComments: () => Promise.resolve({ data: [] }),
+        },
+      },
       graphql: () =>
         Promise.resolve({
           repository: {
@@ -313,8 +373,8 @@ describe("prepareReviewMode", () => {
     const droidArgsCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "droid_args",
     ) as [string, string] | undefined;
-    // When neither REVIEW_MODEL nor REASONING_EFFORT is provided, we default to gpt-5.2 at high reasoning.
+    // When neither REVIEW_MODEL nor REASONING_EFFORT is provided, we default to gpt-5.2 at xhigh reasoning.
     expect(droidArgsCall?.[1]).toContain('--model "gpt-5.2"');
-    expect(droidArgsCall?.[1]).toContain('--reasoning-effort "high"');
+    expect(droidArgsCall?.[1]).toContain('--reasoning-effort "xhigh"');
   });
 });
