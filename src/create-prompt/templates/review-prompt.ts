@@ -83,6 +83,132 @@ Review **every changed line**. You must complete the review even if you find iss
 
 ---
 
+## Systematic Analysis Patterns
+
+Apply these patterns during your review. These target common bug classes:
+
+### Logic & Variable Usage
+
+* When reviewing conditionals, verify the correct variable is referenced in each clause
+* Check for AND vs OR confusion in permission/validation logic (especially security-critical paths)
+* Verify return statements return the intended value:
+  - Not wrapper objects when data is expected (e.g., \`safeParse()\` result vs \`.data\`)
+  - Not intermediate variables when final result is expected
+  - Not wrong object properties (e.g., \`obj.original\` vs \`obj.modified\`)
+* In loops or transformations, confirm variable names match semantic purpose
+* Flag operations where variable names suggest type mismatches (e.g., \`*Time\` used where \`*Date\` expected)
+
+### Null/Undefined Safety
+
+* For each property access chain (\`a.b.c\`), verify none of the intermediate values can be null/undefined/None:
+  - Check API responses that might return null
+  - Check database queries that might return no results
+  - Check array operations like \`array[0]\` or \`array.find()\`
+* When Optional types are unwrapped (\`.get()\`, \`!\`, non-null assertions), verify presence is checked first
+* In conditional branches, verify null handling exists for all code paths
+* Pay special attention to:
+  - Authentication/authorization contexts (user might not be authenticated)
+  - Optional relationships (foreign keys, joined data)
+  - Map/dictionary lookups
+  - Configuration values that might not be set
+
+### Type Compatibility & Data Flow
+
+* Trace what types flow into math operations:
+  - \`floor\`, \`ceil\`, \`round\`, modulo on datetime/string inputs cause errors
+  - Arithmetic operations on mixed types
+* Verify comparison operators match types:
+  - Object reference equality (\`===\`, \`==\`) on different instances always false
+  - Comparing object types when value comparison intended (e.g., dayjs objects)
+* Check function parameters receive expected types after transformations:
+  - Serialization/deserialization boundary crossings
+  - Database field type conversions
+  - API request/response parsing
+* Flag string operations on numbers or vice versa without explicit conversion
+* When data flows through multiple functions, verify type consistency at each step
+
+### Async/Await Patterns (JavaScript/TypeScript)
+
+* **CRITICAL**: Flag \`forEach\`/\`map\`/\`filter\` with async callbacks - these don't await:
+  \`\`\`javascript
+  // BUG: async callbacks are fire-and-forget
+  items.forEach(async (item) => await process(item));
+  
+  // CORRECT: use for...of or Promise.all
+  for (const item of items) await process(item);
+  \`\`\`
+* Verify all async function calls are awaited when their result or side-effect is needed:
+  - Database writes that must complete before continuing
+  - API calls whose responses are used
+  - File operations that affect subsequent code
+* Check promise chains have proper error handling (\`.catch()\` or try/catch)
+* Verify parallel operations use \`Promise.all\`/\`Promise.allSettled\` appropriately
+
+### Security Vulnerabilities
+
+* **SSRF (Server-Side Request Forgery)**:
+  - Flag unvalidated URL fetching: \`open(url)\`, \`fetch(user_input)\`, \`curl\` with user input
+  - Verify URL allowlists exist for external requests
+* **XSS (Cross-Site Scripting)**:
+  - Check for unescaped user input in HTML/template contexts
+  - Verify template engines auto-escape by default
+* **Authentication & Session State**:
+  - OAuth state/nonce must be per-request random, not static or reused
+  - CSRF tokens must be unpredictable and verified
+  - Session data must not leak between requests
+* **Input Validation Bypasses**:
+  - \`indexOf()\`/\`startsWith()\` for origin validation can be bypassed (use exact allowlist matching)
+  - Case sensitivity in security checks (email blacklists, domain checks)
+* **Timing Attacks**:
+  - Secret/token comparison should use constant-time comparison functions
+* **Cache Poisoning**:
+  - Verify security decisions (permissions, auth) aren't cached asymmetrically
+  - If grants are cached, denials must also be cached (or neither)
+
+### Concurrency Issues (when applicable)
+
+* Check if shared state is modified without synchronization:
+  - Global variables or class fields accessed by multiple threads/goroutines
+  - Database records that can be modified concurrently
+* Verify double-checked locking re-checks condition after acquiring lock:
+  \`\`\`go
+  // BUG: doesn't re-check after lock
+  if !initialized {
+      lock.Lock()
+      initialize()
+      lock.Unlock()
+  }
+  
+  // CORRECT: re-check after acquiring lock
+  if !initialized {
+      lock.Lock()
+      if !initialized {
+          initialize()
+      }
+      lock.Unlock()
+  }
+  \`\`\`
+* Flag non-atomic operations on shared counters:
+  - \`count = count + 1\` in concurrent code (use atomic operations)
+  - Read-modify-write without locks
+* Check that resources accessed by multiple threads have proper synchronization
+
+### API Contract & Breaking Changes
+
+* When serializers/validators/response formatters change:
+  - Use Grep to find API consumers and test files
+  - Verify response structure remains compatible (field names, types, nesting)
+  - Check for removed fields, changed types, or new required fields
+* When database models/schemas change:
+  - Verify migrations include data backfill for existing records
+  - Check that existing queries still work with new schema
+* When function signatures change:
+  - Grep for all callers to verify compatibility
+  - Check if return type changes break caller assumptions
+* Review test files for expected API shapes and verify changes match tests
+
+---
+
 ## **Reporting Gate (CRITICAL)**
 
 Only report findings that meet **at least one** of the following:
