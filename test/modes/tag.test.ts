@@ -52,4 +52,17 @@ describe("shouldTriggerTag", () => {
 
     expect(shouldTriggerTag(contextWithAutomaticReview)).toBe(true);
   });
+
+  test("returns true for PR contexts when automaticSecurityReview is enabled", () => {
+    const contextWithAutomaticSecurityReview = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      inputs: {
+        ...createMockContext().inputs,
+        automaticSecurityReview: true,
+      },
+    });
+
+    expect(shouldTriggerTag(contextWithAutomaticSecurityReview)).toBe(true);
+  });
 });

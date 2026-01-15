@@ -2,7 +2,9 @@ import { describe, expect, it } from "bun:test";
 import { generateFillPrompt } from "../../../src/create-prompt/templates/fill-prompt";
 import type { PreparedContext } from "../../../src/create-prompt/types";
 
-function createBaseContext(overrides: Partial<PreparedContext> = {}): PreparedContext {
+function createBaseContext(
+  overrides: Partial<PreparedContext> = {},
+): PreparedContext {
   return {
     repository: "test-owner/test-repo",
     droidCommentId: "123",
@@ -26,7 +28,9 @@ describe("generateFillPrompt", () => {
     const prompt = generateFillPrompt(context);
 
     expect(prompt).toContain("Procedure:");
-    expect(prompt).toContain("gh pr view 42 --repo test-owner/test-repo --json title,body");
+    expect(prompt).toContain(
+      "gh pr view 42 --repo test-owner/test-repo --json title,body",
+    );
     expect(prompt).toContain("gh pr diff 42 --repo test-owner/test-repo");
     expect(prompt).toContain("github_pr___update_pr_description");
     expect(prompt).toContain("Do not proceed if required commands fail");

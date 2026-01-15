@@ -68,6 +68,14 @@ describe("checkWritePermissions", () => {
       allowedNonWriteUsers: "",
       trackProgress: false,
       automaticReview: false,
+      automaticSecurityReview: false,
+      securityModel: "",
+      securitySeverityThreshold: "medium",
+      securityBlockOnCritical: true,
+      securityBlockOnHigh: false,
+      securityNotifyTeam: "",
+      securityScanSchedule: false,
+      securityScanDays: 7,
     },
   });
 

@@ -123,3 +123,13 @@ export const USER_QUERY = `
     }
   }
 `;
+
+export const REPO_DEFAULT_BRANCH_QUERY = `
+  query($owner: String!, $repo: String!) {
+    repository(owner: $owner, name: $repo) {
+      defaultBranchRef {
+        name
+      }
+    }
+  }
+`;
