@@ -28,8 +28,7 @@ async function run() {
       mcpTools: process.env.INPUT_MCP_TOOLS,
       systemPrompt: process.env.INPUT_SYSTEM_PROMPT,
       appendSystemPrompt: process.env.INPUT_APPEND_SYSTEM_PROMPT,
-      pathToDroidExecutable:
-        process.env.INPUT_PATH_TO_DROID_EXECUTABLE,
+      pathToDroidExecutable: process.env.INPUT_PATH_TO_DROID_EXECUTABLE,
       showFullOutput: process.env.INPUT_SHOW_FULL_OUTPUT,
     });
   } catch (error) {
