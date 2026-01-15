@@ -232,10 +232,10 @@ export async function prepareReviewMode({
   const reviewModel = process.env.REVIEW_MODEL?.trim();
   const reasoningEffort = process.env.REASONING_EFFORT?.trim();
 
-  // Default behavior (behind the scenes): if neither is provided, run GPT-5.2 at xhigh reasoning.
+  // Default behavior (behind the scenes): if neither is provided, run GPT-5.2 at high reasoning.
   if (!reviewModel && !reasoningEffort) {
     droidArgParts.push(`--model "gpt-5.2"`);
-    droidArgParts.push(`--reasoning-effort "xhigh"`);
+    droidArgParts.push(`--reasoning-effort "high"`);
   } else {
     // Add model override if specified
     if (reviewModel) {
