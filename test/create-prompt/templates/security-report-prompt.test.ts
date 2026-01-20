@@ -43,6 +43,8 @@ describe("generateSecurityReportPrompt", () => {
         securityBlockOnCritical: true,
         securityBlockOnHigh: false,
         securityNotifyTeam: "@org/security-team",
+        securityScanSchedule: false,
+        securityScanDays: 7,
       },
     },
   };

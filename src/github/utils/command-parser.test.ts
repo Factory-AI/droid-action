@@ -33,6 +33,8 @@ const baseContext: Omit<ParsedGitHubContext, "eventName" | "payload"> = {
     securityBlockOnCritical: true,
     securityBlockOnHigh: false,
     securityNotifyTeam: "",
+    securityScanSchedule: false,
+    securityScanDays: 7,
   },
   entityNumber: 1,
   isPR: true,

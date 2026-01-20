@@ -86,8 +86,6 @@ Use the following priority levels to categorize findings:
 - [P2] - Normal. To be fixed eventually
 - [P3] - Low. Nice to have
 
-IMPORTANT: Only post P0 and P1 findings as inline comments. Do NOT post P2 or P3 findings—they are too minor to warrant review noise. If all your findings are P2/P3, post no inline comments and note "no high-severity issues found" in the summary.
-
 Comment Guidelines:
 Your review comments should be:
 1. Clear about why the issue is a bug

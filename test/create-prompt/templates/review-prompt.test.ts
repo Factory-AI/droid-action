@@ -52,7 +52,7 @@ describe("generateReviewPrompt", () => {
     expect(prompt).toContain("Key Guidelines for Bug Detection:");
     expect(prompt).toContain("Priority Levels:");
     expect(prompt).toContain("[P0]");
-    expect(prompt).toContain("Only post P0 and P1 findings as inline comments");
+    expect(prompt).toContain("Do not escalate style/formatting into P0/P1");
     expect(prompt).toContain("Never raise purely stylistic");
     expect(prompt).toContain(
       "Never repeat or re-raise an issue previously highlighted",
