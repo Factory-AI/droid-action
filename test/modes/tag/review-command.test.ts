@@ -260,7 +260,9 @@ describe("prepareReviewMode", () => {
     const droidArgsCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "droid_args",
     ) as [string, string] | undefined;
-    expect(droidArgsCall?.[1]).toContain('--model "claude-sonnet-4-5-20250929"');
+    expect(droidArgsCall?.[1]).toContain(
+      '--model "claude-sonnet-4-5-20250929"',
+    );
   });
 
   it("does not add --model flag when REVIEW_MODEL is empty", async () => {

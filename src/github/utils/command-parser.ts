@@ -8,7 +8,6 @@ export type DroidCommand =
   | "fill"
   | "review"
   | "security"
-  | "review-security"
   | "security-full"
   | "default";
 
@@ -35,19 +34,6 @@ export function parseDroidCommand(text: string): ParsedCommand | null {
     return {
       command: "fill",
       raw: fillMatch[0],
-      location: "body", // Will be set by caller
-    };
-  }
-
-  // Check for @droid review security OR @droid security review (both reviews)
-  // Must check before individual review/security to avoid false matches
-  const combinedMatch = text.match(
-    /@droid\s+(?:review\s+security|security\s+review)/i,
-  );
-  if (combinedMatch) {
-    return {
-      command: "review-security",
-      raw: combinedMatch[0],
       location: "body", // Will be set by caller
     };
   }

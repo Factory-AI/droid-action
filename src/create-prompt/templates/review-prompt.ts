@@ -99,7 +99,7 @@ Your review comments should be:
 
 Output Format:
 Structure each inline comment as:
-**[P0-P3] Clear title (≤ 80 chars, imperative mood)**
+**[P0/P1] Clear title (≤ 80 chars, imperative mood)**
 (blank line)
 Explanation of why this is a problem (1 paragraph max).
 
@@ -130,6 +130,65 @@ Commenting rules:
 - Keep comments concise and immediately graspable.
 - For low confidence findings, ask a question; for medium/high confidence, state the issue concretely.
 - Only include explicit code suggestions when you are absolutely certain the replacement is correct and safe.
+
+Output:
+1. Analyze the PR to generate:
+   - A concise 1-2 sentence summary of what the PR does
+   - 3-5 key changes extracted from the diff
+   - The most important files changed (up to 5-7 files)
+
+2. Write findings to \`code-review-results.json\` with this structure:
+\`\`\`json
+{
+  "type": "code",
+  "summary": "Brief 1-2 sentence description of what this PR does",
+  "keyChanges": [
+    "Added new authentication flow",
+    "Refactored database queries for performance",
+    "Fixed validation bug in user input"
+  ],
+  "importantFiles": [
+    { "path": "src/auth/login.ts", "description": "New OAuth implementation" },
+    { "path": "src/db/queries.ts", "description": "Query optimization" }
+  ],
+  "findings": [
+    {
+      "id": "CR-001",
+      "type": "bug|issue|suggestion",
+      "severity": "high|medium|low",
+      "file": "path/to/file.ts",
+      "line": 45,
+      "side": "RIGHT",
+      "description": "Brief description of the issue",
+      "suggestion": "Optional code fix"
+    }
+  ]
+}
+\`\`\`
+
+3. Update the tracking comment with a summary using \`github_comment___update_droid_comment\`:
+\`\`\`markdown
+## Code review completed
+
+### Summary
+{Brief 1-2 sentence description of what this PR does}
+
+### Key Changes
+- {Change 1}
+- {Change 2}
+- {Change 3}
+
+### Important Files Changed
+- \`path/to/file1.ts\` - {Brief description of changes}
+- \`path/to/file2.ts\` - {Brief description of changes}
+
+### Review Findings
+| ID | Type | Severity | File | Description |
+|----|------|----------|------|-------------|
+| CR-001 | Bug | high | auth.ts:45 | Null pointer exception |
+
+*Inline comments will be posted after all reviews complete.*
+\`\`\`
 
 Submission:
 - Do not submit inline comments when:
