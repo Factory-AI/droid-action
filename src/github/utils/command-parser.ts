@@ -4,12 +4,18 @@
 
 import type { GitHubContext } from "../context";
 
-export type DroidCommand = 'fill' | 'review' | 'default';
+export type DroidCommand =
+  | "fill"
+  | "review"
+  | "security"
+  | "review-security"
+  | "security-full"
+  | "default";
 
 export interface ParsedCommand {
   command: DroidCommand;
   raw: string;
-  location: 'body' | 'comment';
+  location: "body" | "comment";
   timestamp?: string | null;
 }
 
@@ -27,9 +33,22 @@ export function parseDroidCommand(text: string): ParsedCommand | null {
   const fillMatch = text.match(/@droid\s+fill/i);
   if (fillMatch) {
     return {
-      command: 'fill',
+      command: "fill",
       raw: fillMatch[0],
-      location: 'body', // Will be set by caller
+      location: "body", // Will be set by caller
+    };
+  }
+
+  // Check for @droid review security OR @droid security review (both reviews)
+  // Must check before individual review/security to avoid false matches
+  const combinedMatch = text.match(
+    /@droid\s+(?:review\s+security|security\s+review)/i,
+  );
+  if (combinedMatch) {
+    return {
+      command: "review-security",
+      raw: combinedMatch[0],
+      location: "body", // Will be set by caller
     };
   }
 
@@ -37,9 +56,30 @@ export function parseDroidCommand(text: string): ParsedCommand | null {
   const reviewMatch = text.match(/@droid\s+review/i);
   if (reviewMatch) {
     return {
-      command: 'review',
+      command: "review",
       raw: reviewMatch[0],
-      location: 'body', // Will be set by caller
+      location: "body", // Will be set by caller
+    };
+  }
+
+  // Check for @droid security --full command (case insensitive)
+  const securityFullMatch = text.match(/@droid\s+security\s+--full/i);
+  if (securityFullMatch) {
+    return {
+      command: "security-full",
+      raw: securityFullMatch[0],
+      location: "body", // Will be set by caller
+    };
+  }
+
+  // Check for @droid security command (case insensitive)
+  // Must check after security-full to avoid false matches
+  const securityMatch = text.match(/@droid\s+security(?:\s|$|[^-\w])/i);
+  if (securityMatch) {
+    return {
+      command: "security",
+      raw: securityMatch[0].trim(),
+      location: "body", // Will be set by caller
     };
   }
 
@@ -47,9 +87,9 @@ export function parseDroidCommand(text: string): ParsedCommand | null {
   const droidMatch = text.match(/@droid/i);
   if (droidMatch) {
     return {
-      command: 'default',
+      command: "default",
       raw: droidMatch[0],
-      location: 'body', // Will be set by caller
+      location: "body", // Will be set by caller
     };
   }
 
@@ -61,43 +101,48 @@ export function parseDroidCommand(text: string): ParsedCommand | null {
  * @param context The GitHub context from the event
  * @returns ParsedCommand with location info, or null if no command found
  */
-export function extractCommandFromContext(context: GitHubContext): ParsedCommand | null {
+export function extractCommandFromContext(
+  context: GitHubContext,
+): ParsedCommand | null {
   // Handle missing payload
   if (!context.payload) {
     return null;
   }
 
   // Check PR body for commands (pull_request events)
-  if (context.eventName === 'pull_request' && 'pull_request' in context.payload) {
+  if (
+    context.eventName === "pull_request" &&
+    "pull_request" in context.payload
+  ) {
     const body = context.payload.pull_request.body;
     if (body) {
       const command = parseDroidCommand(body);
       if (command) {
-        return { ...command, location: 'body' };
+        return { ...command, location: "body" };
       }
     }
   }
 
   // Check issue body for commands (issues events)
-  if (context.eventName === 'issues' && 'issue' in context.payload) {
+  if (context.eventName === "issues" && "issue" in context.payload) {
     const body = context.payload.issue.body;
     if (body) {
       const command = parseDroidCommand(body);
       if (command) {
-        return { ...command, location: 'body' };
+        return { ...command, location: "body" };
       }
     }
   }
 
   // Check comment body for commands (issue_comment events)
-  if (context.eventName === 'issue_comment' && 'comment' in context.payload) {
+  if (context.eventName === "issue_comment" && "comment" in context.payload) {
     const comment = context.payload.comment;
     if (comment.body) {
       const command = parseDroidCommand(comment.body);
       if (command) {
         return {
           ...command,
-          location: 'comment',
+          location: "comment",
           timestamp: comment.created_at,
         };
       }
@@ -105,14 +150,17 @@ export function extractCommandFromContext(context: GitHubContext): ParsedCommand
   }
 
   // Check review comment body (pull_request_review_comment events)
-  if (context.eventName === 'pull_request_review_comment' && 'comment' in context.payload) {
+  if (
+    context.eventName === "pull_request_review_comment" &&
+    "comment" in context.payload
+  ) {
     const comment = context.payload.comment;
     if (comment.body) {
       const command = parseDroidCommand(comment.body);
       if (command) {
         return {
           ...command,
-          location: 'comment',
+          location: "comment",
           timestamp: comment.created_at,
         };
       }
@@ -120,14 +168,17 @@ export function extractCommandFromContext(context: GitHubContext): ParsedCommand
   }
 
   // Check review body (pull_request_review events)
-  if (context.eventName === 'pull_request_review' && 'review' in context.payload) {
+  if (
+    context.eventName === "pull_request_review" &&
+    "review" in context.payload
+  ) {
     const review = context.payload.review;
     if (review.body) {
       const command = parseDroidCommand(review.body);
       if (command) {
         return {
           ...command,
-          location: 'comment',
+          location: "comment",
           timestamp: review.submitted_at,
         };
       }

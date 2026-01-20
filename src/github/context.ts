@@ -90,6 +90,14 @@ type BaseContext = {
     allowedNonWriteUsers: string;
     trackProgress: boolean;
     automaticReview: boolean;
+    automaticSecurityReview: boolean;
+    securityModel: string;
+    securitySeverityThreshold: string;
+    securityBlockOnCritical: boolean;
+    securityBlockOnHigh: boolean;
+    securityNotifyTeam: string;
+    securityScanSchedule: boolean;
+    securityScanDays: number;
   };
 };
 
@@ -140,6 +148,16 @@ export function parseGitHubContext(): GitHubContext {
       allowedNonWriteUsers: process.env.ALLOWED_NON_WRITE_USERS ?? "",
       trackProgress: process.env.TRACK_PROGRESS === "true",
       automaticReview: process.env.AUTOMATIC_REVIEW === "true",
+      automaticSecurityReview: process.env.AUTOMATIC_SECURITY_REVIEW === "true",
+      securityModel: process.env.SECURITY_MODEL ?? "",
+      securitySeverityThreshold:
+        process.env.SECURITY_SEVERITY_THRESHOLD ?? "medium",
+      securityBlockOnCritical:
+        process.env.SECURITY_BLOCK_ON_CRITICAL !== "false",
+      securityBlockOnHigh: process.env.SECURITY_BLOCK_ON_HIGH === "true",
+      securityNotifyTeam: process.env.SECURITY_NOTIFY_TEAM ?? "",
+      securityScanSchedule: process.env.SECURITY_SCAN_SCHEDULE === "true",
+      securityScanDays: Math.max(1, parseInt(process.env.SECURITY_SCAN_DAYS ?? "7", 10) || 7),
     },
   };
 
