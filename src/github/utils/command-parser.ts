@@ -39,6 +39,7 @@ export function parseDroidCommand(text: string): ParsedCommand | null {
   }
 
   // Check for @droid review command (case insensitive)
+  // Note: @droid review security will match as just @droid review
   const reviewMatch = text.match(/@droid\s+review/i);
   if (reviewMatch) {
     return {

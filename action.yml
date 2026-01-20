@@ -218,6 +218,67 @@ runs:
       env:
         EXPERIMENTAL_ALLOWED_DOMAINS: ${{ inputs.experimental_allowed_domains }}
 
+    - name: Install Security Skills
+      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.install_security_skills == 'true'
+      shell: bash
+      run: |
+        echo "Installing security skills from Factory-AI/skills..."
+        SKILLS_DIR="$HOME/.factory/skills"
+        mkdir -p "$SKILLS_DIR"
+
+        # Clone public skills repo (sparse checkout for efficiency)
+        TEMP_DIR=$(mktemp -d)
+        git clone --filter=blob:none --sparse \
+          "https://github.com/Factory-AI/skills.git" \
+          "$TEMP_DIR" 2>/dev/null || {
+          echo "Warning: Could not clone skills repo. Security skills will not be available."
+          exit 0
+        }
+
+        cd "$TEMP_DIR"
+        git sparse-checkout set \
+          skills/threat-model-generation \
+          skills/commit-security-scan \
+          skills/vulnerability-validation \
+          skills/security-review 2>/dev/null || true
+
+        # Copy skills to ~/.factory/skills/ and track installed count
+        INSTALLED_COUNT=0
+        for skill in threat-model-generation commit-security-scan vulnerability-validation security-review; do
+          if [ -d "skills/$skill" ]; then
+            cp -r "skills/$skill" "$SKILLS_DIR/"
+            echo "  Installed skill: $skill"
+            INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
+          else
+            echo "  Warning: Skill not found in repo: $skill"
+          fi
+        done
+
+        # Cleanup
+        rm -rf "$TEMP_DIR"
+
+        # Verify at least one skill was installed
+        if [ "$INSTALLED_COUNT" -eq 0 ]; then
+          echo "Warning: No security skills were installed. The skills may not exist in the Factory-AI/skills repository."
+          echo "Security review will proceed but may have limited functionality."
+        else
+          echo "Security skills installation complete ($INSTALLED_COUNT skills installed)"
+        fi
+
+        # Verify skills exist in the target directory
+        echo "Verifying installed skills in $SKILLS_DIR..."
+        VERIFIED_COUNT=0
+        for skill in threat-model-generation commit-security-scan vulnerability-validation security-review; do
+          if [ -d "$SKILLS_DIR/$skill" ]; then
+            echo "  Verified: $skill"
+            VERIFIED_COUNT=$((VERIFIED_COUNT + 1))
+          fi
+        done
+
+        if [ "$VERIFIED_COUNT" -ne "$INSTALLED_COUNT" ]; then
+          echo "Warning: Skill verification mismatch. Expected $INSTALLED_COUNT, found $VERIFIED_COUNT in $SKILLS_DIR"
+        fi
+
     - name: Checkout PR branch for review
       if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.review_pr_number != ''
       shell: bash
