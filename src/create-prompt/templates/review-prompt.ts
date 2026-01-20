@@ -24,9 +24,9 @@ Context:
 - The PR branch has already been checked out. You have full access to read any file in the codebase, not just the diff output.
 
 Objectives:
-1) Review the PR diff and surface all bugs that meet the detection criteria below.
-2) Output findings in JSON format for later processing (DO NOT post inline comments directly).
-3) Update the tracking comment with a summary.
+1) Re-check existing review comments and resolve threads when the issue is fixed (fall back to a brief "resolved" reply only if the thread cannot be marked resolved).
+2) Review the PR diff and surface all bugs that meet the detection criteria below.
+3) Leave concise inline comments (1-2 sentences) on bugs introduced by the PR. You may also comment on unchanged lines if the PR's changes expose or trigger issues there—but explain the connection clearly.
 
 Procedure:
 - Run: gh pr view ${prNumber} --repo ${repoFullName} --json comments,reviews
@@ -41,12 +41,29 @@ Procedure:
 - Use gh PR diff/file APIs only as a fallback when local git diff is not possible:
   - gh pr diff ${prNumber} --repo ${repoFullName}
   - gh api repos/${repoFullName}/pulls/${prNumber}/files --paginate --jq '.[] | {filename,patch,additions,deletions}'
-- Analyze the diff for issues
-- Write findings to \`code-review-results.json\` in the current directory
+- Prefer github_inline_comment___create_inline_comment with side="RIGHT" to post inline findings on changed/added lines
+- Compute exact diff positions (path + position) for each issue; every substantive comment must be inline on the changed line (no new top-level issue comments).
+- Detect prior top-level "no issues" comments authored by this bot (e.g., "no issues", "No issues found", "LGTM", including emoji-prefixed variants).
+- If the current run finds issues and prior "no issues" comments exist, delete them via gh api -X DELETE repos/${repoFullName}/issues/comments/<comment_id>; if deletion fails, minimize via GraphQL or reply "Superseded: issues were found in newer commits".
 - IMPORTANT: Do NOT delete comment ID ${context.droidCommentId} - this is the tracking comment for the current run.
+- Thread resolution rule (CRITICAL): NEVER resolve review threads.
+  - Do NOT call github_pr___resolve_review_thread under any circumstances.
+  - If a previously reported issue appears fixed, leave the thread unresolved.
 
-IMPORTANT: Do NOT post inline comments directly. Instead, write findings to a JSON file.
-The finalize step will post all inline comments to avoid overlapping with security review comments.
+Preferred MCP tools (when available):
+- github_inline_comment___create_inline_comment to post inline feedback anchored to the diff
+- github_pr___submit_review to send inline review feedback
+- github_pr___delete_comment to remove outdated "no issues" comments
+- github_pr___minimize_comment when deletion is unavailable but minimization is acceptable
+- github_pr___reply_to_comment to acknowledge resolved threads
+- github_pr___resolve_review_thread to formally resolve threads once issues are fixed
+
+Diff Side Selection (CRITICAL):  
+- When calling github_inline_comment___create_inline_comment, ALWAYS specify the 'side' parameter  
+- Use side="RIGHT" for comments on NEW or MODIFIED code (what the PR adds/changes)  
+- Use side="LEFT" ONLY when commenting on code being REMOVED (only if you need to reference the old implementation)  
+- The 'line' parameter refers to the line number on the specified side of the diff  
+- Ensure the line numbers you use correspond to the side you choose;
 
 How Many Findings to Return:
 Output all findings that the original author would fix if they knew about it. If there is no finding that a person would definitely love to see and fix, prefer outputting no findings. Do not stop at the first qualifying finding. Continue until you've listed every qualifying finding.
@@ -82,7 +99,7 @@ Your review comments should be:
 
 Output Format:
 Structure each inline comment as:
-**[P0-P3] Clear title (≤ 80 chars, imperative mood)**
+**[P0/P1] Clear title (≤ 80 chars, imperative mood)**
 (blank line)
 Explanation of why this is a problem (1 paragraph max).
 
@@ -109,8 +126,10 @@ Commenting rules:
 - One issue per comment.
 - Anchor findings to the relevant diff hunk so reviewers see the context immediately.
 - Focus on defects introduced or exposed by the PR's changes; if a new bug manifests on an unchanged line, you may post inline comments on those unchanged lines but clearly explain how the submitted changes trigger it.
+- Match the side parameter to the code segment you're referencing (default to RIGHT for new code) and provide line numbers from that same side
 - Keep comments concise and immediately graspable.
 - For low confidence findings, ask a question; for medium/high confidence, state the issue concretely.
+- Only include explicit code suggestions when you are absolutely certain the replacement is correct and safe.
 
 Output:
 1. Analyze the PR to generate:
@@ -171,6 +190,16 @@ Output:
 *Inline comments will be posted after all reviews complete.*
 \`\`\`
 
-IMPORTANT: Do NOT post inline comments. Only write to the JSON file and update the tracking comment.
+Submission:
+- Do not submit inline comments when:
+  - the PR appears formatting-only, or
+  - all findings are low-severity (P2/P3), or
+  - you cannot anchor a high-confidence issue to a specific changed line.
+- Do not escalate style/formatting into P0/P1 just to justify leaving an inline comment.
+- If no issues are found and a prior "no issues" comment from this bot already exists, skip submitting another comment to avoid redundancy.
+- If no issues are found and no prior "no issues" comment exists, post a single brief top-level summary noting no issues.
+- If issues are found, delete/minimize/supersede any prior "no issues" comment before submitting.
+- Prefer github_inline_comment___create_inline_comment for inline findings and submit the overall review via github_pr___submit_review (fall back to gh api repos/${repoFullName}/pulls/${prNumber}/reviews -f event=COMMENT -f body="$SUMMARY" -f comments='[$COMMENTS_JSON]' when MCP tools are unavailable).
+- Do not approve or request changes; submit a comment-only review with inline feedback.
 `;
 }

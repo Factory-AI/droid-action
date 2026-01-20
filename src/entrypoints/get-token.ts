@@ -5,7 +5,6 @@
  */
 
 import * as core from "@actions/core";
-import { appendFileSync } from "fs";
 import { setupGitHubToken } from "../github/token";
 
 async function run() {
@@ -23,10 +22,6 @@ async function run() {
     }
 
     // Set output for next steps
-    const githubOutput = process.env.GITHUB_OUTPUT;
-    if (githubOutput) {
-      appendFileSync(githubOutput, `github_token=${token}\n`);
-    }
     core.setOutput("github_token", token);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);

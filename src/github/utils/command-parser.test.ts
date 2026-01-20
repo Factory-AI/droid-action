@@ -79,7 +79,7 @@ describe("Command Parser", () => {
       expect(result?.raw).toBe("@droid review");
     });
 
-    it("should parse @droid review security as just review", () => {
+    it("should parse @droid review security as review", () => {
       const result = parseDroidCommand("@droid review security");
       expect(result?.command).toBe("review");
       expect(result?.raw).toBe("@droid review");
