@@ -70,9 +70,33 @@ You must write a single JSON object with the schema below.
 
 ## Phase 2: Candidate Generation
 
-Generate **high-confidence, actionable** candidate inline comments following the same standards as the single-pass review:
+Generate **actionable** candidate inline comments.
+
+This phase is optimized for recall: you MAY include candidates that are **likely-real** (not 100% proven), because Phase 2 (validator) will filter. However, every candidate MUST still include:
+
+* A concrete trigger path (inputs/state that makes it happen)
+* An observable bad outcome (exception type, wrong return, corrupted data, violated security property)
+* The exact relevant symbols (function/class/variable names) so the validator can verify quickly
+
+### Mandatory second-pass recall sweep (REQUIRED)
+
+After completing your first pass, do a second sweep over **every changed file** specifically hunting for bugs in these high-yield categories:
+
+* Optional/None dereferences (Optional types, nullable attributes, missing membership/context)
+* Missing-key errors on external/untrusted dict/JSON payloads (KeyError, NoneType access)
+* Wrong-variable / shadowing mistakes (e.g., using an outer variable instead of the scoped/local one)
+* Type assumption bugs (e.g., numeric ops like math.floor/ceil on datetime/strings)
+* Serializer/validated_data contract mismatches (field is named one thing but code reads another)
+* Abstract base class contract issues (subclass missing required abstract members; runtime TypeError on instantiation)
+* Concurrency/process lifecycle hazards (spawn process types, isinstance guards, join/terminate loops)
+* Offset/cursor semantics mismatches (off-by-one, commit semantics, prev/next cursor behavior)
+* OAuth/security invariants (e.g., OAuth state must be per-flow unpredictable; deterministic state is a vulnerability)
+
+If you find a candidate during this sweep, it must still meet the Reporting Gate below, but do not stop early—complete the sweep across all files.
 
 ### Reporting Gate (same as review)
+
+Do NOT over-focus on P1 crashes. Also include medium-severity correctness/contract issues when they have a concrete trigger and a clear wrong outcome.
 
 Only include candidates that meet at least one:
 * Definite runtime failure
