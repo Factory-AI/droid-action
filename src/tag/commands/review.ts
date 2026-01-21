@@ -10,6 +10,7 @@ import { createInitialComment } from "../../github/operations/comments/create-in
 import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
 import { isEntityContext } from "../../github/context";
 import { generateReviewPrompt } from "../../create-prompt/templates/review-prompt";
+import { generateReviewCandidatesPrompt } from "../../create-prompt/templates/review-candidates-prompt";
 import type { Octokits } from "../../github/api/client";
 import type { PrepareResult } from "../../prepare/types";
 
@@ -173,6 +174,9 @@ export async function prepareReviewMode({
     commentsPath,
   };
 
+  const reviewUseValidator =
+    (process.env.REVIEW_USE_VALIDATOR ?? "").trim() === "true";
+
   await createPrompt({
     githubContext: context,
     commentId,
@@ -182,7 +186,9 @@ export async function prepareReviewMode({
       headRefName: prData.headRefName,
       headRefOid: prData.headRefOid,
     },
-    generatePrompt: generateReviewPrompt,
+    generatePrompt: reviewUseValidator
+      ? generateReviewCandidatesPrompt
+      : generateReviewPrompt,
     reviewArtifacts,
   });
   core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-review");
@@ -199,21 +205,34 @@ export async function prepareReviewMode({
     "Glob",
     "LS",
     "Execute",
+    "Create",
+    "ApplyPatch",
     "github_comment___update_droid_comment",
-    "github_inline_comment___create_inline_comment",
   ];
 
-  const reviewTools = [
-    "github_pr___list_review_comments",
-    "github_pr___submit_review",
-    "github_pr___delete_comment",
-    "github_pr___minimize_comment",
-    "github_pr___reply_to_comment",
-    "github_pr___resolve_review_thread",
-  ];
+  const reviewTools = reviewUseValidator
+    ? []
+    : [
+        "github_inline_comment___create_inline_comment",
+        "github_pr___list_review_comments",
+        "github_pr___submit_review",
+        "github_pr___delete_comment",
+        "github_pr___minimize_comment",
+        "github_pr___reply_to_comment",
+        "github_pr___resolve_review_thread",
+      ];
+
+  const safeUserAllowedMCPTools = reviewUseValidator
+    ? userAllowedMCPTools.filter(
+        (tool) =>
+          tool === "github_comment___update_droid_comment" ||
+          (!tool.startsWith("github_pr___") &&
+            tool !== "github_inline_comment___create_inline_comment"),
+      )
+    : userAllowedMCPTools;
 
   const allowedTools = Array.from(
-    new Set([...baseTools, ...reviewTools, ...userAllowedMCPTools]),
+    new Set([...baseTools, ...reviewTools, ...safeUserAllowedMCPTools]),
   );
 
   const mcpTools = await prepareMcpTools({

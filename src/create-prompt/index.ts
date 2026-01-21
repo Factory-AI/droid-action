@@ -28,6 +28,7 @@ const BASE_ALLOWED_TOOLS = [
   "Execute",
   "Edit",
   "Create",
+  "ApplyPatch",
   "Read",
   "Glob",
   "Grep",
