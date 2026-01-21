@@ -375,6 +375,6 @@ describe("prepareReviewMode", () => {
     ) as [string, string] | undefined;
     // When neither REVIEW_MODEL nor REASONING_EFFORT is provided, we default to gpt-5.2 at xhigh reasoning.
     expect(droidArgsCall?.[1]).toContain('--model "gpt-5.2"');
-    expect(droidArgsCall?.[1]).toContain('--reasoning-effort "xhigh"');
+    expect(droidArgsCall?.[1]).toContain('--reasoning-effort "high"');
   });
 });

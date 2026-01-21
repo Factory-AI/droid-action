@@ -15,6 +15,7 @@ import * as createInitial from "../../src/github/operations/comments/create-init
 import * as mcpInstaller from "../../src/mcp/install-mcp-server";
 import * as actorValidation from "../../src/github/validation/actor";
 import * as core from "@actions/core";
+import * as childProcess from "node:child_process";
 
 describe("review command integration", () => {
   const originalRunnerTemp = process.env.RUNNER_TEMP;
@@ -26,6 +27,7 @@ describe("review command integration", () => {
   let actorSpy: ReturnType<typeof spyOn>;
   let setOutputSpy: ReturnType<typeof spyOn>;
   let exportVarSpy: ReturnType<typeof spyOn>;
+  let execSyncSpy: ReturnType<typeof spyOn>;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(path.join(os.tmpdir(), "review-int-"));
@@ -43,6 +45,16 @@ describe("review command integration", () => {
     actorSpy = spyOn(actorValidation, "checkHumanActor").mockResolvedValue();
     setOutputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
     exportVarSpy = spyOn(core, "exportVariable").mockImplementation(() => {});
+
+    execSyncSpy = spyOn(childProcess, "execSync").mockImplementation(
+      ((cmd: string) => {
+        if (cmd.includes("merge-base")) return "abc123def456\n";
+        if (cmd.includes("git --no-pager diff")) {
+          return "diff --git a/file.ts b/file.ts\n+added line\n";
+        }
+        return "";
+      }) as typeof childProcess.execSync,
+    );
   });
 
   afterEach(async () => {
@@ -52,6 +64,7 @@ describe("review command integration", () => {
     actorSpy.mockRestore();
     setOutputSpy.mockRestore();
     exportVarSpy.mockRestore();
+    execSyncSpy.mockRestore();
 
     if (process.env.RUNNER_TEMP) {
       await rm(process.env.RUNNER_TEMP, { recursive: true, force: true });
@@ -96,7 +109,14 @@ describe("review command integration", () => {
     });
 
     const octokit = { 
-      rest: {}, 
+      rest: {
+        issues: {
+          listComments: () => Promise.resolve({ data: [] }),
+        },
+        pulls: {
+          listReviewComments: () => Promise.resolve({ data: [] }),
+        },
+      }, 
       graphql: () => Promise.resolve({
         repository: {
           pullRequest: {
@@ -148,8 +168,9 @@ describe("review command integration", () => {
     expect(prompt).toContain("github_inline_comment___create_inline_comment");
     expect(prompt).toContain("## **Reporting Gate (CRITICAL)**");
     expect(prompt).toContain("## Priority Levels");
-    expect(prompt).toContain("gh pr view 7 --repo test-owner/test-repo --json comments,reviews");
-    expect(prompt).toContain("git --no-pager diff $MERGE_BASE..HEAD");
+    expect(prompt).toContain("Pre-computed Review Artifacts");
+    expect(prompt).toContain("Full PR Diff");
+    expect(prompt).toContain("Existing Comments");
     expect(prompt).toContain("**Do NOT call** `github_pr___resolve_review_thread`");
 
     const droidArgsCall = setOutputSpy.mock.calls.find(
