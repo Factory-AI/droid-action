@@ -63,7 +63,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run Droid Exec
-        uses: Factory-AI/droid-action@v1
+        uses: Factory-AI/droid-action@main
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
 ```
@@ -94,7 +94,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run Droid Auto Review
-        uses: Factory-AI/droid-action@v1
+        uses: Factory-AI/droid-action@main
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
