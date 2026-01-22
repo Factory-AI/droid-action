@@ -70,7 +70,13 @@ You must write a single JSON object with the schema below.
 
 ## Phase 2: Candidate Generation
 
-Generate **actionable** candidate inline comments:
+Generate **actionable** candidate inline comments.
+
+This phase is optimized for recall: you MAY include candidates that are **likely-real** (not 100% proven), because Phase 2 (validator) will filter. However, every candidate MUST still include:
+
+* A concrete trigger path (inputs/state that makes it happen)
+* An observable bad outcome (exception type, wrong return, corrupted data, violated security property)
+* The exact relevant symbols (function/class/variable names) so the validator can verify quickly
 
 ### Mandatory second-pass recall sweep (REQUIRED)
 
@@ -90,7 +96,9 @@ If you find a candidate during this sweep, it must still meet the Reporting Gate
 
 ### Reporting Gate (same as review)
 
-Include candidates that meet one of these:
+Do NOT over-focus on P1 crashes. Also include medium-severity correctness/contract issues when they have a concrete trigger and a clear wrong outcome.
+
+Only include candidates that meet at least one:
 * Definite runtime failure
 * Incorrect logic with a concrete trigger path and wrong outcome
 * Security vulnerability with realistic exploit
