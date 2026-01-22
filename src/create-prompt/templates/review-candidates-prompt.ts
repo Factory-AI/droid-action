@@ -66,6 +66,25 @@ You must write a single JSON object with the schema below.
 
 3. List every changed file (your checklist) and review ALL of them.
 
+4. Read the underlying repo files for backend changes (REQUIRED)
+
+For each changed **backend** file, you MUST read the actual file from the checked-out workspace (not just the diff) to get surrounding context.
+
+Backend files include (at minimum):
+* Any changed file under \`src/\` that is NOT under \`static/\` and ends in \`.py\`, \`.ts\`, or \`.js\`.
+
+How to read files:
+* Use the absolute repo root shown in the system info (\`% pwd\`) and append the file path.
+  * Example: if \`pwd\` is \`/home/runner/work/droid-sentry/droid-sentry\` and the diff includes \`src/sentry/api/paginator.py\`, then read:
+    \`/home/runner/work/droid-sentry/droid-sentry/src/sentry/api/paginator.py\`
+* If a file is very large, it is OK to read it in targeted chunks, but you MUST include:
+  * the changed hunk region(s), plus
+  * the definition(s) of any key symbols referenced by your candidates.
+
+Work quota (STRICT):
+* Before writing output, you MUST read at least \`min(10, number_of_changed_backend_files)\` backend files from the repo root.
+* In your final response, list the exact backend file paths you read (for auditability).
+
 =======================
 
 ## Phase 2: Candidate Generation
