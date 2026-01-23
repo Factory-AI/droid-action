@@ -22,99 +22,32 @@ export function generateReviewCandidatesPrompt(context: PreparedContext): string
     process.env.REVIEW_CANDIDATES_PATH ??
     "$RUNNER_TEMP/droid-prompts/review_candidates.json";
 
-  return `You are generating **candidate** inline review comments for PR #${prNumber} in ${repoFullName}.
+  return `You are a senior staff software engineer and expert code reviewer.
 
-IMPORTANT: This is Phase 1 of a two-pass review pipeline.
+Your task: Review PR #${prNumber} in ${repoFullName} and generate a JSON file with **high-confidence, actionable** review comments that pinpoint genuine issues.
 
-### Context
+<context>
+Repo: ${repoFullName}
+PR Number: ${prNumber}
+PR Head Ref: ${prHeadRef}
+PR Head SHA: ${prHeadSha}
+PR Base Ref: ${prBaseRef}
 
-* Repo: ${repoFullName}
-* PR Number: ${prNumber}
-* PR Head Ref: ${prHeadRef}
-* PR Head SHA: ${prHeadSha}
-* PR Base Ref: ${prBaseRef}
+Precomputed data files:
+- Full PR Diff: \`${diffPath}\`
+- Existing Comments: \`${commentsPath}\`
+</context>
 
-### Pre-computed Review Artifacts
+<review_guidelines>
+- You are currently checked out to the PR branch.
+- Review ALL modified files in the PR branch.
+- Focus on: functional correctness, syntax errors, logic bugs, broken dependencies/contracts/tests, security issues, and performance problems.
+- Do NOT duplicate comments already in \`${commentsPath}\`.
+- Only flag issues you are confident about—avoid speculative or stylistic nitpicks.
+</review_guidelines>
 
-The following files have been pre-computed and contain the COMPLETE data for this PR:
-
-* **Full PR Diff**: \`${diffPath}\`
-* **Existing Comments**: \`${commentsPath}\`
-
-### Output
-
-Write your candidates to: \`${reviewCandidatesPath}\`
-
-You must write a single JSON object with the schema below.
-
-### CRITICAL RULES
-
-* **DO NOT** post to GitHub in this run.
-* **DO NOT** call any PR mutation tools (inline comments, submit review, delete/minimize/reply/resolve, etc.).
-* You MAY update the tracking comment for progress.
-
-=======================
-
-## Phase 1: Context Gathering (REQUIRED — do not output yet)
-
-1. Read existing comments:
-   Read \`${commentsPath}\`
-
-2. Read the COMPLETE diff:
-   Read \`${diffPath}\`
-   If large, read in chunks (offset/limit). **Do not proceed until you have read the ENTIRE diff.**
-
-3. List every changed file (your checklist) and review ALL of them.
-
-4. Read the underlying repo files for backend changes (REQUIRED)
-
-For each changed **backend** file, you MUST read the actual file from the checked-out workspace (not just the diff) to get surrounding context.
-
-Backend files include (at minimum):
-* Any changed file under \`src/\` that is NOT under \`static/\` and ends in \`.py\`, \`.ts\`, or \`.js\`.
-
-How to read files:
-* Use the absolute repo root shown in the system info (\`% pwd\`) and append the file path.
-  * Example: if \`pwd\` is \`/home/runner/work/droid-sentry/droid-sentry\` and the diff includes \`src/sentry/api/paginator.py\`, then read:
-    \`/home/runner/work/droid-sentry/droid-sentry/src/sentry/api/paginator.py\`
-* If a file is very large, it is OK to read it in targeted chunks, but you MUST include:
-  * the changed hunk region(s), plus
-  * the definition(s) of any key symbols referenced by your candidates.
-
-Work quota (STRICT):
-* Before writing output, you MUST read at least \`min(10, number_of_changed_backend_files)\` backend files from the repo root.
-* In your final response, list the exact backend file paths you read (for auditability).
-
-=======================
-
-## Phase 2: Candidate Generation
-
-Generate **high-confidence, actionable** candidate inline comments following the same standards as the single-pass review:
-
-### Reporting Gate (same as review)
-
-Only include candidates that meet at least one:
-* Definite runtime failure
-* Incorrect logic with a concrete trigger path and wrong outcome
-* Security vulnerability with realistic exploit
-* Data corruption/loss
-* Breaking contract change (discoverable in code/tests)
-
-Do NOT include:
-* Style/naming/formatting
-* "What-if" speculation without a realistic execution path
-* Vague suggestions to add guards/try-catch without a concrete failure
-
-### Deduplication
-
-Use \`${commentsPath}\` to avoid duplicating issues already reported by this bot.
-If an issue appears fixed, do NOT create a new candidate; the validator run will handle replies.
-
-=======================
-
-## Phase 3: Write candidates JSON (REQUIRED)
-
-Write \`${reviewCandidatesPath}\` with this schema:
+<output_spec>
+Write output to \`${reviewCandidatesPath}\` using this exact schema:
 
 \`\`\`json
 {
@@ -137,20 +70,39 @@ Write \`${reviewCandidatesPath}\` with this schema:
     }
   ],
   "reviewSummary": {
-    "body": "1–3 sentence overall assessment"
+    "body": "1-3 sentence overall assessment"
   }
 }
 \`\`\`
 
-Notes:
-* \`comments[]\` entries MUST match the input shape of \`github_inline_comment___create_inline_comment\`.
-* Use \`commit_id\` = \`${prHeadSha}\`.
-* \`startLine\` should be \`null\` unless you are making a multi-line comment.
+<schema_details>
+- **version**: Always \`1\`
 
-Then write the file using the local file tool.
+- **meta**: Metadata object
+  - \`repo\`: "${repoFullName}"
+  - \`prNumber\`: ${prNumber}
+  - \`headSha\`: "${prHeadSha}"
+  - \`baseRef\`: "${prBaseRef}"
+  - \`generatedAt\`: ISO 8601 timestamp (e.g., "2024-01-15T10:30:00Z")
 
-Tooling note:
-* If the tools list includes \`ApplyPatch\` (common for OpenAI models like GPT-5.2), use \`ApplyPatch\` to create/update the file at the exact path.
-* Otherwise, use \`Create\` (or \`Edit\` if overwriting) to write the file.
+- **comments**: Array of comment objects
+  - \`path\`: Relative file path (e.g., "src/index.ts")
+  - \`body\`: Comment text starting with priority tag [P0|P1|P2], then title, then 1 paragraph explanation
+  - \`line\`: Target line number (single-line) or end line number (multi-line). Must be ≥ 0.
+  - \`startLine\`: \`null\` for single-line comments, or start line number for multi-line comments
+  - \`side\`: "RIGHT" for new/modified code (default), "LEFT" only for removed code
+  - \`commit_id\`: "${prHeadSha}"
+
+- **reviewSummary**:
+  - \`body\`: 1-3 sentence overall assessment
+</schema_details>
+</output_spec>
+
+<critical_constraints>
+**DO NOT** post to GitHub.
+**DO NOT** invoke any PR mutation tools (inline comments, submit review, delete/minimize/reply/resolve, etc.).
+**DO NOT** modify any files other than writing to \`${reviewCandidatesPath}\`.
+Output ONLY the JSON file—no additional commentary.
+</critical_constraints>
 `;
 }
