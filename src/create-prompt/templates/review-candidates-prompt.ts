@@ -79,6 +79,50 @@ Guidelines for grouping:
 - Each group should be reviewable independently
 </triage_phase>
 
+<parallel_review_phase>
+**Step 2: Spawn parallel subagents to review each group**
+
+After grouping, use the Task tool to spawn parallel \`file-group-reviewer\` subagents. Each subagent will review one group of files independently.
+
+**IMPORTANT**: Spawn ALL subagents in a single response to enable parallel execution.
+
+For each group, invoke the Task tool with:
+- \`subagent_type\`: "file-group-reviewer"
+- \`description\`: Brief label (e.g., "Review auth module")
+- \`prompt\`: Must include:
+  1. The PR context (repo, PR number, base/head refs)
+  2. The list of assigned files for this group
+  3. The relevant diff sections for those files (extract from \`${diffPath}\`)
+  4. Instructions to return a JSON array of findings
+
+Example Task invocation for one group:
+\`\`\`
+Task(
+  subagent_type: "file-group-reviewer",
+  description: "Review auth module",
+  prompt: """
+    Review the following files from PR #${prNumber} in ${repoFullName}.
+    
+    PR Context:
+    - Head SHA: ${prHeadSha}
+    - Base Ref: ${prBaseRef}
+    
+    Assigned files:
+    - src/auth/login.ts
+    - src/auth/session.ts
+    - tests/auth.test.ts
+    
+    Diff for these files:
+    <paste relevant diff sections here>
+    
+    Return a JSON array of issues found. If no issues, return [].
+  """
+)
+\`\`\`
+
+Spawn all group reviewers in parallel by including multiple Task calls in one response.
+</parallel_review_phase>
+
 <output_spec>
 Write output to \`${reviewCandidatesPath}\` using this exact schema:
 
