@@ -210,6 +210,9 @@ export async function prepareReviewMode({
     "github_comment___update_droid_comment",
   ];
 
+  // Task tool is needed for parallel subagent reviews in candidate generation phase
+  const candidateGenerationTools = reviewUseValidator ? ["Task"] : [];
+
   const reviewTools = reviewUseValidator
     ? []
     : [
@@ -232,7 +235,12 @@ export async function prepareReviewMode({
     : userAllowedMCPTools;
 
   const allowedTools = Array.from(
-    new Set([...baseTools, ...reviewTools, ...safeUserAllowedMCPTools]),
+    new Set([
+      ...baseTools,
+      ...candidateGenerationTools,
+      ...reviewTools,
+      ...safeUserAllowedMCPTools,
+    ]),
   );
 
   const mcpTools = await prepareMcpTools({
