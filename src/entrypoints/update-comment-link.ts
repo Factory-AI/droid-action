@@ -14,6 +14,7 @@ import {
 import { GITHUB_SERVER_URL } from "../github/api/config";
 
 import { updateDroidComment } from "../github/operations/comments/update-droid-comment";
+import { fetchDroidComment } from "../github/operations/comments/fetch-droid-comment";
 
 async function run() {
   try {
@@ -39,33 +40,14 @@ async function run() {
     let isPRReviewComment = false;
 
     try {
-      // GitHub has separate ID namespaces for review comments and issue comments
-      // We need to use the correct API based on the event type
-      if (isPullRequestReviewCommentEvent(context)) {
-        // For PR review comments, use the pulls API
-        console.log(`Fetching PR review comment ${commentId}`);
-        const { data: prComment } = await octokit.rest.pulls.getReviewComment({
-          owner,
-          repo,
-          comment_id: commentId,
-        });
-        comment = prComment;
-        isPRReviewComment = true;
-        console.log("Successfully fetched as PR review comment");
-      }
-
-      // For all other event types, use the issues API
-      if (!comment) {
-        console.log(`Fetching issue comment ${commentId}`);
-        const { data: issueComment } = await octokit.rest.issues.getComment({
-          owner,
-          repo,
-          comment_id: commentId,
-        });
-        comment = issueComment;
-        isPRReviewComment = false;
-        console.log("Successfully fetched as issue comment");
-      }
+      const result = await fetchDroidComment(octokit, {
+        owner,
+        repo,
+        commentId,
+        isPullRequestReviewCommentEvent: isPullRequestReviewCommentEvent(context),
+      });
+      comment = result.comment;
+      isPRReviewComment = result.isPRReviewComment;
     } catch (finalError) {
       // If all attempts fail, try to determine more information about the comment
       console.error("Failed to fetch comment. Debug info:");
