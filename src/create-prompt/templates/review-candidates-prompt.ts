@@ -56,6 +56,29 @@ Precomputed data files:
 - Only flag issues you are confident about—avoid speculative or stylistic nitpicks.
 </review_guidelines>
 
+<triage_phase>
+**Step 1: Analyze and group the modified files**
+
+Before reviewing, you must triage the PR to enable parallel review:
+
+1. Read the diff file (\`${diffPath}\`) to identify ALL modified files
+2. Group the files into logical clusters based on:
+   - **Related functionality**: Files in the same module or feature area
+   - **File relationships**: A component and its tests, a class and its interface
+   - **Risk profile**: Security-sensitive files together, database/migration files together
+   - **Dependencies**: Files that import each other or share types
+
+3. Document your grouping briefly, for example:
+   - Group 1 (Auth): src/auth/login.ts, src/auth/session.ts, tests/auth.test.ts
+   - Group 2 (API handlers): src/api/users.ts, src/api/orders.ts
+   - Group 3 (Database): src/db/migrations/001.ts, src/db/schema.ts
+
+Guidelines for grouping:
+- Aim for 3-6 groups to balance parallelism with context coherence
+- Keep related files together so reviewers have full context
+- Each group should be reviewable independently
+</triage_phase>
+
 <output_spec>
 Write output to \`${reviewCandidatesPath}\` using this exact schema:
 
