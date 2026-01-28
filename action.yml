@@ -184,6 +184,20 @@ runs:
         DROID_DIR=$(dirname "${{ inputs.path_to_droid_executable }}")
         echo "$DROID_DIR" >> "$GITHUB_PATH"
 
+    - name: Setup Custom Droids
+      if: steps.prepare.outputs.contains_trigger == 'true'
+      shell: bash
+      run: |
+        echo "Setting up custom droids..."
+        mkdir -p ~/.factory/droids
+        if [ -d "${GITHUB_ACTION_PATH}/.factory/droids" ]; then
+          cp -r ${GITHUB_ACTION_PATH}/.factory/droids/* ~/.factory/droids/
+          echo "Copied custom droids to ~/.factory/droids/"
+          ls -la ~/.factory/droids/
+        else
+          echo "No custom droids found in action"
+        fi
+
     - name: Setup Network Restrictions
       if: steps.prepare.outputs.contains_trigger == 'true' && inputs.experimental_allowed_domains != ''
       shell: bash
@@ -290,6 +304,7 @@ runs:
           ~/.factory/logs/droid-log-single.log
           ~/.factory/logs/console.log
           ~/.factory/sessions/*
+          ~/.factory/droids/*
           ${{ runner.temp }}/droid-prompts/**
         if-no-files-found: ignore
         retention-days: 7
