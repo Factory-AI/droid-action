@@ -123,6 +123,21 @@ Task(
 Spawn all group reviewers in parallel by including multiple Task calls in one response.
 </parallel_review_phase>
 
+<aggregation_phase>
+**Step 3: Aggregate subagent results**
+
+After all subagents complete, collect and merge their findings:
+
+1. **Collect results**: Each subagent returns a JSON array of comment objects
+2. **Merge arrays**: Combine all arrays into a single comments array
+3. **Add commit_id**: Add \`"commit_id": "${prHeadSha}"\` to each comment object
+4. **Deduplicate**: If multiple subagents flagged the same location (same path + line), keep only one comment (prefer higher priority: P0 > P1 > P2)
+5. **Filter existing**: Remove any comments that duplicate issues already in \`${commentsPath}\`
+6. **Write reviewSummary**: Synthesize a 1-3 sentence overall assessment based on all findings
+
+Write the final aggregated result to \`${reviewCandidatesPath}\` using the schema in \`<output_spec>\`.
+</aggregation_phase>
+
 <output_spec>
 Write output to \`${reviewCandidatesPath}\` using this exact schema:
 
