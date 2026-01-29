@@ -49,7 +49,25 @@ async function run() {
       comment = result.comment;
       isPRReviewComment = result.isPRReviewComment;
     } catch (finalError) {
-      // If all attempts fail, try to determine more information about the comment
+      // Check if this is a 404 error (comment was deleted)
+      const is404 =
+        finalError instanceof Error &&
+        "status" in finalError &&
+        (finalError as { status: number }).status === 404;
+
+      if (is404) {
+        // Comment was deleted (possibly by user, spam filter, or another automation)
+        // This is not a critical failure - the main review/action likely completed
+        console.log(
+          `⚠️ Comment ${commentId} no longer exists (404). Skipping update.`,
+        );
+        console.log(
+          "This can happen if the comment was deleted by a user, spam filter, or another automation.",
+        );
+        process.exit(0);
+      }
+
+      // For non-404 errors, log debug info and fail
       console.error("Failed to fetch comment. Debug info:");
       console.error(`Comment ID: ${commentId}`);
       console.error(`Event name: ${context.eventName}`);
