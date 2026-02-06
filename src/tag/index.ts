@@ -187,14 +187,12 @@ export async function prepareTagExecution({
   if (commandContext?.command === "security") {
     core.setOutput("run_code_review", "false");
     core.setOutput("run_security_review", "true");
-    return {
-      skipped: false,
-      branchInfo: {
-        baseBranch: "",
-        currentBranch: "",
-      },
-      mcpTools: "",
-    };
+    return prepareSecurityReviewMode({
+      context,
+      octokit,
+      githubToken,
+      trackingCommentId: commentId,
+    });
   }
 
   if (commandContext?.command === "security-full") {
@@ -214,14 +212,12 @@ export async function prepareTagExecution({
   ) {
     core.setOutput("run_code_review", "true");
     core.setOutput("run_security_review", "false");
-    return {
-      skipped: false,
-      branchInfo: {
-        baseBranch: "",
-        currentBranch: "",
-      },
-      mcpTools: "",
-    };
+    return prepareReviewMode({
+      context,
+      octokit,
+      githubToken,
+      trackingCommentId: commentId,
+    });
   }
 
   throw new Error(`Unexpected command: ${commandContext?.command}`);
