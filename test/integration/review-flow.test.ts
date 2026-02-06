@@ -7,6 +7,7 @@ import { createMockContext } from "../mockContext";
 import * as createInitial from "../../src/github/operations/comments/create-initial";
 import * as mcpInstaller from "../../src/mcp/install-mcp-server";
 import * as actorValidation from "../../src/github/validation/actor";
+import * as promptModule from "../../src/create-prompt";
 import * as core from "@actions/core";
 
 describe("review command integration", () => {
@@ -19,6 +20,7 @@ describe("review command integration", () => {
   let actorSpy: ReturnType<typeof spyOn>;
   let setOutputSpy: ReturnType<typeof spyOn>;
   let exportVarSpy: ReturnType<typeof spyOn>;
+  let promptSpy: ReturnType<typeof spyOn>;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(path.join(os.tmpdir(), "review-int-"));
@@ -32,6 +34,7 @@ describe("review command integration", () => {
 
     mcpSpy = spyOn(mcpInstaller, "prepareMcpTools").mockResolvedValue("{}");
     actorSpy = spyOn(actorValidation, "checkHumanActor").mockResolvedValue();
+    promptSpy = spyOn(promptModule, "createPrompt").mockResolvedValue();
     setOutputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
     exportVarSpy = spyOn(core, "exportVariable").mockImplementation(() => {});
   });
@@ -41,6 +44,7 @@ describe("review command integration", () => {
     createCommentSpy.mockRestore();
     mcpSpy.mockRestore();
     actorSpy.mockRestore();
+    promptSpy.mockRestore();
     setOutputSpy.mockRestore();
     exportVarSpy.mockRestore();
 
@@ -116,9 +120,10 @@ describe("review command integration", () => {
       githubToken: "token",
     });
 
-    // In the parallel workflow, @droid review sets output flags and returns early
-    // The actual review is done by downstream workflow jobs
-    expect(result.skipped).toBe(false);
+    expect(result.skipped).toBeFalsy();
+    expect(result.branchInfo.baseBranch).toBe("main");
+    expect(result.branchInfo.currentBranch).toBe("feature/review");
+    expect(promptSpy).toHaveBeenCalled();
 
     // Verify output flags were set correctly for code review only
     const runCodeReviewCall = setOutputSpy.mock.calls.find(
@@ -157,7 +162,29 @@ describe("review command integration", () => {
       } as any,
     });
 
-    const octokit = { rest: {} } as any;
+    const octokit = {
+      rest: {},
+      graphql: () =>
+        Promise.resolve({
+          repository: {
+            pullRequest: {
+              baseRefName: "main",
+              headRefName: "feature/security",
+              headRefOid: "abc123",
+            },
+          },
+        }),
+    } as any;
+
+    graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
+      repository: {
+        pullRequest: {
+          baseRefName: "main",
+          headRefName: "feature/security",
+          headRefOid: "abc123",
+        },
+      },
+    });
 
     const result = await prepareTagExecution({
       context,
@@ -165,7 +192,10 @@ describe("review command integration", () => {
       githubToken: "token",
     });
 
-    expect(result.skipped).toBe(false);
+    expect(result.skipped).toBeFalsy();
+    expect(result.branchInfo.baseBranch).toBe("main");
+    expect(result.branchInfo.currentBranch).toBe("feature/security");
+    expect(promptSpy).toHaveBeenCalled();
 
     const runCodeReviewCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "run_code_review",
