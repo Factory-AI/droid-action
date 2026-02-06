@@ -349,7 +349,7 @@ runs:
 
     - name: Prepare validator
       id: prepare_validator
-      if: steps.prepare.outputs.contains_trigger == 'true' && inputs.review_use_validator == 'true'
+      if: steps.prepare.outputs.contains_trigger == 'true' && inputs.review_use_validator == 'true' && steps.prepare.outputs.run_code_review == 'true'
       shell: bash
       run: |
         bun run ${GITHUB_ACTION_PATH}/src/entrypoints/prepare-validator.ts
@@ -362,7 +362,7 @@ runs:
 
     - name: Run Droid Exec (validator)
       id: droid_validator
-      if: steps.prepare.outputs.contains_trigger == 'true' && inputs.review_use_validator == 'true'
+      if: steps.prepare.outputs.contains_trigger == 'true' && inputs.review_use_validator == 'true' && steps.prepare.outputs.run_code_review == 'true'
       shell: bash
       run: |
 
@@ -401,7 +401,7 @@ runs:
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         TRIGGER_COMMENT_ID: ${{ github.event.comment.id }}
         IS_PR: ${{ github.event.issue.pull_request != null || github.event_name == 'pull_request_target' || github.event_name == 'pull_request_review_comment' }}
-        DROID_SUCCESS: ${{ (inputs.review_use_validator == 'true' && steps.droid_validator.outputs.conclusion == 'success') || (inputs.review_use_validator != 'true' && steps.droid.outputs.conclusion == 'success') }}
+        DROID_SUCCESS: ${{ (inputs.review_use_validator == 'true' && steps.prepare.outputs.run_code_review == 'true' && steps.droid_validator.outputs.conclusion == 'success') || (!(inputs.review_use_validator == 'true' && steps.prepare.outputs.run_code_review == 'true') && steps.droid.outputs.conclusion == 'success') }}
         TRIGGER_USERNAME: ${{ github.event.comment.user.login || github.event.issue.user.login || github.event.pull_request.user.login || github.event.sender.login || github.triggering_actor || github.actor || '' }}
         PREPARE_SUCCESS: ${{ steps.prepare.outcome == 'success' }}
         PREPARE_ERROR: ${{ steps.prepare.outputs.prepare_error || '' }}
