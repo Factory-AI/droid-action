@@ -103,6 +103,11 @@ export type EventData =
   | PullRequestEvent
   | PullRequestTargetEvent;
 
+export type ReviewArtifacts = {
+  diffPath: string;
+  commentsPath: string;
+};
+
 export type PreparedContext = CommonFields & {
   eventData: EventData;
   githubContext?: GitHubContext;
@@ -110,4 +115,5 @@ export type PreparedContext = CommonFields & {
     headRefName: string;
     headRefOid: string;
   };
+  reviewArtifacts?: ReviewArtifacts;
 };

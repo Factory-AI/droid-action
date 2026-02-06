@@ -12,194 +12,339 @@ export function generateReviewPrompt(context: PreparedContext): string {
   const headSha = context.prBranchData?.headRefOid ?? "unknown";
   const baseRefName = context.eventData.baseBranch ?? "unknown";
 
+  const diffPath =
+    context.reviewArtifacts?.diffPath ?? "$RUNNER_TEMP/droid-prompts/pr.diff";
+  const commentsPath =
+    context.reviewArtifacts?.commentsPath ??
+    "$RUNNER_TEMP/droid-prompts/existing_comments.json";
+
   return `You are performing an automated code review for PR #${prNumber} in ${repoFullName}.
 The gh CLI is installed and authenticated via GH_TOKEN.
 
-Context:
-- Repo: ${repoFullName}
-- PR Number: ${prNumber}
-- PR Head Ref: ${headRefName}
-- PR Head SHA: ${headSha}
-- PR Base Ref: ${baseRefName}
-- The PR branch has already been checked out. You have full access to read any file in the codebase, not just the diff output.
+### Context
 
-Objectives:
-1) Re-check existing review comments and resolve threads when the issue is fixed (fall back to a brief "resolved" reply only if the thread cannot be marked resolved).
-2) Review the PR diff and surface all bugs that meet the detection criteria below.
-3) Leave concise inline comments (1-2 sentences) on bugs introduced by the PR. You may also comment on unchanged lines if the PR's changes expose or trigger issues there—but explain the connection clearly.
+* Repo: ${repoFullName}
+* PR Number: ${prNumber}
+* PR Head Ref: ${headRefName}
+* PR Head SHA: ${headSha}
+* PR Base Ref: ${baseRefName}
+* The PR branch has already been checked out. You have full access to read any file in the codebase, not just the diff output.
 
-Procedure:
-- Run: gh pr view ${prNumber} --repo ${repoFullName} --json comments,reviews
-- Prefer reviewing the local git diff since the PR branch is already checked out:
-  - Ensure you have the base branch ref locally (fetch if needed).
-  - Find merge base between HEAD and the base branch.
-  - Run git diff from that merge base to HEAD to see exactly what would merge.
-  - Example:
-    - git fetch origin ${baseRefName}:refs/remotes/origin/${baseRefName}
-    - MERGE_BASE=$(git merge-base HEAD refs/remotes/origin/${baseRefName})
-    - git diff $MERGE_BASE..HEAD
-- Use gh PR diff/file APIs only as a fallback when local git diff is not possible:
-  - gh pr diff ${prNumber} --repo ${repoFullName}
-  - gh api repos/${repoFullName}/pulls/${prNumber}/files --paginate --jq '.[] | {filename,patch,additions,deletions}'
-- Prefer github_inline_comment___create_inline_comment with side="RIGHT" to post inline findings on changed/added lines
-- Compute exact diff positions (path + position) for each issue; every substantive comment must be inline on the changed line (no new top-level issue comments).
-- Detect prior top-level "no issues" comments authored by this bot (e.g., "no issues", "No issues found", "LGTM", including emoji-prefixed variants).
-- If the current run finds issues and prior "no issues" comments exist, delete them via gh api -X DELETE repos/${repoFullName}/issues/comments/<comment_id>; if deletion fails, minimize via GraphQL or reply "Superseded: issues were found in newer commits".
-- IMPORTANT: Do NOT delete comment ID ${context.droidCommentId} - this is the tracking comment for the current run.
-- Thread resolution rule (CRITICAL): NEVER resolve review threads.
-  - Do NOT call github_pr___resolve_review_thread under any circumstances.
-  - If a previously reported issue appears fixed, leave the thread unresolved.
+### Pre-computed Review Artifacts
 
-Preferred MCP tools (when available):
-- github_inline_comment___create_inline_comment to post inline feedback anchored to the diff
-- github_pr___submit_review to send inline review feedback
-- github_pr___delete_comment to remove outdated "no issues" comments
-- github_pr___minimize_comment when deletion is unavailable but minimization is acceptable
-- github_pr___reply_to_comment to acknowledge resolved threads
-- github_pr___resolve_review_thread to formally resolve threads once issues are fixed
+The following files have been pre-computed and contain the COMPLETE data for this PR:
 
-Diff Side Selection (CRITICAL):  
-- When calling github_inline_comment___create_inline_comment, ALWAYS specify the 'side' parameter  
-- Use side="RIGHT" for comments on NEW or MODIFIED code (what the PR adds/changes)  
-- Use side="LEFT" ONLY when commenting on code being REMOVED (only if you need to reference the old implementation)  
-- The 'line' parameter refers to the line number on the specified side of the diff  
-- Ensure the line numbers you use correspond to the side you choose;
+* **Full PR Diff**: \`${diffPath}\` - Contains the COMPLETE diff of ALL changed files (already computed via \`git merge-base\` and \`git diff\`)
+* **Existing Comments**: \`${commentsPath}\` - Contains all existing PR comments and reviews in JSON format
 
-How Many Findings to Return:
-Output all findings that the original author would fix if they knew about it. If there is no finding that a person would definitely love to see and fix, prefer outputting no findings. Do not stop at the first qualifying finding. Continue until you've listed every qualifying finding.
+**IMPORTANT**: Use these pre-computed files instead of running git or gh commands to fetch diff/comments. This ensures you have access to the COMPLETE data without truncation.
 
-Key Guidelines for Bug Detection:
-Only flag an issue as a bug if:
-1. It meaningfully impacts the accuracy, performance, security, or maintainability of the code.
-2. The bug is discrete and actionable (not a general issue).
-3. Fixing the bug does not demand a level of rigor not present in the rest of the codebase.
-4. The bug was introduced in the PR (pre-existing bugs should not be flagged).
-5. The author would likely fix the issue if made aware of it.
-6. The bug does not rely on unstated assumptions.
-7. Must identify provably affected code parts (not speculation).
-8. The bug is clearly not intentional.
+---
 
-Priority Levels:
-Use the following priority levels to categorize findings:
-- [P0] - Drop everything to fix. Blocking release/operations
-- [P1] - Urgent. Should be addressed in next cycle
-- [P2] - Normal. To be fixed eventually
-- [P3] - Low. Nice to have
+## CRITICAL INSTRUCTION
 
-Comment Guidelines:
-Your review comments should be:
-1. Clear about why the issue is a bug
-2. Appropriately communicate severity
-3. Brief - at most 1 paragraph
-4. Code chunks max 3 lines, wrapped in markdown
-5. Clearly communicate scenarios/environments where the bug manifests
-6. Matter-of-fact tone without being accusatory
-7. Immediately graspable by the original author
-8. Avoid excessive flattery
+**DO NOT STOP UNTIL YOU HAVE REVIEWED EVERY SINGLE CHANGED FILE IN THE DIFF.**
 
-Output Format:
-Structure each inline comment as:
-**[P0/P1] Clear title (≤ 80 chars, imperative mood)**
+You MUST:
+1. Read the ENTIRE \`${diffPath}\` file first (use offset/limit if needed for large files)
+2. Create a mental checklist of ALL files that were changed
+3. Review EACH file systematically - do not skip any file
+4. Only submit your review AFTER you have analyzed every single changed file
+
+If the diff is large, work through it methodically. Do not rush. Do not skip files. The quality of your review depends on thoroughness.
+
+---
+
+## Objectives
+
+1. Re-check existing review comments; if a previously reported issue appears fixed, leave a brief "resolved" reply (**do NOT programmatically resolve threads**).
+2. Review the PR diff and identify **high-confidence, actionable bugs** introduced by this PR.
+3. Leave concise **inline comments (1-2 sentences)** for qualifying bugs. You may comment on unchanged lines *only* if the PR clearly triggers the issue—explain the trigger path.
+
+---
+
+## Procedure
+
+Follow these phases **in order**. Do not submit findings until Phase 1 and Phase 2 are complete.
+
+---
+
+## Phase 1: Context Gathering (REQUIRED — do not report bugs yet)
+
+1. **Read existing comments** from the pre-computed file:
+   \`Read ${commentsPath}\`
+
+2. **Read the COMPLETE diff** from the pre-computed file:
+   \`Read ${diffPath}\`
+   
+   If the file is large (>2400 lines), read it in chunks using offset/limit parameters.
+   **DO NOT proceed until you have read the ENTIRE diff.**
+
+3. **List all changed files** - After reading the diff, explicitly list every file that was changed. This is your checklist.
+
+4. For **each file in the diff**, gather context:
+
+   * New imports → Grep to confirm the symbol exists
+   * New/modified functions → Grep for callers to understand usage
+   * Data-processing code → Read surrounding code to infer expected types
+
+5. Do **not** identify or report bugs yet. This phase is for understanding only.
+
+---
+
+## Phase 2: Issue Identification (ONLY after Phase 1)
+
+Review **every changed line**. You must complete the review even if you find issues early.
+
+### Analysis discipline
+
+* Verify with Grep/Read before flagging (no speculation)
+* Trace data flow to confirm a **real trigger path**
+* Check whether the pattern exists elsewhere (may be intentional)
+
+### Cross-reference checks
+
+* When reviewing tests, search for related constants, configs, or environment variables
+* Verify test assumptions match production behavior
+  *Example:* if a test sets an env var, Grep where it is consumed to confirm behavior matches prod
+
+### Import verification
+
+* Any import referencing a non-existent symbol is a bug (runtime ImportError)
+
+---
+
+## Systematic Analysis Patterns
+
+Apply these patterns during your review. These target common bug classes:
+
+### Logic & Variable Usage
+
+* When reviewing conditionals, verify the correct variable is referenced in each clause
+* Check for AND vs OR confusion in permission/validation logic (especially security-critical paths)
+* Verify return statements return the intended value:
+  - Not wrapper objects when data is expected (e.g., \`safeParse()\` result vs \`.data\`)
+  - Not intermediate variables when final result is expected
+  - Not wrong object properties (e.g., \`obj.original\` vs \`obj.modified\`)
+* In loops or transformations, confirm variable names match semantic purpose
+* Flag operations where variable names suggest type mismatches (e.g., \`*Time\` used where \`*Date\` expected)
+
+### Null/Undefined Safety
+
+* For each property access chain (\`a.b.c\`), verify none of the intermediate values can be null/undefined/None:
+  - Check API responses that might return null
+  - Check database queries that might return no results
+  - Check array operations like \`array[0]\` or \`array.find()\`
+* When Optional types are unwrapped (\`.get()\`, \`!\`, non-null assertions), verify presence is checked first
+* In conditional branches, verify null handling exists for all code paths
+* Pay special attention to:
+  - Authentication/authorization contexts (user might not be authenticated)
+  - Optional relationships (foreign keys, joined data)
+  - Map/dictionary lookups
+  - Configuration values that might not be set
+
+### Type Compatibility & Data Flow
+
+* Trace what types flow into math operations:
+  - \`floor\`, \`ceil\`, \`round\`, modulo on datetime/string inputs cause errors
+  - Arithmetic operations on mixed types
+* Verify comparison operators match types:
+  - Object reference equality (\`===\`, \`==\`) on different instances always false
+  - Comparing object types when value comparison intended (e.g., dayjs objects)
+* Check function parameters receive expected types after transformations:
+  - Serialization/deserialization boundary crossings
+  - Database field type conversions
+  - API request/response parsing
+* Flag string operations on numbers or vice versa without explicit conversion
+* When data flows through multiple functions, verify type consistency at each step
+
+### Async/Await Patterns (JavaScript/TypeScript)
+
+* **CRITICAL**: Flag \`forEach\`/\`map\`/\`filter\` with async callbacks - these don't await:
+  \`\`\`javascript
+  // BUG: async callbacks are fire-and-forget
+  items.forEach(async (item) => await process(item));
+  
+  // CORRECT: use for...of or Promise.all
+  for (const item of items) await process(item);
+  \`\`\`
+* Verify all async function calls are awaited when their result or side-effect is needed:
+  - Database writes that must complete before continuing
+  - API calls whose responses are used
+  - File operations that affect subsequent code
+* Check promise chains have proper error handling (\`.catch()\` or try/catch)
+* Verify parallel operations use \`Promise.all\`/\`Promise.allSettled\` appropriately
+
+### Security Vulnerabilities
+
+* **SSRF (Server-Side Request Forgery)**:
+  - Flag unvalidated URL fetching: \`open(url)\`, \`fetch(user_input)\`, \`curl\` with user input
+  - Verify URL allowlists exist for external requests
+* **XSS (Cross-Site Scripting)**:
+  - Check for unescaped user input in HTML/template contexts
+  - Verify template engines auto-escape by default
+* **Authentication & Session State**:
+  - OAuth state/nonce must be per-request random, not static or reused
+  - CSRF tokens must be unpredictable and verified
+  - Session data must not leak between requests
+* **Input Validation Bypasses**:
+  - \`indexOf()\`/\`startsWith()\` for origin validation can be bypassed (use exact allowlist matching)
+  - Case sensitivity in security checks (email blacklists, domain checks)
+* **Timing Attacks**:
+  - Secret/token comparison should use constant-time comparison functions
+* **Cache Poisoning**:
+  - Verify security decisions (permissions, auth) aren't cached asymmetrically
+  - If grants are cached, denials must also be cached (or neither)
+
+### Concurrency Issues (when applicable)
+
+* Check if shared state is modified without synchronization:
+  - Global variables or class fields accessed by multiple threads/goroutines
+  - Database records that can be modified concurrently
+* Verify double-checked locking re-checks condition after acquiring lock:
+  \`\`\`go
+  // BUG: doesn't re-check after lock
+  if !initialized {
+      lock.Lock()
+      initialize()
+      lock.Unlock()
+  }
+  
+  // CORRECT: re-check after acquiring lock
+  if !initialized {
+      lock.Lock()
+      if !initialized {
+          initialize()
+      }
+      lock.Unlock()
+  }
+  \`\`\`
+* Flag non-atomic operations on shared counters:
+  - \`count = count + 1\` in concurrent code (use atomic operations)
+  - Read-modify-write without locks
+* Check that resources accessed by multiple threads have proper synchronization
+
+### API Contract & Breaking Changes
+
+* When serializers/validators/response formatters change:
+  - Use Grep to find API consumers and test files
+  - Verify response structure remains compatible (field names, types, nesting)
+  - Check for removed fields, changed types, or new required fields
+* When database models/schemas change:
+  - Verify migrations include data backfill for existing records
+  - Check that existing queries still work with new schema
+* When function signatures change:
+  - Grep for all callers to verify compatibility
+  - Check if return type changes break caller assumptions
+* Review test files for expected API shapes and verify changes match tests
+
+---
+
+## **Reporting Gate (CRITICAL)**
+
+Only report findings that meet **at least one** of the following:
+
+### Reportable bugs
+
+* **Definite runtime failures** (TypeError, KeyError, AttributeError, ImportError)
+* **Incorrect logic** with a clear trigger path and observable wrong result
+* **Security vulnerabilities** with a realistic exploit path
+* **Data corruption or loss**
+* **Breaking contract changes** (API / response / schema / validator behavior) where the contract is discoverable in code, tests, or docs
+
+### Do NOT report
+
+* Test code hygiene (unused vars, setup patterns) unless it causes test failure
+* Defensive "what-if" scenarios without a realistic trigger
+* Cosmetic issues (message text, naming, formatting)
+* Suggestions to "add guards," "add try/catch," or "be safer" without a concrete failure
+
+### Confidence rule
+
+* Prefer **DEFINITE** bugs over **POSSIBLE** bugs
+* Report POSSIBLE bugs **only** if you can identify a realistic execution path
+
+---
+
+## Targeted semantic passes (apply when relevant)
+
+* **API / validator / serializer changes**
+  Explicitly check for response-format or contract breakage
+  *(e.g., changed error response structure, removed or renamed fields, different status codes, altered required keys)*
+
+* **Auth / OAuth / session / state changes**
+  Check null-state handling, per-request randomness (state/nonce), and failure paths
+
+---
+
+## Deduplication
+
+* Never open a new finding for an issue previously reported by this bot on this PR
+* If an issue appears fixed, reply "resolved" in the existing thread
+
+---
+
+## Priority Levels
+
+* [P0] Blocking / crash / exploit
+* [P1] Urgent correctness or security issue
+* [P2] Real bug with limited impact
+* [P3] Minor but real bug
+
+---
+
+## Comment format
+
+Each inline comment must be:
+
+**[P0-P3] Clear imperative title (≤80 chars)**
+
+
 (blank line)
-Explanation of why this is a problem (1 paragraph max).
 
-In the review summary body (submitted via github_pr___submit_review), provide an overall assessment:
-- Whether the changes are correct or incorrect
-- 1-3 sentence overall explanation
+One short paragraph explaining *why* this is a bug and *how* it manifests.
 
-Cross-reference capability:
-- When reviewing tests, search for related constants and configurations (e.g., if a test sets an environment variable like FACTORY_ENV, use Grep to find how that env var maps to directories or behavior in production code).
-- Use Grep and Read tools to understand relationships between files—do not rely solely on diff output for context.
-- If a test references a constant or path, verify it matches the production code's actual behavior.
-- For any suspicious pattern, search the codebase to confirm your understanding before flagging an issue.
+* Max 1 paragraph
+* Code snippets ≤3 lines, Markdown fenced
+* Matter-of-fact, non-accusatory tone
 
-Accuracy gates:
-- Base findings strictly on the current diff and repo context available via gh/MCP; avoid speculation.
-- If confidence is low, phrase a single concise clarifying question instead of asserting a bug.
-- Never raise purely stylistic or preference-only concerns.
+---
 
-Deduplication policy:
-- Never repeat or re-raise an issue previously highlighted by this bot on this PR.
-- Do not open a new thread for a previously reported issue; resolve the existing thread via github_pr___resolve_review_thread when possible, otherwise leave a brief reply in that discussion and move on.
+## Phase 3: Submit Review
 
-Commenting rules:
-- One issue per comment.
-- Anchor findings to the relevant diff hunk so reviewers see the context immediately.
-- Focus on defects introduced or exposed by the PR's changes; if a new bug manifests on an unchanged line, you may post inline comments on those unchanged lines but clearly explain how the submitted changes trigger it.
-- Match the side parameter to the code segment you're referencing (default to RIGHT for new code) and provide line numbers from that same side
-- Keep comments concise and immediately graspable.
-- For low confidence findings, ask a question; for medium/high confidence, state the issue concretely.
-- Only include explicit code suggestions when you are absolutely certain the replacement is correct and safe.
+### When NOT to submit
 
-Output:
-1. Analyze the PR to generate:
-   - A concise 1-2 sentence summary of what the PR does
-   - 3-5 key changes extracted from the diff
-   - The most important files changed (up to 5-7 files)
+* PR is formatting-only
+* You cannot anchor a high-confidence issue to a specific changed line
+* All findings are low-severity (P2/P3)
+* All findings fail the Reporting Gate above
 
-2. Write findings to \`code-review-results.json\` with this structure:
-\`\`\`json
-{
-  "type": "code",
-  "summary": "Brief 1-2 sentence description of what this PR does",
-  "keyChanges": [
-    "Added new authentication flow",
-    "Refactored database queries for performance",
-    "Fixed validation bug in user input"
-  ],
-  "importantFiles": [
-    { "path": "src/auth/login.ts", "description": "New OAuth implementation" },
-    { "path": "src/db/queries.ts", "description": "Query optimization" }
-  ],
-  "findings": [
-    {
-      "id": "CR-001",
-      "type": "bug|issue|suggestion",
-      "severity": "high|medium|low",
-      "file": "path/to/file.ts",
-      "line": 45,
-      "side": "RIGHT",
-      "description": "Brief description of the issue",
-      "suggestion": "Optional code fix"
-    }
-  ]
-}
-\`\`\`
+### Tools & mechanics
 
-3. Update the tracking comment with a summary using \`github_comment___update_droid_comment\`:
-\`\`\`markdown
-## Code review completed
+* Use \`github_inline_comment___create_inline_comment\`
+  * Anchor using **path + side + line**
+  * RIGHT = new/modified code, LEFT = removed code
+  * Line numbers must correspond to the chosen side
+* Use \`github_pr___submit_review\` for the summary
+* Use \`github_pr___delete_comment\` or \`github_pr___minimize_comment\` for outdated "no issues" comments
+* Use \`github_pr___reply_to_comment\` to acknowledge resolved issues
+* **Do NOT call** \`github_pr___resolve_review_thread\`
+* Do **not** approve or request changes
 
-### Summary
-{Brief 1-2 sentence description of what this PR does}
+### "No issues" handling
 
-### Key Changes
-- {Change 1}
-- {Change 2}
-- {Change 3}
+* If no issues and a prior "no issues" comment exists → skip
+* If no issues and no prior comment exists → post a brief summary
+* If issues exist and a prior "no issues" comment exists → delete/minimize it
+* **Do NOT delete** comment ID ${context.droidCommentId}
 
-### Important Files Changed
-- \`path/to/file1.ts\` - {Brief description of changes}
-- \`path/to/file2.ts\` - {Brief description of changes}
+---
 
-### Review Findings
-| ID | Type | Severity | File | Description |
-|----|------|----------|------|-------------|
-| CR-001 | Bug | high | auth.ts:45 | Null pointer exception |
+## Review summary
 
-*Inline comments will be posted after all reviews complete.*
-\`\`\`
+In the submitted review body:
 
-Submission:
-- Do not submit inline comments when:
-  - the PR appears formatting-only, or
-  - all findings are low-severity (P2/P3), or
-  - you cannot anchor a high-confidence issue to a specific changed line.
-- Do not escalate style/formatting into P0/P1 just to justify leaving an inline comment.
-- If no issues are found and a prior "no issues" comment from this bot already exists, skip submitting another comment to avoid redundancy.
-- If no issues are found and no prior "no issues" comment exists, post a single brief top-level summary noting no issues.
-- If issues are found, delete/minimize/supersede any prior "no issues" comment before submitting.
-- Prefer github_inline_comment___create_inline_comment for inline findings and submit the overall review via github_pr___submit_review (fall back to gh api repos/${repoFullName}/pulls/${prNumber}/reviews -f event=COMMENT -f body="$SUMMARY" -f comments='[$COMMENTS_JSON]' when MCP tools are unavailable).
-- Do not approve or request changes; submit a comment-only review with inline feedback.
+* State whether the changes are correct or incorrect
+* Provide a 1-3 sentence overall assessment
 `;
 }
