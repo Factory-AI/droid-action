@@ -175,7 +175,7 @@ export async function prepareReviewMode({
   };
 
   const reviewUseValidator =
-    (process.env.REVIEW_USE_VALIDATOR ?? "").trim() === "true";
+    (process.env.REVIEW_USE_VALIDATOR ?? "true").trim() !== "false";
 
   await createPrompt({
     githubContext: context,
@@ -205,6 +205,7 @@ export async function prepareReviewMode({
     "Glob",
     "LS",
     "Execute",
+    "Edit",
     "Create",
     "ApplyPatch",
     "github_comment___update_droid_comment",
@@ -259,16 +260,15 @@ export async function prepareReviewMode({
   const reviewModel = process.env.REVIEW_MODEL?.trim();
   const reasoningEffort = process.env.REASONING_EFFORT?.trim();
 
-  // Default behavior (behind the scenes): if neither is provided, run GPT-5.2 at high reasoning.
+  // action.yml defaults review_model to claude-opus-4-6, so reviewModel is
+  // normally always set. The fallback keeps things working outside the action.
   if (!reviewModel && !reasoningEffort) {
-    droidArgParts.push(`--model "gpt-5.2"`);
+    droidArgParts.push(`--model "claude-opus-4-6"`);
     droidArgParts.push(`--reasoning-effort "high"`);
   } else {
-    // Add model override if specified
     if (reviewModel) {
       droidArgParts.push(`--model "${reviewModel}"`);
     }
-    // Add reasoning effort override if specified
     if (reasoningEffort) {
       droidArgParts.push(`--reasoning-effort "${reasoningEffort}"`);
     }

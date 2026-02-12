@@ -373,8 +373,8 @@ describe("prepareReviewMode", () => {
     const droidArgsCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "droid_args",
     ) as [string, string] | undefined;
-    // When neither REVIEW_MODEL nor REASONING_EFFORT is provided, we default to gpt-5.2 at xhigh reasoning.
-    expect(droidArgsCall?.[1]).toContain('--model "gpt-5.2"');
+    // When neither REVIEW_MODEL nor REASONING_EFFORT is provided, we default to claude-opus-4-6 at high reasoning.
+    expect(droidArgsCall?.[1]).toContain('--model "claude-opus-4-6"');
     expect(droidArgsCall?.[1]).toContain('--reasoning-effort "high"');
   });
 });

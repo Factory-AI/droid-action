@@ -194,7 +194,7 @@ export async function prepareReviewValidatorMode({
   const reasoningEffort = process.env.REASONING_EFFORT?.trim();
 
   if (!reviewModel && !reasoningEffort) {
-    droidArgParts.push(`--model "gpt-5.2"`);
+    droidArgParts.push(`--model "claude-opus-4-6"`);
     droidArgParts.push(`--reasoning-effort "high"`);
   } else {
     if (reviewModel) droidArgParts.push(`--model "${reviewModel}"`);
