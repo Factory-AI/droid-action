@@ -85,6 +85,23 @@ async function fetchAndStoreComments(
   return commentsPath;
 }
 
+async function storeDescription(
+  title: string,
+  body: string,
+  tempDir: string,
+): Promise<string> {
+  const promptsDir = `${tempDir}/droid-prompts`;
+  await mkdir(promptsDir, { recursive: true });
+
+  const content = `# ${title}\n\n${body}`;
+  const descriptionPath = `${promptsDir}/pr_description.txt`;
+  await writeFile(descriptionPath, content);
+  console.log(
+    `Stored PR description (${content.length} bytes) at ${descriptionPath}`,
+  );
+  return descriptionPath;
+}
+
 export async function prepareReviewValidatorMode({
   context,
   octokit,
@@ -124,7 +141,7 @@ export async function prepareReviewValidatorMode({
     throw new Error(`Failed to checkout PR #${context.entityNumber} branch for review`);
   }
 
-  const [diffPath, commentsPath] = await Promise.all([
+  const [diffPath, commentsPath, descriptionPath] = await Promise.all([
     computeAndStoreDiff(prData.baseRefName, tempDir),
     fetchAndStoreComments(
       octokit,
@@ -133,9 +150,10 @@ export async function prepareReviewValidatorMode({
       context.entityNumber,
       tempDir,
     ),
+    storeDescription(prData.title, prData.body, tempDir),
   ]);
 
-  const reviewArtifacts: ReviewArtifacts = { diffPath, commentsPath };
+  const reviewArtifacts: ReviewArtifacts = { diffPath, commentsPath, descriptionPath };
 
   await createPrompt({
     githubContext: context,
