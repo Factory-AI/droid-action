@@ -17,6 +17,9 @@ export function generateReviewPrompt(context: PreparedContext): string {
   const commentsPath =
     context.reviewArtifacts?.commentsPath ??
     "$RUNNER_TEMP/droid-prompts/existing_comments.json";
+  const descriptionPath =
+    context.reviewArtifacts?.descriptionPath ??
+    "$RUNNER_TEMP/droid-prompts/pr_description.txt";
 
   return `You are performing an automated code review for PR #${prNumber} in ${repoFullName}.
 The gh CLI is installed and authenticated via GH_TOKEN.
@@ -34,6 +37,7 @@ The gh CLI is installed and authenticated via GH_TOKEN.
 
 The following files have been pre-computed and contain the COMPLETE data for this PR:
 
+* **PR Description**: \`${descriptionPath}\` - Contains the PR title and description (body) explaining the intent and scope of the changes
 * **Full PR Diff**: \`${diffPath}\` - Contains the COMPLETE diff of ALL changed files (already computed via \`git merge-base\` and \`git diff\`)
 * **Existing Comments**: \`${commentsPath}\` - Contains all existing PR comments and reviews in JSON format
 
@@ -71,24 +75,27 @@ Follow these phases **in order**. Do not submit findings until Phase 1 and Phase
 
 ## Phase 1: Context Gathering (REQUIRED — do not report bugs yet)
 
-1. **Read existing comments** from the pre-computed file:
+1. **Read the PR description** to understand the intent and scope:
+   \`Read ${descriptionPath}\`
+
+2. **Read existing comments** from the pre-computed file:
    \`Read ${commentsPath}\`
 
-2. **Read the COMPLETE diff** from the pre-computed file:
+3. **Read the COMPLETE diff** from the pre-computed file:
    \`Read ${diffPath}\`
    
    If the file is large (>2400 lines), read it in chunks using offset/limit parameters.
    **DO NOT proceed until you have read the ENTIRE diff.**
 
-3. **List all changed files** - After reading the diff, explicitly list every file that was changed. This is your checklist.
+4. **List all changed files** - After reading the diff, explicitly list every file that was changed. This is your checklist.
 
-4. For **each file in the diff**, gather context:
+5. For **each file in the diff**, gather context:
 
    * New imports → Grep to confirm the symbol exists
    * New/modified functions → Grep for callers to understand usage
    * Data-processing code → Read surrounding code to infer expected types
 
-5. Do **not** identify or report bugs yet. This phase is for understanding only.
+6. Do **not** identify or report bugs yet. This phase is for understanding only.
 
 ---
 

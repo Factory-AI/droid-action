@@ -9,6 +9,8 @@ export type PRBranchData = {
   baseRefName: string;
   headRefName: string;
   headRefOid: string;
+  title: string;
+  body: string;
 };
 
 type PullRequestQueryResponse = {
@@ -52,6 +54,8 @@ export async function fetchPRBranchData({
       baseRefName: pullRequest.baseRefName,
       headRefName: pullRequest.headRefName,
       headRefOid: pullRequest.headRefOid,
+      title: pullRequest.title,
+      body: pullRequest.body ?? "",
     };
   } catch (error) {
     console.error(`Failed to fetch PR branch data:`, error);

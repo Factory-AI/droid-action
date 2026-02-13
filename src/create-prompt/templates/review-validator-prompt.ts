@@ -1,6 +1,8 @@
 import type { PreparedContext } from "../types";
 
-export function generateReviewValidatorPrompt(context: PreparedContext): string {
+export function generateReviewValidatorPrompt(
+  context: PreparedContext,
+): string {
   const prNumber = context.eventData.isPR
     ? context.eventData.prNumber
     : context.githubContext && "entityNumber" in context.githubContext
@@ -17,6 +19,9 @@ export function generateReviewValidatorPrompt(context: PreparedContext): string 
   const commentsPath =
     context.reviewArtifacts?.commentsPath ??
     "$RUNNER_TEMP/droid-prompts/existing_comments.json";
+  const descriptionPath =
+    context.reviewArtifacts?.descriptionPath ??
+    "$RUNNER_TEMP/droid-prompts/pr_description.txt";
 
   const reviewCandidatesPath =
     process.env.REVIEW_CANDIDATES_PATH ??
@@ -40,6 +45,7 @@ IMPORTANT: This is Phase 2 (validator) of a two-pass review pipeline.
 ### Inputs
 
 Read:
+* PR Description: \`${descriptionPath}\`
 * Candidates: \`${reviewCandidatesPath}\`
 * Full PR Diff: \`${diffPath}\`
 * Existing Comments: \`${commentsPath}\`
@@ -68,14 +74,17 @@ Read:
 
 ## Phase 1: Load context (REQUIRED)
 
-1. Read existing comments:
+1. Read the PR description:
+   Read \`${descriptionPath}\`
+
+2. Read existing comments:
    Read \`${commentsPath}\`
 
-2. Read the COMPLETE diff:
+3. Read the COMPLETE diff:
    Read \`${diffPath}\`
    If large, read in chunks (offset/limit). **Do not proceed until you have read the ENTIRE diff.**
 
-3. Read candidates:
+4. Read candidates:
    Read \`${reviewCandidatesPath}\`
 
 =======================

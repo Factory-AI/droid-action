@@ -126,6 +126,8 @@ describe("prepareReviewMode", () => {
               baseRefName: MOCK_PR_DATA.baseRefName,
               headRefName: MOCK_PR_DATA.headRefName,
               headRefOid: MOCK_PR_DATA.headRefOid,
+              title: MOCK_PR_DATA.title,
+              body: MOCK_PR_DATA.body,
             },
           },
         }),
@@ -137,6 +139,8 @@ describe("prepareReviewMode", () => {
           baseRefName: MOCK_PR_DATA.baseRefName,
           headRefName: MOCK_PR_DATA.headRefName,
           headRefOid: MOCK_PR_DATA.headRefOid,
+          title: MOCK_PR_DATA.title,
+          body: MOCK_PR_DATA.body,
         },
       },
     });
@@ -218,6 +222,8 @@ describe("prepareReviewMode", () => {
               baseRefName: MOCK_PR_DATA.baseRefName,
               headRefName: MOCK_PR_DATA.headRefName,
               headRefOid: MOCK_PR_DATA.headRefOid,
+              title: MOCK_PR_DATA.title,
+              body: MOCK_PR_DATA.body,
             },
           },
         }),
@@ -229,6 +235,8 @@ describe("prepareReviewMode", () => {
           baseRefName: MOCK_PR_DATA.baseRefName,
           headRefName: MOCK_PR_DATA.headRefName,
           headRefOid: MOCK_PR_DATA.headRefOid,
+          title: MOCK_PR_DATA.title,
+          body: MOCK_PR_DATA.body,
         },
       },
     });
@@ -286,6 +294,8 @@ describe("prepareReviewMode", () => {
               baseRefName: MOCK_PR_DATA.baseRefName,
               headRefName: MOCK_PR_DATA.headRefName,
               headRefOid: MOCK_PR_DATA.headRefOid,
+              title: MOCK_PR_DATA.title,
+              body: MOCK_PR_DATA.body,
             },
           },
         }),
@@ -297,6 +307,8 @@ describe("prepareReviewMode", () => {
           baseRefName: MOCK_PR_DATA.baseRefName,
           headRefName: MOCK_PR_DATA.headRefName,
           headRefOid: MOCK_PR_DATA.headRefOid,
+          title: MOCK_PR_DATA.title,
+          body: MOCK_PR_DATA.body,
         },
       },
     });
@@ -348,6 +360,8 @@ describe("prepareReviewMode", () => {
               baseRefName: MOCK_PR_DATA.baseRefName,
               headRefName: MOCK_PR_DATA.headRefName,
               headRefOid: MOCK_PR_DATA.headRefOid,
+              title: MOCK_PR_DATA.title,
+              body: MOCK_PR_DATA.body,
             },
           },
         }),
@@ -359,6 +373,8 @@ describe("prepareReviewMode", () => {
           baseRefName: MOCK_PR_DATA.baseRefName,
           headRefName: MOCK_PR_DATA.headRefName,
           headRefOid: MOCK_PR_DATA.headRefOid,
+          title: MOCK_PR_DATA.title,
+          body: MOCK_PR_DATA.body,
         },
       },
     });
@@ -373,8 +389,279 @@ describe("prepareReviewMode", () => {
     const droidArgsCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "droid_args",
     ) as [string, string] | undefined;
-    // When neither REVIEW_MODEL nor REASONING_EFFORT is provided, we default to gpt-5.2 at xhigh reasoning.
+    // When neither REVIEW_MODEL nor REASONING_EFFORT is provided, we default to gpt-5.2 at high reasoning.
     expect(droidArgsCall?.[1]).toContain('--model "gpt-5.2"');
     expect(droidArgsCall?.[1]).toContain('--reasoning-effort "high"');
+  });
+
+  it("stores PR description as an artifact file", async () => {
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: {
+        comment: {
+          id: 105,
+          body: "@droid review",
+        },
+      } as any,
+      entityNumber: 28,
+    });
+
+    const octokit = {
+      rest: {
+        issues: {
+          listComments: () => Promise.resolve({ data: [] }),
+        },
+        pulls: {
+          listReviewComments: () => Promise.resolve({ data: [] }),
+        },
+      },
+      graphql: () => Promise.resolve({}),
+    } as any;
+
+    graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
+      repository: {
+        pullRequest: {
+          baseRefName: MOCK_PR_DATA.baseRefName,
+          headRefName: MOCK_PR_DATA.headRefName,
+          headRefOid: MOCK_PR_DATA.headRefOid,
+          title: "Add new feature",
+          body: "This PR adds a new feature\n\nFixes: https://linear.app/team/PROJ-123",
+        },
+      },
+    });
+
+    await prepareReviewMode({
+      context,
+      octokit,
+      githubToken: "token",
+      trackingCommentId: 558,
+    });
+
+    const descriptionWriteCall = writeFileSpy.mock.calls.find(
+      (call: unknown[]) =>
+        typeof call[0] === "string" &&
+        (call[0] as string).includes("pr_description.txt"),
+    );
+    expect(descriptionWriteCall).toBeDefined();
+    expect(descriptionWriteCall![1]).toContain("# Add new feature");
+    expect(descriptionWriteCall![1]).toContain(
+      "This PR adds a new feature\n\nFixes: https://linear.app/team/PROJ-123",
+    );
+  });
+
+  it("stores empty description when PR body is null", async () => {
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: {
+        comment: {
+          id: 106,
+          body: "@droid review",
+        },
+      } as any,
+      entityNumber: 29,
+    });
+
+    const octokit = {
+      rest: {
+        issues: {
+          listComments: () => Promise.resolve({ data: [] }),
+        },
+        pulls: {
+          listReviewComments: () => Promise.resolve({ data: [] }),
+        },
+      },
+      graphql: () => Promise.resolve({}),
+    } as any;
+
+    graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
+      repository: {
+        pullRequest: {
+          baseRefName: MOCK_PR_DATA.baseRefName,
+          headRefName: MOCK_PR_DATA.headRefName,
+          headRefOid: MOCK_PR_DATA.headRefOid,
+          title: "Quick fix",
+          body: null,
+        },
+      },
+    });
+
+    await prepareReviewMode({
+      context,
+      octokit,
+      githubToken: "token",
+      trackingCommentId: 559,
+    });
+
+    const descriptionWriteCall = writeFileSpy.mock.calls.find(
+      (call: unknown[]) =>
+        typeof call[0] === "string" &&
+        (call[0] as string).includes("pr_description.txt"),
+    );
+    expect(descriptionWriteCall).toBeDefined();
+    expect(descriptionWriteCall![1]).toContain("# Quick fix");
+    expect(descriptionWriteCall![1]).not.toContain("null");
+  });
+
+  it("passes description artifact to createPrompt", async () => {
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: {
+        comment: {
+          id: 107,
+          body: "@droid review",
+        },
+      } as any,
+      entityNumber: 30,
+    });
+
+    const octokit = {
+      rest: {
+        issues: {
+          listComments: () => Promise.resolve({ data: [] }),
+        },
+        pulls: {
+          listReviewComments: () => Promise.resolve({ data: [] }),
+        },
+      },
+      graphql: () => Promise.resolve({}),
+    } as any;
+
+    graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
+      repository: {
+        pullRequest: {
+          baseRefName: MOCK_PR_DATA.baseRefName,
+          headRefName: MOCK_PR_DATA.headRefName,
+          headRefOid: MOCK_PR_DATA.headRefOid,
+          title: MOCK_PR_DATA.title,
+          body: MOCK_PR_DATA.body,
+        },
+      },
+    });
+
+    await prepareReviewMode({
+      context,
+      octokit,
+      githubToken: "token",
+      trackingCommentId: 560,
+    });
+
+    expect(promptSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reviewArtifacts: expect.objectContaining({
+          descriptionPath: expect.stringContaining("pr_description.txt"),
+        }),
+      }),
+    );
+  });
+
+  it("includes FetchUrl in allowed tools when validator mode is enabled", async () => {
+    process.env.REVIEW_USE_VALIDATOR = "true";
+
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: {
+        comment: {
+          id: 108,
+          body: "@droid review",
+        },
+      } as any,
+      entityNumber: 31,
+    });
+
+    const octokit = {
+      rest: {
+        issues: {
+          listComments: () => Promise.resolve({ data: [] }),
+        },
+        pulls: {
+          listReviewComments: () => Promise.resolve({ data: [] }),
+        },
+      },
+      graphql: () => Promise.resolve({}),
+    } as any;
+
+    graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
+      repository: {
+        pullRequest: {
+          baseRefName: MOCK_PR_DATA.baseRefName,
+          headRefName: MOCK_PR_DATA.headRefName,
+          headRefOid: MOCK_PR_DATA.headRefOid,
+          title: MOCK_PR_DATA.title,
+          body: MOCK_PR_DATA.body,
+        },
+      },
+    });
+
+    await prepareReviewMode({
+      context,
+      octokit,
+      githubToken: "token",
+      trackingCommentId: 561,
+    });
+
+    const droidArgsCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "droid_args",
+    ) as [string, string] | undefined;
+    expect(droidArgsCall?.[1]).toContain("FetchUrl");
+
+    delete process.env.REVIEW_USE_VALIDATOR;
+  });
+
+  it("excludes FetchUrl from allowed tools when validator mode is disabled", async () => {
+    process.env.REVIEW_USE_VALIDATOR = "false";
+
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: {
+        comment: {
+          id: 109,
+          body: "@droid review",
+        },
+      } as any,
+      entityNumber: 32,
+    });
+
+    const octokit = {
+      rest: {
+        issues: {
+          listComments: () => Promise.resolve({ data: [] }),
+        },
+        pulls: {
+          listReviewComments: () => Promise.resolve({ data: [] }),
+        },
+      },
+      graphql: () => Promise.resolve({}),
+    } as any;
+
+    graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
+      repository: {
+        pullRequest: {
+          baseRefName: MOCK_PR_DATA.baseRefName,
+          headRefName: MOCK_PR_DATA.headRefName,
+          headRefOid: MOCK_PR_DATA.headRefOid,
+          title: MOCK_PR_DATA.title,
+          body: MOCK_PR_DATA.body,
+        },
+      },
+    });
+
+    await prepareReviewMode({
+      context,
+      octokit,
+      githubToken: "token",
+      trackingCommentId: 562,
+    });
+
+    const droidArgsCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "droid_args",
+    ) as [string, string] | undefined;
+    expect(droidArgsCall?.[1]).not.toContain("FetchUrl");
+
+    delete process.env.REVIEW_USE_VALIDATOR;
   });
 });

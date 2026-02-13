@@ -98,6 +98,23 @@ async function fetchAndStoreComments(
   return commentsPath;
 }
 
+async function storeDescription(
+  title: string,
+  body: string,
+  tempDir: string,
+): Promise<string> {
+  const promptsDir = `${tempDir}/droid-prompts`;
+  await mkdir(promptsDir, { recursive: true });
+
+  const content = `# ${title}\n\n${body}`;
+  const descriptionPath = `${promptsDir}/pr_description.txt`;
+  await writeFile(descriptionPath, content);
+  console.log(
+    `Stored PR description (${content.length} bytes) at ${descriptionPath}`,
+  );
+  return descriptionPath;
+}
+
 type ReviewCommandOptions = {
   context: GitHubContext;
   octokit: Octokits;
@@ -156,9 +173,9 @@ export async function prepareReviewMode({
     );
   }
 
-  // Pre-compute review artifacts (diff and existing comments)
+  // Pre-compute review artifacts (diff, existing comments, and PR description)
   const tempDir = process.env.RUNNER_TEMP || "/tmp";
-  const [diffPath, commentsPath] = await Promise.all([
+  const [diffPath, commentsPath, descriptionPath] = await Promise.all([
     computeAndStoreDiff(prData.baseRefName, tempDir),
     fetchAndStoreComments(
       octokit,
@@ -167,15 +184,17 @@ export async function prepareReviewMode({
       context.entityNumber,
       tempDir,
     ),
+    storeDescription(prData.title, prData.body, tempDir),
   ]);
 
   const reviewArtifacts: ReviewArtifacts = {
     diffPath,
     commentsPath,
+    descriptionPath,
   };
 
   const reviewUseValidator =
-    (process.env.REVIEW_USE_VALIDATOR ?? "").trim() === "true";
+    (process.env.REVIEW_USE_VALIDATOR ?? "true").trim() !== "false";
 
   await createPrompt({
     githubContext: context,
@@ -205,13 +224,15 @@ export async function prepareReviewMode({
     "Glob",
     "LS",
     "Execute",
+    "Edit",
     "Create",
     "ApplyPatch",
     "github_comment___update_droid_comment",
   ];
 
-  // Task tool is needed for parallel subagent reviews in candidate generation phase
-  const candidateGenerationTools = reviewUseValidator ? ["Task"] : [];
+  // Task tool is needed for parallel subagent reviews in candidate generation phase.
+  // FetchUrl is needed to fetch linked tickets from the PR description.
+  const candidateGenerationTools = reviewUseValidator ? ["Task", "FetchUrl"] : [];
 
   const reviewTools = reviewUseValidator
     ? []
@@ -259,16 +280,15 @@ export async function prepareReviewMode({
   const reviewModel = process.env.REVIEW_MODEL?.trim();
   const reasoningEffort = process.env.REASONING_EFFORT?.trim();
 
-  // Default behavior (behind the scenes): if neither is provided, run GPT-5.2 at high reasoning.
+  // action.yml defaults review_model to gpt-5.2, so reviewModel is
+  // normally always set. The fallback keeps things working outside the action.
   if (!reviewModel && !reasoningEffort) {
     droidArgParts.push(`--model "gpt-5.2"`);
     droidArgParts.push(`--reasoning-effort "high"`);
   } else {
-    // Add model override if specified
     if (reviewModel) {
       droidArgParts.push(`--model "${reviewModel}"`);
     }
-    // Add reasoning effort override if specified
     if (reasoningEffort) {
       droidArgParts.push(`--reasoning-effort "${reasoningEffort}"`);
     }

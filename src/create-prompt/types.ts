@@ -106,6 +106,7 @@ export type EventData =
 export type ReviewArtifacts = {
   diffPath: string;
   commentsPath: string;
+  descriptionPath: string;
 };
 
 export type PreparedContext = CommonFields & {

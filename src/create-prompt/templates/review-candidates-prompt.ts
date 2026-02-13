@@ -1,6 +1,8 @@
 import type { PreparedContext } from "../types";
 
-export function generateReviewCandidatesPrompt(context: PreparedContext): string {
+export function generateReviewCandidatesPrompt(
+  context: PreparedContext,
+): string {
   const prNumber = context.eventData.isPR
     ? context.eventData.prNumber
     : context.githubContext && "entityNumber" in context.githubContext
@@ -17,6 +19,9 @@ export function generateReviewCandidatesPrompt(context: PreparedContext): string
   const commentsPath =
     context.reviewArtifacts?.commentsPath ??
     "$RUNNER_TEMP/droid-prompts/existing_comments.json";
+  const descriptionPath =
+    context.reviewArtifacts?.descriptionPath ??
+    "$RUNNER_TEMP/droid-prompts/pr_description.txt";
 
   const reviewCandidatesPath =
     process.env.REVIEW_CANDIDATES_PATH ??
@@ -34,9 +39,17 @@ PR Head SHA: ${prHeadSha}
 PR Base Ref: ${prBaseRef}
 
 Precomputed data files:
+- PR Description: \`${descriptionPath}\`
 - Full PR Diff: \`${diffPath}\`
 - Existing Comments: \`${commentsPath}\`
 </context>
+
+<understanding_phase>
+**Step 0: Understand the PR intent**
+
+1. Read the PR description from \`${descriptionPath}\` to understand the purpose and scope of the changes.
+2. If the PR description contains a ticket URL (e.g., Jira, Linear, GitHub issue link) or a ticket ID, **always fetch it** using FetchUrl or the appropriate tool to understand the full requirements and acceptance criteria. This context is critical for evaluating whether the implementation is correct and complete.
+</understanding_phase>
 
 <review_guidelines>
 - You are currently checked out to the PR branch.

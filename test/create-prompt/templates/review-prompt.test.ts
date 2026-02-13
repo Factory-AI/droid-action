@@ -40,6 +40,7 @@ describe("generateReviewPrompt", () => {
       reviewArtifacts: {
         diffPath: "/tmp/test/pr.diff",
         commentsPath: "/tmp/test/existing_comments.json",
+        descriptionPath: "/tmp/test/pr_description.txt",
       },
     });
 
@@ -68,6 +69,7 @@ describe("generateReviewPrompt", () => {
       reviewArtifacts: {
         diffPath: "/tmp/droid/pr.diff",
         commentsPath: "/tmp/droid/comments.json",
+        descriptionPath: "/tmp/droid/pr_description.txt",
       },
     });
 
@@ -103,5 +105,54 @@ describe("generateReviewPrompt", () => {
     expect(prompt).toContain("github_pr___submit_review");
     expect(prompt).toContain("### When NOT to submit");
     expect(prompt).toContain("All findings are low-severity (P2/P3)");
+  });
+
+  it("references PR description artifact in pre-computed files", () => {
+    const context = createBaseContext({
+      reviewArtifacts: {
+        diffPath: "/tmp/test/pr.diff",
+        commentsPath: "/tmp/test/existing_comments.json",
+        descriptionPath: "/tmp/test/pr_description.txt",
+      },
+    });
+
+    const prompt = generateReviewPrompt(context);
+
+    expect(prompt).toContain("/tmp/test/pr_description.txt");
+    expect(prompt).toContain("PR Description");
+    expect(prompt).toContain(
+      "Contains the PR title and description (body) explaining the intent and scope",
+    );
+  });
+
+  it("instructs reading PR description first in Phase 1", () => {
+    const context = createBaseContext({
+      reviewArtifacts: {
+        diffPath: "/tmp/droid/pr.diff",
+        commentsPath: "/tmp/droid/comments.json",
+        descriptionPath: "/tmp/droid/pr_description.txt",
+      },
+    });
+
+    const prompt = generateReviewPrompt(context);
+
+    expect(prompt).toContain(
+      "Read the PR description** to understand the intent and scope",
+    );
+    expect(prompt).toContain("Read /tmp/droid/pr_description.txt");
+    // Verify description is read before comments and diff
+    const descIdx = prompt.indexOf("Read the PR description");
+    const commentsIdx = prompt.indexOf("Read existing comments");
+    const diffIdx = prompt.indexOf("Read the COMPLETE diff");
+    expect(descIdx).toBeLessThan(commentsIdx);
+    expect(commentsIdx).toBeLessThan(diffIdx);
+  });
+
+  it("uses fallback description path when artifacts are not provided", () => {
+    const context = createBaseContext();
+
+    const prompt = generateReviewPrompt(context);
+
+    expect(prompt).toContain("pr_description.txt");
   });
 });
