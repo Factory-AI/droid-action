@@ -1,11 +1,4 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  spyOn,
-} from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as core from "@actions/core";
 import { prepareFillMode } from "../../../src/tag/commands/fill";
 import { createMockContext } from "../../mockContext";
@@ -47,6 +40,8 @@ describe("prepareFillMode", () => {
       baseRefName: MOCK_PR_DATA.baseRefName,
       headRefName: MOCK_PR_DATA.headRefName,
       headRefOid: MOCK_PR_DATA.headRefOid,
+      title: "Test PR",
+      body: "Test description",
     });
 
     promptSpy = spyOn(promptModule, "createPrompt").mockResolvedValue();

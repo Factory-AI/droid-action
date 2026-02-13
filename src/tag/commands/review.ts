@@ -1,14 +1,119 @@
 import * as core from "@actions/core";
+import { execSync } from "child_process";
+import { writeFile, mkdir } from "fs/promises";
 import type { GitHubContext } from "../../github/context";
 import { fetchPRBranchData } from "../../github/data/pr-fetcher";
 import { createPrompt } from "../../create-prompt";
+import type { ReviewArtifacts } from "../../create-prompt";
 import { prepareMcpTools } from "../../mcp/install-mcp-server";
 import { createInitialComment } from "../../github/operations/comments/create-initial";
 import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
 import { isEntityContext } from "../../github/context";
 import { generateReviewPrompt } from "../../create-prompt/templates/review-prompt";
+import { generateReviewCandidatesPrompt } from "../../create-prompt/templates/review-candidates-prompt";
 import type { Octokits } from "../../github/api/client";
 import type { PrepareResult } from "../../prepare/types";
+
+const DIFF_MAX_BUFFER = 50 * 1024 * 1024; // 50MB buffer for large diffs
+
+async function computeAndStoreDiff(
+  baseRef: string,
+  tempDir: string,
+): Promise<string> {
+  const promptsDir = `${tempDir}/droid-prompts`;
+  await mkdir(promptsDir, { recursive: true });
+
+  // Unshallow the repo if it's a shallow clone (needed for merge-base to work)
+  try {
+    execSync("git fetch --unshallow", { encoding: "utf8", stdio: "pipe" });
+    console.log("Unshallowed repository");
+  } catch (e) {
+    // Already unshallowed or not a shallow clone, continue
+    console.log("Repository already has full history");
+  }
+
+  // Fetch the base branch (it may not exist locally yet)
+  try {
+    execSync(
+      `git fetch origin ${baseRef}:refs/remotes/origin/${baseRef}`,
+      { encoding: "utf8", stdio: "pipe" },
+    );
+    console.log(`Fetched base branch: ${baseRef}`);
+  } catch (e) {
+    // Branch might already exist, continue
+    console.log(`Base branch fetch skipped (may already exist): ${baseRef}`);
+  }
+
+  const mergeBase = execSync(
+    `git merge-base HEAD refs/remotes/origin/${baseRef}`,
+    { encoding: "utf8" },
+  ).trim();
+
+  const diff = execSync(`git --no-pager diff ${mergeBase}..HEAD`, {
+    encoding: "utf8",
+    maxBuffer: DIFF_MAX_BUFFER,
+  });
+
+  const diffPath = `${promptsDir}/pr.diff`;
+  await writeFile(diffPath, diff);
+  console.log(`Stored PR diff (${diff.length} bytes) at ${diffPath}`);
+  return diffPath;
+}
+
+async function fetchAndStoreComments(
+  octokit: Octokits,
+  owner: string,
+  repo: string,
+  prNumber: number,
+  tempDir: string,
+): Promise<string> {
+  const promptsDir = `${tempDir}/droid-prompts`;
+  await mkdir(promptsDir, { recursive: true });
+
+  const [issueComments, reviewComments] = await Promise.all([
+    octokit.rest.issues.listComments({
+      owner,
+      repo,
+      issue_number: prNumber,
+      per_page: 100,
+    }),
+    octokit.rest.pulls.listReviewComments({
+      owner,
+      repo,
+      pull_number: prNumber,
+      per_page: 100,
+    }),
+  ]);
+
+  const comments = {
+    issueComments: issueComments.data,
+    reviewComments: reviewComments.data,
+  };
+
+  const commentsPath = `${promptsDir}/existing_comments.json`;
+  await writeFile(commentsPath, JSON.stringify(comments, null, 2));
+  console.log(
+    `Stored existing comments (${issueComments.data.length} issue, ${reviewComments.data.length} review) at ${commentsPath}`,
+  );
+  return commentsPath;
+}
+
+async function storeDescription(
+  title: string,
+  body: string,
+  tempDir: string,
+): Promise<string> {
+  const promptsDir = `${tempDir}/droid-prompts`;
+  await mkdir(promptsDir, { recursive: true });
+
+  const content = `# ${title}\n\n${body}`;
+  const descriptionPath = `${promptsDir}/pr_description.txt`;
+  await writeFile(descriptionPath, content);
+  console.log(
+    `Stored PR description (${content.length} bytes) at ${descriptionPath}`,
+  );
+  return descriptionPath;
+}
 
 type ReviewCommandOptions = {
   context: GitHubContext;
@@ -46,6 +151,51 @@ export async function prepareReviewMode({
     currentBranch: prData.headRefName,
   };
 
+  // Checkout the PR branch before computing diff
+  // This ensures HEAD points to the PR head commit, not the merge commit or default branch
+  console.log(
+    `Checking out PR #${context.entityNumber} branch for diff computation...`,
+  );
+  try {
+    execSync("git reset --hard HEAD", { encoding: "utf8", stdio: "pipe" });
+    execSync(`gh pr checkout ${context.entityNumber}`, {
+      encoding: "utf8",
+      stdio: "pipe",
+      env: { ...process.env, GH_TOKEN: githubToken },
+    });
+    console.log(
+      `Successfully checked out PR branch: ${execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf8" }).trim()}`,
+    );
+  } catch (e) {
+    console.error(`Failed to checkout PR branch: ${e}`);
+    throw new Error(
+      `Failed to checkout PR #${context.entityNumber} branch for review`,
+    );
+  }
+
+  // Pre-compute review artifacts (diff, existing comments, and PR description)
+  const tempDir = process.env.RUNNER_TEMP || "/tmp";
+  const [diffPath, commentsPath, descriptionPath] = await Promise.all([
+    computeAndStoreDiff(prData.baseRefName, tempDir),
+    fetchAndStoreComments(
+      octokit,
+      context.repository.owner,
+      context.repository.repo,
+      context.entityNumber,
+      tempDir,
+    ),
+    storeDescription(prData.title, prData.body, tempDir),
+  ]);
+
+  const reviewArtifacts: ReviewArtifacts = {
+    diffPath,
+    commentsPath,
+    descriptionPath,
+  };
+
+  const reviewUseValidator =
+    (process.env.REVIEW_USE_VALIDATOR ?? "true").trim() !== "false";
+
   await createPrompt({
     githubContext: context,
     commentId,
@@ -55,7 +205,10 @@ export async function prepareReviewMode({
       headRefName: prData.headRefName,
       headRefOid: prData.headRefOid,
     },
-    generatePrompt: generateReviewPrompt,
+    generatePrompt: reviewUseValidator
+      ? generateReviewCandidatesPrompt
+      : generateReviewPrompt,
+    reviewArtifacts,
   });
   core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-review");
 
@@ -71,21 +224,44 @@ export async function prepareReviewMode({
     "Glob",
     "LS",
     "Execute",
+    "Edit",
+    "Create",
+    "ApplyPatch",
     "github_comment___update_droid_comment",
-    "github_inline_comment___create_inline_comment",
   ];
 
-  const reviewTools = [
-    "github_pr___list_review_comments",
-    "github_pr___submit_review",
-    "github_pr___delete_comment",
-    "github_pr___minimize_comment",
-    "github_pr___reply_to_comment",
-    "github_pr___resolve_review_thread",
-  ];
+  // Task tool is needed for parallel subagent reviews in candidate generation phase.
+  // FetchUrl is needed to fetch linked tickets from the PR description.
+  const candidateGenerationTools = reviewUseValidator ? ["Task", "FetchUrl"] : [];
+
+  const reviewTools = reviewUseValidator
+    ? []
+    : [
+        "github_inline_comment___create_inline_comment",
+        "github_pr___list_review_comments",
+        "github_pr___submit_review",
+        "github_pr___delete_comment",
+        "github_pr___minimize_comment",
+        "github_pr___reply_to_comment",
+        "github_pr___resolve_review_thread",
+      ];
+
+  const safeUserAllowedMCPTools = reviewUseValidator
+    ? userAllowedMCPTools.filter(
+        (tool) =>
+          tool === "github_comment___update_droid_comment" ||
+          (!tool.startsWith("github_pr___") &&
+            tool !== "github_inline_comment___create_inline_comment"),
+      )
+    : userAllowedMCPTools;
 
   const allowedTools = Array.from(
-    new Set([...baseTools, ...reviewTools, ...userAllowedMCPTools]),
+    new Set([
+      ...baseTools,
+      ...candidateGenerationTools,
+      ...reviewTools,
+      ...safeUserAllowedMCPTools,
+    ]),
   );
 
   const mcpTools = await prepareMcpTools({
@@ -101,10 +277,21 @@ export async function prepareReviewMode({
   const droidArgParts: string[] = [];
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
 
-  // Add model override if specified
   const reviewModel = process.env.REVIEW_MODEL?.trim();
-  if (reviewModel) {
-    droidArgParts.push(`--model "${reviewModel}"`);
+  const reasoningEffort = process.env.REASONING_EFFORT?.trim();
+
+  // action.yml defaults review_model to gpt-5.2, so reviewModel is
+  // normally always set. The fallback keeps things working outside the action.
+  if (!reviewModel && !reasoningEffort) {
+    droidArgParts.push(`--model "gpt-5.2"`);
+    droidArgParts.push(`--reasoning-effort "high"`);
+  } else {
+    if (reviewModel) {
+      droidArgParts.push(`--model "${reviewModel}"`);
+    }
+    if (reasoningEffort) {
+      droidArgParts.push(`--reasoning-effort "${reasoningEffort}"`);
+    }
   }
 
   if (normalizedUserArgs) {

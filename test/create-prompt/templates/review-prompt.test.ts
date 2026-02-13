@@ -27,35 +27,132 @@ describe("generateReviewPrompt", () => {
 
     const prompt = generateReviewPrompt(context);
 
-    expect(prompt).toContain("Objectives:");
+    expect(prompt).toContain("## Objectives");
     expect(prompt).toContain("Re-check existing review comments");
-    expect(prompt).toContain("gh pr diff 42 --repo test-owner/test-repo");
-    expect(prompt).toContain("gh api repos/test-owner/test-repo/pulls/42/files");
     expect(prompt).toContain("github_inline_comment___create_inline_comment");
-    expect(prompt).toContain("github_pr___resolve_review_thread");
-    expect(prompt).toContain("every substantive comment must be inline on the changed line");
+    expect(prompt).toContain(
+      "**Do NOT call** `github_pr___resolve_review_thread`",
+    );
+  });
+
+  it("includes pre-computed artifact references when provided", () => {
+    const context = createBaseContext({
+      reviewArtifacts: {
+        diffPath: "/tmp/test/pr.diff",
+        commentsPath: "/tmp/test/existing_comments.json",
+        descriptionPath: "/tmp/test/pr_description.txt",
+      },
+    });
+
+    const prompt = generateReviewPrompt(context);
+
+    expect(prompt).toContain("### Pre-computed Review Artifacts");
+    expect(prompt).toContain("/tmp/test/pr.diff");
+    expect(prompt).toContain("/tmp/test/existing_comments.json");
+    expect(prompt).toContain("COMPLETE diff");
+  });
+
+  it("includes critical instruction to review all files", () => {
+    const context = createBaseContext();
+
+    const prompt = generateReviewPrompt(context);
+
+    expect(prompt).toContain("## CRITICAL INSTRUCTION");
+    expect(prompt).toContain(
+      "DO NOT STOP UNTIL YOU HAVE REVIEWED EVERY SINGLE CHANGED FILE",
+    );
+    expect(prompt).toContain("Review EACH file systematically");
+  });
+
+  it("instructs to read from pre-computed files in Phase 1", () => {
+    const context = createBaseContext({
+      reviewArtifacts: {
+        diffPath: "/tmp/droid/pr.diff",
+        commentsPath: "/tmp/droid/comments.json",
+        descriptionPath: "/tmp/droid/pr_description.txt",
+      },
+    });
+
+    const prompt = generateReviewPrompt(context);
+
+    expect(prompt).toContain(
+      "Read existing comments** from the pre-computed file",
+    );
+    expect(prompt).toContain("Read /tmp/droid/comments.json");
+    expect(prompt).toContain(
+      "Read the COMPLETE diff** from the pre-computed file",
+    );
+    expect(prompt).toContain("Read /tmp/droid/pr.diff");
   });
 
   it("emphasizes accuracy gates and bug detection guidelines", () => {
     const prompt = generateReviewPrompt(createBaseContext());
 
-    expect(prompt).toContain("How Many Findings to Return:");
-    expect(prompt).toContain("Output all findings that the original author would fix");
-    expect(prompt).toContain("Key Guidelines for Bug Detection:");
-    expect(prompt).toContain("Priority Levels:");
+    expect(prompt).toContain("## Priority Levels");
     expect(prompt).toContain("[P0]");
-    expect(prompt).toContain("Never raise purely stylistic");
-    expect(prompt).toContain("Never repeat or re-raise an issue previously highlighted");
+    expect(prompt).toContain(
+      "Never open a new finding for an issue previously reported by this bot",
+    );
   });
 
   it("describes submission guidance", () => {
     const prompt = generateReviewPrompt(createBaseContext());
 
-    expect(prompt).toContain("Prefer github_inline_comment___create_inline_comment");
-    expect(prompt).toContain("gh api repos/test-owner/test-repo/pulls/42/reviews");
-    expect(prompt).toContain("Do not approve or request changes");
+    expect(prompt).toContain(
+      "Use `github_inline_comment___create_inline_comment`",
+    );
+    expect(prompt).toContain("Do **not** approve or request changes");
     expect(prompt).toContain("github_pr___submit_review");
-    expect(prompt).toContain("github_pr___resolve_review_thread");
-    expect(prompt).toContain("skip submitting another comment to avoid redundancy");
+    expect(prompt).toContain("### When NOT to submit");
+    expect(prompt).toContain("All findings are low-severity (P2/P3)");
+  });
+
+  it("references PR description artifact in pre-computed files", () => {
+    const context = createBaseContext({
+      reviewArtifacts: {
+        diffPath: "/tmp/test/pr.diff",
+        commentsPath: "/tmp/test/existing_comments.json",
+        descriptionPath: "/tmp/test/pr_description.txt",
+      },
+    });
+
+    const prompt = generateReviewPrompt(context);
+
+    expect(prompt).toContain("/tmp/test/pr_description.txt");
+    expect(prompt).toContain("PR Description");
+    expect(prompt).toContain(
+      "Contains the PR title and description (body) explaining the intent and scope",
+    );
+  });
+
+  it("instructs reading PR description first in Phase 1", () => {
+    const context = createBaseContext({
+      reviewArtifacts: {
+        diffPath: "/tmp/droid/pr.diff",
+        commentsPath: "/tmp/droid/comments.json",
+        descriptionPath: "/tmp/droid/pr_description.txt",
+      },
+    });
+
+    const prompt = generateReviewPrompt(context);
+
+    expect(prompt).toContain(
+      "Read the PR description** to understand the intent and scope",
+    );
+    expect(prompt).toContain("Read /tmp/droid/pr_description.txt");
+    // Verify description is read before comments and diff
+    const descIdx = prompt.indexOf("Read the PR description");
+    const commentsIdx = prompt.indexOf("Read existing comments");
+    const diffIdx = prompt.indexOf("Read the COMPLETE diff");
+    expect(descIdx).toBeLessThan(commentsIdx);
+    expect(commentsIdx).toBeLessThan(diffIdx);
+  });
+
+  it("uses fallback description path when artifacts are not provided", () => {
+    const context = createBaseContext();
+
+    const prompt = generateReviewPrompt(context);
+
+    expect(prompt).toContain("pr_description.txt");
   });
 });

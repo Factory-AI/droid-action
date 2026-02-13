@@ -74,11 +74,15 @@ const mockSpawn = mock(
 mock.module("child_process", () => ({
   exec: (
     command: string,
-    options?: Record<string, unknown> | ((err: Error | null, result?: any) => void),
+    options?:
+      | Record<string, unknown>
+      | ((err: Error | null, result?: any) => void),
     maybeCallback?: (err: Error | null, result?: any) => void,
   ) => {
     const callback =
-      typeof options === "function" ? options : maybeCallback ?? (() => undefined);
+      typeof options === "function"
+        ? options
+        : (maybeCallback ?? (() => undefined));
 
     setImmediate(async () => {
       try {
@@ -90,6 +94,7 @@ mock.module("child_process", () => ({
     });
   },
   spawn: mockSpawn,
+  execSync: (_cmd: string) => "",
 }));
 
 type RunDroidModule = typeof import("../src/run-droid");
@@ -98,7 +103,7 @@ let runDroid: RunDroidModule["runDroid"];
 
 beforeAll(async () => {
   const module = (await import(
-    `../src/run-droid?mcp-test=${Math.random().toString(36).slice(2)}`,
+    `../src/run-droid?mcp-test=${Math.random().toString(36).slice(2)}`
   )) as RunDroidModule;
   prepareRunConfig = module.prepareRunConfig;
   runDroid = module.runDroid;
@@ -139,23 +144,23 @@ describe("MCP Server Registration", () => {
             env: {
               GITHUB_TOKEN: "test-token",
               REPO_OWNER: "owner",
-              REPO_NAME: "repo"
-            }
+              REPO_NAME: "repo",
+            },
           },
           github_ci: {
             command: "bun",
             args: ["run", "/path/to/github-actions-server.ts"],
             env: {
               GITHUB_TOKEN: "test-token",
-              PR_NUMBER: "123"
-            }
-          }
-        }
+              PR_NUMBER: "123",
+            },
+          },
+        },
       });
 
       const options: DroidOptions = {
         mcpTools,
-        pathToDroidExecutable: "droid"
+        pathToDroidExecutable: "droid",
       };
       const promptPath = await createPromptFile();
       const tempDir = process.env.RUNNER_TEMP!;
@@ -180,14 +185,14 @@ describe("MCP Server Registration", () => {
         mcpTools: "",
       };
       const prepared = prepareRunConfig("/tmp/test-prompt.txt", options);
-      
+
       expect(prepared.droidArgs).not.toContain("--mcp-config");
     });
 
     test("should handle invalid JSON in MCP config", () => {
       const options: DroidOptions = {
         mcpTools: "{ invalid json }",
-        pathToDroidExecutable: "droid"
+        pathToDroidExecutable: "droid",
       };
 
       // prepareRunConfig doesn't parse MCP config, so it won't throw
@@ -205,7 +210,8 @@ describe("MCP Server Registration", () => {
       console.warn = warnSpy as unknown as typeof console.warn;
 
       const options: DroidOptions = {
-        droidArgs: '--enabled-tools "mcp__github_comment__update_droid_comment,Execute"'
+        droidArgs:
+          '--enabled-tools "mcp__github_comment__update_droid_comment,Execute"',
       };
 
       const promptPath = await createPromptFile();
@@ -216,8 +222,10 @@ describe("MCP Server Registration", () => {
 
         const warningMessages = warnSpy.mock.calls.map((args) => args[0]);
         expect(
-          warningMessages.some((msg) =>
-            typeof msg === "string" && msg.includes("deprecated mcp__ prefix"),
+          warningMessages.some(
+            (msg) =>
+              typeof msg === "string" &&
+              msg.includes("deprecated mcp__ prefix"),
           ),
         ).toBe(true);
       } finally {
@@ -232,7 +240,8 @@ describe("MCP Server Registration", () => {
       console.warn = warnSpy as unknown as typeof console.warn;
 
       const options: DroidOptions = {
-        droidArgs: '--enabled-tools "github_comment___update_droid_comment,Execute"'
+        droidArgs:
+          '--enabled-tools "github_comment___update_droid_comment,Execute"',
       };
 
       const promptPath = await createPromptFile();
@@ -249,14 +258,17 @@ describe("MCP Server Registration", () => {
 
     test("should detect MCP tools with triple underscore pattern", () => {
       const options: DroidOptions = {
-        droidArgs: '--enabled-tools "github_ci___get_ci_status,github_comment___update_droid_comment"'
+        droidArgs:
+          '--enabled-tools "github_ci___get_ci_status,github_comment___update_droid_comment"',
       };
 
       const prepared = prepareRunConfig("/tmp/test-prompt.txt", options);
-      
+
       // The args should be passed through correctly
       expect(prepared.droidArgs).toContain("--enabled-tools");
-      expect(prepared.droidArgs).toContain("github_ci___get_ci_status,github_comment___update_droid_comment");
+      expect(prepared.droidArgs).toContain(
+        "github_ci___get_ci_status,github_comment___update_droid_comment",
+      );
     });
   });
 
@@ -267,14 +279,14 @@ describe("MCP Server Registration", () => {
           failing_server: {
             command: "nonexistent",
             args: ["command"],
-            env: {}
-          }
-        }
+            env: {},
+          },
+        },
       });
 
       const options: DroidOptions = {
         mcpTools,
-        pathToDroidExecutable: "droid"
+        pathToDroidExecutable: "droid",
       };
       const promptPath = await createPromptFile();
       const tempDir = process.env.RUNNER_TEMP!;
@@ -299,18 +311,18 @@ describe("MCP Server Registration", () => {
   describe("Environment Variables", () => {
     test("should include GITHUB_ACTION_INPUTS when present", () => {
       process.env.INPUT_ACTION_INPUTS_PRESENT = "true";
-      
+
       const options: DroidOptions = {};
       const prepared = prepareRunConfig("/tmp/test-prompt.txt", options);
 
       expect(prepared.env.GITHUB_ACTION_INPUTS).toBe("true");
-      
+
       delete process.env.INPUT_ACTION_INPUTS_PRESENT;
     });
 
     test("should not include GITHUB_ACTION_INPUTS when not present", () => {
       delete process.env.INPUT_ACTION_INPUTS_PRESENT;
-      
+
       const options: DroidOptions = {};
       const prepared = prepareRunConfig("/tmp/test-prompt.txt", options);
 

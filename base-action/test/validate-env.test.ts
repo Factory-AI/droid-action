@@ -16,13 +16,13 @@ describe("validateEnvironmentVariables", () => {
   });
 
   test("passes when FACTORY_API_KEY is set", () => {
-    process.env.FACTORY_API_KEY = 'test-factory-key';
+    process.env.FACTORY_API_KEY = "test-factory-key";
     expect(() => validateEnvironmentVariables()).not.toThrow();
   });
 
   test("throws when FACTORY_API_KEY is missing", () => {
     expect(() => validateEnvironmentVariables()).toThrow(
-      'FACTORY_API_KEY is required to run Droid Exec. Please provide the factory_api_key input.'
+      "FACTORY_API_KEY is required to run Droid Exec. Please provide the factory_api_key input.",
     );
   });
 });

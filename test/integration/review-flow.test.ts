@@ -1,20 +1,15 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  spyOn,
-} from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import path from "node:path";
 import os from "node:os";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { prepareTagExecution } from "../../src/tag";
 import { createMockContext } from "../mockContext";
 import * as createInitial from "../../src/github/operations/comments/create-initial";
 import * as mcpInstaller from "../../src/mcp/install-mcp-server";
 import * as actorValidation from "../../src/github/validation/actor";
+import * as promptModule from "../../src/create-prompt";
 import * as core from "@actions/core";
+import * as childProcess from "node:child_process";
 
 describe("review command integration", () => {
   const originalRunnerTemp = process.env.RUNNER_TEMP;
@@ -26,13 +21,13 @@ describe("review command integration", () => {
   let actorSpy: ReturnType<typeof spyOn>;
   let setOutputSpy: ReturnType<typeof spyOn>;
   let exportVarSpy: ReturnType<typeof spyOn>;
+  let promptSpy: ReturnType<typeof spyOn>;
+  let execSyncSpy: ReturnType<typeof spyOn>;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(path.join(os.tmpdir(), "review-int-"));
     process.env.RUNNER_TEMP = tmpDir;
     process.env.DROID_ARGS = "";
-
-
 
     createCommentSpy = spyOn(
       createInitial,
@@ -41,8 +36,19 @@ describe("review command integration", () => {
 
     mcpSpy = spyOn(mcpInstaller, "prepareMcpTools").mockResolvedValue("{}");
     actorSpy = spyOn(actorValidation, "checkHumanActor").mockResolvedValue();
+    promptSpy = spyOn(promptModule, "createPrompt").mockResolvedValue();
     setOutputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
     exportVarSpy = spyOn(core, "exportVariable").mockImplementation(() => {});
+
+    execSyncSpy = spyOn(childProcess, "execSync").mockImplementation(
+      ((cmd: string) => {
+        if (cmd.includes("merge-base")) return "abc123def456\n";
+        if (cmd.includes("git --no-pager diff")) {
+          return "diff --git a/file.ts b/file.ts\n+added line\n";
+        }
+        return "";
+      }) as typeof childProcess.execSync,
+    );
   });
 
   afterEach(async () => {
@@ -50,8 +56,10 @@ describe("review command integration", () => {
     createCommentSpy.mockRestore();
     mcpSpy.mockRestore();
     actorSpy.mockRestore();
+    promptSpy.mockRestore();
     setOutputSpy.mockRestore();
     exportVarSpy.mockRestore();
+    execSyncSpy.mockRestore();
 
     if (process.env.RUNNER_TEMP) {
       await rm(process.env.RUNNER_TEMP, { recursive: true, force: true });
@@ -96,7 +104,14 @@ describe("review command integration", () => {
     });
 
     const octokit = { 
-      rest: {}, 
+      rest: {
+        issues: {
+          listComments: () => Promise.resolve({ data: [] }),
+        },
+        pulls: {
+          listReviewComments: () => Promise.resolve({ data: [] }),
+        },
+      }, 
       graphql: () => Promise.resolve({
         repository: {
           pullRequest: {
@@ -112,10 +127,10 @@ describe("review command integration", () => {
       repository: {
         pullRequest: {
           baseRefName: "main",
-          headRefName: "feature/review", 
+          headRefName: "feature/review",
           headRefOid: "def456",
-        }
-      }
+        },
+      },
     });
 
     const result = await prepareTagExecution({
@@ -124,47 +139,91 @@ describe("review command integration", () => {
       githubToken: "token",
     });
 
-    expect(result.commentId).toBe(202);
-    expect(graphqlSpy).toHaveBeenCalled();
-    expect(mcpSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        allowedTools: expect.arrayContaining([
-          "github_pr___list_review_comments",
-          "github_pr___submit_review",
-          "github_inline_comment___create_inline_comment",
-          "github_pr___resolve_review_thread",
-        ]),
-      }),
-    );
+    expect(result.skipped).toBeFalsy();
+    expect(result.branchInfo.baseBranch).toBe("main");
+    expect(result.branchInfo.currentBranch).toBe("feature/review");
+    expect(promptSpy).toHaveBeenCalled();
 
-    const promptPath = path.join(
-      process.env.RUNNER_TEMP!,
-      "droid-prompts",
-      "droid-prompt.txt",
-    );
-    const prompt = await readFile(promptPath, "utf8");
-
-    expect(prompt).toContain("You are performing an automated code review");
-    expect(prompt).toContain("github_inline_comment___create_inline_comment");
-    expect(prompt).toContain("How Many Findings to Return:");
-    expect(prompt).toContain("Output all findings that the original author would fix");
-    expect(prompt).toContain("Key Guidelines for Bug Detection:");
-    expect(prompt).toContain("Priority Levels:");
-    expect(prompt).toContain("gh pr view 7 --repo test-owner/test-repo --json comments,reviews");
-    expect(prompt).toContain("every substantive comment must be inline on the changed line");
-    expect(prompt).toContain("github_pr___resolve_review_thread");
-
-    const droidArgsCall = setOutputSpy.mock.calls.find(
-      (call: unknown[]) => call[0] === "droid_args",
+    // Verify output flags were set correctly for code review only
+    const runCodeReviewCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "run_code_review",
+    ) as [string, string] | undefined;
+    const runSecurityReviewCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "run_security_review",
     ) as [string, string] | undefined;
 
-    expect(droidArgsCall?.[1]).toContain(
-      "github_pr___list_review_comments",
-    );
-    expect(droidArgsCall?.[1]).toContain("github_pr___submit_review");
-    expect(droidArgsCall?.[1]).toContain(
-      "github_inline_comment___create_inline_comment",
-    );
-    expect(droidArgsCall?.[1]).toContain("github_pr___resolve_review_thread");
+    expect(runCodeReviewCall?.[1]).toBe("true");
+    expect(runSecurityReviewCall?.[1]).toBe("false");
+  });
+
+  it("sets security flag only for @droid security", async () => {
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      actor: "human-reviewer",
+      entityNumber: 7,
+      repository: {
+        owner: "test-owner",
+        repo: "test-repo",
+        full_name: "test-owner/test-repo",
+      },
+      payload: {
+        comment: {
+          id: 888,
+          body: "@droid security",
+          user: { login: "human-reviewer" },
+          created_at: "2024-02-02T00:00:00Z",
+        },
+        issue: {
+          number: 7,
+          pull_request: {},
+        },
+      } as any,
+    });
+
+    const octokit = {
+      rest: {},
+      graphql: () =>
+        Promise.resolve({
+          repository: {
+            pullRequest: {
+              baseRefName: "main",
+              headRefName: "feature/security",
+              headRefOid: "abc123",
+            },
+          },
+        }),
+    } as any;
+
+    graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
+      repository: {
+        pullRequest: {
+          baseRefName: "main",
+          headRefName: "feature/security",
+          headRefOid: "abc123",
+        },
+      },
+    });
+
+    const result = await prepareTagExecution({
+      context,
+      octokit,
+      githubToken: "token",
+    });
+
+    expect(result.skipped).toBeFalsy();
+    expect(result.branchInfo.baseBranch).toBe("main");
+    expect(result.branchInfo.currentBranch).toBe("feature/security");
+    expect(promptSpy).toHaveBeenCalled();
+
+    const runCodeReviewCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "run_code_review",
+    ) as [string, string] | undefined;
+    const runSecurityReviewCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "run_security_review",
+    ) as [string, string] | undefined;
+
+    expect(runCodeReviewCall?.[1]).toBe("false");
+    expect(runSecurityReviewCall?.[1]).toBe("true");
   });
 });

@@ -2,7 +2,7 @@ import type { GitHubContext } from "../github/context";
 
 export type CommonFields = {
   repository: string;
-  droidCommentId: string;
+  droidCommentId?: string;
   triggerPhrase: string;
   triggerUsername?: string;
   droidBranch?: string;
@@ -103,6 +103,12 @@ export type EventData =
   | PullRequestEvent
   | PullRequestTargetEvent;
 
+export type ReviewArtifacts = {
+  diffPath: string;
+  commentsPath: string;
+  descriptionPath: string;
+};
+
 export type PreparedContext = CommonFields & {
   eventData: EventData;
   githubContext?: GitHubContext;
@@ -110,4 +116,5 @@ export type PreparedContext = CommonFields & {
     headRefName: string;
     headRefOid: string;
   };
+  reviewArtifacts?: ReviewArtifacts;
 };
