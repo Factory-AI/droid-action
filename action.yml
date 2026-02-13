@@ -94,9 +94,9 @@ inputs:
   review_model:
     description: "Override the model used for code review (e.g., 'claude-sonnet-4-5-20250929', 'gpt-5.1-codex'). Only applies to review flows."
     required: false
-    default: "gpt-5.2"
+    default: "gpt-5.3-codex"
   reasoning_effort:
-    description: "Override reasoning effort for review flows (passed to Droid Exec as --reasoning-effort). If empty and review_model is also empty, the action defaults internally to gpt-5.2 at high reasoning."
+    description: "Override reasoning effort for review flows (passed to Droid Exec as --reasoning-effort). If empty and review_model is also empty, the action defaults internally to gpt-5.3-codex at high reasoning."
     required: false
     default: ""
   review_use_validator:

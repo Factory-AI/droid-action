@@ -259,7 +259,7 @@ Set `automatic_review` and `automatic_security_review` to control which reviews 
 | Input              | Default   | Purpose                                                                 |
 | ------------------ | --------- | ----------------------------------------------------------------------- |
 | `automatic_review` | `false`   | Automatically run code review on PRs without requiring `@droid review`. |
-| `review_model`     | `gpt-5.2` | Override the model used for code review.                                |
+| `review_model`     | `gpt-5.3-codex` | Override the model used for code review.                                |
 | `fill_model`       | `""`      | Override the model used for PR description fill.                        |
 
 ### Security Configuration

@@ -280,10 +280,10 @@ export async function prepareReviewMode({
   const reviewModel = process.env.REVIEW_MODEL?.trim();
   const reasoningEffort = process.env.REASONING_EFFORT?.trim();
 
-  // action.yml defaults review_model to gpt-5.2, so reviewModel is
+  // action.yml defaults review_model to gpt-5.3-codex, so reviewModel is
   // normally always set. The fallback keeps things working outside the action.
   if (!reviewModel && !reasoningEffort) {
-    droidArgParts.push(`--model "gpt-5.2"`);
+    droidArgParts.push(`--model "gpt-5.3-codex"`);
     droidArgParts.push(`--reasoning-effort "high"`);
   } else {
     if (reviewModel) {
