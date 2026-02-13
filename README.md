@@ -67,7 +67,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run Droid Exec
-        uses: Factory-AI/droid-action@v1
+        uses: Factory-AI/droid-action@v2
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
 ```
@@ -104,7 +104,7 @@ jobs:
 
       - name: Prepare
         id: prepare
-        uses: Factory-AI/droid-action/prepare@v1
+        uses: Factory-AI/droid-action/prepare@v2
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
@@ -127,7 +127,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run Code Review
-        uses: Factory-AI/droid-action/review@v1
+        uses: Factory-AI/droid-action/review@v2
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}
@@ -157,7 +157,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run Security Review
-        uses: Factory-AI/droid-action/security@v1
+        uses: Factory-AI/droid-action/security@v2
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}
@@ -206,7 +206,7 @@ jobs:
         continue-on-error: true
 
       - name: Combine Results
-        uses: Factory-AI/droid-action/combine@v1
+        uses: Factory-AI/droid-action/combine@v2
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}

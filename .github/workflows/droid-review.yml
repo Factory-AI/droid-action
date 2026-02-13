@@ -25,11 +25,10 @@ jobs:
 
       - name: Prepare
         id: prepare
-        uses: Factory-AI/droid-action/prepare@vn/review-cleanup✱
+        uses: Factory-AI/droid-action/prepare@v2
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
-          automatic_security_review: true
 
   code-review:
     needs: prepare
@@ -48,7 +47,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run Code Review
-        uses: Factory-AI/droid-action/review@vn/review-cleanup✱
+        uses: Factory-AI/droid-action/review@v2
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}
@@ -78,7 +77,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run Security Review
-        uses: Factory-AI/droid-action/security@vn/review-cleanup✱
+        uses: Factory-AI/droid-action/security@v2
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}
@@ -127,7 +126,7 @@ jobs:
         continue-on-error: true
 
       - name: Combine Results
-        uses: Factory-AI/droid-action/combine@vn/review-cleanup✱
+        uses: Factory-AI/droid-action/combine@v2
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}
