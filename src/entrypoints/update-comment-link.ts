@@ -44,7 +44,8 @@ async function run() {
         owner,
         repo,
         commentId,
-        isPullRequestReviewCommentEvent: isPullRequestReviewCommentEvent(context),
+        isPullRequestReviewCommentEvent:
+          isPullRequestReviewCommentEvent(context),
       });
       comment = result.comment;
       isPRReviewComment = result.isPRReviewComment;

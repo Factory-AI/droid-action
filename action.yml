@@ -373,7 +373,6 @@ runs:
         DETAILED_PERMISSION_MESSAGES: "1"
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
 
-
     - name: Update comment with job link
       if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.droid_comment_id && always()
       shell: bash

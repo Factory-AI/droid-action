@@ -39,15 +39,13 @@ export async function computeAndStoreDiff(
 
     // Fetch the base branch (it may not exist locally yet)
     try {
-      execSync(
-        `git fetch origin ${baseRef}:refs/remotes/origin/${baseRef}`,
-        { encoding: "utf8", stdio: "pipe" },
-      );
+      execSync(`git fetch origin ${baseRef}:refs/remotes/origin/${baseRef}`, {
+        encoding: "utf8",
+        stdio: "pipe",
+      });
       console.log(`Fetched base branch: ${baseRef}`);
     } catch {
-      console.log(
-        `Base branch fetch skipped (may already exist): ${baseRef}`,
-      );
+      console.log(`Base branch fetch skipped (may already exist): ${baseRef}`);
     }
 
     const mergeBase = execSync(

@@ -58,17 +58,17 @@ describe("prepareReviewMode", () => {
       () => {},
     );
     // Mock execSync for git commands
-    execSyncSpy = spyOn(childProcess, "execSync").mockImplementation(
-      ((cmd: string) => {
-        if (cmd.includes("merge-base")) {
-          return "abc123def456\n";
-        }
-        if (cmd.includes("diff")) {
-          return "diff --git a/file.ts b/file.ts\n+added line\n";
-        }
-        return "";
-      }) as typeof childProcess.execSync,
-    );
+    execSyncSpy = spyOn(childProcess, "execSync").mockImplementation(((
+      cmd: string,
+    ) => {
+      if (cmd.includes("merge-base")) {
+        return "abc123def456\n";
+      }
+      if (cmd.includes("diff")) {
+        return "diff --git a/file.ts b/file.ts\n+added line\n";
+      }
+      return "";
+    }) as typeof childProcess.execSync);
     // Mock file system operations
     writeFileSpy = spyOn(fsPromises, "writeFile").mockResolvedValue();
     mkdirSpy = spyOn(fsPromises, "mkdir").mockResolvedValue(undefined);

@@ -124,7 +124,9 @@ export async function prepareReviewMode({
 
   // Task tool is needed for parallel subagent reviews in candidate generation phase.
   // FetchUrl is needed to fetch linked tickets from the PR description.
-  const candidateGenerationTools = reviewUseValidator ? ["Task", "FetchUrl"] : [];
+  const candidateGenerationTools = reviewUseValidator
+    ? ["Task", "FetchUrl"]
+    : [];
 
   const reviewTools = reviewUseValidator
     ? []

@@ -26,8 +26,7 @@ describe("fetchDroidComment", () => {
       data: {
         id: 123456,
         body: "Test issue comment",
-        html_url:
-          "https://github.com/owner/repo/issues/1#issuecomment-123456",
+        html_url: "https://github.com/owner/repo/issues/1#issuecomment-123456",
       },
     };
 
@@ -59,8 +58,7 @@ describe("fetchDroidComment", () => {
       data: {
         id: 789012,
         body: "Test PR review comment",
-        html_url:
-          "https://github.com/owner/repo/pull/1#discussion_r789012",
+        html_url: "https://github.com/owner/repo/pull/1#discussion_r789012",
       },
     };
 
@@ -146,8 +144,7 @@ describe("fetchDroidComment", () => {
       data: {
         id: 456789,
         body: "Test issue comment fetched via fallback",
-        html_url:
-          "https://github.com/owner/repo/issues/1#issuecomment-456789",
+        html_url: "https://github.com/owner/repo/issues/1#issuecomment-456789",
       },
     };
 
@@ -183,9 +180,7 @@ describe("fetchDroidComment", () => {
       comment_id: 456789,
     });
 
-    expect(result.comment.body).toBe(
-      "Test issue comment fetched via fallback",
-    );
+    expect(result.comment.body).toBe("Test issue comment fetched via fallback");
     expect(result.isPRReviewComment).toBe(false);
   });
 
@@ -266,8 +261,7 @@ describe("fetchDroidComment", () => {
       data: {
         id: 111222,
         body: null,
-        html_url:
-          "https://github.com/owner/repo/issues/1#issuecomment-111222",
+        html_url: "https://github.com/owner/repo/issues/1#issuecomment-111222",
       },
     };
 

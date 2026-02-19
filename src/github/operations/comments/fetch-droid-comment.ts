@@ -62,9 +62,7 @@ export async function fetchDroidComment(
     } catch (issueError) {
       // If event wasn't a PR review comment event, try review comment API as fallback
       if (!isPullRequestReviewCommentEvent) {
-        console.log(
-          "Issue comment fetch failed, trying PR review comment API",
-        );
+        console.log("Issue comment fetch failed, trying PR review comment API");
         try {
           const { data: prComment } = await octokit.rest.pulls.getReviewComment(
             {

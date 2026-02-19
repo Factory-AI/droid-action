@@ -28,7 +28,10 @@ export async function prepareReviewValidatorMode({
 
   const prData = await fetchPRBranchData({
     octokits: octokit,
-    repository: { owner: context.repository.owner, repo: context.repository.repo },
+    repository: {
+      owner: context.repository.owner,
+      repo: context.repository.repo,
+    },
     prNumber: context.entityNumber,
   });
 
@@ -36,7 +39,10 @@ export async function prepareReviewValidatorMode({
 
   // Ensure PR branch is checked out (same as review mode)
   try {
-    execSync("git reset --hard HEAD", { encoding: "utf8", stdio: "pipe" } as any);
+    execSync("git reset --hard HEAD", {
+      encoding: "utf8",
+      stdio: "pipe",
+    } as any);
     execSync(`gh pr checkout ${context.entityNumber}`, {
       encoding: "utf8",
       stdio: "pipe",
@@ -47,7 +53,9 @@ export async function prepareReviewValidatorMode({
     );
   } catch (e) {
     console.error(`Failed to checkout PR branch: ${e}`);
-    throw new Error(`Failed to checkout PR #${context.entityNumber} branch for review`);
+    throw new Error(
+      `Failed to checkout PR #${context.entityNumber} branch for review`,
+    );
   }
 
   const reviewArtifacts = await computeReviewArtifacts({

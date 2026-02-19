@@ -45,7 +45,7 @@ describe("prepare-validator entrypoint", () => {
     } as any);
 
     const mod = await import(
-      `../../src/entrypoints/prepare-validator.ts?test=${Math.random()}`,
+      `../../src/entrypoints/prepare-validator.ts?test=${Math.random()}`
     );
 
     await expect(mod.default()).rejects.toBeTruthy();
