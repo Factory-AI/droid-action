@@ -169,6 +169,39 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
       // Don't continue without MCP if we were expecting it
       throw new Error(`MCP server registration failed: ${e}`);
     }
+
+    // List available tools to verify MCP tools are registered
+    console.log("\nListing available tools after MCP registration...");
+    try {
+      const { stdout: listOutput } = await execAsync(
+        "droid exec --list-tools",
+      );
+      console.log("Available tools:\n" + listOutput);
+    } catch (listError: any) {
+      console.error("Failed to list tools:", listError.message);
+    }
+    console.log("");
+
+    // Check MCP config file content
+    console.log("Checking MCP config file...");
+    try {
+      const { stdout: mcpConfig } = await execAsync(
+        "cat ~/.factory/mcp.json 2>/dev/null || echo 'File not found'",
+      );
+      console.log("~/.factory/mcp.json content:\n" + mcpConfig);
+    } catch (e: any) {
+      console.error("Failed to read MCP config:", e.message);
+    }
+
+    // Check registered MCP servers
+    console.log("\nListing registered MCP servers...");
+    try {
+      const { stdout: mcpList } = await execAsync("droid mcp list");
+      console.log("MCP servers:\n" + mcpList);
+    } catch (e: any) {
+      console.error("Failed to list MCP servers:", e.message);
+    }
+    console.log("");
   }
 
   const config = prepareRunConfig(promptPath, options);
