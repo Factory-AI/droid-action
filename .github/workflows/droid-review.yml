@@ -59,6 +59,17 @@ jobs:
           path: ${{ runner.temp }}/code-review-results.json
           if-no-files-found: ignore
 
+      - name: Upload debug artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: droid-review-debug-${{ github.run_id }}
+          path: |
+            ~/.factory/**
+            ${{ runner.temp }}/droid-prompts/**
+          if-no-files-found: ignore
+          retention-days: 7
+
   combine:
     needs: [prepare, code-review]
     if: |

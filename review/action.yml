@@ -20,6 +20,18 @@ inputs:
     description: "Path to write review results JSON"
     required: false
     default: ""
+  review_use_validator:
+    description: "Enable two-pass review: generate candidate comments, then validate and post only approved ones."
+    required: false
+    default: "true"
+  review_candidates_path:
+    description: "Path to write review candidates JSON (pass 1)."
+    required: false
+    default: "${{ runner.temp }}/droid-prompts/review_candidates.json"
+  review_validated_path:
+    description: "Path to write review validated JSON (pass 2)."
+    required: false
+    default: "${{ runner.temp }}/droid-prompts/review_validated.json"
 
 outputs:
   conclusion:
@@ -68,7 +80,18 @@ runs:
         DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
         REVIEW_MODEL: ${{ inputs.review_model }}
         REVIEW_TYPE: "code"
+        REVIEW_USE_VALIDATOR: ${{ inputs.review_use_validator }}
+        REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
         DROID_OUTPUT_FILE: ${{ inputs.output_file }}
+
+    - name: Setup Custom Droids
+      shell: bash
+      run: |
+        mkdir -p ~/.factory/droids
+        if [ -d "${{ github.action_path }}/../.factory/droids" ]; then
+          cp -r ${{ github.action_path }}/../.factory/droids/* ~/.factory/droids/
+          echo "Copied custom droids to ~/.factory/droids/"
+        fi
 
     - name: Run Code Review
       id: review
@@ -82,3 +105,29 @@ runs:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
         DROID_OUTPUT_FILE: ${{ inputs.output_file }}
+
+    - name: Prepare Validator
+      id: prepare_validator
+      if: steps.prompt.outputs.review_use_validator == 'true'
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../src/entrypoints/prepare-validator.ts
+      env:
+        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+        REVIEW_USE_VALIDATOR: ${{ inputs.review_use_validator }}
+        REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
+        REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
+        DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
+
+    - name: Run Validator
+      id: validator
+      if: steps.prompt.outputs.review_use_validator == 'true'
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../base-action/src/index.ts
+      env:
+        INPUT_PROMPT_FILE: ${{ runner.temp }}/droid-prompts/droid-prompt.txt
+        INPUT_DROID_ARGS: ${{ steps.prepare_validator.outputs.droid_args }}
+        INPUT_MCP_TOOLS: ${{ steps.prepare_validator.outputs.mcp_tools }}
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}

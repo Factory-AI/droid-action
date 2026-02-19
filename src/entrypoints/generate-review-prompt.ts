@@ -13,6 +13,7 @@ import { computeReviewArtifacts } from "../github/data/review-artifacts";
 import { createPrompt } from "../create-prompt";
 import { prepareMcpTools } from "../mcp/install-mcp-server";
 import { generateReviewPrompt } from "../create-prompt/templates/review-prompt";
+import { generateReviewCandidatesPrompt } from "../create-prompt/templates/review-candidates-prompt";
 import { generateSecurityReviewPrompt } from "../create-prompt/templates/security-review-prompt";
 import { normalizeDroidArgs, parseAllowedTools } from "../utils/parse-tools";
 
@@ -20,6 +21,9 @@ async function run() {
   try {
     const githubToken = process.env.GITHUB_TOKEN!;
     const reviewType = process.env.REVIEW_TYPE || "code";
+    const reviewUseValidator =
+      reviewType === "code" &&
+      (process.env.REVIEW_USE_VALIDATOR ?? "true").trim() !== "false";
     const commentId = parseInt(process.env.DROID_COMMENT_ID || "0");
 
     if (!commentId) {
@@ -69,8 +73,9 @@ async function run() {
         `Successfully checked out PR branch: ${execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf8" }).trim()}`,
       );
     } catch (e) {
-      console.warn(
-        `Failed to checkout PR branch, will use fallback diff method: ${e}`,
+      console.error(`Failed to checkout PR branch: ${e}`);
+      throw new Error(
+        `Failed to checkout PR #${context.entityNumber} branch for review`,
       );
     }
 
@@ -86,11 +91,13 @@ async function run() {
       githubToken,
     });
 
-    // Select prompt generator based on review type
+    // Select prompt generator based on review type and validator mode
     const generatePrompt =
       reviewType === "security"
         ? generateSecurityReviewPrompt
-        : generateReviewPrompt;
+        : reviewUseValidator
+          ? generateReviewCandidatesPrompt
+          : generateReviewPrompt;
 
     // Pass the output file path so the prompt can instruct the Droid
     // to write structured findings for the combine step
@@ -120,22 +127,47 @@ async function run() {
       (tool) => tool.startsWith("github_") && tool.includes("___"),
     );
 
-    // Base tools for analysis only - NO inline comment tools
-    // Inline comments will be posted by the finalize step to avoid overlaps
+    // Base tools for analysis
     const baseTools = [
       "Read",
       "Grep",
       "Glob",
       "LS",
       "Execute",
+      "Edit",
+      "Create",
+      "ApplyPatch",
       "github_comment___update_droid_comment",
     ];
 
-    // Review tools for reading existing comments only
-    const reviewTools = ["github_pr___list_review_comments"];
+    // Task tool is needed for parallel subagent reviews in candidate generation phase.
+    // FetchUrl is needed to fetch linked tickets from the PR description.
+    const candidateGenerationTools = reviewUseValidator
+      ? ["Task", "FetchUrl"]
+      : [];
+
+    // When validator is enabled, the candidate generation phase should NOT
+    // have access to PR mutation tools. When disabled, allow them.
+    const reviewTools = reviewUseValidator
+      ? []
+      : ["github_pr___list_review_comments"];
+
+    const safeUserAllowedMCPTools = reviewUseValidator
+      ? userAllowedMCPTools.filter(
+          (tool) =>
+            tool === "github_comment___update_droid_comment" ||
+            (!tool.startsWith("github_pr___") &&
+              tool !== "github_inline_comment___create_inline_comment"),
+        )
+      : userAllowedMCPTools;
 
     const allowedTools = Array.from(
-      new Set([...baseTools, ...reviewTools, ...userAllowedMCPTools]),
+      new Set([
+        ...baseTools,
+        ...candidateGenerationTools,
+        ...reviewTools,
+        ...safeUserAllowedMCPTools,
+      ]),
     );
 
     const mcpTools = await prepareMcpTools({
@@ -173,8 +205,11 @@ async function run() {
     // Output for next step - use core.setOutput which handles GITHUB_OUTPUT internally
     core.setOutput("droid_args", droidArgParts.join(" ").trim());
     core.setOutput("mcp_tools", mcpTools);
+    core.setOutput("review_use_validator", reviewUseValidator.toString());
 
-    console.log(`Generated ${reviewType} review prompt`);
+    console.log(
+      `Generated ${reviewType} review prompt (validator=${reviewUseValidator})`,
+    );
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     core.setFailed(`Generate prompt failed: ${errorMessage}`);
