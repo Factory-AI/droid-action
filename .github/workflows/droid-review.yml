@@ -24,7 +24,7 @@ jobs:
 
       - name: Prepare
         id: prepare
-        uses: Factory-AI/droid-action/prepare@vn/bug-fixes
+        uses: Factory-AI/droid-action/prepare@vn/update-tracking-comment
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
@@ -48,11 +48,19 @@ jobs:
           fetch-depth: 0
 
       - name: Run Code Review
-        uses: Factory-AI/droid-action/review@vn/bug-fixes
+        uses: Factory-AI/droid-action/review@vn/update-tracking-comment
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}
           output_file: ${{ runner.temp }}/code-review-results.json
+
+      - name: Collect .factory debug files
+        if: always()
+        shell: bash
+        run: |
+          if [ -d "$HOME/.factory" ]; then
+            cp -r "$HOME/.factory" "${{ runner.temp }}/.factory"
+          fi
 
       - name: Upload debug artifacts
         if: always()
@@ -60,7 +68,8 @@ jobs:
         with:
           name: droid-review-debug-${{ github.run_id }}
           path: |
-            ~/.factory/**
+            ${{ runner.temp }}/.factory/**
             ${{ runner.temp }}/droid-prompts/**
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7

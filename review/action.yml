@@ -138,3 +138,19 @@ runs:
         INPUT_MCP_TOOLS: ${{ steps.prepare_validator.outputs.mcp_tools }}
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+
+    - name: Update tracking comment
+      if: always() && inputs.tracking_comment_id
+      continue-on-error: true
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../src/entrypoints/update-comment-link.ts
+      env:
+        DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
+        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        OUTPUT_FILE: ${{ inputs.output_file }}
+        TRIGGER_USERNAME: ${{ github.event.pull_request.user.login || github.event.sender.login || github.triggering_actor || github.actor || '' }}
+        PREPARE_SUCCESS: "true"
+        DROID_SUCCESS: ${{ (steps.prompt.outputs.review_use_validator == 'true' && steps.validator.outcome == 'success') || (steps.prompt.outputs.review_use_validator != 'true' && steps.review.outcome == 'success') }}
