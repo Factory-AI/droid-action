@@ -109,7 +109,7 @@ You have access to these Factory security skills (installed in ~/.factory/skills
 IMPORTANT: Do NOT post inline comments directly. Instead, write findings to a JSON file.
 The finalize step will post all inline comments to avoid overlapping with code review comments.
 
-1. Write findings to \`security-review-results.json\` with this structure:
+1. Write findings to \`${context.outputFilePath || "security-review-results.json"}\` with this structure:
 \`\`\`json
 {
   "type": "security",

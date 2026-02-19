@@ -68,6 +68,7 @@ runs:
         DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
         REVIEW_MODEL: ${{ inputs.review_model }}
         REVIEW_TYPE: "code"
+        DROID_OUTPUT_FILE: ${{ inputs.output_file }}
 
     - name: Run Code Review
       id: review

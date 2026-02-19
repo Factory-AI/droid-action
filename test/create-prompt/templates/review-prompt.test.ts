@@ -155,4 +155,25 @@ describe("generateReviewPrompt", () => {
 
     expect(prompt).toContain("pr_description.txt");
   });
+
+  it("includes output file instructions when outputFilePath is set", () => {
+    const context = createBaseContext({
+      outputFilePath: "/tmp/results/code-review-results.json",
+    });
+
+    const prompt = generateReviewPrompt(context);
+
+    expect(prompt).toContain("## Output File (REQUIRED)");
+    expect(prompt).toContain("/tmp/results/code-review-results.json");
+    expect(prompt).toContain('"type": "code-review"');
+    expect(prompt).toContain("combine step to aggregate results");
+  });
+
+  it("does not include output file section when outputFilePath is not set", () => {
+    const context = createBaseContext();
+
+    const prompt = generateReviewPrompt(context);
+
+    expect(prompt).not.toContain("## Output File (REQUIRED)");
+  });
 });

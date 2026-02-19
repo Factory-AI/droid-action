@@ -5,9 +5,11 @@
  */
 
 import * as core from "@actions/core";
+import { execSync } from "child_process";
 import { createOctokit } from "../github/api/client";
 import { parseGitHubContext, isEntityContext } from "../github/context";
 import { fetchPRBranchData } from "../github/data/pr-fetcher";
+import { computeReviewArtifacts } from "../github/data/review-artifacts";
 import { createPrompt } from "../create-prompt";
 import { prepareMcpTools } from "../mcp/install-mcp-server";
 import { generateReviewPrompt } from "../create-prompt/templates/review-prompt";
@@ -47,11 +49,52 @@ async function run() {
       currentBranch: prData.headRefName,
     };
 
+    // Pre-compute review artifacts (diff, existing comments, PR description)
+    // so the Droid can read them directly instead of fetching via gh CLI
+    const tempDir = process.env.RUNNER_TEMP || "/tmp";
+
+    // Checkout the PR branch before computing diff to ensure HEAD points
+    // to the PR head commit, not the merge commit
+    console.log(
+      `Checking out PR #${context.entityNumber} branch for diff computation...`,
+    );
+    try {
+      execSync("git reset --hard HEAD", { encoding: "utf8", stdio: "pipe" });
+      execSync(`gh pr checkout ${context.entityNumber}`, {
+        encoding: "utf8",
+        stdio: "pipe",
+        env: { ...process.env, GH_TOKEN: githubToken },
+      });
+      console.log(
+        `Successfully checked out PR branch: ${execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf8" }).trim()}`,
+      );
+    } catch (e) {
+      console.warn(
+        `Failed to checkout PR branch, will use fallback diff method: ${e}`,
+      );
+    }
+
+    const reviewArtifacts = await computeReviewArtifacts({
+      baseRef: prData.baseRefName,
+      tempDir,
+      octokit,
+      owner: context.repository.owner,
+      repo: context.repository.repo,
+      prNumber: context.entityNumber,
+      title: prData.title,
+      body: prData.body,
+      githubToken,
+    });
+
     // Select prompt generator based on review type
     const generatePrompt =
       reviewType === "security"
         ? generateSecurityReviewPrompt
         : generateReviewPrompt;
+
+    // Pass the output file path so the prompt can instruct the Droid
+    // to write structured findings for the combine step
+    const outputFilePath = process.env.DROID_OUTPUT_FILE || undefined;
 
     await createPrompt({
       githubContext: context,
@@ -62,6 +105,8 @@ async function run() {
         headRefOid: prData.headRefOid,
       },
       generatePrompt,
+      reviewArtifacts,
+      outputFilePath,
     });
 
     // Set run type

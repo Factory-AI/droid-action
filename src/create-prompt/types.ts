@@ -117,4 +117,5 @@ export type PreparedContext = CommonFields & {
     headRefOid: string;
   };
   reviewArtifacts?: ReviewArtifacts;
+  outputFilePath?: string;
 };

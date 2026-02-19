@@ -1,10 +1,9 @@
 import * as core from "@actions/core";
 import { execSync } from "child_process";
-import { writeFile, mkdir } from "fs/promises";
 import type { GitHubContext } from "../../github/context";
 import { fetchPRBranchData } from "../../github/data/pr-fetcher";
+import { computeReviewArtifacts } from "../../github/data/review-artifacts";
 import { createPrompt } from "../../create-prompt";
-import type { ReviewArtifacts } from "../../create-prompt";
 import { prepareMcpTools } from "../../mcp/install-mcp-server";
 import { createInitialComment } from "../../github/operations/comments/create-initial";
 import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
@@ -13,107 +12,6 @@ import { generateReviewPrompt } from "../../create-prompt/templates/review-promp
 import { generateReviewCandidatesPrompt } from "../../create-prompt/templates/review-candidates-prompt";
 import type { Octokits } from "../../github/api/client";
 import type { PrepareResult } from "../../prepare/types";
-
-const DIFF_MAX_BUFFER = 50 * 1024 * 1024; // 50MB buffer for large diffs
-
-async function computeAndStoreDiff(
-  baseRef: string,
-  tempDir: string,
-): Promise<string> {
-  const promptsDir = `${tempDir}/droid-prompts`;
-  await mkdir(promptsDir, { recursive: true });
-
-  // Unshallow the repo if it's a shallow clone (needed for merge-base to work)
-  try {
-    execSync("git fetch --unshallow", { encoding: "utf8", stdio: "pipe" });
-    console.log("Unshallowed repository");
-  } catch (e) {
-    // Already unshallowed or not a shallow clone, continue
-    console.log("Repository already has full history");
-  }
-
-  // Fetch the base branch (it may not exist locally yet)
-  try {
-    execSync(
-      `git fetch origin ${baseRef}:refs/remotes/origin/${baseRef}`,
-      { encoding: "utf8", stdio: "pipe" },
-    );
-    console.log(`Fetched base branch: ${baseRef}`);
-  } catch (e) {
-    // Branch might already exist, continue
-    console.log(`Base branch fetch skipped (may already exist): ${baseRef}`);
-  }
-
-  const mergeBase = execSync(
-    `git merge-base HEAD refs/remotes/origin/${baseRef}`,
-    { encoding: "utf8" },
-  ).trim();
-
-  const diff = execSync(`git --no-pager diff ${mergeBase}..HEAD`, {
-    encoding: "utf8",
-    maxBuffer: DIFF_MAX_BUFFER,
-  });
-
-  const diffPath = `${promptsDir}/pr.diff`;
-  await writeFile(diffPath, diff);
-  console.log(`Stored PR diff (${diff.length} bytes) at ${diffPath}`);
-  return diffPath;
-}
-
-async function fetchAndStoreComments(
-  octokit: Octokits,
-  owner: string,
-  repo: string,
-  prNumber: number,
-  tempDir: string,
-): Promise<string> {
-  const promptsDir = `${tempDir}/droid-prompts`;
-  await mkdir(promptsDir, { recursive: true });
-
-  const [issueComments, reviewComments] = await Promise.all([
-    octokit.rest.issues.listComments({
-      owner,
-      repo,
-      issue_number: prNumber,
-      per_page: 100,
-    }),
-    octokit.rest.pulls.listReviewComments({
-      owner,
-      repo,
-      pull_number: prNumber,
-      per_page: 100,
-    }),
-  ]);
-
-  const comments = {
-    issueComments: issueComments.data,
-    reviewComments: reviewComments.data,
-  };
-
-  const commentsPath = `${promptsDir}/existing_comments.json`;
-  await writeFile(commentsPath, JSON.stringify(comments, null, 2));
-  console.log(
-    `Stored existing comments (${issueComments.data.length} issue, ${reviewComments.data.length} review) at ${commentsPath}`,
-  );
-  return commentsPath;
-}
-
-async function storeDescription(
-  title: string,
-  body: string,
-  tempDir: string,
-): Promise<string> {
-  const promptsDir = `${tempDir}/droid-prompts`;
-  await mkdir(promptsDir, { recursive: true });
-
-  const content = `# ${title}\n\n${body}`;
-  const descriptionPath = `${promptsDir}/pr_description.txt`;
-  await writeFile(descriptionPath, content);
-  console.log(
-    `Stored PR description (${content.length} bytes) at ${descriptionPath}`,
-  );
-  return descriptionPath;
-}
 
 type ReviewCommandOptions = {
   context: GitHubContext;
@@ -175,23 +73,17 @@ export async function prepareReviewMode({
 
   // Pre-compute review artifacts (diff, existing comments, and PR description)
   const tempDir = process.env.RUNNER_TEMP || "/tmp";
-  const [diffPath, commentsPath, descriptionPath] = await Promise.all([
-    computeAndStoreDiff(prData.baseRefName, tempDir),
-    fetchAndStoreComments(
-      octokit,
-      context.repository.owner,
-      context.repository.repo,
-      context.entityNumber,
-      tempDir,
-    ),
-    storeDescription(prData.title, prData.body, tempDir),
-  ]);
-
-  const reviewArtifacts: ReviewArtifacts = {
-    diffPath,
-    commentsPath,
-    descriptionPath,
-  };
+  const reviewArtifacts = await computeReviewArtifacts({
+    baseRef: prData.baseRefName,
+    tempDir,
+    octokit,
+    owner: context.repository.owner,
+    repo: context.repository.repo,
+    prNumber: context.entityNumber,
+    title: prData.title,
+    body: prData.body,
+    githubToken,
+  });
 
   const reviewUseValidator =
     (process.env.REVIEW_USE_VALIDATOR ?? "true").trim() !== "false";
