@@ -118,12 +118,11 @@ export async function prepareReviewValidatorMode({
   const reviewModel = process.env.REVIEW_MODEL?.trim();
   const reasoningEffort = process.env.REASONING_EFFORT?.trim();
 
-  if (!reviewModel && !reasoningEffort) {
-    droidArgParts.push(`--model "gpt-5.2"`);
-    droidArgParts.push(`--reasoning-effort "high"`);
-  } else {
-    if (reviewModel) droidArgParts.push(`--model "${reviewModel}"`);
-    if (reasoningEffort) droidArgParts.push(`--reasoning-effort "${reasoningEffort}"`);
+  if (reviewModel) {
+    droidArgParts.push(`--model "${reviewModel}"`);
+  }
+  if (reasoningEffort) {
+    droidArgParts.push(`--reasoning-effort "${reasoningEffort}"`);
   }
 
   if (normalizedUserArgs) {

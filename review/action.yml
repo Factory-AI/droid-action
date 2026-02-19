@@ -16,6 +16,10 @@ inputs:
     description: "Model to use for review"
     required: false
     default: "gpt-5.2"
+  reasoning_effort:
+    description: "Reasoning effort for review (passed to Droid Exec as --reasoning-effort)"
+    required: false
+    default: "high"
   output_file:
     description: "Path to write review results JSON"
     required: false
@@ -82,6 +86,7 @@ runs:
         REVIEW_TYPE: "code"
         REVIEW_USE_VALIDATOR: ${{ inputs.review_use_validator }}
         REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
+        REASONING_EFFORT: ${{ inputs.reasoning_effort }}
         DROID_OUTPUT_FILE: ${{ inputs.output_file }}
 
     - name: Setup Custom Droids

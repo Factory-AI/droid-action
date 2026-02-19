@@ -389,9 +389,10 @@ describe("prepareReviewMode", () => {
     const droidArgsCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "droid_args",
     ) as [string, string] | undefined;
-    // When neither REVIEW_MODEL nor REASONING_EFFORT is provided, we default to gpt-5.2 at high reasoning.
-    expect(droidArgsCall?.[1]).toContain('--model "gpt-5.2"');
-    expect(droidArgsCall?.[1]).toContain('--reasoning-effort "high"');
+    // When neither REVIEW_MODEL nor REASONING_EFFORT is provided, no --model or --reasoning-effort
+    // flags are added. Defaults are handled by the action.yml inputs (gpt-5.2 / high).
+    expect(droidArgsCall?.[1]).not.toContain("--model");
+    expect(droidArgsCall?.[1]).not.toContain("--reasoning-effort");
   });
 
   it("stores PR description as an artifact file", async () => {

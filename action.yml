@@ -98,7 +98,7 @@ inputs:
   reasoning_effort:
     description: "Override reasoning effort for review flows (passed to Droid Exec as --reasoning-effort). If empty and review_model is also empty, the action defaults internally to gpt-5.2 at high reasoning."
     required: false
-    default: ""
+    default: "high"
   review_use_validator:
     description: "Enable two-pass review: generate candidate comments to JSON, then validate and post only approved ones."
     required: false

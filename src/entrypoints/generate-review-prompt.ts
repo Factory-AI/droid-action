@@ -188,14 +188,17 @@ async function run() {
       droidArgParts.push(`--enabled-tools "${builtInTools.join(",")}"`);
     }
 
-    // Add model override if specified
-    const model =
+    const reviewModel =
       reviewType === "security"
         ? process.env.SECURITY_MODEL?.trim() || process.env.REVIEW_MODEL?.trim()
         : process.env.REVIEW_MODEL?.trim();
+    const reasoningEffort = process.env.REASONING_EFFORT?.trim();
 
-    if (model) {
-      droidArgParts.push(`--model "${model}"`);
+    if (reviewModel) {
+      droidArgParts.push(`--model "${reviewModel}"`);
+    }
+    if (reasoningEffort) {
+      droidArgParts.push(`--reasoning-effort "${reasoningEffort}"`);
     }
 
     if (normalizedUserArgs) {
