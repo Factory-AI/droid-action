@@ -54,13 +54,22 @@ jobs:
           tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}
           output_file: ${{ runner.temp }}/code-review-results.json
 
+      - name: Collect .factory debug files
+        if: always()
+        shell: bash
+        run: |
+          if [ -d "$HOME/.factory" ]; then
+            mkdir -p "${{ runner.temp }}/droid-debug/.factory"
+            cp -r "$HOME/.factory/." "${{ runner.temp }}/droid-debug/.factory/"
+          fi
+
       - name: Upload debug artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: droid-review-debug-${{ github.run_id }}
           path: |
-            ~/.factory/**
+            ${{ runner.temp }}/droid-debug/.factory/**
             ${{ runner.temp }}/droid-prompts/**
           if-no-files-found: ignore
           retention-days: 7

@@ -395,13 +395,22 @@ runs:
         TRACK_PROGRESS: ${{ inputs.track_progress }}
         AUTOMATIC_REVIEW: ${{ inputs.automatic_review }}
 
+    - name: Collect .factory debug files
+      if: always() && steps.prepare.outputs.contains_trigger == 'true'
+      shell: bash
+      run: |
+        if [ -d "$HOME/.factory" ]; then
+          mkdir -p "${{ runner.temp }}/droid-debug/.factory"
+          cp -r "$HOME/.factory/." "${{ runner.temp }}/droid-debug/.factory/"
+        fi
+
     - name: Upload debug artifacts
       if: always() && steps.prepare.outputs.contains_trigger == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: droid-review-debug-${{ github.run_id }}
         path: |
-          ~/.factory/**
+          ${{ runner.temp }}/droid-debug/.factory/**
           ${{ runner.temp }}/droid-prompts/**
         if-no-files-found: ignore
         retention-days: 7
