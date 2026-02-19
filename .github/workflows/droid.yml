@@ -36,6 +36,6 @@ jobs:
           fetch-depth: 1
 
       - name: Run Droid Exec
-        uses: Factory-AI/droid-action@vn/bug-fixes
+        uses: Factory-AI/droid-action@vn/update-tracking-comment
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
