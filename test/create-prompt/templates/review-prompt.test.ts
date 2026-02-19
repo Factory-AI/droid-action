@@ -166,7 +166,7 @@ describe("generateReviewPrompt", () => {
     expect(prompt).toContain("## Output File (REQUIRED)");
     expect(prompt).toContain("/tmp/results/code-review-results.json");
     expect(prompt).toContain('"type": "code-review"');
-    expect(prompt).toContain("combine step to aggregate results");
+    expect(prompt).toContain("downstream processing of review results");
   });
 
   it("does not include output file section when outputFilePath is not set", () => {

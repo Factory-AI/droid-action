@@ -382,7 +382,7 @@ After completing your review, you MUST write your findings to \`${context.output
 
 If no issues were found, write: \`{"type": "code-review", "findings": [], "summary": "No issues found"}\`
 
-This file is required for the combine step to aggregate results.
+This file is required for downstream processing of review results.
 `
     : ""
 }`;
