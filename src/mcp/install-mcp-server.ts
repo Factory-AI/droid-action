@@ -1,4 +1,5 @@
 import * as core from "@actions/core";
+import { existsSync } from "fs";
 import path from "path";
 import { GITHUB_API_URL, GITHUB_SERVER_URL } from "../github/api/config";
 import type { GitHubContext } from "../github/context";
@@ -62,9 +63,14 @@ export async function prepareMcpTools(
   try {
     const allowedToolsList = allowedTools || [];
 
-    // GITHUB_ACTION_PATH points to the sub-action directory (e.g., review/, combine/)
-    // but src/ lives at the repo root, one level up.
-    const repoRoot = path.resolve(process.env.GITHUB_ACTION_PATH || ".", "..");
+    // GITHUB_ACTION_PATH points to either:
+    // - The repo root when using the monolithic action (Factory-AI/droid-action@dev)
+    // - A sub-action directory (e.g., review/) when using sub-actions
+    // Detect which case by checking if src/ exists at the action path directly.
+    const actionPath = process.env.GITHUB_ACTION_PATH || ".";
+    const repoRoot = existsSync(path.join(actionPath, "src"))
+      ? actionPath
+      : path.resolve(actionPath, "..");
 
     const hasGitHubMcpTools = allowedToolsList.some((tool) =>
       tool.startsWith("github___"),
