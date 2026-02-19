@@ -122,6 +122,8 @@ runs:
         REVIEW_USE_VALIDATOR: ${{ inputs.review_use_validator }}
         REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
         REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
+        REVIEW_MODEL: ${{ inputs.review_model }}
+        REASONING_EFFORT: ${{ inputs.reasoning_effort }}
         DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
 
     - name: Run Validator
