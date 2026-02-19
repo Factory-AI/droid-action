@@ -60,6 +60,27 @@ describe("generateSecurityReviewPrompt", () => {
     expect(prompt).toContain("LOW");
   });
 
+  it("uses outputFilePath when provided", () => {
+    const context = createBaseContext({
+      outputFilePath: "/tmp/results/security-results.json",
+    });
+
+    const prompt = generateSecurityReviewPrompt(context);
+
+    expect(prompt).toContain("/tmp/results/security-results.json");
+    expect(prompt).not.toContain(
+      "Write findings to `security-review-results.json`",
+    );
+  });
+
+  it("falls back to default filename when outputFilePath is not set", () => {
+    const context = createBaseContext();
+
+    const prompt = generateSecurityReviewPrompt(context);
+
+    expect(prompt).toContain("security-review-results.json");
+  });
+
   it("includes security configuration from context", () => {
     const contextWithConfig = createBaseContext({
       githubContext: {

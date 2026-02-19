@@ -115,6 +115,7 @@ runs:
         SECURITY_BLOCK_ON_CRITICAL: ${{ inputs.security_block_on_critical }}
         SECURITY_BLOCK_ON_HIGH: ${{ inputs.security_block_on_high }}
         REVIEW_TYPE: "security"
+        DROID_OUTPUT_FILE: ${{ inputs.output_file }}
 
     - name: Run Security Review
       id: review

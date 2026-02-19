@@ -27,6 +27,8 @@ jobs:
       issues: write
       id-token: write
       actions: read
+    env:
+      ACTIONS_STEP_DEBUG: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -34,6 +36,6 @@ jobs:
           fetch-depth: 1
 
       - name: Run Droid Exec
-        uses: Factory-AI/droid-action@v2
+        uses: Factory-AI/droid-action@vn/bug-fixes
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}

@@ -353,5 +353,37 @@ In the submitted review body:
 
 * State whether the changes are correct or incorrect
 * Provide a 1-3 sentence overall assessment
-`;
+${
+  context.outputFilePath
+    ? `
+---
+
+## Output File (REQUIRED)
+
+After completing your review, you MUST write your findings to \`${context.outputFilePath}\` as a JSON file with this structure:
+
+\`\`\`json
+{
+  "type": "code-review",
+  "findings": [
+    {
+      "id": "CR-001",
+      "severity": "P0|P1|P2|P3",
+      "file": "path/to/file.ts",
+      "line": 55,
+      "side": "RIGHT",
+      "description": "Brief description of the issue",
+      "suggestion": "Optional suggested fix"
+    }
+  ],
+  "summary": "Brief overall summary of the review"
+}
+\`\`\`
+
+If no issues were found, write: \`{"type": "code-review", "findings": [], "summary": "No issues found"}\`
+
+This file is required for downstream processing of review results.
+`
+    : ""
+}`;
 }
