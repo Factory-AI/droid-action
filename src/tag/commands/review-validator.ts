@@ -122,6 +122,7 @@ export async function prepareReviewValidatorMode({
 
   const droidArgParts: string[] = [];
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
+  droidArgParts.push('--tag "code-review"');
 
   const reviewModel = process.env.REVIEW_MODEL?.trim();
   const reasoningEffort = process.env.REASONING_EFFORT?.trim();

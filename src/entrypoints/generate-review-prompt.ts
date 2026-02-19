@@ -182,6 +182,7 @@ async function run() {
 
     const droidArgParts: string[] = [];
     droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
+    droidArgParts.push('--tag "code-review"');
 
     const reviewModel =
       reviewType === "security"
