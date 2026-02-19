@@ -4,34 +4,13 @@ on:
   pull_request:
     types: [opened, ready_for_review, reopened]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  prepare:
+  droid-review:
     if: github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-      issues: write
-      id-token: write
-    outputs:
-      comment_id: ${{ steps.prepare.outputs.comment_id }}
-      run_code_review: ${{ steps.prepare.outputs.run_code_review }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 1
-
-      - name: Prepare
-        id: prepare
-        uses: Factory-AI/droid-action/prepare@dev
-        with:
-          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
-          automatic_review: true
-
-  code-review:
-    needs: prepare
-    if: needs.prepare.outputs.run_code_review == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -39,37 +18,14 @@ jobs:
       issues: write
       id-token: write
       actions: read
-    env:
-      ACTIONS_STEP_DEBUG: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
-      - name: Run Code Review
-        uses: Factory-AI/droid-action/review@dev
+      - name: Run Droid Auto Review
+        uses: Factory-AI/droid-action@vn/update-yml-tags
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
-          tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}
-          output_file: ${{ runner.temp }}/code-review-results.json
-
-      - name: Collect .factory debug files
-        if: always()
-        shell: bash
-        run: |
-          if [ -d "$HOME/.factory" ]; then
-            cp -r "$HOME/.factory" "${{ runner.temp }}/.factory"
-          fi
-
-      - name: Upload debug artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: droid-review-debug-${{ github.run_id }}
-          path: |
-            ${{ runner.temp }}/.factory/**
-            ${{ runner.temp }}/droid-prompts/**
-          include-hidden-files: true
-          if-no-files-found: ignore
-          retention-days: 7
+          automatic_review: true
