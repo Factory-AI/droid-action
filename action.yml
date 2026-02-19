@@ -400,8 +400,7 @@ runs:
       shell: bash
       run: |
         if [ -d "$HOME/.factory" ]; then
-          mkdir -p "${{ runner.temp }}/droid-debug/.factory"
-          cp -r "$HOME/.factory/." "${{ runner.temp }}/droid-debug/.factory/"
+          cp -r "$HOME/.factory" "${{ runner.temp }}/.factory"
         fi
 
     - name: Upload debug artifacts
@@ -410,7 +409,8 @@ runs:
       with:
         name: droid-review-debug-${{ github.run_id }}
         path: |
-          ${{ runner.temp }}/droid-debug/.factory/**
+          ${{ runner.temp }}/.factory/**
           ${{ runner.temp }}/droid-prompts/**
+        include-hidden-files: true
         if-no-files-found: ignore
         retention-days: 7
