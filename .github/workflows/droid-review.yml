@@ -24,7 +24,7 @@ jobs:
 
       - name: Prepare
         id: prepare
-        uses: Factory-AI/droid-action/prepare@v2
+        uses: Factory-AI/droid-action/prepare@vn/bug-fixes
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
@@ -46,7 +46,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run Code Review
-        uses: Factory-AI/droid-action/review@v2
+        uses: Factory-AI/droid-action/review@vn/bug-fixes
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}
@@ -85,7 +85,7 @@ jobs:
         continue-on-error: true
 
       - name: Combine Results
-        uses: Factory-AI/droid-action/combine@v2
+        uses: Factory-AI/droid-action/combine@vn/bug-fixes
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}
