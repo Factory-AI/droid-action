@@ -24,7 +24,7 @@ jobs:
 
       - name: Prepare
         id: prepare
-        uses: Factory-AI/droid-action/prepare@vn/update-tracking-comment
+        uses: Factory-AI/droid-action/prepare@v3
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
@@ -48,7 +48,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run Code Review
-        uses: Factory-AI/droid-action/review@vn/update-tracking-comment
+        uses: Factory-AI/droid-action/review@v3
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}
