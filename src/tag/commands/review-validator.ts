@@ -3,13 +3,12 @@ import type { GitHubContext } from "../../github/context";
 import { isEntityContext } from "../../github/context";
 import type { Octokits } from "../../github/api/client";
 import { fetchPRBranchData } from "../../github/data/pr-fetcher";
-import { computeReviewArtifacts } from "../../github/data/review-artifacts";
 import { createPrompt } from "../../create-prompt";
+import type { ReviewArtifacts } from "../../create-prompt/types";
 import { prepareMcpTools } from "../../mcp/install-mcp-server";
 import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
 import type { PrepareResult } from "../../prepare/types";
 import { generateReviewValidatorPrompt } from "../../create-prompt/templates/review-validator-prompt";
-import { execSync } from "child_process";
 
 export async function prepareReviewValidatorMode({
   context,
@@ -35,40 +34,16 @@ export async function prepareReviewValidatorMode({
     prNumber: context.entityNumber,
   });
 
+  // The PR branch is already checked out and review artifacts (diff,
+  // comments, description) were already computed by the generate-review-prompt
+  // step earlier in this job. Reuse them from disk instead of recomputing.
   const tempDir = process.env.RUNNER_TEMP || "/tmp";
-
-  // Ensure PR branch is checked out (same as review mode)
-  try {
-    execSync("git reset --hard HEAD", {
-      encoding: "utf8",
-      stdio: "pipe",
-    } as any);
-    execSync(`gh pr checkout ${context.entityNumber}`, {
-      encoding: "utf8",
-      stdio: "pipe",
-      env: { ...process.env, GH_TOKEN: githubToken },
-    });
-    console.log(
-      `Successfully checked out PR branch: ${execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf8" } as any).trim()}`,
-    );
-  } catch (e) {
-    console.error(`Failed to checkout PR branch: ${e}`);
-    throw new Error(
-      `Failed to checkout PR #${context.entityNumber} branch for review`,
-    );
-  }
-
-  const reviewArtifacts = await computeReviewArtifacts({
-    baseRef: prData.baseRefName,
-    tempDir,
-    octokit,
-    owner: context.repository.owner,
-    repo: context.repository.repo,
-    prNumber: context.entityNumber,
-    title: prData.title,
-    body: prData.body,
-    githubToken,
-  });
+  const promptsDir = `${tempDir}/droid-prompts`;
+  const reviewArtifacts: ReviewArtifacts = {
+    diffPath: `${promptsDir}/pr.diff`,
+    commentsPath: `${promptsDir}/existing_comments.json`,
+    descriptionPath: `${promptsDir}/pr_description.txt`,
+  };
 
   await createPrompt({
     githubContext: context,
