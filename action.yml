@@ -98,7 +98,7 @@ inputs:
   reasoning_effort:
     description: "Override reasoning effort for review flows (passed to Droid Exec as --reasoning-effort). If empty and review_model is also empty, the action defaults internally to gpt-5.2 at high reasoning."
     required: false
-    default: ""
+    default: "high"
   review_use_validator:
     description: "Enable two-pass review: generate candidate comments to JSON, then validate and post only approved ones."
     required: false
@@ -373,7 +373,6 @@ runs:
         DETAILED_PERMISSION_MESSAGES: "1"
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
 
-
     - name: Update comment with job link
       if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.droid_comment_id && always()
       shell: bash
@@ -396,16 +395,22 @@ runs:
         TRACK_PROGRESS: ${{ inputs.track_progress }}
         AUTOMATIC_REVIEW: ${{ inputs.automatic_review }}
 
+    - name: Collect .factory debug files
+      if: always() && steps.prepare.outputs.contains_trigger == 'true'
+      shell: bash
+      run: |
+        if [ -d "$HOME/.factory" ]; then
+          cp -r "$HOME/.factory" "${{ runner.temp }}/.factory"
+        fi
+
     - name: Upload debug artifacts
       if: always() && steps.prepare.outputs.contains_trigger == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: droid-review-debug-${{ github.run_id }}
         path: |
-          ~/.factory/logs/droid-log-single.log
-          ~/.factory/logs/console.log
-          ~/.factory/sessions/*
-          ~/.factory/droids/*
+          ${{ runner.temp }}/.factory/**
           ${{ runner.temp }}/droid-prompts/**
+        include-hidden-files: true
         if-no-files-found: ignore
         retention-days: 7

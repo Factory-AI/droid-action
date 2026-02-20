@@ -1,4 +1,6 @@
 import * as core from "@actions/core";
+import { existsSync } from "fs";
+import path from "path";
 import { GITHUB_API_URL, GITHUB_SERVER_URL } from "../github/api/config";
 import type { GitHubContext } from "../github/context";
 import { isEntityContext } from "../github/context";
@@ -61,6 +63,15 @@ export async function prepareMcpTools(
   try {
     const allowedToolsList = allowedTools || [];
 
+    // GITHUB_ACTION_PATH points to either:
+    // - The repo root when using the monolithic action (Factory-AI/droid-action@dev)
+    // - A sub-action directory (e.g., review/) when using sub-actions
+    // Detect which case by checking if src/ exists at the action path directly.
+    const actionPath = process.env.GITHUB_ACTION_PATH || ".";
+    const repoRoot = existsSync(path.join(actionPath, "src"))
+      ? actionPath
+      : path.resolve(actionPath, "..");
+
     const hasGitHubMcpTools = allowedToolsList.some((tool) =>
       tool.startsWith("github___"),
     );
@@ -79,10 +90,7 @@ export async function prepareMcpTools(
 
     baseMcpTools.mcpServers.github_comment = {
       command: "bun",
-      args: [
-        "run",
-        `${process.env.GITHUB_ACTION_PATH}/src/mcp/github-comment-server.ts`,
-      ],
+      args: ["run", `${repoRoot}/src/mcp/github-comment-server.ts`],
       env: {
         GITHUB_TOKEN: githubToken,
         REPO_OWNER: owner,
@@ -101,10 +109,7 @@ export async function prepareMcpTools(
     ) {
       baseMcpTools.mcpServers.github_inline_comment = {
         command: "bun",
-        args: [
-          "run",
-          `${process.env.GITHUB_ACTION_PATH}/src/mcp/github-inline-comment-server.ts`,
-        ],
+        args: ["run", `${repoRoot}/src/mcp/github-inline-comment-server.ts`],
         env: {
           GITHUB_TOKEN: githubToken,
           REPO_OWNER: owner,
@@ -136,10 +141,7 @@ export async function prepareMcpTools(
       }
       baseMcpTools.mcpServers.github_ci = {
         command: "bun",
-        args: [
-          "run",
-          `${process.env.GITHUB_ACTION_PATH}/src/mcp/github-actions-server.ts`,
-        ],
+        args: ["run", `${repoRoot}/src/mcp/github-actions-server.ts`],
         env: {
           // Use workflow github token, not app token
           GITHUB_TOKEN: process.env.DEFAULT_WORKFLOW_TOKEN,
@@ -154,10 +156,7 @@ export async function prepareMcpTools(
     if (isEntityContext(context) && context.isPR && hasGitHubPRTools) {
       baseMcpTools.mcpServers.github_pr = {
         command: "bun",
-        args: [
-          "run",
-          `${process.env.GITHUB_ACTION_PATH}/src/mcp/github-pr-server.ts`,
-        ],
+        args: ["run", `${repoRoot}/src/mcp/github-pr-server.ts`],
         env: {
           GITHUB_TOKEN: githubToken,
           REPO_OWNER: owner,

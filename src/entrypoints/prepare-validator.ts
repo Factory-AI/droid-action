@@ -16,7 +16,9 @@ async function run() {
 
     // This entrypoint only makes sense when the workflow input is enabled.
     if ((process.env.REVIEW_USE_VALIDATOR ?? "true").trim() === "false") {
-      throw new Error("reviewUseValidator must be true to run prepare-validator");
+      throw new Error(
+        "reviewUseValidator must be true to run prepare-validator",
+      );
     }
 
     const githubToken = await setupGitHubToken();

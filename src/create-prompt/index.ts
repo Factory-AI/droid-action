@@ -303,6 +303,7 @@ export type PromptCreationOptions = {
   disallowedTools?: string[];
   includeActionsTools?: boolean;
   reviewArtifacts?: ReviewArtifacts;
+  outputFilePath?: string;
 };
 
 export async function createPrompt({
@@ -316,6 +317,7 @@ export async function createPrompt({
   disallowedTools = [],
   includeActionsTools = false,
   reviewArtifacts,
+  outputFilePath,
 }: PromptCreationOptions) {
   try {
     const droidCommentId = commentId?.toString();
@@ -327,6 +329,10 @@ export async function createPrompt({
       prBranchData,
       reviewArtifacts,
     );
+
+    if (outputFilePath) {
+      preparedContext.outputFilePath = outputFilePath;
+    }
 
     await mkdir(`${process.env.RUNNER_TEMP || "/tmp"}/droid-prompts`, {
       recursive: true,

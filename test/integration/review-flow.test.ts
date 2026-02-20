@@ -40,15 +40,15 @@ describe("review command integration", () => {
     setOutputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
     exportVarSpy = spyOn(core, "exportVariable").mockImplementation(() => {});
 
-    execSyncSpy = spyOn(childProcess, "execSync").mockImplementation(
-      ((cmd: string) => {
-        if (cmd.includes("merge-base")) return "abc123def456\n";
-        if (cmd.includes("git --no-pager diff")) {
-          return "diff --git a/file.ts b/file.ts\n+added line\n";
-        }
-        return "";
-      }) as typeof childProcess.execSync,
-    );
+    execSyncSpy = spyOn(childProcess, "execSync").mockImplementation(((
+      cmd: string,
+    ) => {
+      if (cmd.includes("merge-base")) return "abc123def456\n";
+      if (cmd.includes("git --no-pager diff")) {
+        return "diff --git a/file.ts b/file.ts\n+added line\n";
+      }
+      return "";
+    }) as typeof childProcess.execSync);
   });
 
   afterEach(async () => {
@@ -103,7 +103,7 @@ describe("review command integration", () => {
       } as any,
     });
 
-    const octokit = { 
+    const octokit = {
       rest: {
         issues: {
           listComments: () => Promise.resolve({ data: [] }),
@@ -111,16 +111,17 @@ describe("review command integration", () => {
         pulls: {
           listReviewComments: () => Promise.resolve({ data: [] }),
         },
-      }, 
-      graphql: () => Promise.resolve({
-        repository: {
-          pullRequest: {
-            baseRefName: "main",
-            headRefName: "feature/review",
-            headRefOid: "def456",
-          }
-        }
-      })
+      },
+      graphql: () =>
+        Promise.resolve({
+          repository: {
+            pullRequest: {
+              baseRefName: "main",
+              headRefName: "feature/review",
+              headRefOid: "def456",
+            },
+          },
+        }),
     } as any;
 
     graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
