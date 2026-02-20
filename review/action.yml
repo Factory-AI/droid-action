@@ -98,6 +98,16 @@ runs:
           echo "Copied custom droids to ~/.factory/droids/"
         fi
 
+    - name: Setup Review Skills
+      shell: bash
+      run: |
+        mkdir -p ~/.factory/skills
+        if [ -d "${{ github.action_path }}/../.factory/skills" ]; then
+          cp -r ${{ github.action_path }}/../.factory/skills/* ~/.factory/skills/
+          echo "Copied review skills to ~/.factory/skills/"
+          ls -la ~/.factory/skills/
+        fi
+
     - name: Run Code Review
       id: review
       shell: bash

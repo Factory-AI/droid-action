@@ -53,8 +53,9 @@ Precomputed data files:
 
 <review_guidelines>
 - You are currently checked out to the PR branch.
-- Your job is orchestration: triage files, dispatch subagents, and aggregate results. The subagent (file-group-reviewer) has detailed bug pattern checklists and performs the actual review.
+- Your job is orchestration: triage files, dispatch subagents, and aggregate results.
 - Do NOT duplicate comments already in \`${commentsPath}\`.
+- This is a **candidate generation** phase. A separate validator pass will filter results, so prefer recall over precision -- include findings you are reasonably confident about, not just ones you are certain about.
 </review_guidelines>
 
 <triage_phase>
@@ -78,6 +79,14 @@ Guidelines for grouping:
 - Aim for 3-6 groups to balance parallelism with context coherence
 - Keep related files together so reviewers have full context
 - Each group should be reviewable independently
+
+When assigning groups, include domain-specific focus guidance in the Task prompt:
+- **API/SDK Client groups**: emphasize error recovery, retries, timeouts, credential handling
+- **Service/Provider groups**: interface design, state handling, what complexity is hidden vs exposed
+- **Routes/Handlers groups**: auth checks, input validation, status codes, code duplication
+- **Frontend State groups**: race conditions, cleanup on unmount, reconnection logic
+- **UI Component groups**: loading/error states, edge cases (empty data, deleted items)
+- **Test groups**: coverage gaps, flakiness patterns, assertions that match real behavior
 </triage_phase>
 
 <parallel_review_phase>
