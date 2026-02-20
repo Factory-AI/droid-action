@@ -238,6 +238,20 @@ runs:
           echo "No custom droids found in action"
         fi
 
+    - name: Setup Review Skills
+      if: steps.prepare.outputs.contains_trigger == 'true'
+      shell: bash
+      run: |
+        echo "Setting up review skills..."
+        mkdir -p ~/.factory/skills
+        if [ -d "${GITHUB_ACTION_PATH}/.factory/skills" ]; then
+          cp -r ${GITHUB_ACTION_PATH}/.factory/skills/* ~/.factory/skills/
+          echo "Copied review skills to ~/.factory/skills/"
+          ls -la ~/.factory/skills/
+        else
+          echo "No review skills found in action"
+        fi
+
     - name: Setup Network Restrictions
       if: steps.prepare.outputs.contains_trigger == 'true' && inputs.experimental_allowed_domains != ''
       shell: bash

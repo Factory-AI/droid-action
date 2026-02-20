@@ -53,20 +53,9 @@ Precomputed data files:
 
 <review_guidelines>
 - You are currently checked out to the PR branch.
-- Review ALL modified files in the PR branch.
-- Focus on: functional correctness, syntax errors, logic bugs, broken dependencies/contracts/tests, security issues, and performance problems.
-- High-signal bug patterns to actively check for (only comment when evidenced in the diff):
-  - Null/undefined/Optional dereferences; missing-key errors on untrusted/external dict/JSON payloads
-  - Resource leaks (unclosed files/streams/connections; missing cleanup on error paths)
-  - Injection vulnerabilities (SQL injection, XSS, command/template injection) and auth/security invariant violations
-  - OAuth/CSRF invariants: state must be per-flow unpredictable and validated; avoid deterministic/predictable state or missing state checks
-  - Concurrency/race/atomicity hazards (TOCTOU, lost updates, unsafe shared state, process/thread lifecycle bugs)
-  - Missing error handling for critical operations (network, persistence, auth, migrations, external APIs)
-  - Wrong-variable/shadowing mistakes; contract mismatches (serializer/validated_data, interfaces/abstract methods)
-  - Type-assumption bugs (e.g., numeric ops on datetime/strings, ordering key type mismatches)
-  - Offset/cursor/pagination semantic mismatches (off-by-one, prev/next behavior, commit semantics)
+- Your job is orchestration: triage files, dispatch subagents, and aggregate results.
 - Do NOT duplicate comments already in \`${commentsPath}\`.
-- Only flag issues you are confident about—avoid speculative or stylistic nitpicks.
+- This is a **candidate generation** phase. A separate validator pass will filter results, so prefer recall over precision -- include findings you are reasonably confident about, not just ones you are certain about.
 </review_guidelines>
 
 <triage_phase>
@@ -90,6 +79,14 @@ Guidelines for grouping:
 - Aim for 3-6 groups to balance parallelism with context coherence
 - Keep related files together so reviewers have full context
 - Each group should be reviewable independently
+
+When assigning groups, include domain-specific focus guidance in the Task prompt:
+- **API/SDK Client groups**: emphasize error recovery, retries, timeouts, credential handling
+- **Service/Provider groups**: interface design, state handling, what complexity is hidden vs exposed
+- **Routes/Handlers groups**: auth checks, input validation, status codes, code duplication
+- **Frontend State groups**: race conditions, cleanup on unmount, reconnection logic
+- **UI Component groups**: loading/error states, edge cases (empty data, deleted items)
+- **Test groups**: coverage gaps, flakiness patterns, assertions that match real behavior
 </triage_phase>
 
 <parallel_review_phase>
