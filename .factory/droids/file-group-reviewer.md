@@ -24,6 +24,16 @@ Your task: Review the assigned files from the PR and generate a JSON array of **
   - Wrong-variable/shadowing mistakes; contract mismatches (serializer/validated_data, interfaces/abstract methods)
   - Type-assumption bugs (e.g., numeric ops on datetime/strings, ordering key type mismatches)
   - Offset/cursor/pagination semantic mismatches (off-by-one, prev/next behavior, commit semantics)
+  - Runtime type mismatches: isinstance/cast failures on subclasses, numeric ops on non-numeric types, interface implementations missing required parameters
+  - Inconsistent return types across code paths (feature flags, sync/async modes, error branches returning different shapes than callers expect)
+  - Backward-incompatible data changes: new code that breaks on data written by the previous version (storage format migrations, new required keys, changed serialization)
+  - Unvalidated URLs from config/user input used in HTTP calls (missing scheme/host/private-IP checks); user content interpolated into HTML/JS/SQL without escaping
+  - Non-atomic consume-once operations (tokens, backup codes, nonces) and unsynchronized concurrent access to shared mutable state (maps, caches, counters)
+  - Stale cache after revocation/deletion: cached positive grants or records still served after the underlying data is revoked or deleted
+  - Under-scoped query filters in jobs/cleanup routines that can accidentally process or delete unrelated records (missing type, status, or non-null constraints)
+  - Tests that bypass real code paths (injecting params directly instead of routing, mocking away the exact layer where the bug lives)
+  - Env/config fallbacks that silently degrade: encryption keys, API secrets, or credentials falling back to empty strings instead of failing fast
+  - Boundary/offset/index convention misalignment between implementation and API contract (inclusive vs exclusive, 0-based vs 1-based, last-processed vs next-to-read)
 - Only flag issues you are confident about—avoid speculative or stylistic nitpicks.
   </review_guidelines>
 
