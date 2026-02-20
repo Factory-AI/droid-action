@@ -13,41 +13,39 @@ Your task: Review the assigned files from the PR and generate a JSON array of **
 
 - You are currently checked out to the PR branch.
 - Review ALL files assigned to you thoroughly.
-- Focus on: functional correctness, syntax errors, logic bugs, broken dependencies/contracts/tests, security issues, and performance problems.
-- High-signal bug patterns to actively check for (only comment when evidenced in the diff):
+- Focus on: functional correctness, logic bugs, broken dependencies/contracts/tests, security issues, and performance problems.
+- Do NOT flag stylistic, formatting, or naming issues.
+- Bug patterns to actively check for (only comment when evidenced in the diff):
   - Null/undefined/Optional dereferences; missing-key errors on untrusted/external dict/JSON payloads
   - Resource leaks (unclosed files/streams/connections; missing cleanup on error paths)
-  - Injection vulnerabilities (SQL injection, XSS, command/template injection) and auth/security invariant violations
+  - Injection vulnerabilities (SQL injection, XSS, SSRF, command/template injection); unvalidated URLs from config/user input in HTTP calls (missing scheme/host/private-IP checks)
   - OAuth/CSRF invariants: state must be per-flow unpredictable and validated; avoid deterministic/predictable state or missing state checks
-  - Concurrency/race/atomicity hazards (TOCTOU, lost updates, unsafe shared state, process/thread lifecycle bugs)
-  - Missing error handling for critical operations (network, persistence, auth, migrations, external APIs)
-  - Wrong-variable/shadowing mistakes; contract mismatches (serializer/validated_data, interfaces/abstract methods)
-  - Type-assumption bugs (e.g., numeric ops on datetime/strings, ordering key type mismatches)
-  - Offset/cursor/pagination semantic mismatches (off-by-one, prev/next behavior, commit semantics)
-  - Runtime type mismatches: isinstance/cast failures on subclasses, numeric ops on non-numeric types, interface implementations missing required parameters
+  - Concurrency/race/atomicity hazards (TOCTOU, lost updates, unsafe shared state, non-atomic consume-once operations on tokens/nonces/backup codes, process/thread lifecycle bugs)
+  - Missing or changed error handling that alters caller behavior (swallowing errors vs propagating them, caching error/nil results that overwrite valid entries)
+  - Wrong-variable/shadowing mistakes; contract mismatches between serializers and validated_data field names, interface/abstract method signatures, or function parameters
+  - Type mismatches at runtime: isinstance/cast failures on subclasses, numeric ops on non-numeric types, interface implementations missing required parameters
   - Inconsistent return types across code paths (feature flags, sync/async modes, error branches returning different shapes than callers expect)
-  - Backward-incompatible data changes: new code that breaks on data written by the previous version (storage format migrations, new required keys, changed serialization)
-  - Unvalidated URLs from config/user input used in HTTP calls (missing scheme/host/private-IP checks); user content interpolated into HTML/JS/SQL without escaping
-  - Non-atomic consume-once operations (tokens, backup codes, nonces) and unsynchronized concurrent access to shared mutable state (maps, caches, counters)
-  - Stale cache after revocation/deletion: cached positive grants or records still served after the underlying data is revoked or deleted
-  - Under-scoped query filters in jobs/cleanup routines that can accidentally process or delete unrelated records (missing type, status, or non-null constraints)
-  - Tests that bypass real code paths (injecting params directly instead of routing, mocking away the exact layer where the bug lives)
+  - Data compatibility bugs: new code that breaks on data written by the previous version, or old code that can't read data written by the new version during rollbacks/rolling deploys (storage format migrations, new required keys, changed serialization)
+  - Stale cache entries: cached positive grants still authorizing after revocation, or cached denials/negatives still blocking after a grant is added
+  - Incorrect query filter scope in jobs/cleanup routines: too broad (missing constraints, accidentally processing unrelated records) or too narrow (silently skipping records that should be included)
+  - Offset/cursor/pagination mismatches (off-by-one, inclusive vs exclusive, 0-based vs 1-based, last-processed vs next-to-read)
+  - Case-sensitivity mismatches in string comparisons across trust boundaries (DB queries, HTTP headers, user input vs stored values)
+  - Tests that bypass real code paths (injecting params directly instead of routing, mocking away the exact layer where the bug lives, assertions that don't match implementation)
   - Env/config fallbacks that silently degrade: encryption keys, API secrets, or credentials falling back to empty strings instead of failing fast
-  - Boundary/offset/index convention misalignment between implementation and API contract (inclusive vs exclusive, 0-based vs 1-based, last-processed vs next-to-read)
-- Only flag issues you are confident about—avoid speculative or stylistic nitpicks.
-  </review_guidelines>
+  - Feature flags or new code paths that are effectively dead or always-on: functions returning the same value in every branch, stub methods that always error, flag checks that enable or disable the feature regardless of config
+- Only flag issues you are confident about—avoid speculative nitpicks.
+</review_guidelines>
 
 <workflow>
-1. Read each assigned file in full to understand the context
-2. Read the relevant diff sections provided in the prompt
-3. Read related files as needed to fully understand the changes:
+1. Read each assigned file and its diff to understand the context
+2. Read related files as needed to fully understand the changes:
    - Imported modules and dependencies
    - Interfaces, base classes, and type definitions
    - Related tests to understand expected behavior
    - Callers/callees of modified functions
    - Configuration files if behavior depends on them
-4. Analyze the changes for issues matching the bug patterns above
-5. For each issue found, verify it against the actual code and related context before including it
+3. Analyze the changes for issues matching the bug patterns above
+4. For each issue found, verify it against the actual code and related context before including it
 </workflow>
 
 <output_format>
