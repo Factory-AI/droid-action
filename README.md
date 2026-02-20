@@ -67,7 +67,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run Droid Exec
-        uses: Factory-AI/droid-action@dev
+        uses: Factory-AI/droid-action@v3
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
 ```
@@ -83,140 +83,34 @@ on:
   pull_request:
     types: [opened, ready_for_review, reopened]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  prepare:
+  droid-review:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
       issues: write
       id-token: write
-    outputs:
-      comment_id: ${{ steps.prepare.outputs.comment_id }}
-      run_code_review: ${{ steps.prepare.outputs.run_code_review }}
-      run_security_review: ${{ steps.prepare.outputs.run_security_review }}
+      actions: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
           fetch-depth: 1
 
-      - name: Prepare
-        id: prepare
-        uses: Factory-AI/droid-action/prepare@dev
+      - name: Run Droid Auto Review
+        uses: Factory-AI/droid-action@v3
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
-          automatic_security_review: true
-
-  code-review:
-    needs: prepare
-    if: needs.prepare.outputs.run_code_review == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-      issues: write
-      id-token: write
-      actions: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 1
-
-      - name: Run Code Review
-        uses: Factory-AI/droid-action/review@dev
-        with:
-          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
-          tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}
-          output_file: ${{ runner.temp }}/code-review-results.json
-
-      - name: Upload Results
-        uses: actions/upload-artifact@v4
-        with:
-          name: code-review-results
-          path: ${{ runner.temp }}/code-review-results.json
-          if-no-files-found: ignore
-
-  security-review:
-    needs: prepare
-    if: needs.prepare.outputs.run_security_review == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-      issues: write
-      id-token: write
-      actions: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 1
-
-      - name: Run Security Review
-        uses: Factory-AI/droid-action/security@dev
-        with:
-          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
-          tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}
-          security_severity_threshold: medium
-          output_file: ${{ runner.temp }}/security-results.json
-
-      - name: Upload Results
-        uses: actions/upload-artifact@v4
-        with:
-          name: security-results
-          path: ${{ runner.temp }}/security-results.json
-          if-no-files-found: ignore
-
-  combine:
-    needs: [prepare, code-review, security-review]
-    # Run combine when EITHER code review OR security review was executed
-    if: |
-      always() &&
-      (needs.prepare.outputs.run_code_review == 'true' ||
-       needs.prepare.outputs.run_security_review == 'true')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-      issues: write
-      id-token: write
-      actions: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 1
-
-      - name: Download Code Review Results
-        uses: actions/download-artifact@v4
-        with:
-          name: code-review-results
-          path: ${{ runner.temp }}
-        continue-on-error: true
-
-      - name: Download Security Results
-        uses: actions/download-artifact@v4
-        with:
-          name: security-results
-          path: ${{ runner.temp }}
-        continue-on-error: true
-
-      - name: Combine Results
-        uses: Factory-AI/droid-action/combine@dev
-        with:
-          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
-          tracking_comment_id: ${{ needs.prepare.outputs.comment_id }}
-          code_review_results: ${{ runner.temp }}/code-review-results.json
-          code_review_status: ${{ needs.code-review.result }}
-          security_results: ${{ runner.temp }}/security-results.json
-          security_review_status: ${{ needs.security-review.result }}
 ```
 
-Set `automatic_review` and `automatic_security_review` to control which reviews run automatically on non-draft PRs.
+Set `automatic_review: true` to run code reviews automatically on non-draft PRs.
 
 ## Using the Commands
 
