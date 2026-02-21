@@ -346,6 +346,8 @@ runs:
         REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
         REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
         DROID_COMMENT_ID: ${{ steps.prepare.outputs.droid_comment_id }}
+        REVIEW_MODEL: ${{ inputs.review_model }}
+        REASONING_EFFORT: ${{ inputs.reasoning_effort }}
 
     - name: Run Droid Exec (validator)
       id: droid_validator
