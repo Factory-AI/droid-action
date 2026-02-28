@@ -54,7 +54,7 @@ Read:
 
 1) Write validated results to: \`${reviewValidatedPath}\`
 2) Post ONLY the approved inline comments to the PR
-3) Update tracking comment ${context.droidCommentId ? `ID ${context.droidCommentId}` : "for this run"} with review summary and findings details
+3) Update tracking comment ${context.droidCommentId ? `ID ${context.droidCommentId}` : "for this run"} with a concise review summary focused on approved findings
 
 =======================
 
@@ -175,7 +175,6 @@ After writing \`${reviewValidatedPath}\`, post comments ONLY for \`status === "a
 * For each approved entry, call \`github_inline_comment___create_inline_comment\` with the \`comment\` object.
 * Build one tracking-comment summary that includes:
   * Overall assessment from \`reviewSummary.body\`
-  * Concise prose describing the findings
 * Update the tracking comment once via \`github_comment___update_droid_comment\`.
 * If there are no approved findings, do not post any review summary comment to the PR timeline; only update the tracking comment.
 `;
