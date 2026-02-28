@@ -53,7 +53,7 @@ You MUST:
 1. Read the ENTIRE \`${diffPath}\` file first (use offset/limit if needed for large files)
 2. Create a mental checklist of ALL files that were changed
 3. Review EACH file systematically - do not skip any file
-4. Only submit your review AFTER you have analyzed every single changed file
+4. Only publish findings AFTER you have analyzed every single changed file
 
 If the diff is large, work through it methodically. Do not rush. Do not skip files. The quality of your review depends on thoroughness.
 
@@ -317,9 +317,9 @@ One short paragraph explaining *why* this is a bug and *how* it manifests.
 
 ---
 
-## Phase 3: Submit Review
+## Phase 3: Publish Results
 
-### When NOT to submit
+### When NOT to post inline findings
 
 * PR is formatting-only
 * You cannot anchor a high-confidence issue to a specific changed line
@@ -332,24 +332,22 @@ One short paragraph explaining *why* this is a bug and *how* it manifests.
   * Anchor using **path + side + line**
   * RIGHT = new/modified code, LEFT = removed code
   * Line numbers must correspond to the chosen side
-* Use \`github_pr___submit_review\` for the summary
 * Use \`github_pr___delete_comment\` or \`github_pr___minimize_comment\` for outdated "no issues" comments
 * Use \`github_pr___reply_to_comment\` to acknowledge resolved issues
 * **Do NOT call** \`github_pr___resolve_review_thread\`
-* Do **not** approve or request changes
+* Update tracking comment ID ${context.droidCommentId ? context.droidCommentId : "for this run"} via \`github_comment___update_droid_comment\` with a concise summary and findings list
 
 ### "No issues" handling
 
-* If no issues and a prior "no issues" comment exists → skip
-* If no issues and no prior comment exists → post a brief summary
-* If issues exist and a prior "no issues" comment exists → delete/minimize it
-* **Do NOT delete** comment ID ${context.droidCommentId}
+* If no qualifying issues, do not post inline comments
+* Update the tracking comment with a brief "no high-confidence findings" summary
+* Do not post any separate review summary comment
 
 ---
 
-## Review summary
+## Tracking comment summary
 
-In the submitted review body:
+In the tracking comment update body:
 
 * State whether the changes are correct or incorrect
 * Provide a 1-3 sentence overall assessment

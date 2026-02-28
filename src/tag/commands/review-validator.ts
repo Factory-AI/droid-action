@@ -79,10 +79,12 @@ export async function prepareReviewValidatorMode({
     "github_inline_comment___create_inline_comment",
   ];
 
-  const validatorTools = ["github_pr___submit_review"];
+  const safeUserAllowedMCPTools = userAllowedMCPTools.filter(
+    (tool) => tool !== "github_pr___submit_review",
+  );
 
   const allowedTools = Array.from(
-    new Set([...baseTools, ...validatorTools, ...userAllowedMCPTools]),
+    new Set([...baseTools, ...safeUserAllowedMCPTools]),
   );
 
   const mcpTools = await prepareMcpTools({
