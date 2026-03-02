@@ -30,10 +30,24 @@ export function generateReviewValidatorPrompt(
     process.env.REVIEW_VALIDATED_PATH ??
     "$RUNNER_TEMP/droid-prompts/review_validated.json";
 
+  const guidelinesSection = context.reviewGuidelines
+    ? `
+---
+
+## Repository Review Guidelines
+
+The repository maintainers have provided the following review guidelines. You MUST follow these when validating candidates:
+
+${context.reviewGuidelines}
+
+---
+`
+    : "";
+
   return `You are validating candidate review comments for PR #${prNumber} in ${repoFullName}.
 
 IMPORTANT: This is Phase 2 (validator) of a two-pass review pipeline.
-
+${guidelinesSection}
 ### Context
 
 * Repo: ${repoFullName}

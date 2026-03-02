@@ -20,9 +20,23 @@ export function generateSecurityReviewPrompt(context: PreparedContext): string {
   const blockOnHigh = securityConfig?.securityBlockOnHigh ?? false;
   const notifyTeam = securityConfig?.securityNotifyTeam ?? "";
 
+  const guidelinesSection = context.reviewGuidelines
+    ? `
+---
+
+## Repository Review Guidelines
+
+The repository maintainers have provided the following review guidelines. You MUST follow these in addition to the standard security review procedure:
+
+${context.reviewGuidelines}
+
+---
+`
+    : "";
+
   return `You are performing a security-focused code review for PR #${prNumber} in ${repoFullName}.
 The gh CLI is installed and authenticated via GH_TOKEN.
-
+${guidelinesSection}
 ## Context
 - Repo: ${repoFullName}
 - PR Number: ${prNumber}

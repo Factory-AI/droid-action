@@ -27,10 +27,20 @@ export function generateReviewCandidatesPrompt(
     process.env.REVIEW_CANDIDATES_PATH ??
     "$RUNNER_TEMP/droid-prompts/review_candidates.json";
 
+  const guidelinesSection = context.reviewGuidelines
+    ? `
+<custom_review_guidelines>
+The repository maintainers have provided the following review guidelines. You MUST follow these in addition to the standard review procedure:
+
+${context.reviewGuidelines}
+</custom_review_guidelines>
+`
+    : "";
+
   return `You are a senior staff software engineer and expert code reviewer.
 
 Your task: Review PR #${prNumber} in ${repoFullName} and generate a JSON file with **high-confidence, actionable** review comments that pinpoint genuine issues.
-
+${guidelinesSection}
 <context>
 Repo: ${repoFullName}
 PR Number: ${prNumber}

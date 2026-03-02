@@ -176,4 +176,24 @@ describe("generateReviewPrompt", () => {
 
     expect(prompt).not.toContain("## Output File (REQUIRED)");
   });
+
+  it("includes review guidelines when provided", () => {
+    const context = createBaseContext({
+      reviewGuidelines: "- Always check error handling\n- No magic numbers",
+    });
+
+    const prompt = generateReviewPrompt(context);
+
+    expect(prompt).toContain("## Repository Review Guidelines");
+    expect(prompt).toContain("- Always check error handling");
+    expect(prompt).toContain("- No magic numbers");
+  });
+
+  it("does not include review guidelines section when not provided", () => {
+    const context = createBaseContext();
+
+    const prompt = generateReviewPrompt(context);
+
+    expect(prompt).not.toContain("## Repository Review Guidelines");
+  });
 });
