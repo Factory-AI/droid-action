@@ -346,6 +346,8 @@ runs:
         REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
         REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
         DROID_COMMENT_ID: ${{ steps.prepare.outputs.droid_comment_id }}
+        REVIEW_MODEL: ${{ inputs.review_model }}
+        REASONING_EFFORT: ${{ inputs.reasoning_effort }}
 
     - name: Run Droid Exec (validator)
       id: droid_validator
@@ -405,7 +407,7 @@ runs:
 
     - name: Upload debug artifacts
       if: always() && steps.prepare.outputs.contains_trigger == 'true'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: droid-review-debug-${{ github.run_id }}
         path: |
