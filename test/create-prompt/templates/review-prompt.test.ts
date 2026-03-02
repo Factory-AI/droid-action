@@ -184,7 +184,7 @@ describe("generateReviewPrompt", () => {
 
     const prompt = generateReviewPrompt(context);
 
-    expect(prompt).toContain("## Repository Review Guidelines");
+    expect(prompt).toContain("<custom_review_guidelines>");
     expect(prompt).toContain("- Always check error handling");
     expect(prompt).toContain("- No magic numbers");
   });
@@ -194,6 +194,6 @@ describe("generateReviewPrompt", () => {
 
     const prompt = generateReviewPrompt(context);
 
-    expect(prompt).not.toContain("## Repository Review Guidelines");
+    expect(prompt).not.toContain("<custom_review_guidelines>");
   });
 });

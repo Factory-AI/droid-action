@@ -108,7 +108,7 @@ describe("generateReviewValidatorPrompt", () => {
 
     const prompt = generateReviewValidatorPrompt(context);
 
-    expect(prompt).toContain("## Repository Review Guidelines");
+    expect(prompt).toContain("<custom_review_guidelines>");
     expect(prompt).toContain("- Validate all edge cases");
     expect(prompt).toContain("- Check auth boundaries");
   });
@@ -118,6 +118,6 @@ describe("generateReviewValidatorPrompt", () => {
 
     const prompt = generateReviewValidatorPrompt(context);
 
-    expect(prompt).not.toContain("## Repository Review Guidelines");
+    expect(prompt).not.toContain("<custom_review_guidelines>");
   });
 });

@@ -1,7 +1,7 @@
 import { readFile } from "fs/promises";
 import { resolve } from "path";
 
-const REVIEW_GUIDELINES_PATH = ".factory/skills/review-guidelines.md";
+const REVIEW_GUIDELINES_PATH = ".factory/skills/review-guidelines/SKILL.md";
 
 export async function loadReviewGuidelines(): Promise<string | undefined> {
   const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
@@ -18,4 +18,17 @@ export async function loadReviewGuidelines(): Promise<string | undefined> {
   } catch {
     return undefined;
   }
+}
+
+export function formatGuidelinesSection(
+  guidelines: string | undefined,
+): string {
+  if (!guidelines) return "";
+  return `
+<custom_review_guidelines>
+The repository maintainers have provided the following review guidelines under \`.factory/skills/review-guidelines/SKILL.md\`. You MUST follow these in addition to the standard review procedure:
+
+${guidelines}
+</custom_review_guidelines>
+`;
 }

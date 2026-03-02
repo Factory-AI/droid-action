@@ -109,7 +109,7 @@ describe("generateSecurityReviewPrompt", () => {
 
     const prompt = generateSecurityReviewPrompt(context);
 
-    expect(prompt).toContain("## Repository Review Guidelines");
+    expect(prompt).toContain("<custom_review_guidelines>");
     expect(prompt).toContain("- Always check for SQL injection");
     expect(prompt).toContain("- Verify CORS settings");
   });
@@ -119,6 +119,6 @@ describe("generateSecurityReviewPrompt", () => {
 
     const prompt = generateSecurityReviewPrompt(context);
 
-    expect(prompt).not.toContain("## Repository Review Guidelines");
+    expect(prompt).not.toContain("<custom_review_guidelines>");
   });
 });
