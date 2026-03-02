@@ -335,7 +335,7 @@ One short paragraph explaining *why* this is a bug and *how* it manifests.
 * Use \`github_pr___delete_comment\` or \`github_pr___minimize_comment\` for outdated "no issues" comments
 * Use \`github_pr___reply_to_comment\` to acknowledge resolved issues
 * **Do NOT call** \`github_pr___resolve_review_thread\`
-* Update tracking comment ID ${context.droidCommentId ? context.droidCommentId : "for this run"} via \`github_comment___update_droid_comment\` with a concise summary and findings list
+* Update tracking comment ${context.droidCommentId ? `ID ${context.droidCommentId}` : "for this run"} via \`github_comment___update_droid_comment\` with a concise summary and findings list
 
 ### "No issues" handling
 
