@@ -133,7 +133,6 @@ export async function prepareReviewMode({
     : [
         "github_inline_comment___create_inline_comment",
         "github_pr___list_review_comments",
-        "github_pr___submit_review",
         "github_pr___delete_comment",
         "github_pr___minimize_comment",
         "github_pr___reply_to_comment",
@@ -147,7 +146,9 @@ export async function prepareReviewMode({
           (!tool.startsWith("github_pr___") &&
             tool !== "github_inline_comment___create_inline_comment"),
       )
-    : userAllowedMCPTools;
+    : userAllowedMCPTools.filter(
+        (tool) => tool !== "github_pr___submit_review",
+      );
 
   const allowedTools = Array.from(
     new Set([

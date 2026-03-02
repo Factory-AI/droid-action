@@ -101,9 +101,9 @@ describe("generateReviewPrompt", () => {
     expect(prompt).toContain(
       "Use `github_inline_comment___create_inline_comment`",
     );
-    expect(prompt).toContain("Do **not** approve or request changes");
-    expect(prompt).toContain("github_pr___submit_review");
-    expect(prompt).toContain("### When NOT to submit");
+    expect(prompt).toContain("github_comment___update_droid_comment");
+    expect(prompt).not.toContain("github_pr___submit_review");
+    expect(prompt).toContain("### When NOT to post inline findings");
     expect(prompt).toContain("All findings are low-severity (P2/P3)");
   });
 

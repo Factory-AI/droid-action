@@ -76,6 +76,8 @@ describe("generateReviewValidatorPrompt", () => {
     expect(prompt).toContain("Phase 2: Validate candidates");
     expect(prompt).toContain("Phase 3: Write review_validated.json");
     expect(prompt).toContain("Phase 4: Post approved items");
+    expect(prompt).toContain("github_comment___update_droid_comment");
+    expect(prompt).not.toContain("github_pr___submit_review");
   });
 
   it("includes correct PR context", () => {
