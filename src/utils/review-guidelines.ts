@@ -4,6 +4,7 @@ import { resolve } from "path";
 export const REVIEW_GUIDELINES_PATH =
   ".factory/skills/review-guidelines/SKILL.md";
 export const MAX_GUIDELINES_SIZE = 80_000;
+const MIN_TRUNCATED_CONTENT_CHARS = 200;
 
 export async function loadReviewGuidelines(): Promise<string | undefined> {
   const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
@@ -22,7 +23,7 @@ export async function loadReviewGuidelines(): Promise<string | undefined> {
         `Review guidelines exceed ${MAX_GUIDELINES_SIZE} character limit (${trimmed.length} chars), truncating`,
       );
 
-      if (availableSpace > 200) {
+      if (availableSpace > MIN_TRUNCATED_CONTENT_CHARS) {
         return trimmed.slice(0, availableSpace) + truncationMarker;
       }
 

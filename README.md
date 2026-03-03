@@ -175,6 +175,7 @@ You can add repository-specific review guidelines by creating a `.factory/skills
 
 ```markdown
 Additional checks for this codebase:
+
 - React hooks rules violations
 - Missing TypeScript types on public APIs
 - Prisma query performance issues
