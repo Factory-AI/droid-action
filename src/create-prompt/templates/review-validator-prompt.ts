@@ -107,6 +107,14 @@ Reject if:
 * It's not anchored to a valid changed line
 * It's already reported (dedupe against existing comments)
 
+Suggestion block rules:
+* If an approved comment includes a GitHub suggestion block, ensure the fix is **high confidence** and minimal
+* Suggestion blocks must preserve exact leading whitespace and not exceed 250 lines
+* If the fix is clearly high confidence but the candidate lacks a suggestion block, add one to the approved comment body
+* If the suggestion is not high confidence, remove the suggestion block or reject the candidate
+* Ensure suggestion blocks only include replacement lines (no unchanged context, no duplicated original code)
+* Do not include removed/LEFT-side lines in suggestions
+
 When rejecting, write a concise reason.
 
 =======================
