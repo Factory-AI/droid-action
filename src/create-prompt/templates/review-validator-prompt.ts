@@ -1,3 +1,4 @@
+import { formatGuidelinesSection } from "../../utils/review-guidelines";
 import type { PreparedContext } from "../types";
 
 export function generateReviewValidatorPrompt(
@@ -33,7 +34,7 @@ export function generateReviewValidatorPrompt(
   return `You are validating candidate review comments for PR #${prNumber} in ${repoFullName}.
 
 IMPORTANT: This is Phase 2 (validator) of a two-pass review pipeline.
-
+${formatGuidelinesSection(context.reviewGuidelines)}
 ### Context
 
 * Repo: ${repoFullName}

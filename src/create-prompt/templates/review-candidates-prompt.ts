@@ -1,3 +1,4 @@
+import { formatGuidelinesSection } from "../../utils/review-guidelines";
 import type { PreparedContext } from "../types";
 
 export function generateReviewCandidatesPrompt(
@@ -30,7 +31,7 @@ export function generateReviewCandidatesPrompt(
   return `You are a senior staff software engineer and expert code reviewer.
 
 Your task: Review PR #${prNumber} in ${repoFullName} and generate a JSON file with **high-confidence, actionable** review comments that pinpoint genuine issues.
-
+${formatGuidelinesSection(context.reviewGuidelines)}
 <context>
 Repo: ${repoFullName}
 PR Number: ${prNumber}

@@ -100,4 +100,25 @@ describe("generateSecurityReviewPrompt", () => {
     expect(prompt).toContain("Block on High: true");
     expect(prompt).toContain("@org/security-team");
   });
+
+  it("includes review guidelines when provided", () => {
+    const context = createBaseContext({
+      reviewGuidelines:
+        "- Always check for SQL injection\n- Verify CORS settings",
+    });
+
+    const prompt = generateSecurityReviewPrompt(context);
+
+    expect(prompt).toContain("<custom_review_guidelines>");
+    expect(prompt).toContain("- Always check for SQL injection");
+    expect(prompt).toContain("- Verify CORS settings");
+  });
+
+  it("does not include review guidelines section when not provided", () => {
+    const context = createBaseContext();
+
+    const prompt = generateSecurityReviewPrompt(context);
+
+    expect(prompt).not.toContain("<custom_review_guidelines>");
+  });
 });

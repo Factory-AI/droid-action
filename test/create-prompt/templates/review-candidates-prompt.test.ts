@@ -146,4 +146,38 @@ describe("generateReviewCandidatesPrompt", () => {
     expect(prompt).toContain("PR Head SHA: sha123abc");
     expect(prompt).toContain("PR Base Ref: develop");
   });
+
+  it("includes review guidelines when provided", () => {
+    const context = createBaseContext({
+      reviewGuidelines: "- Focus on performance\n- Check for memory leaks",
+    });
+
+    const prompt = generateReviewCandidatesPrompt(context);
+
+    expect(prompt).toContain("<custom_review_guidelines>");
+    expect(prompt).toContain("- Focus on performance");
+    expect(prompt).toContain("- Check for memory leaks");
+  });
+
+  it("does not include review guidelines section when not provided", () => {
+    const context = createBaseContext();
+
+    const prompt = generateReviewCandidatesPrompt(context);
+
+    expect(prompt).not.toContain("<custom_review_guidelines>");
+  });
+
+  it("places review guidelines before context section", () => {
+    const context = createBaseContext({
+      reviewGuidelines: "Custom guideline",
+    });
+
+    const prompt = generateReviewCandidatesPrompt(context);
+
+    const guidelinesIdx = prompt.indexOf("<custom_review_guidelines>");
+    const contextIdx = prompt.indexOf("<context>");
+    expect(guidelinesIdx).toBeGreaterThan(-1);
+    expect(contextIdx).toBeGreaterThan(-1);
+    expect(guidelinesIdx).toBeLessThan(contextIdx);
+  });
 });
