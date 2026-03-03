@@ -200,7 +200,8 @@ Write output to \`${reviewCandidatesPath}\` using this exact schema:
     \`\`\`
 
     Keep suggestions minimal, scoped to the reported line range, preserve exact leading whitespace, and do not exceed 250 lines.
-    Only include replacement lines (no unchanged context, no duplicated original code), and do not include removed/LEFT-side lines.
+    Only include replacement lines (no unchanged context). For insert-only suggestions, include the anchor line unchanged plus the new lines (this is the only allowed duplication). Do not include removed/LEFT-side lines.
+    If you need to re-add deleted content, anchor on a nearby RIGHT-side line and replace that line with itself plus the added lines (insert-only via replacement).
   - \`line\`: Target line number (single-line) or end line number (multi-line). Must be ≥ 0.
   - \`startLine\`: \`null\` for single-line comments, or start line number for multi-line comments
   - \`side\`: "RIGHT" for new/modified code (default), "LEFT" only for removed code
