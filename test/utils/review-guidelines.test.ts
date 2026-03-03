@@ -78,9 +78,10 @@ describe("loadReviewGuidelines", () => {
     const result = await loadReviewGuidelines();
 
     expect(result).toBeDefined();
-    expect(result!.startsWith("x".repeat(MAX_GUIDELINES_SIZE))).toBe(true);
+    expect(result!.length).toBeLessThanOrEqual(MAX_GUIDELINES_SIZE);
     expect(result).toContain("[truncated");
     expect(result).toContain(`${MAX_GUIDELINES_SIZE} character limit`);
+    expect(result).toContain("Use your tools to read the full file");
   });
 
   it("does not truncate content at exactly MAX_GUIDELINES_SIZE", async () => {

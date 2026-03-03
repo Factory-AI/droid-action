@@ -15,13 +15,18 @@ export async function loadReviewGuidelines(): Promise<string | undefined> {
     if (!trimmed) return undefined;
 
     if (trimmed.length > MAX_GUIDELINES_SIZE) {
+      const truncationMarker = `\n\n... [truncated - guidelines exceed ${MAX_GUIDELINES_SIZE} character limit. Use your tools to read the full file at ${REVIEW_GUIDELINES_PATH}]`;
+      const availableSpace = MAX_GUIDELINES_SIZE - truncationMarker.length;
+
       console.warn(
         `Review guidelines exceed ${MAX_GUIDELINES_SIZE} character limit (${trimmed.length} chars), truncating`,
       );
-      return (
-        trimmed.slice(0, MAX_GUIDELINES_SIZE) +
-        `\n\n... [truncated - guidelines exceed ${MAX_GUIDELINES_SIZE} character limit. Read the full file at ${REVIEW_GUIDELINES_PATH}]`
-      );
+
+      if (availableSpace > 200) {
+        return trimmed.slice(0, availableSpace) + truncationMarker;
+      }
+
+      return truncationMarker.trim();
     }
 
     console.log(
