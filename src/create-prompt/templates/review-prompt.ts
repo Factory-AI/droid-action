@@ -329,6 +329,8 @@ Rules:
 * Keep the suggestion minimal and scoped to the reported line range
 * Do not exceed 250 lines in a suggestion block
 * Preserve exact leading whitespace of replaced lines
+* Only include the replacement lines (no unchanged context, no duplicated original code)
+* Do not include removed/LEFT-side lines in suggestions
 
 ---
 
