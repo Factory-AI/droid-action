@@ -194,6 +194,13 @@ Write output to \`${reviewCandidatesPath}\` using this exact schema:
 - **comments**: Array of comment objects
   - \`path\`: Relative file path (e.g., "src/index.ts")
   - \`body\`: Comment text starting with priority tag [P0|P1|P2], then title, then 1 paragraph explanation
+    If you have **high confidence** a fix will address the issue and won’t break CI, append a GitHub suggestion block:
+
+    ```suggestion
+    <replacement code>
+    ```
+
+    Keep suggestions minimal, scoped to the reported line range, preserve exact leading whitespace, and do not exceed 250 lines.
   - \`line\`: Target line number (single-line) or end line number (multi-line). Must be ≥ 0.
   - \`startLine\`: \`null\` for single-line comments, or start line number for multi-line comments
   - \`side\`: "RIGHT" for new/modified code (default), "LEFT" only for removed code

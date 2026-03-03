@@ -316,6 +316,20 @@ One short paragraph explaining *why* this is a bug and *how* it manifests.
 * Code snippets ≤3 lines, Markdown fenced
 * Matter-of-fact, non-accusatory tone
 
+### Suggestion blocks (when applicable)
+
+If you have **high confidence** a fix will address the issue and won’t break CI, include a GitHub suggestion block after the explanation:
+
+\`\`\`suggestion
+<replacement code>
+\`\`\`
+
+Rules:
+* Only include a suggestion when the fix is clear and high-confidence
+* Keep the suggestion minimal and scoped to the reported line range
+* Do not exceed 250 lines in a suggestion block
+* Preserve exact leading whitespace of replaced lines
+
 ---
 
 ## Phase 3: Submit Review
