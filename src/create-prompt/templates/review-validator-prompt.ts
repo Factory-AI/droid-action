@@ -112,7 +112,7 @@ Suggestion block rules:
 * Suggestion blocks must preserve exact leading whitespace and not exceed 250 lines
 * If the fix is clearly high confidence but the candidate lacks a suggestion block, add one to the approved comment body
 * If the suggestion is not high confidence, remove the suggestion block or reject the candidate
-* Ensure suggestion blocks only include replacement lines (no unchanged context). For insert-only suggestions, allow the anchor line unchanged plus new lines (only allowed duplication)
+* Ensure suggestion blocks only include replacement lines (no unchanged context). For insert-only suggestions: allow a RIGHT-side anchor line repeated **unchanged** plus the new lines; do not modify the anchor line
 * Do not include removed/LEFT-side lines in suggestions
 * For re-adding deleted content, anchor to a nearby RIGHT-side line and replace that line with itself plus the added lines
 

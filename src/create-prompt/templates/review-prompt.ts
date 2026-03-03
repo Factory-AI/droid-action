@@ -329,7 +329,7 @@ Rules:
 * Keep the suggestion minimal and scoped to the reported line range
 * Do not exceed 250 lines in a suggestion block
 * Preserve exact leading whitespace of replaced lines
-* Only include the replacement lines (no unchanged context). If you need an insert-only suggestion, include the anchor line unchanged plus the new lines (this is the only allowed duplication)
+* Only include the replacement lines (no unchanged context). For insert-only suggestions: anchor on a RIGHT-side line and repeat it **unchanged**, then append the new lines. Do not modify the anchor line.
 * Do not include removed/LEFT-side lines in suggestions
 * If you need to re-add deleted content, anchor on a nearby RIGHT-side line and replace that line with itself plus the added lines (i.e., insert-only via replacement)
 
