@@ -181,6 +181,16 @@ export async function listReviewAndIssueComments({
   };
 }
 
+export type ReviewComment = {
+  path: string;
+  body: string;
+  line?: number;
+  side?: string;
+  start_line?: number;
+  start_side?: string;
+  position?: number;
+};
+
 export async function submitReviewWithComments({
   owner,
   repo,
@@ -193,7 +203,7 @@ export async function submitReviewWithComments({
   repo: string;
   prNumber: number;
   body?: string;
-  comments?: Array<{ path: string; position: number; body: string }>;
+  comments?: ReviewComment[];
   octokit: OctokitLike;
 }): Promise<number | undefined> {
   const response = await octokit.rest.pulls.createReview({
@@ -603,20 +613,45 @@ export function createGitHubPRServer({
 
   server.tool(
     "submit_review",
-    "Submit a PR review containing inline comments",
+    "Submit a PR review with all inline comments batched into a single review. " +
+      "Use line/side to anchor comments to specific lines in the diff.",
     {
       pr_number: z.number().int().describe("PR number to review"),
       body: z.string().describe("Optional summary body").optional(),
       comments: z
         .array(
           z.object({
-            path: z.string(),
-            position: z.number().int(),
-            body: z.string().min(1),
+            path: z
+              .string()
+              .describe("The file path to comment on (e.g., 'src/index.js')"),
+            body: z.string().min(1).describe("The comment text (supports markdown and GitHub code suggestion blocks)"),
+            line: z
+              .number()
+              .int()
+              .optional()
+              .describe(
+                "Line number for single-line comments, or end line for multi-line comments",
+              ),
+            side: z
+              .enum(["LEFT", "RIGHT"])
+              .optional()
+              .default("RIGHT")
+              .describe(
+                "Side of the diff: RIGHT for new/modified code, LEFT for removed code",
+              ),
+            start_line: z
+              .number()
+              .int()
+              .optional()
+              .describe("Start line for multi-line comments"),
+            start_side: z
+              .enum(["LEFT", "RIGHT"])
+              .optional()
+              .describe("Side for the start line of multi-line comments"),
           }),
         )
         .max(30)
-        .describe("List of inline comments to include")
+        .describe("List of inline comments to include in the review")
         .optional(),
     },
     async ({ pr_number, body, comments }) => {
