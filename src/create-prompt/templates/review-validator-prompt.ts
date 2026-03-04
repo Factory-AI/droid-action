@@ -107,14 +107,10 @@ Reject if:
 * It's already reported (dedupe against existing comments)
 * The anchor (path/side/line/startLine) would need to change to make the suggestion work — reject instead
 
-Suggestion block rules:
-* If an approved comment includes a GitHub suggestion block, ensure the fix is **high confidence** and minimal
-* Suggestion blocks must preserve exact leading whitespace and not exceed 250 lines
-* If the fix is clearly high confidence but the candidate lacks a suggestion block, add one to the approved comment body
-* If the suggestion is not high confidence, remove the suggestion block or reject the candidate
-* Ensure suggestion blocks only include replacement lines (no unchanged context). For insert-only suggestions: allow a RIGHT-side anchor line repeated **unchanged** plus the new lines; do not modify the anchor line
-* Do not include removed/LEFT-side lines in suggestions
-* For re-adding deleted content, anchor to a nearby RIGHT-side line and replace that line with itself plus the added lines
+Suggestion block rules (minimal):
+* Preserve exact leading whitespace and keep blocks ≤ 250 lines
+* Use RIGHT-side anchors only; do not include removed/LEFT-side lines
+* For insert-only suggestions, repeat the anchor line unchanged, then append new lines
 * Do not change the anchor fields (path/side/line/startLine) from the candidate — only edit the body
 
 When rejecting, write a concise reason.
