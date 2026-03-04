@@ -333,7 +333,7 @@ One short paragraph explaining *why* this is a bug and *how* it manifests.
   * Anchor using **path + side + line**
   * RIGHT = new/modified code, LEFT = removed code
   * Line numbers must correspond to the chosen side
-* Use \`github_pr___submit_review\` for the summary
+* Use \`github_pr___submit_review\` to submit inline comments — do **NOT** include a \`body\` parameter (no summary in the review)
 * Use \`github_pr___delete_comment\` or \`github_pr___minimize_comment\` for outdated "no issues" comments
 * Use \`github_pr___reply_to_comment\` to acknowledge resolved issues
 * **Do NOT call** \`github_pr___resolve_review_thread\`
@@ -342,7 +342,7 @@ One short paragraph explaining *why* this is a bug and *how* it manifests.
 ### "No issues" handling
 
 * If no issues and a prior "no issues" comment exists → skip
-* If no issues and no prior comment exists → post a brief summary
+* If no issues and no prior comment exists → update the tracking comment with a brief summary
 * If issues exist and a prior "no issues" comment exists → delete/minimize it
 * **Do NOT delete** comment ID ${context.droidCommentId}
 
@@ -350,10 +350,13 @@ One short paragraph explaining *why* this is a bug and *how* it manifests.
 
 ## Review summary
 
-In the submitted review body:
+Use \`github_comment___update_droid_comment\` to update the tracking comment (comment ID ${context.droidCommentId}) with the review summary. Do **NOT** post the summary as a separate comment or as the body of \`submit_review\`.
+
+The summary should:
 
 * State whether the changes are correct or incorrect
 * Provide a 1-3 sentence overall assessment
+* If there are findings, include a brief list of the issues found with their severity levels
 ${
   context.outputFilePath
     ? `

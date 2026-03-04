@@ -107,6 +107,19 @@ describe("generateReviewPrompt", () => {
     expect(prompt).toContain("All findings are low-severity (P2/P3)");
   });
 
+  it("instructs to post summary in tracking comment, not in submit_review body", () => {
+    const context = createBaseContext();
+    const prompt = generateReviewPrompt(context);
+
+    expect(prompt).toContain("github_comment___update_droid_comment");
+    expect(prompt).toContain(
+      "do **NOT** include a `body` parameter",
+    );
+    expect(prompt).toContain(
+      "Do **NOT** post the summary as a separate comment or as the body of `submit_review`",
+    );
+  });
+
   it("references PR description artifact in pre-computed files", () => {
     const context = createBaseContext({
       reviewArtifacts: {
