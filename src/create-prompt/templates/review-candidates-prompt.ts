@@ -200,8 +200,8 @@ Write output to \`${reviewCandidatesPath}\` using this exact schema:
     <replacement code>
     \`\`\`
 
-    **Suggestion rules (minimal):**
-    - Keep suggestion blocks ≤ 250 lines
+    **Suggestion rules:**
+    - Keep suggestion blocks ≤ 100 lines
     - Preserve exact leading whitespace
     - Use RIGHT-side anchors only; do not include removed/LEFT-side lines
     - For insert-only suggestions, repeat the anchor line unchanged, then append new lines

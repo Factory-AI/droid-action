@@ -327,7 +327,7 @@ If you have **high confidence** a fix will address the issue and won’t break C
 Rules:
 * Only include a suggestion when the fix is clear and high-confidence
 * Keep the suggestion minimal and scoped to the reported line range
-* Do not exceed 250 lines in a suggestion block
+* Do not exceed 100 lines in a suggestion block
 * Preserve exact leading whitespace of replaced lines
 * Use RIGHT-side anchors only; do not include removed/LEFT-side lines
 * For insert-only suggestions, repeat the anchor line unchanged, then append new lines
