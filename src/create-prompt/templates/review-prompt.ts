@@ -350,6 +350,7 @@ Rules:
   * Anchor using **path + side + line**
   * RIGHT = new/modified code, LEFT = removed code
   * Line numbers must correspond to the chosen side
+  * If you include a suggestion, keep the anchor on RIGHT-side lines and do not change the anchor line content
 * Use \`github_pr___submit_review\` for the summary
 * Use \`github_pr___delete_comment\` or \`github_pr___minimize_comment\` for outdated "no issues" comments
 * Use \`github_pr___reply_to_comment\` to acknowledge resolved issues

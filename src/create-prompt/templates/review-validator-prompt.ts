@@ -106,6 +106,7 @@ Reject if:
 * It's stylistic / naming / formatting
 * It's not anchored to a valid changed line
 * It's already reported (dedupe against existing comments)
+* The anchor (path/side/line/startLine) would need to change to make the suggestion work — reject instead
 
 Suggestion block rules:
 * If an approved comment includes a GitHub suggestion block, ensure the fix is **high confidence** and minimal
@@ -115,6 +116,7 @@ Suggestion block rules:
 * Ensure suggestion blocks only include replacement lines (no unchanged context). For insert-only suggestions: allow a RIGHT-side anchor line repeated **unchanged** plus the new lines; do not modify the anchor line
 * Do not include removed/LEFT-side lines in suggestions
 * For re-adding deleted content, anchor to a nearby RIGHT-side line and replace that line with itself plus the added lines
+* Do not change the anchor fields (path/side/line/startLine) from the candidate — only edit the body
 
 When rejecting, write a concise reason.
 

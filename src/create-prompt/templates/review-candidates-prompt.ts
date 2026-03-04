@@ -205,7 +205,8 @@ Write output to \`${reviewCandidatesPath}\` using this exact schema:
     If you need to re-add deleted content, anchor on a nearby RIGHT-side line and replace that line with itself plus the added lines (insert-only via replacement).
   - \`line\`: Target line number (single-line) or end line number (multi-line). Must be ≥ 0.
   - \`startLine\`: \`null\` for single-line comments, or start line number for multi-line comments
-  - \`side\`: "RIGHT" for new/modified code (default), "LEFT" only for removed code
+  - \`side\`: "RIGHT" for new/modified code (default). Use "LEFT" only for removed code **without** suggestions.
+    If you include a suggestion block, choose a RIGHT-side anchor and keep it unchanged so the validator can reuse it.
   - \`commit_id\`: "${prHeadSha}"
 
 - **reviewSummary**:
