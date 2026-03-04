@@ -352,11 +352,10 @@ One short paragraph explaining *why* this is a bug and *how* it manifests.
 
 Use \`github_comment___update_droid_comment\` to update the tracking comment (comment ID ${context.droidCommentId}) with the review summary. Do **NOT** post the summary as a separate comment or as the body of \`submit_review\`.
 
-The summary should:
+In the summary:
 
 * State whether the changes are correct or incorrect
 * Provide a 1-3 sentence overall assessment
-* If there are findings, include a brief list of the issues found with their severity levels
 ${
   context.outputFilePath
     ? `
