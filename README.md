@@ -169,6 +169,20 @@ Set `automatic_review: true` to run code reviews automatically on non-draft PRs.
 | `security_scan_schedule`      | `false`  | Configuration for scheduled security scans (when invoked from scheduled workflows).                               |
 | `security_scan_days`          | `7`      | Number of days of commits to scan for scheduled security scans.                                                   |
 
+## Custom Review Guidelines
+
+You can add repository-specific review guidelines by creating a `.factory/skills/review-guidelines/SKILL.md` file:
+
+```markdown
+Additional checks for this codebase:
+
+- React hooks rules violations
+- Missing TypeScript types on public APIs
+- Prisma query performance issues
+```
+
+These guidelines are automatically loaded and injected into all review prompts (code review, security review, and validation passes). No workflow changes needed.
+
 ## Security Skills
 
 The security review uses specialized Factory skills installed from the public `Factory-AI/skills` repository:

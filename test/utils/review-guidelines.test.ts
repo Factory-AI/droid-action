@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   loadReviewGuidelines,
   formatGuidelinesSection,
+  MAX_GUIDELINES_SIZE,
 } from "../../src/utils/review-guidelines";
 import { writeFile, mkdir, rm } from "fs/promises";
 import { join } from "path";
@@ -68,6 +69,29 @@ describe("loadReviewGuidelines", () => {
     const result = await loadReviewGuidelines();
 
     expect(result).toBe("Some guidelines");
+  });
+
+  it("truncates content exceeding MAX_GUIDELINES_SIZE", async () => {
+    const largeContent = "x".repeat(MAX_GUIDELINES_SIZE + 1000);
+    await writeFile(guidelinesPath, largeContent);
+
+    const result = await loadReviewGuidelines();
+
+    expect(result).toBeDefined();
+    expect(result!.length).toBeLessThanOrEqual(MAX_GUIDELINES_SIZE);
+    expect(result).toContain("[truncated");
+    expect(result).toContain(`${MAX_GUIDELINES_SIZE} character limit`);
+    expect(result).toContain("Use your tools to read the full file");
+  });
+
+  it("does not truncate content at exactly MAX_GUIDELINES_SIZE", async () => {
+    const exactContent = "y".repeat(MAX_GUIDELINES_SIZE);
+    await writeFile(guidelinesPath, exactContent);
+
+    const result = await loadReviewGuidelines();
+
+    expect(result).toBe(exactContent);
+    expect(result).not.toContain("[truncated");
   });
 });
 
