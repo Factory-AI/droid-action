@@ -1,4 +1,3 @@
-import { formatGuidelinesSection } from "../../utils/review-guidelines";
 import type { PreparedContext } from "../types";
 
 export function generateSecurityReviewPrompt(context: PreparedContext): string {
@@ -23,7 +22,7 @@ export function generateSecurityReviewPrompt(context: PreparedContext): string {
 
   return `You are performing a security-focused code review for PR #${prNumber} in ${repoFullName}.
 The gh CLI is installed and authenticated via GH_TOKEN.
-${formatGuidelinesSection(context.reviewGuidelines)}
+
 ## Context
 - Repo: ${repoFullName}
 - PR Number: ${prNumber}

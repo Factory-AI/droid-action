@@ -9,7 +9,6 @@ import { prepareMcpTools } from "../../mcp/install-mcp-server";
 import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
 import type { PrepareResult } from "../../prepare/types";
 import { generateReviewValidatorPrompt } from "../../create-prompt/templates/review-validator-prompt";
-import { loadReviewGuidelines } from "../../utils/review-guidelines";
 
 export async function prepareReviewValidatorMode({
   context,
@@ -46,8 +45,6 @@ export async function prepareReviewValidatorMode({
     descriptionPath: `${promptsDir}/pr_description.txt`,
   };
 
-  const reviewGuidelines = await loadReviewGuidelines();
-
   await createPrompt({
     githubContext: context,
     commentId: trackingCommentId,
@@ -59,7 +56,6 @@ export async function prepareReviewValidatorMode({
     },
     generatePrompt: generateReviewValidatorPrompt,
     reviewArtifacts,
-    reviewGuidelines,
   });
 
   core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-review");

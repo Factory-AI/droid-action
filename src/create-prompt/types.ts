@@ -118,5 +118,4 @@ export type PreparedContext = CommonFields & {
   };
   reviewArtifacts?: ReviewArtifacts;
   outputFilePath?: string;
-  reviewGuidelines?: string;
 };
