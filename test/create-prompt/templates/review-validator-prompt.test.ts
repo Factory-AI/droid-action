@@ -78,6 +78,19 @@ describe("generateReviewValidatorPrompt", () => {
     expect(prompt).toContain("Phase 4: Post approved items");
   });
 
+  it("instructs to post summary in tracking comment, not in submit_review body", () => {
+    const context = createBaseContext();
+    const prompt = generateReviewValidatorPrompt(context);
+
+    expect(prompt).toContain("github_comment___update_droid_comment");
+    expect(prompt).toContain(
+      "do **NOT** include a `body` parameter",
+    );
+    expect(prompt).toContain(
+      "Do **NOT** post the summary as a separate comment or as the body of `submit_review`",
+    );
+  });
+
   it("includes correct PR context", () => {
     const context = createBaseContext({
       prBranchData: {
