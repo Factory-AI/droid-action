@@ -174,7 +174,9 @@ Tooling note:
 After writing \`${reviewValidatedPath}\`, post comments ONLY for \`status === "approved"\`:
 
 * For each approved entry, call \`github_inline_comment___create_inline_comment\` with the \`comment\` object.
-* Submit a review via \`github_pr___submit_review\` using the summary body (if there are any approved items OR a meaningful overall assessment).
+* If there are approved inline comments, call \`github_pr___submit_review\` to submit them — do **NOT** include a \`body\` parameter.
+* Use \`github_comment___update_droid_comment\` to update the tracking comment with the review summary.
+* Do **NOT** post the summary as a separate comment or as the body of \`submit_review\`.
 * Do not approve or request changes.
 `;
 }
