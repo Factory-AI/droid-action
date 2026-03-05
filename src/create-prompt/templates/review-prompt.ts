@@ -316,6 +316,22 @@ One short paragraph explaining *why* this is a bug and *how* it manifests.
 * Code snippets ≤3 lines, Markdown fenced
 * Matter-of-fact, non-accusatory tone
 
+### Suggestion blocks (when applicable)
+
+If you have **high confidence** a fix will address the issue and won’t break CI, include a GitHub suggestion block after the explanation:
+
+\`\`\`suggestion
+<replacement code>
+\`\`\`
+
+Rules:
+* Only include a suggestion when the fix is clear and high-confidence
+* Keep the suggestion minimal and scoped to the reported line range
+* Do not exceed 100 lines in a suggestion block
+* Preserve exact leading whitespace of replaced lines
+* Use RIGHT-side anchors only; do not include removed/LEFT-side lines
+* For insert-only suggestions, repeat the anchor line unchanged, then append new lines
+
 ---
 
 ## Phase 3: Submit Review
@@ -333,6 +349,7 @@ One short paragraph explaining *why* this is a bug and *how* it manifests.
   * Anchor using **path + side + line**
   * RIGHT = new/modified code, LEFT = removed code
   * Line numbers must correspond to the chosen side
+  * If you include a suggestion, keep the anchor on RIGHT-side lines; for insert-only suggestions, repeat the anchor line unchanged, then append new lines
 * Use \`github_pr___submit_review\` for the summary
 * Use \`github_pr___delete_comment\` or \`github_pr___minimize_comment\` for outdated "no issues" comments
 * Use \`github_pr___reply_to_comment\` to acknowledge resolved issues

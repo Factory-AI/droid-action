@@ -106,6 +106,13 @@ Reject if:
 * It's stylistic / naming / formatting
 * It's not anchored to a valid changed line
 * It's already reported (dedupe against existing comments)
+* The anchor (path/side/line/startLine) would need to change to make the suggestion work — reject instead
+
+Suggestion block rules (minimal):
+* Preserve exact leading whitespace and keep blocks ≤ 100 lines
+* Use RIGHT-side anchors only; do not include removed/LEFT-side lines
+* For insert-only suggestions, repeat the anchor line unchanged, then append new lines
+* Do not change the anchor fields (path/side/line/startLine) from the candidate — only edit the body
 
 When rejecting, write a concise reason.
 
