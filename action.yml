@@ -99,16 +99,12 @@ inputs:
     description: "Override reasoning effort for review flows (passed to Droid Exec as --reasoning-effort). If empty and review_model is also empty, the action defaults internally to gpt-5.2 at high reasoning."
     required: false
     default: "high"
-  review_use_validator:
-    description: "Enable two-pass review: generate candidate comments to JSON, then validate and post only approved ones."
-    required: false
-    default: "true"
   review_candidates_path:
-    description: "Path to write review candidates JSON (run #1 when review_use_validator=true)."
+    description: "Path to write review candidates JSON (pass 1 of the two-pass review)."
     required: false
     default: "${{ runner.temp }}/droid-prompts/review_candidates.json"
   review_validated_path:
-    description: "Path to write review validated JSON (run #2 when review_use_validator=true)."
+    description: "Path to write review validated JSON (pass 2 of the two-pass review)."
     required: false
     default: "${{ runner.temp }}/droid-prompts/review_validated.json"
   fill_model:
@@ -189,7 +185,6 @@ runs:
         SECURITY_SCAN_DAYS: ${{ inputs.security_scan_days }}
         REVIEW_MODEL: ${{ inputs.review_model }}
         REASONING_EFFORT: ${{ inputs.reasoning_effort }}
-        REVIEW_USE_VALIDATOR: ${{ inputs.review_use_validator }}
         REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
         REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
         FILL_MODEL: ${{ inputs.fill_model }}
@@ -336,13 +331,12 @@ runs:
 
     - name: Prepare validator
       id: prepare_validator
-      if: steps.prepare.outputs.contains_trigger == 'true' && inputs.review_use_validator == 'true' && steps.prepare.outputs.run_code_review == 'true'
+      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.run_code_review == 'true'
       shell: bash
       run: |
         bun run ${GITHUB_ACTION_PATH}/src/entrypoints/prepare-validator.ts
       env:
         GITHUB_TOKEN: ${{ steps.prepare.outputs.github_token }}
-        REVIEW_USE_VALIDATOR: ${{ inputs.review_use_validator }}
         REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
         REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
         DROID_COMMENT_ID: ${{ steps.prepare.outputs.droid_comment_id }}
@@ -351,7 +345,7 @@ runs:
 
     - name: Run Droid Exec (validator)
       id: droid_validator
-      if: steps.prepare.outputs.contains_trigger == 'true' && inputs.review_use_validator == 'true' && steps.prepare.outputs.run_code_review == 'true'
+      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.run_code_review == 'true'
       shell: bash
       run: |
 
@@ -389,7 +383,7 @@ runs:
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         TRIGGER_COMMENT_ID: ${{ github.event.comment.id }}
         IS_PR: ${{ github.event.issue.pull_request != null || github.event_name == 'pull_request_target' || github.event_name == 'pull_request_review_comment' }}
-        DROID_SUCCESS: ${{ (inputs.review_use_validator == 'true' && steps.prepare.outputs.run_code_review == 'true' && steps.droid_validator.outputs.conclusion == 'success') || (!(inputs.review_use_validator == 'true' && steps.prepare.outputs.run_code_review == 'true') && steps.droid.outputs.conclusion == 'success') }}
+        DROID_SUCCESS: ${{ (steps.prepare.outputs.run_code_review == 'true' && steps.droid_validator.outputs.conclusion == 'success') || (steps.prepare.outputs.run_code_review != 'true' && steps.droid.outputs.conclusion == 'success') }}
         TRIGGER_USERNAME: ${{ github.event.comment.user.login || github.event.issue.user.login || github.event.pull_request.user.login || github.event.sender.login || github.triggering_actor || github.actor || '' }}
         PREPARE_SUCCESS: ${{ steps.prepare.outcome == 'success' }}
         PREPARE_ERROR: ${{ steps.prepare.outputs.prepare_error || '' }}

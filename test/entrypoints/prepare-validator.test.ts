@@ -6,7 +6,7 @@ import * as contextMod from "../../src/github/context";
 import * as validator from "../../src/tag/commands/review-validator";
 
 describe("prepare-validator entrypoint", () => {
-  it("fails when reviewUseValidator is false", async () => {
+  it("fails when DROID_COMMENT_ID is missing", async () => {
     const setFailedSpy = spyOn(core, "setFailed").mockImplementation(() => {});
     const setOutputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
     const exitSpy = spyOn(process, "exit").mockImplementation((() => {
@@ -33,8 +33,7 @@ describe("prepare-validator entrypoint", () => {
       isPR: true,
     } as any);
 
-    process.env.REVIEW_USE_VALIDATOR = "false";
-    process.env.DROID_COMMENT_ID = "123";
+    delete process.env.DROID_COMMENT_ID;
 
     spyOn(token, "setupGitHubToken").mockResolvedValue("token");
     spyOn(client, "createOctokit").mockReturnValue({} as any);
@@ -53,7 +52,7 @@ describe("prepare-validator entrypoint", () => {
     expect(setFailedSpy).toHaveBeenCalled();
     expect(setOutputSpy).toHaveBeenCalledWith(
       "prepare_error",
-      expect.stringContaining("reviewUseValidator"),
+      expect.stringContaining("DROID_COMMENT_ID"),
     );
     expect(exitSpy).toHaveBeenCalledWith(1);
 
