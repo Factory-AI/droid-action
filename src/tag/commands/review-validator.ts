@@ -80,7 +80,6 @@ export async function prepareReviewValidatorMode({
     "Create",
     "Edit",
     "github_comment___update_droid_comment",
-    "github_inline_comment___create_inline_comment",
   ];
 
   const validatorTools = ["github_pr___submit_review"];
