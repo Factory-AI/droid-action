@@ -8,7 +8,6 @@ import { prepareMcpTools } from "../../mcp/install-mcp-server";
 import { createInitialComment } from "../../github/operations/comments/create-initial";
 import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
 import { isEntityContext } from "../../github/context";
-import { generateReviewPrompt } from "../../create-prompt/templates/review-prompt";
 import { generateReviewCandidatesPrompt } from "../../create-prompt/templates/review-candidates-prompt";
 import type { Octokits } from "../../github/api/client";
 import type { PrepareResult } from "../../prepare/types";
@@ -85,9 +84,6 @@ export async function prepareReviewMode({
     githubToken,
   });
 
-  const reviewUseValidator =
-    (process.env.REVIEW_USE_VALIDATOR ?? "true").trim() !== "false";
-
   await createPrompt({
     githubContext: context,
     commentId,
@@ -97,9 +93,7 @@ export async function prepareReviewMode({
       headRefName: prData.headRefName,
       headRefOid: prData.headRefOid,
     },
-    generatePrompt: reviewUseValidator
-      ? generateReviewCandidatesPrompt
-      : generateReviewPrompt,
+    generatePrompt: generateReviewCandidatesPrompt,
     reviewArtifacts,
   });
   core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-review");
@@ -124,36 +118,19 @@ export async function prepareReviewMode({
 
   // Task tool is needed for parallel subagent reviews in candidate generation phase.
   // FetchUrl is needed to fetch linked tickets from the PR description.
-  const candidateGenerationTools = reviewUseValidator
-    ? ["Task", "FetchUrl"]
-    : [];
+  const candidateGenerationTools = ["Task", "FetchUrl"];
 
-  const reviewTools = reviewUseValidator
-    ? []
-    : [
-        "github_inline_comment___create_inline_comment",
-        "github_pr___list_review_comments",
-        "github_pr___submit_review",
-        "github_pr___delete_comment",
-        "github_pr___minimize_comment",
-        "github_pr___reply_to_comment",
-        "github_pr___resolve_review_thread",
-      ];
-
-  const safeUserAllowedMCPTools = reviewUseValidator
-    ? userAllowedMCPTools.filter(
-        (tool) =>
-          tool === "github_comment___update_droid_comment" ||
-          (!tool.startsWith("github_pr___") &&
-            tool !== "github_inline_comment___create_inline_comment"),
-      )
-    : userAllowedMCPTools;
+  const safeUserAllowedMCPTools = userAllowedMCPTools.filter(
+    (tool) =>
+      tool === "github_comment___update_droid_comment" ||
+      (!tool.startsWith("github_pr___") &&
+        tool !== "github_inline_comment___create_inline_comment"),
+  );
 
   const allowedTools = Array.from(
     new Set([
       ...baseTools,
       ...candidateGenerationTools,
-      ...reviewTools,
       ...safeUserAllowedMCPTools,
     ]),
   );

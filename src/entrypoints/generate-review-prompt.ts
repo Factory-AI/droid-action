@@ -12,7 +12,6 @@ import { fetchPRBranchData } from "../github/data/pr-fetcher";
 import { computeReviewArtifacts } from "../github/data/review-artifacts";
 import { createPrompt } from "../create-prompt";
 import { prepareMcpTools } from "../mcp/install-mcp-server";
-import { generateReviewPrompt } from "../create-prompt/templates/review-prompt";
 import { generateReviewCandidatesPrompt } from "../create-prompt/templates/review-candidates-prompt";
 import { generateSecurityReviewPrompt } from "../create-prompt/templates/security-review-prompt";
 import { normalizeDroidArgs, parseAllowedTools } from "../utils/parse-tools";
@@ -22,9 +21,6 @@ async function run() {
   try {
     const githubToken = process.env.GITHUB_TOKEN!;
     const reviewType = process.env.REVIEW_TYPE || "code";
-    const reviewUseValidator =
-      reviewType === "code" &&
-      (process.env.REVIEW_USE_VALIDATOR ?? "true").trim() !== "false";
     const commentId = parseInt(process.env.DROID_COMMENT_ID || "0");
 
     if (!commentId) {
@@ -92,13 +88,11 @@ async function run() {
       githubToken,
     });
 
-    // Select prompt generator based on review type and validator mode
+    // Select prompt generator based on review type
     const generatePrompt =
       reviewType === "security"
         ? generateSecurityReviewPrompt
-        : reviewUseValidator
-          ? generateReviewCandidatesPrompt
-          : generateReviewPrompt;
+        : generateReviewCandidatesPrompt;
 
     // Pass the output file path so the prompt can instruct the Droid
     // to write structured findings for the combine step
@@ -146,30 +140,23 @@ async function run() {
 
     // Task tool is needed for parallel subagent reviews in candidate generation phase.
     // FetchUrl is needed to fetch linked tickets from the PR description.
-    const candidateGenerationTools = reviewUseValidator
-      ? ["Task", "FetchUrl"]
-      : [];
+    const candidateGenerationTools =
+      reviewType === "code" ? ["Task", "FetchUrl"] : [];
 
-    // When validator is enabled, the candidate generation phase should NOT
-    // have access to PR mutation tools. When disabled, allow them.
-    const reviewTools = reviewUseValidator
-      ? []
-      : ["github_pr___list_review_comments"];
-
-    const safeUserAllowedMCPTools = reviewUseValidator
-      ? userAllowedMCPTools.filter(
-          (tool) =>
-            tool === "github_comment___update_droid_comment" ||
-            (!tool.startsWith("github_pr___") &&
-              tool !== "github_inline_comment___create_inline_comment"),
-        )
-      : userAllowedMCPTools;
+    const safeUserAllowedMCPTools =
+      reviewType === "code"
+        ? userAllowedMCPTools.filter(
+            (tool) =>
+              tool === "github_comment___update_droid_comment" ||
+              (!tool.startsWith("github_pr___") &&
+                tool !== "github_inline_comment___create_inline_comment"),
+          )
+        : userAllowedMCPTools;
 
     const allowedTools = Array.from(
       new Set([
         ...baseTools,
         ...candidateGenerationTools,
-        ...reviewTools,
         ...safeUserAllowedMCPTools,
       ]),
     );
@@ -208,11 +195,9 @@ async function run() {
     // Output for next step - use core.setOutput which handles GITHUB_OUTPUT internally
     core.setOutput("droid_args", droidArgParts.join(" ").trim());
     core.setOutput("mcp_tools", mcpTools);
-    core.setOutput("review_use_validator", reviewUseValidator.toString());
+    core.setOutput("review_use_validator", (reviewType === "code").toString());
 
-    console.log(
-      `Generated ${reviewType} review prompt (validator=${reviewUseValidator})`,
-    );
+    console.log(`Generated ${reviewType} review prompt`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     core.setFailed(`Generate prompt failed: ${errorMessage}`);
