@@ -181,7 +181,7 @@ export async function listReviewAndIssueComments({
   };
 }
 
-export type ReviewComment = {
+type ReviewComment = {
   path: string;
   body: string;
   line?: number;
