@@ -158,11 +158,9 @@ describe("prepareReviewMode", () => {
       expect.objectContaining({
         allowedTools: expect.arrayContaining([
           "Execute",
+          "Task",
+          "FetchUrl",
           "github_comment___update_droid_comment",
-          "github_inline_comment___create_inline_comment",
-          "github_pr___list_review_comments",
-          "github_pr___submit_review",
-          "github_pr___resolve_review_thread",
         ]),
       }),
     );
@@ -175,18 +173,16 @@ describe("prepareReviewMode", () => {
       (call: unknown[]) => call[0] === "droid_args",
     ) as [string, string] | undefined;
     expect(droidArgsCall?.[1]).toContain("Execute");
-    [
+    expect(droidArgsCall?.[1]).toContain("Task");
+    expect(droidArgsCall?.[1]).toContain("FetchUrl");
+    expect(droidArgsCall?.[1]).toContain(
       "github_comment___update_droid_comment",
+    );
+    // Candidate generation phase should NOT have PR mutation tools
+    expect(droidArgsCall?.[1]).not.toContain(
       "github_inline_comment___create_inline_comment",
-      "github_pr___list_review_comments",
-      "github_pr___submit_review",
-      "github_pr___delete_comment",
-      "github_pr___minimize_comment",
-      "github_pr___reply_to_comment",
-      "github_pr___resolve_review_thread",
-    ].forEach((tool) => {
-      expect(droidArgsCall?.[1]).toContain(tool);
-    });
+    );
+    expect(droidArgsCall?.[1]).not.toContain("github_pr___submit_review");
     expect(exportVariableSpy).toHaveBeenCalledWith(
       "DROID_EXEC_RUN_TYPE",
       "droid-review",
@@ -556,113 +552,5 @@ describe("prepareReviewMode", () => {
         }),
       }),
     );
-  });
-
-  it("includes FetchUrl in allowed tools when validator mode is enabled", async () => {
-    process.env.REVIEW_USE_VALIDATOR = "true";
-
-    const context = createMockContext({
-      eventName: "issue_comment",
-      isPR: true,
-      payload: {
-        comment: {
-          id: 108,
-          body: "@droid review",
-        },
-      } as any,
-      entityNumber: 31,
-    });
-
-    const octokit = {
-      rest: {
-        issues: {
-          listComments: () => Promise.resolve({ data: [] }),
-        },
-        pulls: {
-          listReviewComments: () => Promise.resolve({ data: [] }),
-        },
-      },
-      graphql: () => Promise.resolve({}),
-    } as any;
-
-    graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
-      repository: {
-        pullRequest: {
-          baseRefName: MOCK_PR_DATA.baseRefName,
-          headRefName: MOCK_PR_DATA.headRefName,
-          headRefOid: MOCK_PR_DATA.headRefOid,
-          title: MOCK_PR_DATA.title,
-          body: MOCK_PR_DATA.body,
-        },
-      },
-    });
-
-    await prepareReviewMode({
-      context,
-      octokit,
-      githubToken: "token",
-      trackingCommentId: 561,
-    });
-
-    const droidArgsCall = setOutputSpy.mock.calls.find(
-      (call: unknown[]) => call[0] === "droid_args",
-    ) as [string, string] | undefined;
-    expect(droidArgsCall?.[1]).toContain("FetchUrl");
-
-    delete process.env.REVIEW_USE_VALIDATOR;
-  });
-
-  it("excludes FetchUrl from allowed tools when validator mode is disabled", async () => {
-    process.env.REVIEW_USE_VALIDATOR = "false";
-
-    const context = createMockContext({
-      eventName: "issue_comment",
-      isPR: true,
-      payload: {
-        comment: {
-          id: 109,
-          body: "@droid review",
-        },
-      } as any,
-      entityNumber: 32,
-    });
-
-    const octokit = {
-      rest: {
-        issues: {
-          listComments: () => Promise.resolve({ data: [] }),
-        },
-        pulls: {
-          listReviewComments: () => Promise.resolve({ data: [] }),
-        },
-      },
-      graphql: () => Promise.resolve({}),
-    } as any;
-
-    graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
-      repository: {
-        pullRequest: {
-          baseRefName: MOCK_PR_DATA.baseRefName,
-          headRefName: MOCK_PR_DATA.headRefName,
-          headRefOid: MOCK_PR_DATA.headRefOid,
-          title: MOCK_PR_DATA.title,
-          body: MOCK_PR_DATA.body,
-        },
-      },
-    });
-
-    await prepareReviewMode({
-      context,
-      octokit,
-      githubToken: "token",
-      trackingCommentId: 562,
-    });
-
-    const droidArgsCall = setOutputSpy.mock.calls.find(
-      (call: unknown[]) => call[0] === "droid_args",
-    ) as [string, string] | undefined;
-    expect(droidArgsCall?.[1]).not.toContain("FetchUrl");
-
-    delete process.env.REVIEW_USE_VALIDATOR;
   });
 });
