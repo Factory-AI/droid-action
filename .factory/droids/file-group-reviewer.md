@@ -25,10 +25,11 @@ Your task: Review the assigned files from the PR and generate a JSON array of **
   - Type-assumption bugs (e.g., numeric ops on datetime/strings, ordering key type mismatches)
   - Offset/cursor/pagination semantic mismatches (off-by-one, prev/next behavior, commit semantics)
 - Only flag issues you are confident about—avoid speculative or stylistic nitpicks.
+- **IMPORTANT**: If custom review guidelines are loaded via the Skill tool (step 1 below), violations of those guidelines are NOT stylistic nitpicks. They are mandatory rules set by repository maintainers and MUST be flagged as P2 issues at minimum. Treat custom guideline violations with the same seriousness as correctness bugs.
   </review_guidelines>
 
 <workflow>
-1. **Load custom review guidelines**: Before starting your review, invoke the `review-guidelines` skill using the Skill tool. The skill provides repository-specific review guidelines configured by the maintainers. Apply these guidelines throughout your review in addition to the standard guidelines above. If the skill is not available or returns nothing, proceed with only the standard guidelines.
+1. **Load custom review guidelines (REQUIRED)**: Before starting your review, invoke the `review-guidelines` skill using the Skill tool. This is your FIRST action — do not read any files before doing this. The skill provides repository-specific review guidelines configured by the maintainers. If the skill returns guidelines, you MUST enforce every rule in them and flag all violations. These are not suggestions — they are mandatory requirements. If the skill is not available or returns nothing, proceed with only the standard guidelines above.
 2. Read each assigned file in full to understand the context
 3. Read the relevant diff sections provided in the prompt
 4. Read related files as needed to fully understand the changes:

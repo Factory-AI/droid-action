@@ -136,8 +136,9 @@ async function run() {
 
     // Task tool is needed for parallel subagent reviews in candidate generation phase.
     // FetchUrl is needed to fetch linked tickets from the PR description.
+    // Skill is needed so file-group-reviewer subagents can invoke the review-guidelines skill.
     const candidateGenerationTools =
-      reviewType === "code" ? ["Task", "FetchUrl"] : [];
+      reviewType === "code" ? ["Task", "FetchUrl", "Skill"] : [];
 
     const safeUserAllowedMCPTools =
       reviewType === "code"
