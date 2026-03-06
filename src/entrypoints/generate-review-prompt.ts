@@ -15,7 +15,6 @@ import { prepareMcpTools } from "../mcp/install-mcp-server";
 import { generateReviewCandidatesPrompt } from "../create-prompt/templates/review-candidates-prompt";
 import { generateSecurityReviewPrompt } from "../create-prompt/templates/security-review-prompt";
 import { normalizeDroidArgs, parseAllowedTools } from "../utils/parse-tools";
-import { loadReviewGuidelines } from "../utils/review-guidelines";
 
 async function run() {
   try {
@@ -98,8 +97,6 @@ async function run() {
     // to write structured findings for the combine step
     const outputFilePath = process.env.DROID_OUTPUT_FILE || undefined;
 
-    const reviewGuidelines = await loadReviewGuidelines();
-
     await createPrompt({
       githubContext: context,
       commentId,
@@ -111,7 +108,6 @@ async function run() {
       generatePrompt,
       reviewArtifacts,
       outputFilePath,
-      reviewGuidelines,
     });
 
     // Set run type
@@ -140,8 +136,9 @@ async function run() {
 
     // Task tool is needed for parallel subagent reviews in candidate generation phase.
     // FetchUrl is needed to fetch linked tickets from the PR description.
+    // Skill is needed so file-group-reviewer subagents can invoke the review-guidelines skill.
     const candidateGenerationTools =
-      reviewType === "code" ? ["Task", "FetchUrl"] : [];
+      reviewType === "code" ? ["Task", "FetchUrl", "Skill"] : [];
 
     const safeUserAllowedMCPTools =
       reviewType === "code"
