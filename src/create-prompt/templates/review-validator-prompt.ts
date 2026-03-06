@@ -108,6 +108,13 @@ Reject if:
 * It's already reported (dedupe against existing comments)
 * The anchor (path/side/line/startLine) would need to change to make the suggestion work — reject instead
 
+### Deduplication (STRICT)
+
+Before approving a candidate, check for duplicates:
+1. **Among candidates**: If two or more candidates describe the same underlying bug (same root cause, even if anchored to different lines or worded differently), approve only the ONE with the best anchor and clearest explanation. Reject the rest with reason "duplicate of candidate N".
+2. **Against existing comments**: If a candidate repeats an issue already covered by an existing PR comment (from \`${commentsPath}\`), reject it with reason "already reported in existing comments".
+3. Same file + overlapping line range + same issue = duplicate, even if the body text differs.
+
 Suggestion block rules (minimal):
 * Preserve exact leading whitespace and keep blocks ≤ 100 lines
 * Use RIGHT-side anchors only; do not include removed/LEFT-side lines
