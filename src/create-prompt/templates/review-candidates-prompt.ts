@@ -146,8 +146,9 @@ After all subagents complete, collect and merge their findings:
 2. **Merge arrays**: Combine all arrays into a single comments array
 3. **Add commit_id**: Add \`"commit_id": "${prHeadSha}"\` to each comment object
 4. **Deduplicate**: If multiple subagents flagged the same location (same path + line), keep only one comment (prefer higher priority: P0 > P1 > P2)
-5. **Filter existing**: Remove any comments that duplicate issues already in \`${commentsPath}\`
-6. **Write reviewSummary**: Synthesize a 1-3 sentence overall assessment based on all findings
+5. **Root-cause consolidation**: If the same root cause manifests in multiple files (e.g., several callers of a broken function, or the same pattern repeated across modules), report it **ONCE** at the primary location (the root cause definition, not the callers). Mention affected callers/files in the comment body. Do not create separate comments for each affected site.
+6. **Filter existing**: Remove any comments that duplicate issues already in \`${commentsPath}\`
+7. **Write reviewSummary**: Synthesize a 1-3 sentence overall assessment based on all findings
 
 Write the final aggregated result to \`${reviewCandidatesPath}\` using the schema in \`<output_spec>\`.
 </aggregation_phase>
