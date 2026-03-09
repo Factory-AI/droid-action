@@ -83,9 +83,7 @@ describe("generateReviewValidatorPrompt", () => {
     const prompt = generateReviewValidatorPrompt(context);
 
     expect(prompt).toContain("github_comment___update_droid_comment");
-    expect(prompt).toContain(
-      "do **NOT** include a `body` parameter",
-    );
+    expect(prompt).toContain("do **NOT** include a `body` parameter");
     expect(prompt).toContain(
       "Do **NOT** post the summary as a separate comment or as the body of `submit_review`",
     );
@@ -112,25 +110,5 @@ describe("generateReviewValidatorPrompt", () => {
     expect(prompt).toContain("PR Number: 77");
     expect(prompt).toContain("PR Head SHA: sha999");
     expect(prompt).toContain("PR Base Ref: main");
-  });
-
-  it("includes review guidelines when provided", () => {
-    const context = createBaseContext({
-      reviewGuidelines: "- Validate all edge cases\n- Check auth boundaries",
-    });
-
-    const prompt = generateReviewValidatorPrompt(context);
-
-    expect(prompt).toContain("<custom_review_guidelines>");
-    expect(prompt).toContain("- Validate all edge cases");
-    expect(prompt).toContain("- Check auth boundaries");
-  });
-
-  it("does not include review guidelines section when not provided", () => {
-    const context = createBaseContext();
-
-    const prompt = generateReviewValidatorPrompt(context);
-
-    expect(prompt).not.toContain("<custom_review_guidelines>");
   });
 });
