@@ -316,18 +316,26 @@ One short paragraph explaining *why* this is a bug and *how* it manifests.
 * Code snippets ≤3 lines, Markdown fenced
 * Matter-of-fact, non-accusatory tone
 
-### Suggestion blocks (when applicable)
+### Suggestion blocks (optional — only for obvious fixes)
 
-If you have **high confidence** a fix will address the issue and won’t break CI, include a GitHub suggestion block after the explanation:
+You may append a GitHub suggestion block **only** when ALL of the following are true:
+* The fix is obvious and unambiguous (a single clear correct change)
+* The fix is scoped to the reported line range (no cascading changes needed)
+* You are confident the fix will not break CI or other code paths
+
+**Do NOT add a suggestion when:**
+* The fix requires changes in multiple locations
+* There are multiple valid ways to fix the issue
+* The candidate already explains the issue clearly enough
+
+**CRITICAL**: The availability of suggestions must NOT lower your reporting threshold. If you would not have flagged an issue without a suggestion block, do not flag it now. Suggestions add value to existing findings — they do not justify new ones.
 
 \`\`\`suggestion
 <replacement code>
 \`\`\`
 
 Rules:
-* Only include a suggestion when the fix is clear and high-confidence
-* Keep the suggestion minimal and scoped to the reported line range
-* Do not exceed 100 lines in a suggestion block
+* Keep blocks ≤ 100 lines
 * Preserve exact leading whitespace of replaced lines
 * Use RIGHT-side anchors only; do not include removed/LEFT-side lines
 * For insert-only suggestions, repeat the anchor line unchanged, then append new lines
@@ -349,7 +357,7 @@ Rules:
   * Anchor using **path + side + line**
   * RIGHT = new/modified code, LEFT = removed code
   * Line numbers must correspond to the chosen side
-  * If you include a suggestion, keep the anchor on RIGHT-side lines; for insert-only suggestions, repeat the anchor line unchanged, then append new lines
+  * If you include a suggestion block, the anchor must be on RIGHT-side lines; for insert-only suggestions, repeat the anchor line unchanged, then append new lines
 * Use \`github_pr___submit_review\` for the summary
 * Use \`github_pr___delete_comment\` or \`github_pr___minimize_comment\` for outdated "no issues" comments
 * Use \`github_pr___reply_to_comment\` to acknowledge resolved issues

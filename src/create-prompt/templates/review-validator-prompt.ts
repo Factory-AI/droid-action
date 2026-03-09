@@ -115,11 +115,33 @@ Before approving a candidate, check for duplicates:
 2. **Against existing comments**: If a candidate repeats an issue already covered by an existing PR comment (from \`${commentsPath}\`), reject it with reason "already reported in existing comments".
 3. Same file + overlapping line range + same issue = duplicate, even if the body text differs.
 
-Suggestion block rules (minimal):
-* Preserve exact leading whitespace and keep blocks ≤ 100 lines
+### Suggestion blocks (add ONLY to approved findings)
+
+After deciding to approve a candidate, consider whether a GitHub suggestion block would add value:
+
+**Add a suggestion ONLY when ALL of these are true:**
+* The fix is obvious and unambiguous (a single clear correct change)
+* The fix is scoped to the reported line range (no cascading changes needed)
+* You are confident the fix will not break CI or other code paths
+
+**Do NOT add a suggestion when:**
+* The fix requires changes in multiple locations
+* There are multiple valid ways to fix the issue
+* The fix requires understanding broader context not visible in the diff
+* The candidate already explains the issue clearly enough for the author to fix it
+
+When adding a suggestion, append it to the candidate body:
+
+\`\`\`suggestion
+<replacement code>
+\`\`\`
+
+Rules:
+* Keep blocks ≤ 100 lines
+* Preserve exact leading whitespace of replaced lines
 * Use RIGHT-side anchors only; do not include removed/LEFT-side lines
 * For insert-only suggestions, repeat the anchor line unchanged, then append new lines
-* Do not change the anchor fields (path/side/line/startLine) from the candidate — only edit the body
+* Do not change the anchor fields (path/side/line/startLine) from the candidate
 
 When rejecting, write a concise reason.
 

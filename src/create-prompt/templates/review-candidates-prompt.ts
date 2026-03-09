@@ -68,6 +68,7 @@ Precomputed data files:
   - Offset/cursor/pagination semantic mismatches (off-by-one, prev/next behavior, commit semantics)
 - Do NOT duplicate comments already in \`${commentsPath}\`.
 - Only flag issues you are confident about—avoid speculative or stylistic nitpicks.
+- **Quantity discipline**: The number of comments should NOT increase just because suggestions are possible. Your job is to find real bugs, not to generate fixes. If you would not have flagged an issue without a suggestion block, do not flag it now.
 </review_guidelines>
 
 <triage_phase>
@@ -193,22 +194,10 @@ Write output to \`${reviewCandidatesPath}\` using this exact schema:
 
 - **comments**: Array of comment objects
   - \`path\`: Relative file path (e.g., "src/index.ts")
-  - \`body\`: Comment text starting with priority tag [P0|P1|P2], then title, then 1 paragraph explanation
-    If you have **high confidence** a fix will address the issue and won’t break CI, append a GitHub suggestion block:
-
-    \`\`\`suggestion
-    <replacement code>
-    \`\`\`
-
-    **Suggestion rules:**
-    - Keep suggestion blocks ≤ 100 lines
-    - Preserve exact leading whitespace
-    - Use RIGHT-side anchors only; do not include removed/LEFT-side lines
-    - For insert-only suggestions, repeat the anchor line unchanged, then append new lines
+  - \`body\`: Comment text starting with priority tag [P0|P1|P2], then title, then 1 paragraph explanation. **Do NOT include suggestion blocks** — suggestions are added in a later validation pass.
   - \`line\`: Target line number (single-line) or end line number (multi-line). Must be ≥ 0.
   - \`startLine\`: \`null\` for single-line comments, or start line number for multi-line comments
-  - \`side\`: "RIGHT" for new/modified code (default). Use "LEFT" only for removed code **without** suggestions.
-    If you include a suggestion block, choose a RIGHT-side anchor and keep it unchanged so the validator can reuse it.
+  - \`side\`: "RIGHT" for new/modified code (default), "LEFT" only for removed code
   - \`commit_id\`: "${prHeadSha}"
 
 - **reviewSummary**:
