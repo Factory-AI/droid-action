@@ -5,6 +5,7 @@ import { createInitialComment } from "../github/operations/comments/create-initi
 import { isEntityContext, type ParsedGitHubContext } from "../github/context";
 import { extractCommandFromContext } from "../github/utils/command-parser";
 import { prepareFillMode } from "./commands/fill";
+import { prepareFixMode } from "./commands/fix";
 import { prepareReviewMode } from "./commands/review";
 import { prepareSecurityReviewMode } from "./commands/security-review";
 import { prepareSecurityScanMode } from "./commands/security-scan";
@@ -177,6 +178,17 @@ export async function prepareTagExecution({
 
   if (commandContext?.command === "fill") {
     return prepareFillMode({
+      context,
+      octokit,
+      githubToken,
+      trackingCommentId: commentId,
+    });
+  }
+
+  if (commandContext?.command === "fix") {
+    core.setOutput("run_code_review", "false");
+    core.setOutput("run_security_review", "false");
+    return prepareFixMode({
       context,
       octokit,
       githubToken,
