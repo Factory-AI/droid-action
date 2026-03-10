@@ -62,7 +62,7 @@ Read:
 ## CRITICAL REQUIREMENTS
 
 1. You MUST read and validate **every** candidate before posting anything.
-2. For each candidate, confirm:
+2. For each candidate, **verify by reading the actual source code** that:
    * It is a real, actionable bug (not speculative)
    * There is a realistic trigger path and observable wrong behavior
    * The anchor is valid (path + side + line/startLine correspond to the diff)
@@ -70,6 +70,7 @@ Read:
    * Only post comments where \`status === "approved"\`.
    * Never post rejected items.
 4. Preserve ordering: keep results in the same order as candidates.
+5. **When in doubt, reject.** A false positive is worse than a missed bug.
 
 =======================
 
