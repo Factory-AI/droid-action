@@ -7,6 +7,7 @@ import type {
   PullRequestReviewEvent,
   PullRequestReviewCommentEvent,
   WorkflowRunEvent,
+  CheckRunEvent,
 } from "@octokit/webhooks-types";
 
 // Custom types for GitHub Actions events that aren't webhooks
@@ -58,6 +59,7 @@ const ENTITY_EVENT_NAMES = [
   "pull_request",
   "pull_request_review",
   "pull_request_review_comment",
+  "check_run",
 ] as const;
 
 const AUTOMATION_EVENT_NAMES = [
@@ -98,6 +100,7 @@ type BaseContext = {
     securityNotifyTeam: string;
     securityScanSchedule: boolean;
     securityScanDays: number;
+    ciFailureReview: boolean;
   };
 };
 
@@ -109,7 +112,8 @@ export type ParsedGitHubContext = BaseContext & {
     | IssueCommentEvent
     | PullRequestEvent
     | PullRequestReviewEvent
-    | PullRequestReviewCommentEvent;
+    | PullRequestReviewCommentEvent
+    | CheckRunEvent;
   entityNumber: number;
   isPR: boolean;
 };
@@ -161,6 +165,7 @@ export function parseGitHubContext(): GitHubContext {
         1,
         parseInt(process.env.SECURITY_SCAN_DAYS ?? "7", 10) || 7,
       ),
+      ciFailureReview: process.env.CI_FAILURE_REVIEW === "true",
     },
   };
 
@@ -214,6 +219,18 @@ export function parseGitHubContext(): GitHubContext {
         payload,
         entityNumber: payload.pull_request.number,
         isPR: true,
+      };
+    }
+    case "check_run": {
+      const payload = context.payload as unknown as CheckRunEvent;
+      const prFromCheckRun = payload.check_run?.pull_requests?.[0];
+      const prNumber = prFromCheckRun?.number ?? 0;
+      return {
+        ...commonFields,
+        eventName: "check_run",
+        payload,
+        entityNumber: prNumber,
+        isPR: prNumber > 0,
       };
     }
     case "workflow_dispatch": {
@@ -277,6 +294,12 @@ export function isPullRequestReviewCommentEvent(
   context: GitHubContext,
 ): context is ParsedGitHubContext & { payload: PullRequestReviewCommentEvent } {
   return context.eventName === "pull_request_review_comment";
+}
+
+export function isCheckRunEvent(
+  context: GitHubContext,
+): context is ParsedGitHubContext & { payload: CheckRunEvent } {
+  return context.eventName === "check_run";
 }
 
 export function isIssuesAssignedEvent(

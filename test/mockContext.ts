@@ -27,6 +27,7 @@ const defaultInputs = {
   securityNotifyTeam: "",
   securityScanSchedule: false,
   securityScanDays: 7,
+  ciFailureReview: false,
 };
 
 const defaultRepository = {

@@ -76,6 +76,7 @@ describe("checkWritePermissions", () => {
       securityNotifyTeam: "",
       securityScanSchedule: false,
       securityScanDays: 7,
+      ciFailureReview: false,
     },
   });
 

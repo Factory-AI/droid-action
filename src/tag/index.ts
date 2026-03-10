@@ -2,12 +2,17 @@ import * as core from "@actions/core";
 import { checkContainsTrigger } from "../github/validation/trigger";
 import { checkHumanActor } from "../github/validation/actor";
 import { createInitialComment } from "../github/operations/comments/create-initial";
-import { isEntityContext, type ParsedGitHubContext } from "../github/context";
+import {
+  isEntityContext,
+  isCheckRunEvent,
+  type ParsedGitHubContext,
+} from "../github/context";
 import { extractCommandFromContext } from "../github/utils/command-parser";
 import { prepareFillMode } from "./commands/fill";
 import { prepareReviewMode } from "./commands/review";
 import { prepareSecurityReviewMode } from "./commands/security-review";
 import { prepareSecurityScanMode } from "./commands/security-scan";
+import { prepareCIFailureReviewMode } from "./commands/ci-failure-review";
 import type { GitHubContext } from "../github/context";
 import type { PrepareResult } from "../prepare/types";
 import type { Octokits } from "../github/api/client";
@@ -19,6 +24,19 @@ export function shouldTriggerTag(context: GitHubContext): boolean {
   if (!isEntityContext(context)) {
     return false;
   }
+
+  if (context.inputs.ciFailureReview && isCheckRunEvent(context)) {
+    const payload = context.payload;
+    const conclusion = payload.check_run?.conclusion;
+    if (conclusion === "failure" && context.isPR) {
+      console.log(
+        `CI failure detected: check run "${payload.check_run.name}" failed on PR`,
+      );
+      return true;
+    }
+    return false;
+  }
+
   if (
     context.inputs.automaticReview ||
     context.inputs.automaticSecurityReview
@@ -76,7 +94,29 @@ export async function prepareTagExecution({
     throw new Error("Tag execution requires entity context");
   }
 
-  await checkHumanActor(octokit.rest, context);
+  // CI failure reviews are triggered by bots (GitHub Actions), skip human actor check
+  if (!isCheckRunEvent(context)) {
+    await checkHumanActor(octokit.rest, context);
+  }
+
+  if (context.inputs.ciFailureReview && isCheckRunEvent(context)) {
+    if (!context.isPR) {
+      throw new Error(
+        "ci_failure_review requires a check_run associated with a pull request",
+      );
+    }
+    const commentData = await createInitialComment(
+      octokit.rest,
+      context,
+      "default",
+    );
+    return prepareCIFailureReviewMode({
+      context,
+      octokit,
+      githubToken,
+      trackingCommentId: commentData.id,
+    });
+  }
 
   if (context.inputs.automaticReview && !context.isPR) {
     throw new Error("automatic_review requires a pull request context");

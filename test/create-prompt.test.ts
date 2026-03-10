@@ -34,6 +34,7 @@ describe("prepareContext", () => {
       securityNotifyTeam: "",
       securityScanSchedule: false,
       securityScanDays: 7,
+      ciFailureReview: false,
     },
   } as const;
 

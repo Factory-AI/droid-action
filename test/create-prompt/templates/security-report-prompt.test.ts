@@ -45,6 +45,7 @@ describe("generateSecurityReportPrompt", () => {
         securityNotifyTeam: "@org/security-team",
         securityScanSchedule: false,
         securityScanDays: 7,
+        ciFailureReview: false,
       },
     },
   };

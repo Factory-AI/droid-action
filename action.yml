@@ -63,6 +63,10 @@ inputs:
     description: "Automatically run the security review flow for pull request contexts without requiring an explicit @droid security command. Only supported for PR-related events."
     required: false
     default: "false"
+  ci_failure_review:
+    description: "Automatically trigger a code review focused on CI failure context when a check run fails on a PR. Listens for check_run completed events with failure conclusion."
+    required: false
+    default: "false"
   security_model:
     description: "Override the model used for security review (e.g., 'claude-sonnet-4-5-20250929', 'gpt-5.1-codex'). Only applies to security review flows."
     required: false
@@ -176,6 +180,7 @@ runs:
         TRACK_PROGRESS: ${{ inputs.track_progress }}
         AUTOMATIC_REVIEW: ${{ inputs.automatic_review }}
         AUTOMATIC_SECURITY_REVIEW: ${{ inputs.automatic_security_review }}
+        CI_FAILURE_REVIEW: ${{ inputs.ci_failure_review }}
         SECURITY_MODEL: ${{ inputs.security_model }}
         SECURITY_SEVERITY_THRESHOLD: ${{ inputs.security_severity_threshold }}
         SECURITY_BLOCK_ON_CRITICAL: ${{ inputs.security_block_on_critical }}
