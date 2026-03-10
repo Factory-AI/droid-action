@@ -260,17 +260,23 @@ Only report findings that meet **at least one** of the following:
 * **Data corruption or loss**
 * **Breaking contract changes** (API / response / schema / validator behavior) where the contract is discoverable in code, tests, or docs
 
-### Do NOT report
+### Do NOT report (common false positive patterns)
 
 * Test code hygiene (unused vars, setup patterns) unless it causes test failure
 * Defensive "what-if" scenarios without a realistic trigger
-* Cosmetic issues (message text, naming, formatting)
+* Cosmetic issues (message text, naming, formatting, dead code)
 * Suggestions to "add guards," "add try/catch," or "be safer" without a concrete failure
+* Missing error handling UNLESS the absence causes a **specific, demonstrable crash** (name the exact input and exception)
+* Hypothetical race conditions UNLESS you can describe the exact thread interleaving that triggers the bug
+* Speculative security vulnerabilities ("could be XSS", "timing attack possible") UNLESS you can describe a concrete exploit path with attacker-controlled input
+* Pre-existing issues not introduced or worsened by this PR's changes
+* Test quality, coverage, or test code issues (unless the test change masks a real production bug)
 
 ### Confidence rule
 
 * Prefer **DEFINITE** bugs over **POSSIBLE** bugs
 * Report POSSIBLE bugs **only** if you can identify a realistic execution path
+* **Every finding MUST include a concrete trigger**: Name a specific input, call sequence, or condition that triggers the bug. If you cannot name one, do not report it.
 
 ---
 
@@ -317,6 +323,8 @@ One short paragraph explaining *why* this is a bug and *how* it manifests.
 * Matter-of-fact, non-accusatory tone
 
 ### Suggestion blocks (when applicable)
+
+**CRITICAL**: The availability of a suggestion block must NOT lower your reporting threshold. If you would not have flagged an issue without a suggestion block, do not flag it now. Suggestions add value to existing findings — they do not justify new ones.
 
 If you have **high confidence** a fix will address the issue and won’t break CI, include a GitHub suggestion block after the explanation:
 

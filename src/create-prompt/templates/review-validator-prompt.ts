@@ -70,6 +70,7 @@ Read:
    * Only post comments where \`status === "approved"\`.
    * Never post rejected items.
 4. Preserve ordering: keep results in the same order as candidates.
+5. **When in doubt, reject.** A false positive is worse than a missed bug. Only approve findings where you can verify the concrete trigger path.
 
 =======================
 
@@ -101,9 +102,14 @@ Apply the same Reporting Gate as review:
 * Data corruption/loss
 * Breaking contract change (discoverable in code/tests)
 
-Reject if:
-* It's speculative / "might" without a concrete trigger
-* It's stylistic / naming / formatting
+### Reject if ANY of these are true
+* It's speculative — uses "might", "could", "potentially" without naming a concrete input/condition that triggers the bug
+* It's about missing error handling / try-catch UNLESS the absence causes a specific, demonstrable crash (name the exact exception)
+* It's a hypothetical race condition without a specific thread interleaving that triggers the bug
+* It's a speculative security vulnerability without a concrete exploit path with attacker-controlled input
+* It's stylistic / naming / formatting / dead code / "best practice" without a concrete failure
+* It's about test quality or test code (unless the test change masks a real production bug)
+* It's a pre-existing issue not introduced or worsened by this PR
 * It's not anchored to a valid changed line
 * It's already reported (dedupe against existing comments)
 * The anchor (path/side/line/startLine) would need to change to make the suggestion work — reject instead
