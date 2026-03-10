@@ -11,7 +11,7 @@ const mockContext: PreparedContext = {
   triggerPhrase: "@droid",
   eventData: {
     eventName: "pull_request",
-    eventAction: "check_run_failure",
+    eventAction: "workflow_run_failure",
     isPR: true,
     prNumber: "42",
     baseBranch: "main",
@@ -28,30 +28,34 @@ const mockContext: PreparedContext = {
 };
 
 const mockCIContext: CIFailureContext = {
-  checkRunName: "CI / unit-tests",
-  checkRunConclusion: "failure",
-  checkRunHtmlUrl: "https://github.com/test-owner/test-repo/actions/runs/12345",
-  checkRunId: 12345,
+  workflowName: "Typecheck",
+  workflowConclusion: "failure",
+  workflowHtmlUrl:
+    "https://github.com/test-owner/test-repo/actions/runs/12345",
+  workflowRunId: 12345,
   headSha: "abc123def456",
+  headBranch: "fix/ci-pipeline",
 };
 
 describe("generateCIFailureReviewPrompt", () => {
-  it("includes CI failure context in the prompt", () => {
+  it("includes CI failure context as a preamble", () => {
     const prompt = generateCIFailureReviewPrompt(mockContext, mockCIContext);
 
-    expect(prompt).toContain("CI / unit-tests");
+    expect(prompt).toContain("CI FAILURE CONTEXT");
+    expect(prompt).toContain("Typecheck");
     expect(prompt).toContain("failure");
     expect(prompt).toContain("12345");
     expect(prompt).toContain("abc123def456");
+    expect(prompt).toContain("fix/ci-pipeline");
   });
 
-  it("includes PR context", () => {
+  it("wraps the existing review candidates prompt", () => {
     const prompt = generateCIFailureReviewPrompt(mockContext, mockCIContext);
 
+    // Should contain content from the base review candidates prompt
     expect(prompt).toContain("PR #42");
     expect(prompt).toContain("test-owner/test-repo");
-    expect(prompt).toContain("fix/ci-pipeline");
-    expect(prompt).toContain("main");
+    expect(prompt).toContain("review_candidates.json");
   });
 
   it("references pre-computed review artifacts", () => {
@@ -62,44 +66,37 @@ describe("generateCIFailureReviewPrompt", () => {
     expect(prompt).toContain("/tmp/droid-prompts/pr_description.txt");
   });
 
-  it("includes CI tool instructions", () => {
+  it("includes CI tool instructions before the base prompt", () => {
+    const prompt = generateCIFailureReviewPrompt(mockContext, mockCIContext);
+
+    const ciContextPos = prompt.indexOf("CI FAILURE CONTEXT");
+    const basePromptPos = prompt.indexOf("senior staff software engineer");
+
+    expect(ciContextPos).toBeGreaterThan(-1);
+    expect(basePromptPos).toBeGreaterThan(-1);
+    expect(ciContextPos).toBeLessThan(basePromptPos);
+  });
+
+  it("instructs to call CI tools with the specific workflow run ID", () => {
     const prompt = generateCIFailureReviewPrompt(mockContext, mockCIContext);
 
     expect(prompt).toContain("get_ci_status");
     expect(prompt).toContain("get_workflow_run_details");
     expect(prompt).toContain("download_job_log");
+    expect(prompt).toContain("run ID 12345");
   });
 
-  it("includes phase structure for systematic failure analysis", () => {
+  it("includes [CI-FAIL] comment format", () => {
     const prompt = generateCIFailureReviewPrompt(mockContext, mockCIContext);
 
-    expect(prompt).toContain("Phase 1: Gather CI Failure Details");
-    expect(prompt).toContain("Phase 2: Read PR Context");
-    expect(prompt).toContain("Phase 3: Correlate Failures with Code Changes");
-    expect(prompt).toContain("Phase 4: Report Findings");
-    expect(prompt).toContain("Phase 5: Submit Review Summary");
+    expect(prompt).toContain("[CI-FAIL]");
   });
 
   it("includes guidance for non-PR-caused failures", () => {
     const prompt = generateCIFailureReviewPrompt(mockContext, mockCIContext);
 
     expect(prompt).toContain("flaky test");
-    expect(prompt).toContain("pre-existing failure");
+    expect(prompt).toContain("pre-existing");
     expect(prompt).toContain("infrastructure issue");
-  });
-
-  it("includes CI failure priority levels", () => {
-    const prompt = generateCIFailureReviewPrompt(mockContext, mockCIContext);
-
-    expect(prompt).toContain("[P0] Build/compile failure");
-    expect(prompt).toContain("[P1] Test failure");
-    expect(prompt).toContain("[P1] Type error");
-    expect(prompt).toContain("[P2] Lint failure");
-  });
-
-  it("uses [CI-FAIL] comment format prefix", () => {
-    const prompt = generateCIFailureReviewPrompt(mockContext, mockCIContext);
-
-    expect(prompt).toContain("[CI-FAIL]");
   });
 });

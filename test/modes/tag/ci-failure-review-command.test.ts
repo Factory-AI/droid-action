@@ -1,13 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as core from "@actions/core";
 import { prepareCIFailureReviewMode } from "../../../src/tag/commands/ci-failure-review";
-import { createMockContext } from "../../mockContext";
-import type { ParsedGitHubContext } from "../../../src/github/context";
-import type { CheckRunCompletedEvent } from "@octokit/webhooks-types";
+import { createMockContext, createMockAutomationContext } from "../../mockContext";
+import type { AutomationContext } from "../../../src/github/context";
+import type { WorkflowRunCompletedEvent } from "@octokit/webhooks-types";
 
 import * as promptModule from "../../../src/create-prompt";
 import * as mcpInstaller from "../../../src/mcp/install-mcp-server";
-import * as comments from "../../../src/github/operations/comments/create-initial";
 import * as childProcess from "child_process";
 import * as fsPromises from "fs/promises";
 
@@ -28,127 +27,66 @@ const MOCK_PR_DATA = {
   reviews: { nodes: [] },
 } as any;
 
-function createCheckRunContext(
+function createWorkflowRunContext(
   overrides: Partial<{
-    entityNumber: number;
-    isPR: boolean;
-    checkRunName: string;
+    prNumber: number;
+    hasPR: boolean;
+    workflowName: string;
     conclusion: string;
   }> = {},
-): ParsedGitHubContext {
-  const entityNumber = overrides.entityNumber ?? 42;
-  const isPR = overrides.isPR ?? true;
-  const checkRunName = overrides.checkRunName ?? "CI / build";
+): AutomationContext {
+  const prNumber = overrides.prNumber ?? 42;
+  const hasPR = overrides.hasPR ?? true;
+  const workflowName = overrides.workflowName ?? "Typecheck";
   const conclusion = overrides.conclusion ?? "failure";
 
   return {
-    runId: "1234567890",
-    eventName: "check_run",
-    eventAction: "completed",
-    repository: {
-      owner: "test-owner",
-      repo: "test-repo",
-      full_name: "test-owner/test-repo",
-    },
-    actor: "github-actions[bot]",
-    entityNumber,
-    isPR,
-    inputs: {
-      triggerPhrase: "@droid",
-      assigneeTrigger: "",
-      labelTrigger: "",
-      useStickyComment: false,
-      allowedBots: "",
-      allowedNonWriteUsers: "",
-      trackProgress: false,
-      automaticReview: false,
-      automaticSecurityReview: false,
-      securityModel: "",
-      securitySeverityThreshold: "medium",
-      securityBlockOnCritical: true,
-      securityBlockOnHigh: false,
-      securityNotifyTeam: "",
-      securityScanSchedule: false,
-      securityScanDays: 7,
-      ciFailureReview: true,
-    },
+    ...createMockAutomationContext({
+      eventName: "workflow_run",
+      inputs: {
+        ...createMockContext().inputs,
+        ciFailureReview: true,
+      },
+    }),
     payload: {
       action: "completed",
-      check_run: {
+      workflow_run: {
         id: 12345,
-        name: checkRunName,
+        name: workflowName,
         head_sha: "abc123def456",
-        status: "completed",
+        head_branch: "fix/ci-pipeline",
         conclusion,
-        html_url:
-          "https://github.com/test-owner/test-repo/actions/runs/12345",
-        started_at: "2024-01-01T00:00:00Z",
-        completed_at: "2024-01-01T00:05:00Z",
-        output: {
-          title: null,
-          summary: null,
-          text: null,
-          annotations_count: 0,
-          annotations_url: "",
-        },
-        external_id: "",
-        url: "",
-        check_suite: {
-          id: 1,
-          head_branch: "fix/ci-pipeline",
-          head_sha: "abc123def456",
-          status: "completed",
-          conclusion: "failure",
-          url: "",
-          before: null,
-          after: null,
-          pull_requests: [
-            {
-              url: "",
-              id: 1,
-              number: entityNumber,
-              head: {
-                ref: "fix/ci-pipeline",
-                sha: "abc123def456",
-                repo: { id: 1, url: "", name: "test-repo" },
+        html_url: "https://github.com/test-owner/test-repo/actions/runs/12345",
+        display_title: workflowName,
+        path: ".github/workflows/typecheck.yml",
+        pull_requests: hasPR
+          ? [
+              {
+                url: "",
+                id: 1,
+                number: prNumber,
+                head: {
+                  ref: "fix/ci-pipeline",
+                  sha: "abc123def456",
+                  repo: { id: 1, url: "", name: "test-repo" },
+                },
+                base: {
+                  ref: "main",
+                  sha: "000000",
+                  repo: { id: 1, url: "", name: "test-repo" },
+                },
               },
-              base: {
-                ref: "main",
-                sha: "000000",
-                repo: { id: 1, url: "", name: "test-repo" },
-              },
-            },
-          ],
-          app: {} as any,
-          created_at: "",
-          updated_at: "",
-        },
-        app: {} as any,
-        pull_requests: [
-          {
-            url: "",
-            id: 1,
-            number: entityNumber,
-            head: {
-              ref: "fix/ci-pipeline",
-              sha: "abc123def456",
-              repo: { id: 1, url: "", name: "test-repo" },
-            },
-            base: {
-              ref: "main",
-              sha: "000000",
-              repo: { id: 1, url: "", name: "test-repo" },
-            },
-          },
-        ],
+            ]
+          : [],
       },
+      workflow: { id: 1, name: workflowName },
       repository: {
         name: "test-repo",
         full_name: "test-owner/test-repo",
         owner: { login: "test-owner" },
       },
       sender: { login: "github-actions[bot]" },
-    } as unknown as CheckRunCompletedEvent,
+    } as unknown as WorkflowRunCompletedEvent,
   };
 }
 
@@ -157,7 +95,6 @@ describe("prepareCIFailureReviewMode", () => {
   let promptSpy: ReturnType<typeof spyOn>;
   let mcpSpy: ReturnType<typeof spyOn>;
   let setOutputSpy: ReturnType<typeof spyOn>;
-  let createInitialSpy: ReturnType<typeof spyOn>;
   let exportVariableSpy: ReturnType<typeof spyOn>;
   let execSyncSpy: ReturnType<typeof spyOn>;
   let writeFileSpy: ReturnType<typeof spyOn>;
@@ -173,10 +110,6 @@ describe("prepareCIFailureReviewMode", () => {
       "mock-config",
     );
     setOutputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
-    createInitialSpy = spyOn(
-      comments,
-      "createInitialComment",
-    ).mockResolvedValue({ id: 888 } as any);
     exportVariableSpy = spyOn(core, "exportVariable").mockImplementation(
       () => {},
     );
@@ -197,7 +130,6 @@ describe("prepareCIFailureReviewMode", () => {
     promptSpy.mockRestore();
     mcpSpy.mockRestore();
     setOutputSpy.mockRestore();
-    createInitialSpy.mockRestore();
     exportVariableSpy.mockRestore();
     execSyncSpy.mockRestore();
     writeFileSpy.mockRestore();
@@ -206,13 +138,15 @@ describe("prepareCIFailureReviewMode", () => {
     delete process.env.REASONING_EFFORT;
   });
 
-  it("prepares CI failure review with CI tools enabled", async () => {
-    const context = createCheckRunContext();
+  it("prepares CI failure review with CI tools and workflow run context", async () => {
+    const context = createWorkflowRunContext();
 
     const octokit = {
       rest: {
         issues: {
           listComments: () => Promise.resolve({ data: [] }),
+          createComment: () =>
+            Promise.resolve({ data: { id: 999 } }),
         },
         pulls: {
           listReviewComments: () => Promise.resolve({ data: [] }),
@@ -237,7 +171,6 @@ describe("prepareCIFailureReviewMode", () => {
       context,
       octokit,
       githubToken: "token",
-      trackingCommentId: 999,
     });
 
     expect(promptSpy).toHaveBeenCalled();
@@ -264,45 +197,8 @@ describe("prepareCIFailureReviewMode", () => {
     );
   });
 
-  it("creates tracking comment when not provided", async () => {
-    const context = createCheckRunContext();
-
-    const octokit = {
-      rest: {
-        issues: {
-          listComments: () => Promise.resolve({ data: [] }),
-        },
-        pulls: {
-          listReviewComments: () => Promise.resolve({ data: [] }),
-        },
-      },
-      graphql: () => Promise.resolve({}),
-    } as any;
-
-    graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
-      repository: {
-        pullRequest: {
-          baseRefName: MOCK_PR_DATA.baseRefName,
-          headRefName: MOCK_PR_DATA.headRefName,
-          headRefOid: MOCK_PR_DATA.headRefOid,
-          title: MOCK_PR_DATA.title,
-          body: MOCK_PR_DATA.body,
-        },
-      },
-    });
-
-    const result = await prepareCIFailureReviewMode({
-      context,
-      octokit,
-      githubToken: "token",
-    });
-
-    expect(createInitialSpy).toHaveBeenCalled();
-    expect(result.commentId).toBe(888);
-  });
-
-  it("throws when check_run has no associated PR", async () => {
-    const context = createCheckRunContext({ isPR: false, entityNumber: 0 });
+  it("throws when workflow_run has no associated PR", async () => {
+    const context = createWorkflowRunContext({ hasPR: false });
 
     await expect(
       prepareCIFailureReviewMode({
@@ -311,11 +207,11 @@ describe("prepareCIFailureReviewMode", () => {
         githubToken: "token",
       }),
     ).rejects.toThrow(
-      "CI failure review requires a check_run associated with a pull request",
+      "CI failure review requires a workflow_run associated with a pull request",
     );
   });
 
-  it("throws for non-check_run events", async () => {
+  it("throws for non-workflow_run events", async () => {
     const context = createMockContext({
       eventName: "issue_comment",
       isPR: true,
@@ -327,18 +223,20 @@ describe("prepareCIFailureReviewMode", () => {
         octokit: { rest: {}, graphql: () => {} } as any,
         githubToken: "token",
       }),
-    ).rejects.toThrow("CI failure review requires a check_run event");
+    ).rejects.toThrow("CI failure review requires a workflow_run event");
   });
 
-  it("includes CI context in the generated prompt", async () => {
-    const context = createCheckRunContext({
-      checkRunName: "Tests / unit-tests",
+  it("passes includeActionsTools to createPrompt", async () => {
+    const context = createWorkflowRunContext({
+      workflowName: "Tests / unit-tests",
     });
 
     const octokit = {
       rest: {
         issues: {
           listComments: () => Promise.resolve({ data: [] }),
+          createComment: () =>
+            Promise.resolve({ data: { id: 1000 } }),
         },
         pulls: {
           listReviewComments: () => Promise.resolve({ data: [] }),
@@ -363,7 +261,6 @@ describe("prepareCIFailureReviewMode", () => {
       context,
       octokit,
       githubToken: "token",
-      trackingCommentId: 1000,
     });
 
     expect(promptSpy).toHaveBeenCalledWith(

@@ -1,13 +1,12 @@
 import * as core from "@actions/core";
 import { execSync } from "child_process";
-import type { CheckRunEvent } from "@octokit/webhooks-types";
+import type { WorkflowRunCompletedEvent } from "@octokit/webhooks-types";
 import type { GitHubContext } from "../../github/context";
-import { isCheckRunEvent, isEntityContext } from "../../github/context";
+import { isWorkflowRunFailureEvent } from "../../github/context";
 import { fetchPRBranchData } from "../../github/data/pr-fetcher";
 import { computeReviewArtifacts } from "../../github/data/review-artifacts";
 import { createPrompt } from "../../create-prompt";
 import { prepareMcpTools } from "../../mcp/install-mcp-server";
-import { createInitialComment } from "../../github/operations/comments/create-initial";
 import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
 import {
   generateCIFailureReviewPrompt,
@@ -15,53 +14,62 @@ import {
 } from "../../create-prompt/templates/ci-failure-review-prompt";
 import type { Octokits } from "../../github/api/client";
 import type { PrepareResult } from "../../prepare/types";
+import type { ParsedGitHubContext } from "../../github/context";
 
 type CIFailureReviewOptions = {
   context: GitHubContext;
   octokit: Octokits;
   githubToken: string;
-  trackingCommentId?: number;
 };
 
 export async function prepareCIFailureReviewMode({
   context,
   octokit,
   githubToken,
-  trackingCommentId,
 }: CIFailureReviewOptions): Promise<PrepareResult> {
-  if (!isEntityContext(context)) {
-    throw new Error("CI failure review requires an entity event context");
+  if (!isWorkflowRunFailureEvent(context)) {
+    throw new Error("CI failure review requires a workflow_run event with failure conclusion");
   }
 
-  if (!isCheckRunEvent(context)) {
-    throw new Error("CI failure review requires a check_run event");
-  }
+  const payload = context.payload as WorkflowRunCompletedEvent;
+  const workflowRun = payload.workflow_run;
+  const prs = workflowRun.pull_requests ?? [];
 
-  if (!context.isPR) {
+  if (prs.length === 0) {
     throw new Error(
-      "CI failure review requires a check_run associated with a pull request",
+      "CI failure review requires a workflow_run associated with a pull request",
     );
   }
 
-  const checkRunPayload = context.payload as CheckRunEvent;
-  const checkRun = checkRunPayload.check_run;
+  const prNumber = prs[0]!.number;
 
   const ciContext: CIFailureContext = {
-    checkRunName: checkRun.name,
-    checkRunConclusion: checkRun.conclusion ?? "failure",
-    checkRunHtmlUrl: checkRun.html_url,
-    checkRunId: checkRun.id,
-    headSha: checkRun.head_sha,
+    workflowName: workflowRun.name,
+    workflowConclusion: workflowRun.conclusion ?? "failure",
+    workflowHtmlUrl: workflowRun.html_url,
+    workflowRunId: workflowRun.id,
+    headSha: workflowRun.head_sha,
+    headBranch: workflowRun.head_branch,
   };
 
-  const commentId =
-    trackingCommentId ??
-    (await createInitialComment(octokit.rest, context, "default")).id;
+  // Build a synthetic entity-like context for createPrompt
+  // workflow_run is an automation event but we need PR context for the prompt
+  const syntheticContext: ParsedGitHubContext = {
+    runId: context.runId,
+    eventName: "pull_request",
+    eventAction: "workflow_run_failure",
+    repository: context.repository,
+    actor: context.actor,
+    inputs: context.inputs,
+    payload: {} as any,
+    entityNumber: prNumber,
+    isPR: true,
+  };
 
   const prData = await fetchPRBranchData({
     octokits: octokit,
     repository: context.repository,
-    prNumber: context.entityNumber,
+    prNumber,
   });
 
   const branchInfo = {
@@ -71,11 +79,11 @@ export async function prepareCIFailureReviewMode({
   };
 
   console.log(
-    `Checking out PR #${context.entityNumber} branch for CI failure review...`,
+    `Checking out PR #${prNumber} branch for CI failure review...`,
   );
   try {
     execSync("git reset --hard HEAD", { encoding: "utf8", stdio: "pipe" });
-    execSync(`gh pr checkout ${context.entityNumber}`, {
+    execSync(`gh pr checkout ${prNumber}`, {
       encoding: "utf8",
       stdio: "pipe",
       env: { ...process.env, GH_TOKEN: githubToken },
@@ -86,7 +94,7 @@ export async function prepareCIFailureReviewMode({
   } catch (e) {
     console.error(`Failed to checkout PR branch: ${e}`);
     throw new Error(
-      `Failed to checkout PR #${context.entityNumber} branch for CI failure review`,
+      `Failed to checkout PR #${prNumber} branch for CI failure review`,
     );
   }
 
@@ -97,14 +105,23 @@ export async function prepareCIFailureReviewMode({
     octokit,
     owner: context.repository.owner,
     repo: context.repository.repo,
-    prNumber: context.entityNumber,
+    prNumber,
     title: prData.title,
     body: prData.body,
     githubToken,
   });
 
+  // Post a tracking comment on the PR
+  const { data: comment } = await octokit.rest.issues.createComment({
+    owner: context.repository.owner,
+    repo: context.repository.repo,
+    issue_number: prNumber,
+    body: `⏳ **Droid CI Failure Review** — analyzing failure in workflow "${ciContext.workflowName}"...`,
+  });
+  const commentId = comment.id;
+
   await createPrompt({
-    githubContext: context,
+    githubContext: syntheticContext,
     commentId,
     baseBranch: branchInfo.baseBranch,
     droidBranch: branchInfo.droidBranch,
@@ -157,7 +174,7 @@ export async function prepareCIFailureReviewMode({
     droidCommentId: commentId.toString(),
     allowedTools,
     mode: "tag",
-    context,
+    context: syntheticContext,
   });
 
   const droidArgParts: string[] = [];
@@ -181,6 +198,7 @@ export async function prepareCIFailureReviewMode({
   core.setOutput("droid_args", droidArgParts.join(" ").trim());
   core.setOutput("mcp_tools", mcpTools);
   core.setOutput("droid_comment_id", commentId.toString());
+  core.setOutput("review_pr_number", prNumber.toString());
 
   return {
     commentId,

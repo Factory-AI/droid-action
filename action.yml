@@ -64,7 +64,7 @@ inputs:
     required: false
     default: "false"
   ci_failure_review:
-    description: "Automatically trigger a code review focused on CI failure context when a check run fails on a PR. Listens for check_run completed events with failure conclusion."
+    description: "Automatically trigger a code review focused on CI failure context when a workflow run fails on a PR. Use with workflow_run trigger in your workflow."
     required: false
     default: "false"
   security_model:

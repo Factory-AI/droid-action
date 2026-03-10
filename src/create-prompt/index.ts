@@ -13,7 +13,6 @@ import {
   isPullRequestEvent,
   isPullRequestReviewEvent,
   isPullRequestReviewCommentEvent,
-  isCheckRunEvent,
 } from "../github/context";
 import type { ParsedGitHubContext } from "../github/context";
 import type {
@@ -107,8 +106,6 @@ export function prepareContext(
     triggerUsername = context.payload.issue?.user?.login;
   } else if (isPullRequestEvent(context)) {
     triggerUsername = context.payload.pull_request?.user?.login;
-  } else if (isCheckRunEvent(context)) {
-    triggerUsername = context.payload.sender?.login;
   }
 
   if (triggerUsername) {
@@ -282,21 +279,6 @@ function buildEventData(
       return {
         eventName: "pull_request",
         eventAction: context.eventAction,
-        isPR: true,
-        prNumber: entityNumber,
-        ...(droidBranch && { droidBranch }),
-        ...(baseBranch && { baseBranch }),
-      };
-
-    case "check_run":
-      if (!context.isPR || !entityNumber) {
-        throw new Error(
-          "check_run event requires a pull request association",
-        );
-      }
-      return {
-        eventName: "pull_request",
-        eventAction: "check_run_failure",
         isPR: true,
         prNumber: entityNumber,
         ...(droidBranch && { droidBranch }),

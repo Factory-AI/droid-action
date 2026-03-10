@@ -7,7 +7,7 @@ import type {
   PullRequestReviewEvent,
   PullRequestReviewCommentEvent,
   WorkflowRunEvent,
-  CheckRunEvent,
+  WorkflowRunCompletedEvent,
 } from "@octokit/webhooks-types";
 
 // Custom types for GitHub Actions events that aren't webhooks
@@ -59,7 +59,6 @@ const ENTITY_EVENT_NAMES = [
   "pull_request",
   "pull_request_review",
   "pull_request_review_comment",
-  "check_run",
 ] as const;
 
 const AUTOMATION_EVENT_NAMES = [
@@ -112,8 +111,7 @@ export type ParsedGitHubContext = BaseContext & {
     | IssueCommentEvent
     | PullRequestEvent
     | PullRequestReviewEvent
-    | PullRequestReviewCommentEvent
-    | CheckRunEvent;
+    | PullRequestReviewCommentEvent;
   entityNumber: number;
   isPR: boolean;
 };
@@ -221,18 +219,6 @@ export function parseGitHubContext(): GitHubContext {
         isPR: true,
       };
     }
-    case "check_run": {
-      const payload = context.payload as unknown as CheckRunEvent;
-      const prFromCheckRun = payload.check_run?.pull_requests?.[0];
-      const prNumber = prFromCheckRun?.number ?? 0;
-      return {
-        ...commonFields,
-        eventName: "check_run",
-        payload,
-        entityNumber: prNumber,
-        isPR: prNumber > 0,
-      };
-    }
     case "workflow_dispatch": {
       return {
         ...commonFields,
@@ -296,10 +282,18 @@ export function isPullRequestReviewCommentEvent(
   return context.eventName === "pull_request_review_comment";
 }
 
-export function isCheckRunEvent(
+export function isWorkflowRunEvent(
   context: GitHubContext,
-): context is ParsedGitHubContext & { payload: CheckRunEvent } {
-  return context.eventName === "check_run";
+): context is AutomationContext & { payload: WorkflowRunEvent } {
+  return context.eventName === "workflow_run";
+}
+
+export function isWorkflowRunFailureEvent(
+  context: GitHubContext,
+): context is AutomationContext & { payload: WorkflowRunCompletedEvent } {
+  if (!isWorkflowRunEvent(context)) return false;
+  const payload = context.payload as WorkflowRunCompletedEvent;
+  return payload.workflow_run?.conclusion === "failure";
 }
 
 export function isIssuesAssignedEvent(
