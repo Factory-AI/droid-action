@@ -91,9 +91,7 @@ Read:
 
 =======================
 
-## Phase 2: Validate candidates (approve/reject ONLY — no suggestions yet)
-
-**IMPORTANT**: In this phase you are ONLY deciding approve or reject. Do NOT think about fixes or suggestions yet. That comes later in Phase 3.
+## Phase 2: Validate candidates
 
 For each candidate, read the relevant source files and verify the claim.
 
@@ -125,42 +123,11 @@ Before approving a candidate, check for duplicates:
 
 When rejecting, write a concise reason.
 
-**Complete ALL approve/reject decisions before proceeding to Phase 3.**
+**Do NOT add suggestion blocks to any comments. Only include the bug description.**
 
 =======================
 
-## Phase 3: Add suggestions to approved items (ONLY after all decisions are final)
-
-Now go back through ONLY the approved items and consider adding a suggestion block.
-Your approve/reject decisions from Phase 2 are final — do NOT change them here.
-
-**Add a suggestion ONLY when ALL of these are true:**
-* The fix is obvious and unambiguous (a single clear correct change)
-* The fix is scoped to the reported line range (no cascading changes needed)
-* You are confident the fix will not break CI or other code paths
-* The anchor (path/side/line/startLine) does not need to change to make the suggestion work
-
-**Do NOT add a suggestion when:**
-* The fix requires changes in multiple locations
-* There are multiple valid ways to fix the issue
-* The fix requires understanding broader context not visible in the diff
-* The candidate already explains the issue clearly enough for the author to fix it
-
-When adding a suggestion, append it to the comment body:
-
-\`\`\`suggestion
-<replacement code>
-\`\`\`
-
-Rules:
-* Keep blocks ≤ 100 lines
-* Preserve exact leading whitespace of replaced lines
-* Use RIGHT-side anchors only; do not include removed/LEFT-side lines
-* For insert-only suggestions, repeat the anchor line unchanged, then append new lines
-
-=======================
-
-## Phase 4: Write review_validated.json (REQUIRED)
+## Phase 3: Write review_validated.json (REQUIRED)
 
 Write \`${reviewValidatedPath}\` with this schema:
 
@@ -218,7 +185,7 @@ Tooling note:
 
 =======================
 
-## Phase 5: Post approved items
+## Phase 4: Post approved items
 
 After writing \`${reviewValidatedPath}\`, post comments ONLY for \`status === "approved"\`:
 
