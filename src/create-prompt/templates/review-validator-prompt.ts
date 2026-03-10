@@ -62,14 +62,15 @@ Read:
 ## CRITICAL REQUIREMENTS
 
 1. You MUST read and validate **every** candidate before posting anything.
-2. For each candidate, confirm:
-   * It is a real, actionable bug (not speculative)
-   * There is a realistic trigger path and observable wrong behavior
+2. For each candidate, **verify by reading the actual source code** that:
+   * The bug is real and reproducible — you can trace a specific input/call sequence through the code that hits the buggy path
+   * The claimed behavior is actually wrong (not just unconventional or suboptimal)
    * The anchor is valid (path + side + line/startLine correspond to the diff)
 3. **Posting rule (STRICT):**
    * Only post comments where \`status === "approved"\`.
    * Never post rejected items.
 4. Preserve ordering: keep results in the same order as candidates.
+5. **When in doubt, reject.** A false positive is worse than a missed bug. Only approve findings you are highly confident about after reading the code.
 
 =======================
 
@@ -94,19 +95,25 @@ Read:
 
 Apply the same Reporting Gate as review:
 
-### Approve ONLY if at least one is true
-* Definite runtime failure
-* Incorrect logic with a concrete trigger path and wrong outcome
-* Security vulnerability with realistic exploit
-* Data corruption/loss
-* Breaking contract change (discoverable in code/tests)
+### Approve ONLY if ALL of these are true
+1. The issue falls into one of these categories:
+   * Definite runtime failure (crash, exception, panic)
+   * Incorrect logic where you can name a specific input that produces wrong output
+   * Security vulnerability with a concrete exploit path
+   * Data corruption or silent data loss
+   * Breaking contract change (verified by reading the interface/callers)
+2. You verified the claim by reading the actual source code (not just the diff)
+3. The bug is in **production code that ships to users**, not merely a test-quality concern
 
-Reject if:
-* It's speculative / "might" without a concrete trigger
-* It's stylistic / naming / formatting
-* It's not anchored to a valid changed line
+### Reject if ANY of these are true
+* It's speculative — uses "might", "could", "potentially" without naming a concrete trigger
+* It's about test quality, test flakiness, or test coverage (unless the test change masks a real production bug)
+* It's stylistic, naming, formatting, or "best practice" without a concrete failure
+* It's not anchored to a valid changed line in the diff
 * It's already reported (dedupe against existing comments)
-* The anchor (path/side/line/startLine) would need to change to make the suggestion work — reject instead
+* The anchor (path/side/line/startLine) would need to change to make the suggestion work
+* The candidate describes a pre-existing issue not introduced or worsened by this PR
+* You cannot verify the claim after reading the relevant source files
 
 ### Deduplication (STRICT)
 
