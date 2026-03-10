@@ -68,6 +68,18 @@ Precomputed data files:
   - Offset/cursor/pagination semantic mismatches (off-by-one, prev/next behavior, commit semantics)
 - Do NOT duplicate comments already in \`${commentsPath}\`.
 - Only flag issues you are confident about—avoid speculative or stylistic nitpicks.
+
+**DO NOT report any of the following (these are common false-positive patterns):**
+- Test design issues, test flakiness, or missing test coverage
+- Style, formatting, naming, or linting issues (trailing whitespace, import ordering, etc.)
+- Edge cases requiring unusual or adversarial inputs (e.g., passing 0 or negative values) unless they occur in realistic production usage
+- Deployment, versioning, or backward-compatibility concerns (e.g., "old workers might crash")
+- Performance optimizations or suggestions (e.g., "this could be more efficient")
+- Logging concerns (e.g., "PII might be logged") unless there is a clear, specific leak of credentials or secrets
+- Submodule, build, or CI configuration issues
+- Issues in code that is NOT part of the diff (do not review unchanged code)
+
+**Reporting bar:** Only report an issue if a senior engineer would **block the PR from merging** because of it. If the issue is a "nice to have" or "consider doing X", do not report it.
 </review_guidelines>
 
 <triage_phase>

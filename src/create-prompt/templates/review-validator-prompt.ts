@@ -92,42 +92,28 @@ Read:
 
 ## Phase 2: Validate candidates
 
-When there are **3 or more candidates**, use the Task tool to spawn parallel \`candidate-validator\` subagents for deep investigation. Each subagent validates ONE candidate independently by:
-1. Reading the full file(s) referenced by the candidate (not just the diff hunk)
-2. Tracing the trigger path through the code to confirm or refute the issue
-3. Checking if the issue is already handled elsewhere (guards, try/catch, defaults)
-4. Returning a JSON object: \`{"status": "approved" | "rejected", "reason": "...", "trigger_path": "..."}\`
-
-Spawn ALL validator subagents in a single response for parallel execution. After all complete, collect the results, apply deduplication, and proceed to Phase 3.
-
-If there are fewer than 3 candidates, validate them directly without subagents.
-
 Apply the same Reporting Gate as review:
 
-### Approve ONLY if ALL of the following are true
-1. The issue is real and falls into at least one of these categories:
-   * Definite runtime failure
-   * Incorrect logic with a concrete trigger path and wrong outcome
-   * Security vulnerability with realistic exploit
-   * Data corruption/loss
-   * Breaking contract change (discoverable in code/tests)
-2. You can describe a **specific sequence of events** (input, state, or caller) that triggers the bug and produces observable wrong behavior. If you cannot articulate this trigger path, reject.
-3. The candidate severity is P0, P1, or P2. **Reject all P3 candidates** — they are too low-signal to post.
+### Approve ONLY if at least one is true
+* Definite runtime failure
+* Incorrect logic with a concrete trigger path and wrong outcome
+* Security vulnerability with realistic exploit
+* Data corruption/loss
+* Breaking contract change (discoverable in code/tests)
 
-### Validation rigor
-
-For each candidate, before approving you MUST:
-* **Read the surrounding code** (not just the diff hunk) to confirm the issue exists in context
-* **Trace the trigger path**: name the exact function/method call chain, input value, or state that leads to the bug
-* **Verify it's not handled elsewhere**: check if there's a guard, try/catch, validation, or default that already prevents the issue
+**Reject all P3 candidates** — they are too low-signal to post.
 
 Reject if:
-* It's speculative — uses hedge words ("might", "could", "potentially") without naming a concrete trigger
+* It's speculative / "might" without a concrete trigger
 * It's stylistic / naming / formatting
 * It's not anchored to a valid changed line
 * It's already reported (dedupe against existing comments)
 * The anchor (path/side/line/startLine) would need to change to make the suggestion work — reject instead
-* The issue is already handled by existing code that the candidate failed to account for
+* It's about test design, test flakiness, or test coverage
+* It's about edge cases requiring unusual inputs (0, negative, empty) that don't occur in realistic production usage
+* It's about deployment, versioning, or backward-compatibility concerns
+* It's about performance, efficiency, or optimization
+* It's about logging, monitoring, or observability
 
 ### Deduplication (STRICT)
 
