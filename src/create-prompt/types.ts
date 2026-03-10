@@ -109,6 +109,12 @@ export type ReviewArtifacts = {
   descriptionPath: string;
 };
 
+export type FixContext = {
+  parentCommentBody: string;
+  filePath: string;
+  line: number | null;
+};
+
 export type PreparedContext = CommonFields & {
   eventData: EventData;
   githubContext?: GitHubContext;
@@ -117,5 +123,6 @@ export type PreparedContext = CommonFields & {
     headRefOid: string;
   };
   reviewArtifacts?: ReviewArtifacts;
+  fixContext?: FixContext;
   outputFilePath?: string;
 };
