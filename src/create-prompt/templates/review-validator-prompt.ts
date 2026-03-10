@@ -91,9 +91,11 @@ Read:
 
 =======================
 
-## Phase 2: Validate candidates
+## Phase 2: Validate candidates (approve/reject ONLY — no suggestions yet)
 
-Apply the same Reporting Gate as review:
+**IMPORTANT**: In this phase you are ONLY deciding approve or reject. Do NOT think about fixes or suggestions yet. That comes later in Phase 3.
+
+For each candidate, read the relevant source files and verify the claim.
 
 ### Approve ONLY if ALL of these are true
 1. The issue falls into one of these categories:
@@ -111,7 +113,6 @@ Apply the same Reporting Gate as review:
 * It's stylistic, naming, formatting, or "best practice" without a concrete failure
 * It's not anchored to a valid changed line in the diff
 * It's already reported (dedupe against existing comments)
-* The anchor (path/side/line/startLine) would need to change to make the suggestion work
 * The candidate describes a pre-existing issue not introduced or worsened by this PR
 * You cannot verify the claim after reading the relevant source files
 
@@ -122,14 +123,22 @@ Before approving a candidate, check for duplicates:
 2. **Against existing comments**: If a candidate repeats an issue already covered by an existing PR comment (from \`${commentsPath}\`), reject it with reason "already reported in existing comments".
 3. Same file + overlapping line range + same issue = duplicate, even if the body text differs.
 
-### Suggestion blocks (add ONLY to approved findings)
+When rejecting, write a concise reason.
 
-After deciding to approve a candidate, consider whether a GitHub suggestion block would add value:
+**Complete ALL approve/reject decisions before proceeding to Phase 3.**
+
+=======================
+
+## Phase 3: Add suggestions to approved items (ONLY after all decisions are final)
+
+Now go back through ONLY the approved items and consider adding a suggestion block.
+Your approve/reject decisions from Phase 2 are final — do NOT change them here.
 
 **Add a suggestion ONLY when ALL of these are true:**
 * The fix is obvious and unambiguous (a single clear correct change)
 * The fix is scoped to the reported line range (no cascading changes needed)
 * You are confident the fix will not break CI or other code paths
+* The anchor (path/side/line/startLine) does not need to change to make the suggestion work
 
 **Do NOT add a suggestion when:**
 * The fix requires changes in multiple locations
@@ -137,7 +146,7 @@ After deciding to approve a candidate, consider whether a GitHub suggestion bloc
 * The fix requires understanding broader context not visible in the diff
 * The candidate already explains the issue clearly enough for the author to fix it
 
-When adding a suggestion, append it to the candidate body:
+When adding a suggestion, append it to the comment body:
 
 \`\`\`suggestion
 <replacement code>
@@ -148,13 +157,10 @@ Rules:
 * Preserve exact leading whitespace of replaced lines
 * Use RIGHT-side anchors only; do not include removed/LEFT-side lines
 * For insert-only suggestions, repeat the anchor line unchanged, then append new lines
-* Do not change the anchor fields (path/side/line/startLine) from the candidate
-
-When rejecting, write a concise reason.
 
 =======================
 
-## Phase 3: Write review_validated.json (REQUIRED)
+## Phase 4: Write review_validated.json (REQUIRED)
 
 Write \`${reviewValidatedPath}\` with this schema:
 
@@ -212,7 +218,7 @@ Tooling note:
 
 =======================
 
-## Phase 4: Post approved items
+## Phase 5: Post approved items
 
 After writing \`${reviewValidatedPath}\`, post comments ONLY for \`status === "approved"\`:
 
