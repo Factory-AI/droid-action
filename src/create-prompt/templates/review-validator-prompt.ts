@@ -107,6 +107,7 @@ Reject if:
 * It's not anchored to a valid changed line
 * It's already reported (dedupe against existing comments)
 * The anchor (path/side/line/startLine) would need to change to make the suggestion work — reject instead
+* The finding is about code that is incidental to the PR's primary intent — it's in the diff but the PR didn't meaningfully change it, and the finding isn't a P0 crash/security issue directly triggered by the PR's changes
 
 ### Deduplication (STRICT)
 
