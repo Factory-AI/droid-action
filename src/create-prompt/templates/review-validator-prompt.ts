@@ -70,6 +70,8 @@ Read:
    * Only post comments where \`status === "approved"\`.
    * Never post rejected items.
 4. Preserve ordering: keep results in the same order as candidates.
+5. **When in doubt, reject.** A false positive is worse than a missed bug.
+6. **Verify trigger paths**: Each candidate must have a \`triggerPath\` with concrete input, codePath, and wrongBehavior. Reject any candidate where the trigger path is vague, speculative, or uses "might"/"could"/"potentially".
 
 =======================
 
@@ -101,9 +103,12 @@ Apply the same Reporting Gate as review:
 * Data corruption/loss
 * Breaking contract change (discoverable in code/tests)
 
-Reject if:
-* It's speculative / "might" without a concrete trigger
-* It's stylistic / naming / formatting
+### Reject if ANY of these are true
+* The triggerPath is missing, vague, or speculative (uses "might", "could", "potentially")
+* The triggerPath input is not a realistic scenario (e.g., "if an attacker somehow...")
+* It's stylistic / naming / formatting / dead code
+* It's about test quality or test code (unless masking a production bug)
+* It's a pre-existing issue not introduced by this PR
 * It's not anchored to a valid changed line
 * It's already reported (dedupe against existing comments)
 * The anchor (path/side/line/startLine) would need to change to make the suggestion work — reject instead

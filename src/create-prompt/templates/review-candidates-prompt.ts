@@ -68,6 +68,12 @@ Precomputed data files:
   - Offset/cursor/pagination semantic mismatches (off-by-one, prev/next behavior, commit semantics)
 - Do NOT duplicate comments already in \`${commentsPath}\`.
 - Only flag issues you are confident about—avoid speculative or stylistic nitpicks.
+
+**Every finding MUST have a concrete trigger path.** Before including a finding, you must be able to fill in ALL of these:
+- **Input/condition**: What specific input, state, or condition triggers the bug?
+- **Code path**: What sequence of function calls / code lines does execution follow?
+- **Wrong behavior**: What is the observable wrong outcome (crash, wrong value, data loss, security breach)?
+If you cannot fill in all three, do not include the finding.
 </review_guidelines>
 
 <triage_phase>
@@ -205,6 +211,10 @@ Write output to \`${reviewCandidatesPath}\` using this exact schema:
     - Preserve exact leading whitespace
     - Use RIGHT-side anchors only; do not include removed/LEFT-side lines
     - For insert-only suggestions, repeat the anchor line unchanged, then append new lines
+  - \`triggerPath\`: Object with three required fields describing the concrete trigger:
+    - \`input\`: The specific input, state, or condition that triggers the bug (e.g., "user passes null for the \`name\` parameter")
+    - \`codePath\`: The code execution path (e.g., "name flows into formatUser() at line 42, which calls name.trim() without null check")
+    - \`wrongBehavior\`: The observable wrong outcome (e.g., "TypeError: Cannot read property 'trim' of null")
   - \`line\`: Target line number (single-line) or end line number (multi-line). Must be ≥ 0.
   - \`startLine\`: \`null\` for single-line comments, or start line number for multi-line comments
   - \`side\`: "RIGHT" for new/modified code (default). Use "LEFT" only for removed code **without** suggestions.
