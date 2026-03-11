@@ -70,6 +70,7 @@ Read:
    * Only post comments where \`status === "approved"\`.
    * Never post rejected items.
 4. Preserve ordering: keep results in the same order as candidates.
+5. **When in doubt, reject.** A false positive is worse than a missed bug. Only approve findings where you can verify the concrete trigger path.
 
 =======================
 
@@ -101,11 +102,16 @@ Apply the same Reporting Gate as review:
 * Data corruption/loss
 * Breaking contract change (discoverable in code/tests)
 
-Reject if:
-* It's speculative / "might" without a concrete trigger
-* It's stylistic / naming / formatting
-* It's not anchored to a valid changed line
-* It's already reported (dedupe against existing comments)
+### Reject if ANY of these are true
+* It’s speculative — uses “might”, “could”, “potentially” without naming a concrete input/condition that triggers the bug
+* It’s about missing error handling / try-catch UNLESS the absence causes a specific, demonstrable crash (name the exact exception)
+* It’s a hypothetical race condition without a specific thread interleaving that triggers the bug
+* It’s a speculative security vulnerability without a concrete exploit path with attacker-controlled input
+* It’s stylistic / naming / formatting / dead code / “best practice” without a concrete failure
+* It’s about test quality or test code (unless the test change masks a real production bug)
+* It’s a pre-existing issue not introduced or worsened by this PR
+* It’s not anchored to a valid changed line
+* It’s already reported (dedupe against existing comments)
 * The anchor (path/side/line/startLine) would need to change to make the suggestion work — reject instead
 
 ### Deduplication (STRICT)
@@ -115,11 +121,21 @@ Before approving a candidate, check for duplicates:
 2. **Against existing comments**: If a candidate repeats an issue already covered by an existing PR comment (from \`${commentsPath}\`), reject it with reason "already reported in existing comments".
 3. Same file + overlapping line range + same issue = duplicate, even if the body text differs.
 
-Suggestion block rules (minimal):
-* Preserve exact leading whitespace and keep blocks ≤ 100 lines
+### Phase 2b: Add suggestion blocks to approved findings
+
+For each approved finding, if you have **high confidence** a fix will address the issue and won’t break CI, append a GitHub suggestion block to the comment body:
+
+\`\`\`suggestion
+<replacement code>
+\`\`\`
+
+Suggestion rules:
+* Only add a suggestion when the fix is obvious and unambiguous
+* Keep blocks ≤ 100 lines
+* Preserve exact leading whitespace
 * Use RIGHT-side anchors only; do not include removed/LEFT-side lines
-* For insert-only suggestions, repeat the anchor line unchanged, then append new lines
-* Do not change the anchor fields (path/side/line/startLine) from the candidate — only edit the body
+* Do not change the anchor fields (path/side/line/startLine) from the candidate
+* If the fix is unclear or could break other code, do NOT add a suggestion — just approve the finding as-is
 
 When rejecting, write a concise reason.
 
