@@ -68,6 +68,16 @@ Precomputed data files:
   - Offset/cursor/pagination semantic mismatches (off-by-one, prev/next behavior, commit semantics)
 - Do NOT duplicate comments already in \`${commentsPath}\`.
 - Only flag issues you are confident about—avoid speculative or stylistic nitpicks.
+
+**Explicit DO-NOT-FLAG list (common false positive patterns):**
+- Missing error handling / try-catch / guard clauses UNLESS the absence causes a **specific, demonstrable crash** in production code (not "could fail" — name the exact input and exception)
+- Hypothetical race conditions UNLESS you can describe the exact thread interleaving that triggers the bug
+- Speculative security vulnerabilities ("could be XSS", "timing attack possible") UNLESS you can describe a concrete exploit path with specific attacker-controlled input
+- Style, naming, formatting, dead code, or "best practice" suggestions
+- Test quality, test coverage, or test code issues (unless the test change masks a real production bug)
+- Pre-existing issues not introduced or worsened by this PR's changes
+
+**Every finding MUST include a concrete trigger**: Name a specific input, call sequence, or condition that triggers the bug and the observable wrong behavior. If you cannot name one, do not report it.
 </review_guidelines>
 
 <triage_phase>
