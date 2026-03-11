@@ -50,6 +50,7 @@ Precomputed data files:
 
 1. Read the PR description from \`${descriptionPath}\` to understand the purpose and scope of the changes.
 2. If the PR description contains a ticket URL (e.g., Jira, Linear, GitHub issue link) or a ticket ID, **always fetch it** using FetchUrl or the appropriate tool to understand the full requirements and acceptance criteria. This context is critical for evaluating whether the implementation is correct and complete.
+3. Identify the **primary change area**: Based on the PR description and diff, determine which files/modules represent the core intent of this PR vs. incidental/supporting changes. Use this classification when deciding which findings to report.
 </understanding_phase>
 
 <review_guidelines>
@@ -68,6 +69,24 @@ Precomputed data files:
   - Offset/cursor/pagination semantic mismatches (off-by-one, prev/next behavior, commit semantics)
 - Do NOT duplicate comments already in \`${commentsPath}\`.
 - Only flag issues you are confident about—avoid speculative or stylistic nitpicks.
+
+**Explicit DO-NOT-FLAG list (common false positive patterns):**
+- Missing error handling / try-catch / guard clauses UNLESS the absence causes a **specific, demonstrable crash** in production code (not "could fail" — name the exact input and exception)
+- Hypothetical race conditions UNLESS you can describe the exact thread interleaving that triggers the bug
+- Speculative security vulnerabilities ("could be XSS", "timing attack possible") UNLESS you can describe a concrete exploit path with specific attacker-controlled input
+- Style, naming, formatting, dead code, or "best practice" suggestions
+- Test quality, test coverage, or test code issues (unless the test change masks a real production bug)
+- Pre-existing issues not introduced or worsened by this PR's changes
+
+**Every finding MUST include a concrete trigger**: Name a specific input, call sequence, or condition that triggers the bug and the observable wrong behavior. If you cannot name one, do not report it.
+
+**Change-proximity rule:**
+Before reporting ANY finding, verify it is directly related to the PR's primary intent (as described in the PR description). Apply these filters:
+- **Core changes**: Files/functions that are the main subject of the PR — report freely
+- **Supporting changes**: Files modified to support the core change (imports, config, tests) — report only P0/P1 issues
+- **Incidental context**: Code visible in the diff but not meaningfully changed by this PR (e.g., adjacent functions, unrelated files in a multi-domain PR) — do NOT report unless it's a P0 crash/security issue directly triggered by the PR's changes
+
+When the PR touches multiple unrelated subsystems, focus your review effort proportionally on the primary change area. Do not scatter findings across every file just because they appear in the diff.
 </review_guidelines>
 
 <triage_phase>
