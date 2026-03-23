@@ -203,23 +203,11 @@ Write output to \`${reviewCandidatesPath}\` using this exact schema:
 
 - **comments**: Array of comment objects
   - \`path\`: Relative file path (e.g., "src/index.ts")
-  - \`body\`: Comment text starting with priority tag [P0|P1|P2], then title, then 1 paragraph explanation
-    If the finding is **P0 or P1** AND you have **high confidence** the fix is correct and won’t break CI, you may append a GitHub suggestion block. For P2 findings, do NOT include suggestion blocks — focus your effort on identifying the bug clearly.
-
-    \`\`\`suggestion
-    <replacement code>
-    \`\`\`
-
-    **Suggestion rules:**
-    - Only include suggestion blocks on P0 or P1 findings
-    - Keep suggestion blocks ≤ 100 lines
-    - Preserve exact leading whitespace
-    - Use RIGHT-side anchors only; do not include removed/LEFT-side lines
-    - For insert-only suggestions, repeat the anchor line unchanged, then append new lines
+  - \`body\`: Comment text starting with priority tag [P0|P1|P2], then title, then 1 paragraph explanation.
+    Do NOT include suggestion blocks — focus purely on identifying the bug and explaining the trigger path. Suggestions will be added in the validation phase.
   - \`line\`: Target line number (single-line) or end line number (multi-line). Must be ≥ 0.
   - \`startLine\`: \`null\` for single-line comments, or start line number for multi-line comments
-  - \`side\`: "RIGHT" for new/modified code (default). Use "LEFT" only for removed code **without** suggestions.
-    If you include a suggestion block, choose a RIGHT-side anchor and keep it unchanged so the validator can reuse it.
+  - \`side\`: "RIGHT" for new/modified code (default). Use "LEFT" only for removed code.
   - \`commit_id\`: "${prHeadSha}"
 
 - **reviewSummary**:
