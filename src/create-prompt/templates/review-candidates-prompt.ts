@@ -65,6 +65,7 @@ Precomputed data files:
   - Wrong-variable/shadowing mistakes; contract mismatches (serializer/validated_data, interfaces/abstract methods)
   - Type-assumption bugs (e.g., numeric ops on datetime/strings, ordering key type mismatches)
   - Offset/cursor/pagination semantic mismatches (off-by-one, prev/next behavior, commit semantics)
+- **Only comment on lines that are added or modified in this PR's diff.** Do not flag issues in unchanged surrounding code you read for context — even if they are real bugs. The review scope is strictly the diff.
 - Do NOT duplicate comments already in \`${commentsPath}\`.
 - Only flag issues you are confident about—avoid speculative or stylistic nitpicks.
 </review_guidelines>
@@ -146,7 +147,8 @@ After all subagents complete, collect and merge their findings:
 3. **Add commit_id**: Add \`"commit_id": "${prHeadSha}"\` to each comment object
 4. **Deduplicate**: If multiple subagents flagged the same location (same path + line), keep only one comment (prefer higher priority: P0 > P1 > P2)
 5. **Filter existing**: Remove any comments that duplicate issues already in \`${commentsPath}\`
-6. **Write reviewSummary**: Synthesize a 1-3 sentence overall assessment based on all findings
+6. **Apply comment budget**: Count the total \`+\` lines in the diff. Allow at most **1 comment per 100 added/modified lines, with a maximum of 5 comments total** for the PR. If you have more candidates than the budget allows, **rank by severity (P0 > P1 > P2) then by confidence, and drop the lowest-ranked findings.** Quality over quantity — it is better to emit 3 high-confidence findings than 8 mixed ones.
+7. **Write reviewSummary**: Synthesize a 1-3 sentence overall assessment based on all findings
 
 Write the final aggregated result to \`${reviewCandidatesPath}\` using the schema in \`<output_spec>\`.
 </aggregation_phase>
