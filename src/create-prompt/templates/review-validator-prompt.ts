@@ -32,10 +32,6 @@ export function generateReviewValidatorPrompt(
 
   const includeSuggestions = context.includeSuggestions !== false;
 
-  const anchorRejectionRule = includeSuggestions
-    ? "\n* The anchor (path/side/line/startLine) would need to change to make the suggestion work — reject instead"
-    : "";
-
   const suggestionBlockRules = includeSuggestions
     ? "\n\nSuggestion block rules (minimal):\n" +
       "* Preserve exact leading whitespace and keep blocks ≤ 100 lines\n" +
@@ -118,7 +114,7 @@ Reject if:
 * It's speculative / "might" without a concrete trigger
 * It's stylistic / naming / formatting
 * It's not anchored to a valid changed line
-* It's already reported (dedupe against existing comments)${anchorRejectionRule}
+* It's already reported (dedupe against existing comments)
 
 ### Deduplication (STRICT)
 
