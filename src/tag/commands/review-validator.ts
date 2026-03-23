@@ -101,13 +101,11 @@ export async function prepareReviewValidatorMode({
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
   droidArgParts.push('--tag "code-review"');
 
-  const validatorModel = process.env.VALIDATOR_MODEL?.trim();
   const reviewModel = process.env.REVIEW_MODEL?.trim();
-  const modelToUse = validatorModel || reviewModel;
   const reasoningEffort = process.env.REASONING_EFFORT?.trim();
 
-  if (modelToUse) {
-    droidArgParts.push(`--model "${modelToUse}"`);
+  if (reviewModel) {
+    droidArgParts.push(`--model "${reviewModel}"`);
   }
   if (reasoningEffort) {
     droidArgParts.push(`--reasoning-effort "${reasoningEffort}"`);
