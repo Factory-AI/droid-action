@@ -8,7 +8,7 @@ import type { ReviewArtifacts } from "../../create-prompt/types";
 import { prepareMcpTools } from "../../mcp/install-mcp-server";
 import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
 import type { PrepareResult } from "../../prepare/types";
-import { generateReviewValidatorPrompt, generateDeepReviewValidatorPrompt } from "../../create-prompt/templates/review-validator-prompt";
+import { generateReviewValidatorPrompt } from "../../create-prompt/templates/review-validator-prompt";
 
 export async function prepareReviewValidatorMode({
   context,
@@ -47,10 +47,9 @@ export async function prepareReviewValidatorMode({
 
   const includeSuggestions = process.env.INCLUDE_SUGGESTIONS !== "false";
 
-  const reviewDepth = process.env.REVIEW_DEPTH || "shallow";
-  const validatorPrompt = reviewDepth === "deep"
-    ? generateDeepReviewValidatorPrompt
-    : generateReviewValidatorPrompt;
+  // Always use the standard validator — it's well-calibrated for precision.
+  // Deep mode only affects the candidate generation (deeper cross-file analysis).
+  const validatorPrompt = generateReviewValidatorPrompt;
 
   await createPrompt({
     githubContext: context,

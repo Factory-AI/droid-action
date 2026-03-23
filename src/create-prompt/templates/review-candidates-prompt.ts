@@ -136,28 +136,18 @@ Spawn all group reviewers in parallel by including multiple Task calls in one re
 </parallel_review_phase>
 
 <aggregation_phase>
-**Step 3: Aggregate, self-validate, and consolidate subagent results**
+**Step 3: Aggregate subagent results**
 
-After all subagents complete:
+After all subagents complete, collect and merge their findings:
 
 1. **Collect results**: Each subagent returns a JSON array of comment objects
 2. **Merge arrays**: Combine all arrays into a single comments array
 3. **Add commit_id**: Add \`"commit_id": "${prHeadSha}"\` to each comment object
-4. **Deduplicate**: If multiple subagents flagged the same location (same path + line) or the same root cause (even on different lines), keep only the ONE with the best anchor and clearest explanation
+4. **Deduplicate**: If multiple subagents flagged the same location (same path + line), keep only one comment (prefer higher priority: P0 > P1 > P2)
 5. **Filter existing**: Remove any comments that duplicate issues already in \`${commentsPath}\`
+6. **Write reviewSummary**: Synthesize a 1-3 sentence overall assessment based on all findings
 
-**Step 3b: Self-validation pass (CRITICAL)**
-
-Re-read the diff from \`${diffPath}\` alongside each remaining candidate. For each candidate, answer these three questions:
-  (a) **PR causality**: Is this bug introduced or materially worsened by this PR's changes? If it's a pre-existing issue visible in diff context but not caused by the PR, DROP it.
-  (b) **Concrete trigger**: Can you describe the exact input/state that triggers the failure and the exact observable symptom? If the trigger is speculative ("could potentially"), DROP it.
-  (c) **Merge-blocking**: Would a senior engineer on this team agree this should block merge? If uncertain, DROP it.
-
-Drop any finding where the answer to any question is "no". This step is non-negotiable.
-
-6. **Write reviewSummary**: Synthesize a 1-3 sentence overall assessment based on surviving findings
-
-Write the final result to \`${reviewCandidatesPath}\` using the schema in \`<output_spec>\`.
+Write the final aggregated result to \`${reviewCandidatesPath}\` using the schema in \`<output_spec>\`.
 </aggregation_phase>
 
 <output_spec>
