@@ -8,7 +8,7 @@ import { prepareMcpTools } from "../../mcp/install-mcp-server";
 import { createInitialComment } from "../../github/operations/comments/create-initial";
 import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
 import { isEntityContext } from "../../github/context";
-import { generateReviewCandidatesPrompt } from "../../create-prompt/templates/review-candidates-prompt";
+import { generateReviewCandidatesPrompt, generateDeepReviewCandidatesPrompt } from "../../create-prompt/templates/review-candidates-prompt";
 import type { Octokits } from "../../github/api/client";
 import type { PrepareResult } from "../../prepare/types";
 
@@ -86,6 +86,11 @@ export async function prepareReviewMode({
 
   const includeSuggestions = process.env.INCLUDE_SUGGESTIONS !== "false";
 
+  const reviewDepth = process.env.REVIEW_DEPTH || "shallow";
+  const candidatesPrompt = reviewDepth === "deep"
+    ? generateDeepReviewCandidatesPrompt
+    : generateReviewCandidatesPrompt;
+
   await createPrompt({
     githubContext: context,
     commentId,
@@ -95,7 +100,7 @@ export async function prepareReviewMode({
       headRefName: prData.headRefName,
       headRefOid: prData.headRefOid,
     },
-    generatePrompt: generateReviewCandidatesPrompt,
+    generatePrompt: candidatesPrompt,
     reviewArtifacts,
     includeSuggestions,
   });
