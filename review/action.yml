@@ -36,6 +36,10 @@ inputs:
     description: "Include code suggestion blocks in review comments when the fix is high-confidence. Set to 'false' to disable suggestions."
     required: false
     default: "true"
+  review_depth:
+    description: "Review depth: 'shallow' (default) for fast reviews, 'deep' for thorough cross-file analysis with consolidation"
+    required: false
+    default: "shallow"
 
 outputs:
   conclusion:
@@ -87,6 +91,7 @@ runs:
         REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
         REASONING_EFFORT: ${{ inputs.reasoning_effort }}
         INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}
+        REVIEW_DEPTH: ${{ inputs.review_depth }}
         DROID_OUTPUT_FILE: ${{ inputs.output_file }}
 
     - name: Setup Custom Droids
@@ -123,6 +128,7 @@ runs:
         REVIEW_MODEL: ${{ inputs.review_model }}
         REASONING_EFFORT: ${{ inputs.reasoning_effort }}
         INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}
+        REVIEW_DEPTH: ${{ inputs.review_depth }}
         DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
 
     - name: Run Validator

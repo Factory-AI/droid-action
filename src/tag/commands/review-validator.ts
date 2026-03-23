@@ -8,7 +8,7 @@ import type { ReviewArtifacts } from "../../create-prompt/types";
 import { prepareMcpTools } from "../../mcp/install-mcp-server";
 import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
 import type { PrepareResult } from "../../prepare/types";
-import { generateReviewValidatorPrompt } from "../../create-prompt/templates/review-validator-prompt";
+import { generateReviewValidatorPrompt, generateDeepReviewValidatorPrompt } from "../../create-prompt/templates/review-validator-prompt";
 
 export async function prepareReviewValidatorMode({
   context,
@@ -47,6 +47,11 @@ export async function prepareReviewValidatorMode({
 
   const includeSuggestions = process.env.INCLUDE_SUGGESTIONS !== "false";
 
+  const reviewDepth = process.env.REVIEW_DEPTH || "shallow";
+  const validatorPrompt = reviewDepth === "deep"
+    ? generateDeepReviewValidatorPrompt
+    : generateReviewValidatorPrompt;
+
   await createPrompt({
     githubContext: context,
     commentId: trackingCommentId,
@@ -56,7 +61,7 @@ export async function prepareReviewValidatorMode({
       headRefName: prData.headRefName,
       headRefOid: prData.headRefOid,
     },
-    generatePrompt: generateReviewValidatorPrompt,
+    generatePrompt: validatorPrompt,
     reviewArtifacts,
     includeSuggestions,
   });

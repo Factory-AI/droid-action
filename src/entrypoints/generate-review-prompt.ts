@@ -12,7 +12,7 @@ import { fetchPRBranchData } from "../github/data/pr-fetcher";
 import { computeReviewArtifacts } from "../github/data/review-artifacts";
 import { createPrompt } from "../create-prompt";
 import { prepareMcpTools } from "../mcp/install-mcp-server";
-import { generateReviewCandidatesPrompt } from "../create-prompt/templates/review-candidates-prompt";
+import { generateReviewCandidatesPrompt, generateDeepReviewCandidatesPrompt } from "../create-prompt/templates/review-candidates-prompt";
 import { generateSecurityReviewPrompt } from "../create-prompt/templates/security-review-prompt";
 import { normalizeDroidArgs, parseAllowedTools } from "../utils/parse-tools";
 
@@ -87,11 +87,14 @@ async function run() {
       githubToken,
     });
 
-    // Select prompt generator based on review type
+    // Select prompt generator based on review type and depth
+    const reviewDepth = process.env.REVIEW_DEPTH || "shallow";
     const generatePrompt =
       reviewType === "security"
         ? generateSecurityReviewPrompt
-        : generateReviewCandidatesPrompt;
+        : reviewDepth === "deep"
+          ? generateDeepReviewCandidatesPrompt
+          : generateReviewCandidatesPrompt;
 
     // Pass the output file path so the prompt can instruct the Droid
     // to write structured findings for the combine step
