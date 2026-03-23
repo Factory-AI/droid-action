@@ -27,6 +27,28 @@ export function generateReviewCandidatesPrompt(
     process.env.REVIEW_CANDIDATES_PATH ??
     "$RUNNER_TEMP/droid-prompts/review_candidates.json";
 
+  const includeSuggestions = context.includeSuggestions !== false;
+
+  const bodyFieldDescription = includeSuggestions
+    ? "  - `body`: Comment text starting with priority tag [P0|P1|P2], then title, then 1 paragraph explanation\n" +
+      "    If you have **high confidence** a fix will address the issue and won't break CI, append a GitHub suggestion block:\n" +
+      "\n" +
+      "    ```suggestion\n" +
+      "    <replacement code>\n" +
+      "    ```\n" +
+      "\n" +
+      "    **Suggestion rules:**\n" +
+      "    - Keep suggestion blocks ≤ 100 lines\n" +
+      "    - Preserve exact leading whitespace\n" +
+      "    - Use RIGHT-side anchors only; do not include removed/LEFT-side lines\n" +
+      "    - For insert-only suggestions, repeat the anchor line unchanged, then append new lines"
+    : "  - `body`: Comment text starting with priority tag [P0|P1|P2], then title, then 1 paragraph explanation";
+
+  const sideFieldDescription = includeSuggestions
+    ? '  - `side`: "RIGHT" for new/modified code (default). Use "LEFT" only for removed code **without** suggestions.\n' +
+      "    If you include a suggestion block, choose a RIGHT-side anchor and keep it unchanged so the validator can reuse it."
+    : '  - `side`: "RIGHT" for new/modified code (default), "LEFT" only for removed code';
+
   return `You are a senior staff software engineer and expert code reviewer.
 
 Your task: Review PR #${prNumber} in ${repoFullName} and generate a JSON file with **high-confidence, actionable** review comments that pinpoint genuine issues.
@@ -167,7 +189,7 @@ Write output to \`${reviewCandidatesPath}\` using this exact schema:
   "comments": [
     {
       "path": "src/index.ts",
-      "body": "[P1] Title\n\n1 paragraph.",
+      "body": "[P1] Title\\n\\n1 paragraph.",
       "line": 42,
       "startLine": null,
       "side": "RIGHT",
@@ -192,22 +214,10 @@ Write output to \`${reviewCandidatesPath}\` using this exact schema:
 
 - **comments**: Array of comment objects
   - \`path\`: Relative file path (e.g., "src/index.ts")
-  - \`body\`: Comment text starting with priority tag [P0|P1|P2], then title, then 1 paragraph explanation
-    If you have **high confidence** a fix will address the issue and won’t break CI, append a GitHub suggestion block:
-
-    \`\`\`suggestion
-    <replacement code>
-    \`\`\`
-
-    **Suggestion rules:**
-    - Keep suggestion blocks ≤ 100 lines
-    - Preserve exact leading whitespace
-    - Use RIGHT-side anchors only; do not include removed/LEFT-side lines
-    - For insert-only suggestions, repeat the anchor line unchanged, then append new lines
+${bodyFieldDescription}
   - \`line\`: Target line number (single-line) or end line number (multi-line). Must be ≥ 0.
   - \`startLine\`: \`null\` for single-line comments, or start line number for multi-line comments
-  - \`side\`: "RIGHT" for new/modified code (default). Use "LEFT" only for removed code **without** suggestions.
-    If you include a suggestion block, choose a RIGHT-side anchor and keep it unchanged so the validator can reuse it.
+${sideFieldDescription}
   - \`commit_id\`: "${prHeadSha}"
 
 - **reviewSummary**:

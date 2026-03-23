@@ -84,6 +84,8 @@ export async function prepareReviewMode({
     githubToken,
   });
 
+  const includeSuggestions = process.env.INCLUDE_SUGGESTIONS !== "false";
+
   await createPrompt({
     githubContext: context,
     commentId,
@@ -95,6 +97,7 @@ export async function prepareReviewMode({
     },
     generatePrompt: generateReviewCandidatesPrompt,
     reviewArtifacts,
+    includeSuggestions,
   });
   core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-review");
 
