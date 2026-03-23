@@ -116,6 +116,7 @@ Before approving a candidate, check for duplicates:
 3. Same file + overlapping line range + same issue = duplicate, even if the body text differs.
 
 Suggestion block rules (minimal):
+* Suggestion blocks should only appear on P0/P1 findings. If a P2 finding has a suggestion block, remove it from the body before approving.
 * Preserve exact leading whitespace and keep blocks ≤ 100 lines
 * Use RIGHT-side anchors only; do not include removed/LEFT-side lines
 * For insert-only suggestions, repeat the anchor line unchanged, then append new lines

@@ -68,6 +68,16 @@ Precomputed data files:
   - Offset/cursor/pagination semantic mismatches (off-by-one, prev/next behavior, commit semantics)
 - Do NOT duplicate comments already in \`${commentsPath}\`.
 - Only flag issues you are confident about—avoid speculative or stylistic nitpicks.
+
+**Explicit DO-NOT-FLAG list (common false positive patterns):**
+- Missing error handling / try-catch / guard clauses UNLESS the absence causes a **specific, demonstrable crash** in production code (not "could fail" — name the exact input and exception)
+- Hypothetical race conditions UNLESS you can describe the exact thread interleaving that triggers the bug
+- Speculative security vulnerabilities ("could be XSS", "timing attack possible") UNLESS you can describe a concrete exploit path with specific attacker-controlled input
+- Style, naming, formatting, dead code, or "best practice" suggestions
+- Test quality, test coverage, or test code issues (unless the test change masks a real production bug)
+- Pre-existing issues not introduced or worsened by this PR's changes
+
+**Every finding MUST include a concrete trigger**: Name a specific input, call sequence, or condition that triggers the bug and the observable wrong behavior. If you cannot name one, do not report it.
 </review_guidelines>
 
 <triage_phase>
@@ -194,13 +204,14 @@ Write output to \`${reviewCandidatesPath}\` using this exact schema:
 - **comments**: Array of comment objects
   - \`path\`: Relative file path (e.g., "src/index.ts")
   - \`body\`: Comment text starting with priority tag [P0|P1|P2], then title, then 1 paragraph explanation
-    If you have **high confidence** a fix will address the issue and won’t break CI, append a GitHub suggestion block:
+    If the finding is **P0 or P1** AND you have **high confidence** the fix is correct and won’t break CI, you may append a GitHub suggestion block. For P2 findings, do NOT include suggestion blocks — focus your effort on identifying the bug clearly.
 
     \`\`\`suggestion
     <replacement code>
     \`\`\`
 
     **Suggestion rules:**
+    - Only include suggestion blocks on P0 or P1 findings
     - Keep suggestion blocks ≤ 100 lines
     - Preserve exact leading whitespace
     - Use RIGHT-side anchors only; do not include removed/LEFT-side lines
