@@ -107,6 +107,9 @@ Reject if:
 * It's not anchored to a valid changed line
 * It's already reported (dedupe against existing comments)
 * The anchor (path/side/line/startLine) would need to change to make the suggestion work — reject instead
+* It flags missing error handling / try-catch for a code path that won't crash in practice (e.g., the caller already handles the error, or the input is validated upstream)
+* It describes a hypothetical race condition or timing issue without identifying the specific concurrent access pattern that triggers it
+* It's about code that appears in the diff but is not part of the PR's primary change — e.g., adjacent functions, unrelated files in a multi-subsystem PR, or code from a different PR's changes that happen to be visible in context
 
 ### Deduplication (STRICT)
 
@@ -114,6 +117,13 @@ Before approving a candidate, check for duplicates:
 1. **Among candidates**: If two or more candidates describe the same underlying bug (same root cause, even if anchored to different lines or worded differently), approve only the ONE with the best anchor and clearest explanation. Reject the rest with reason "duplicate of candidate N".
 2. **Against existing comments**: If a candidate repeats an issue already covered by an existing PR comment (from \`${commentsPath}\`), reject it with reason "already reported in existing comments".
 3. Same file + overlapping line range + same issue = duplicate, even if the body text differs.
+
+### Confidence-based filtering
+
+Pay attention to the candidate's priority level:
+- **P0 findings**: Approve if the trigger path checks out. These should be definite crashes/exploits.
+- **P1 findings**: Approve if you can verify the logic error or security issue is real. 
+- **P2 findings**: Apply extra scrutiny. Reject if the finding is speculative, if you cannot verify the trigger, or if it's a "nice to have" rather than a real bug. P2 findings should only survive validation if they describe a genuine, verifiable issue.
 
 Suggestion block rules (minimal):
 * Preserve exact leading whitespace and keep blocks ≤ 100 lines
