@@ -68,6 +68,7 @@ Precomputed data files:
   - Offset/cursor/pagination semantic mismatches (off-by-one, prev/next behavior, commit semantics)
 - Do NOT duplicate comments already in \`${commentsPath}\`.
 - Only flag issues you are confident about—avoid speculative or stylistic nitpicks.
+- **Confidence calibration:** For each finding, honestly assess how certain you are. Mark findings as P0 only if you are virtually certain of a crash/exploit. Mark as P1 for high-confidence correctness/security issues. Use P2 for findings where the bug is plausible but you cannot fully verify the trigger path from the available context. This severity rating will be used downstream for filtering.
 </review_guidelines>
 
 <triage_phase>

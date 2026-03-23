@@ -101,12 +101,22 @@ Apply the same Reporting Gate as review:
 * Data corruption/loss
 * Breaking contract change (discoverable in code/tests)
 
-Reject if:
+Reject if ANY of these are true:
 * It's speculative / "might" without a concrete trigger
 * It's stylistic / naming / formatting
 * It's not anchored to a valid changed line
 * It's already reported (dedupe against existing comments)
 * The anchor (path/side/line/startLine) would need to change to make the suggestion work — reject instead
+* It flags missing error handling / try-catch for a code path that won't crash in practice (e.g., the caller already handles the error, or the input is validated upstream)
+* It describes a hypothetical race condition or timing issue without identifying the specific concurrent access pattern that triggers it
+* It's about code that appears in the diff but is not part of the PR's primary change — e.g., adjacent functions, unrelated files in a multi-subsystem PR, or code from a different PR's changes that happen to be visible in context
+
+### Confidence-based filtering
+
+Pay attention to the candidate's priority level:
+- **P0 findings**: Approve if the trigger path checks out. These should be definite crashes/exploits.
+- **P1 findings**: Approve if you can verify the logic error or security issue is real.
+- **P2 findings**: Reject by default. Only approve a P2 finding if ALL of these are true: (1) you can independently verify the bug exists by examining the code, (2) the bug has a concrete trigger that a user or caller could realistically hit, and (3) the finding is NOT about edge cases, defensive coding, or style. When in doubt about a P2, reject it.
 
 ### Deduplication (STRICT)
 
