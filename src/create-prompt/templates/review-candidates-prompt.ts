@@ -53,6 +53,8 @@ export function generateDeepReviewCandidatesPrompt(
 
 Your task: Review PR #${prNumber} in ${repoFullName} and generate a JSON file with review comments. This is a thorough review — chase cross-file assumptions and verify runtime behavior.
 
+**Returning an empty comments array is expected and correct if no genuine issues are found. Do not pad output with low-confidence observations.**
+
 <context>
 Repo: ${repoFullName}
 PR Number: ${prNumber}
@@ -134,20 +136,28 @@ Spawn all group reviewers in parallel by including multiple Task calls in one re
 </parallel_review_phase>
 
 <aggregation_phase>
-**Step 3: Aggregate and consolidate subagent results**
+**Step 3: Aggregate, self-validate, and consolidate subagent results**
 
-After all subagents complete, collect, merge, and **consolidate** their findings:
+After all subagents complete:
 
 1. **Collect results**: Each subagent returns a JSON array of comment objects
 2. **Merge arrays**: Combine all arrays into a single comments array
 3. **Add commit_id**: Add \`"commit_id": "${prHeadSha}"\` to each comment object
-4. **Deduplicate**: If multiple subagents flagged the same location (same path + line) or the same root cause, keep only the best comment (prefer higher priority: P0 > P1 > P2, then prefer "high" confidence over "medium")
+4. **Deduplicate**: If multiple subagents flagged the same location (same path + line) or the same root cause (even on different lines), keep only the ONE with the best anchor and clearest explanation
 5. **Filter existing**: Remove any comments that duplicate issues already in \`${commentsPath}\`
-6. **Consolidate (CRITICAL)**: If more than 5 comments remain after dedup, rank by priority and confidence, then **keep only the top 5**. Drop the lowest-ranked findings. This ensures only the most impactful issues are reported.
-   - Ranking order: P0 high-confidence > P0 medium > P1 high > P1 medium > P2 high > P2 medium
-7. **Write reviewSummary**: Synthesize a 1-3 sentence overall assessment based on all findings
 
-Write the final aggregated result to \`${reviewCandidatesPath}\` using the schema in \`<output_spec>\`.
+**Step 3b: Self-validation pass (CRITICAL)**
+
+Re-read the diff from \`${diffPath}\` alongside each remaining candidate. For each candidate, answer these three questions:
+  (a) **PR causality**: Is this bug introduced or materially worsened by this PR's changes? If it's a pre-existing issue visible in diff context but not caused by the PR, DROP it.
+  (b) **Concrete trigger**: Can you describe the exact input/state that triggers the failure and the exact observable symptom? If the trigger is speculative ("could potentially"), DROP it.
+  (c) **Merge-blocking**: Would a senior engineer on this team agree this should block merge? If uncertain, DROP it.
+
+Drop any finding where the answer to any question is "no". This step is non-negotiable.
+
+6. **Write reviewSummary**: Synthesize a 1-3 sentence overall assessment based on surviving findings
+
+Write the final result to \`${reviewCandidatesPath}\` using the schema in \`<output_spec>\`.
 </aggregation_phase>
 
 <output_spec>
