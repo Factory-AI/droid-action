@@ -390,7 +390,7 @@ describe("prepareReviewMode", () => {
       (call: unknown[]) => call[0] === "droid_args",
     ) as [string, string] | undefined;
     // When neither REVIEW_MODEL nor REASONING_EFFORT is provided, no --model or --reasoning-effort
-    // flags are added. Defaults are handled by the action.yml inputs (gpt-5.2 / high).
+    // flags are added. Defaults are handled by the action.yml inputs (gpt-5.4 / high).
     expect(droidArgsCall?.[1]).not.toContain("--model");
     expect(droidArgsCall?.[1]).not.toContain("--reasoning-effort");
   });
