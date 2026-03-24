@@ -68,6 +68,8 @@ Precomputed data files:
   - Offset/cursor/pagination semantic mismatches (off-by-one, prev/next behavior, commit semantics)
 - Do NOT duplicate comments already in \`${commentsPath}\`.
 - Only flag issues you are confident about—avoid speculative or stylistic nitpicks.
+- **Do NOT flag pre-existing issues**: Only comment on bugs introduced or made newly reachable by this PR's changes. If the code existed before this PR, it's not your concern.
+- **Do NOT flag defensive coding suggestions**: Don't recommend adding null checks, input validation, or error handling for theoretical edge cases unless you can demonstrate they're actually reachable.
 
 **Every finding MUST have a concrete trigger path.** Before including a finding, you must be able to fill in ALL of these:
 - **Input/condition**: What specific input, state, or condition triggers the bug?
@@ -144,16 +146,22 @@ Spawn all group reviewers in parallel by including multiple Task calls in one re
 </parallel_review_phase>
 
 <aggregation_phase>
-**Step 3: Aggregate subagent results**
+**Step 3: Aggregate and verify subagent results**
 
-After all subagents complete, collect and merge their findings:
+After all subagents complete, collect, verify, and merge their findings:
 
 1. **Collect results**: Each subagent returns a JSON array of comment objects
 2. **Merge arrays**: Combine all arrays into a single comments array
 3. **Add commit_id**: Add \`"commit_id": "${prHeadSha}"\` to each comment object
 4. **Deduplicate**: If multiple subagents flagged the same location (same path + line), keep only one comment (prefer higher priority: P0 > P1 > P2)
 5. **Filter existing**: Remove any comments that duplicate issues already in \`${commentsPath}\`
-6. **Write reviewSummary**: Synthesize a 1-3 sentence overall assessment based on all findings
+6. **Self-challenge each finding**: For each remaining candidate, re-read the diff at that location and ask:
+   - Is this bug actually **introduced by this PR**, or does it exist in pre-existing code?
+   - Is the trigger path **actually reachable** given the PR's execution context?
+   - Could the framework/library/runtime already handle this case?
+   - Would a senior engineer reading this comment say "yes, that's a real bug in my PR" or "that's a theoretical concern"?
+   Drop any finding where the answer to these questions reveals it's speculative, pre-existing, or framework-handled.
+7. **Write reviewSummary**: Synthesize a 1-3 sentence overall assessment based on all findings
 
 Write the final aggregated result to \`${reviewCandidatesPath}\` using the schema in \`<output_spec>\`.
 </aggregation_phase>
