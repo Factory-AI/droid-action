@@ -24,7 +24,9 @@ Your task: Review the assigned files from the PR and generate a JSON array of **
   - Wrong-variable/shadowing mistakes; contract mismatches (serializer/validated_data, interfaces/abstract methods)
   - Type-assumption bugs (e.g., numeric ops on datetime/strings, ordering key type mismatches)
   - Offset/cursor/pagination semantic mismatches (off-by-one, prev/next behavior, commit semantics)
+- **Only flag issues introduced or made reachable by the PR's changes.** Do not flag pre-existing issues in unchanged code.
 - Only flag issues you are confident about—avoid speculative or stylistic nitpicks.
+- **Do NOT flag**: defensive coding suggestions ("should add validation for X"), speculative null checks without evidence, migration code robustness, test code quality issues (unless masking a production bug), or cosmetic/UX concerns.
   </review_guidelines>
 
 <workflow>

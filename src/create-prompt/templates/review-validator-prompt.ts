@@ -70,8 +70,8 @@ Read:
    * Only post comments where \`status === "approved"\`.
    * Never post rejected items.
 4. Preserve ordering: keep results in the same order as candidates.
-5. **When in doubt, reject.** A false positive is worse than a missed bug.
-6. **Verify trigger paths**: Each candidate must have a \`triggerPath\` with concrete input, codePath, and wrongBehavior. Reject any candidate where the trigger path is vague, speculative, or uses "might"/"could"/"potentially".
+5. **When in doubt, reject.** A false positive wastes developer time and erodes trust. Only approve findings you are highly confident are real bugs introduced by this PR.
+6. **Read the code**: For each candidate, you MUST read the actual source file to verify the claim. Do not approve based solely on the candidate's description.
 
 =======================
 
@@ -94,24 +94,30 @@ Read:
 
 ## Phase 2: Validate candidates
 
-Apply the same Reporting Gate as review:
+For EACH candidate, you must:
+1. Read the actual source file at the candidate's path
+2. Read the diff for that file
+3. Verify the claim against the real code (not just the candidate's description)
+4. Apply the gates below
 
-### Approve ONLY if at least one is true
-* Definite runtime failure
-* Incorrect logic with a concrete trigger path and wrong outcome
-* Security vulnerability with realistic exploit
-* Data corruption/loss
-* Breaking contract change (discoverable in code/tests)
+### Approve ONLY if ALL of these are true
+* The bug is **introduced or made reachable by this PR's changes** (not a pre-existing issue)
+* You can describe a **concrete input or state** that triggers the wrong behavior
+* The wrong behavior is **observable** (crash, wrong result, data loss, security breach)
+* You verified the claim by reading the actual code, not just the candidate's description
 
 ### Reject if ANY of these are true
-* The triggerPath is missing, vague, or speculative (uses "might", "could", "potentially")
-* The triggerPath input is not a realistic scenario (e.g., "if an attacker somehow...")
+* **Pre-existing issue**: The bug exists in code not modified by this PR, or existed before the PR
+* **Speculative null/missing check**: Claims something "can be null" or "might be missing" without evidence it actually occurs in the PR's execution paths
+* **Framework/library handles it**: The candidate assumes a vulnerability but the framework already provides protection (e.g., CSRF protection from framework middleware, ORM escaping)
+* **Defensive coding suggestion**: Recommends adding validation/error handling for theoretical edge cases that aren't demonstrated to be reachable
+* **Multiple comments on same root cause**: If another candidate already covers this bug, reject as duplicate
+* **Test code quality**: Flagging test code issues unless the test is masking a production bug
+* **Migration/one-off code**: Applying production robustness standards to migration code that runs once
+* **Cosmetic/UX as bug**: Visual, accessibility, or UX concerns presented as runtime bugs
 * It's stylistic / naming / formatting / dead code
-* It's about test quality or test code (unless masking a production bug)
-* It's a pre-existing issue not introduced by this PR
 * It's not anchored to a valid changed line
 * It's already reported (dedupe against existing comments)
-* The anchor (path/side/line/startLine) would need to change to make the suggestion work — reject instead
 
 ### Deduplication (STRICT)
 
