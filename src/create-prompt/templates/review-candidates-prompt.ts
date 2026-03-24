@@ -119,13 +119,13 @@ Guidelines for grouping:
 <parallel_review_phase>
 **Step 2: Spawn parallel subagents to review each group**
 
-After grouping, use the Task tool to spawn parallel \`deep-file-group-reviewer\` subagents. Each subagent will review one group of files independently with thorough cross-file analysis.
+After grouping, use the Task tool to spawn parallel \`file-group-reviewer\` subagents. Each subagent will review one group of files independently with thorough cross-file analysis.
 
 **IMPORTANT**: Spawn ALL subagents in a single response to enable parallel execution.
 
 For each group, invoke the Task tool with:
-- \`subagent_type\`: "deep-file-group-reviewer"
-- \`description\`: Brief label (e.g., "Deep review auth module")
+- \`subagent_type\`: "file-group-reviewer"
+- \`description\`: Brief label (e.g., "Review auth module")
 - \`prompt\`: Must include:
   1. The PR context (repo, PR number, base/head refs)
   2. The list of assigned files for this group
