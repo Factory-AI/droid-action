@@ -1,7 +1,7 @@
 ---
 name: file-group-reviewer
 description: Reviews an assigned subset of PR files for bugs, security issues, and correctness problems. Spawned in parallel by the main review agent to ensure thorough coverage.
-model: inherit
+model: gpt-5.2
 tools: ["Read", "Grep", "Glob", "LS"]
 ---
 
