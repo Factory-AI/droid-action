@@ -166,14 +166,9 @@ Tooling note:
 * If the tools list includes \`ApplyPatch\` (common for OpenAI models like GPT-5.2), use \`ApplyPatch\` to create/update the file at the exact path.
 * Otherwise, use \`Create\` (or \`Edit\` if overwriting) to write the file.
 
-=======================
-
-## Phase 4: Post approved items
-
-After writing \`${reviewValidatedPath}\`, post comments ONLY for \`status === "approved"\`:
-
-* For each approved entry, call \`github_inline_comment___create_inline_comment\` with the \`comment\` object.
-* Submit a review via \`github_pr___submit_review\` using the summary body (if there are any approved items OR a meaningful overall assessment).
-* Do not approve or request changes.
+**DO NOT** post to GitHub.
+**DO NOT** invoke any PR mutation tools (inline comments, submit review, delete/minimize/reply/resolve, etc.).
+**DO NOT** modify any files other than writing to \`${reviewValidatedPath}\`.
+Output ONLY the JSON file—no additional commentary.
 `;
 }

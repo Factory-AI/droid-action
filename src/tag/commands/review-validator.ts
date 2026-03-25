@@ -75,11 +75,9 @@ export async function prepareReviewValidatorMode({
     "ApplyPatch",
     "Create",
     "Edit",
-    "github_comment___update_droid_comment",
-    "github_inline_comment___create_inline_comment",
   ];
 
-  const validatorTools = ["github_pr___submit_review"];
+  const validatorTools: string[] = [];
 
   const allowedTools = Array.from(
     new Set([...baseTools, ...validatorTools, ...userAllowedMCPTools]),
