@@ -36,6 +36,10 @@ inputs:
     description: "Include code suggestion blocks in review comments when the fix is high-confidence. Set to 'false' to disable suggestions."
     required: false
     default: "true"
+  path_to_droid_executable:
+    description: "Optional path to a custom Droid CLI executable. If provided, skips automatic installation."
+    required: false
+    default: ""
 
 outputs:
   conclusion:
@@ -59,11 +63,20 @@ runs:
         bun install
 
     - name: Install Droid CLI
+      if: inputs.path_to_droid_executable == ''
       shell: bash
       run: |
         curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
         "$HOME/.local/bin/droid" --version
+
+    - name: Setup Custom Droid Path
+      if: inputs.path_to_droid_executable != ''
+      shell: bash
+      run: |
+        echo "Using custom Droid executable: ${{ inputs.path_to_droid_executable }}"
+        DROID_DIR=$(dirname "${{ inputs.path_to_droid_executable }}")
+        echo "$DROID_DIR" >> "$GITHUB_PATH"
 
     - name: Get GitHub Token
       id: token
