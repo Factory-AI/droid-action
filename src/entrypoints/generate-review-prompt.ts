@@ -15,7 +15,6 @@ import { prepareMcpTools } from "../mcp/install-mcp-server";
 import { generateReviewCandidatesPrompt } from "../create-prompt/templates/review-candidates-prompt";
 import { generateSecurityReviewPrompt } from "../create-prompt/templates/security-review-prompt";
 import { normalizeDroidArgs, parseAllowedTools } from "../utils/parse-tools";
-import { loadSkill } from "../utils/load-skill";
 
 async function run() {
   try {
@@ -99,9 +98,6 @@ async function run() {
     const outputFilePath = process.env.DROID_OUTPUT_FILE || undefined;
     const includeSuggestions = process.env.INCLUDE_SUGGESTIONS !== "false";
 
-    const reviewSkillContent =
-      reviewType === "code" ? await loadSkill("review") : undefined;
-
     await createPrompt({
       githubContext: context,
       commentId,
@@ -114,7 +110,6 @@ async function run() {
       reviewArtifacts,
       outputFilePath,
       includeSuggestions,
-      reviewSkillContent,
     });
 
     // Set run type

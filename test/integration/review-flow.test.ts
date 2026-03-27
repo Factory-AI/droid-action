@@ -8,7 +8,6 @@ import * as createInitial from "../../src/github/operations/comments/create-init
 import * as mcpInstaller from "../../src/mcp/install-mcp-server";
 import * as actorValidation from "../../src/github/validation/actor";
 import * as promptModule from "../../src/create-prompt";
-import * as skillLoader from "../../src/utils/load-skill";
 import * as core from "@actions/core";
 import * as childProcess from "node:child_process";
 
@@ -24,7 +23,6 @@ describe("review command integration", () => {
   let exportVarSpy: ReturnType<typeof spyOn>;
   let promptSpy: ReturnType<typeof spyOn>;
   let execSyncSpy: ReturnType<typeof spyOn>;
-  let loadSkillSpy: ReturnType<typeof spyOn>;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(path.join(os.tmpdir(), "review-int-"));
@@ -41,9 +39,6 @@ describe("review command integration", () => {
     promptSpy = spyOn(promptModule, "createPrompt").mockResolvedValue();
     setOutputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
     exportVarSpy = spyOn(core, "exportVariable").mockImplementation(() => {});
-    loadSkillSpy = spyOn(skillLoader, "loadSkill").mockResolvedValue(
-      "mock skill content",
-    );
 
     execSyncSpy = spyOn(childProcess, "execSync").mockImplementation(((
       cmd: string,
@@ -65,7 +60,6 @@ describe("review command integration", () => {
     setOutputSpy.mockRestore();
     exportVarSpy.mockRestore();
     execSyncSpy.mockRestore();
-    loadSkillSpy.mockRestore();
 
     if (process.env.RUNNER_TEMP) {
       await rm(process.env.RUNNER_TEMP, { recursive: true, force: true });

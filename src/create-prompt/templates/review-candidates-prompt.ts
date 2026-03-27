@@ -1,4 +1,3 @@
-import { formatSkillSection } from "../../utils/load-skill";
 import type { PreparedContext } from "../types";
 
 export function generateReviewCandidatesPrompt(
@@ -53,7 +52,9 @@ export function generateReviewCandidatesPrompt(
   return `You are a senior staff software engineer and expert code reviewer.
 
 Your task: Review PR #${prNumber} in ${repoFullName} and generate a JSON file with **high-confidence, actionable** review comments that pinpoint genuine issues.
-${formatSkillSection(context.reviewSkillContent)}
+
+${includeSuggestions ? "Before starting, invoke the 'review' skill to load the review methodology. Follow its bug patterns, analysis discipline, reporting gate, priority levels, and suggestion block rules throughout your review." : "Before starting, invoke the 'review' skill to load the review methodology. Follow its bug patterns, analysis discipline, reporting gate, and priority levels throughout your review. Do NOT include code suggestion blocks."}
+
 <context>
 Repo: ${repoFullName}
 PR Number: ${prNumber}

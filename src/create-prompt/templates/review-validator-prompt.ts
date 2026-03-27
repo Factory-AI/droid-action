@@ -1,4 +1,3 @@
-import { formatSkillSection } from "../../utils/load-skill";
 import type { PreparedContext } from "../types";
 
 export function generateReviewValidatorPrompt(
@@ -44,7 +43,9 @@ export function generateReviewValidatorPrompt(
   return `You are validating candidate review comments for PR #${prNumber} in ${repoFullName}.
 
 IMPORTANT: This is Phase 2 (validator) of a two-pass review pipeline.
-${formatSkillSection(context.reviewSkillContent)}
+
+${includeSuggestions ? "Before starting, invoke the 'review' skill to load the review methodology. Apply its reporting gate, confidence calibration, deduplication rules, and suggestion block rules." : "Before starting, invoke the 'review' skill to load the review methodology. Apply its reporting gate, confidence calibration, and deduplication rules. Do NOT include code suggestion blocks."}
+
 ### Context
 
 * Repo: ${repoFullName}
