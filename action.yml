@@ -99,6 +99,10 @@ inputs:
     description: "Override reasoning effort for review flows (passed to Droid Exec as --reasoning-effort). If empty and review_model is also empty, the action defaults internally to gpt-5.2 at high reasoning."
     required: false
     default: "high"
+  include_suggestions:
+    description: "Include code suggestion blocks in review comments when the fix is high-confidence. Set to 'false' to disable suggestions."
+    required: false
+    default: "true"
   review_candidates_path:
     description: "Path to write review candidates JSON (pass 1 of the two-pass review)."
     required: false
@@ -190,6 +194,7 @@ runs:
         FILL_MODEL: ${{ inputs.fill_model }}
         ADDITIONAL_PERMISSIONS: ${{ inputs.additional_permissions }}
         DROID_ARGS: ${{ inputs.droid_args }}
+        INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}
         ALL_INPUTS: ${{ toJson(inputs) }}
 
     - name: Install Base Action Dependencies
@@ -342,6 +347,7 @@ runs:
         DROID_COMMENT_ID: ${{ steps.prepare.outputs.droid_comment_id }}
         REVIEW_MODEL: ${{ inputs.review_model }}
         REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+        INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}
 
     - name: Run Droid Exec (validator)
       id: droid_validator

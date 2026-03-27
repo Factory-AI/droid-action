@@ -96,6 +96,7 @@ async function run() {
     // Pass the output file path so the prompt can instruct the Droid
     // to write structured findings for the combine step
     const outputFilePath = process.env.DROID_OUTPUT_FILE || undefined;
+    const includeSuggestions = process.env.INCLUDE_SUGGESTIONS !== "false";
 
     await createPrompt({
       githubContext: context,
@@ -108,6 +109,7 @@ async function run() {
       generatePrompt,
       reviewArtifacts,
       outputFilePath,
+      includeSuggestions,
     });
 
     // Set run type

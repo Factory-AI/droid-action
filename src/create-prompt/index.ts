@@ -304,6 +304,7 @@ export type PromptCreationOptions = {
   includeActionsTools?: boolean;
   reviewArtifacts?: ReviewArtifacts;
   outputFilePath?: string;
+  includeSuggestions?: boolean;
 };
 
 export async function createPrompt({
@@ -318,6 +319,7 @@ export async function createPrompt({
   includeActionsTools = false,
   reviewArtifacts,
   outputFilePath,
+  includeSuggestions,
 }: PromptCreationOptions) {
   try {
     const droidCommentId = commentId?.toString();
@@ -332,6 +334,10 @@ export async function createPrompt({
 
     if (outputFilePath) {
       preparedContext.outputFilePath = outputFilePath;
+    }
+
+    if (includeSuggestions !== undefined) {
+      preparedContext.includeSuggestions = includeSuggestions;
     }
 
     await mkdir(`${process.env.RUNNER_TEMP || "/tmp"}/droid-prompts`, {

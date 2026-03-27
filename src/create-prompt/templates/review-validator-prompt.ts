@@ -30,6 +30,16 @@ export function generateReviewValidatorPrompt(
     process.env.REVIEW_VALIDATED_PATH ??
     "$RUNNER_TEMP/droid-prompts/review_validated.json";
 
+  const includeSuggestions = context.includeSuggestions !== false;
+
+  const suggestionBlockRules = includeSuggestions
+    ? "\n\nSuggestion block rules (minimal):\n" +
+      "* Preserve exact leading whitespace and keep blocks ≤ 100 lines\n" +
+      "* Use RIGHT-side anchors only; do not include removed/LEFT-side lines\n" +
+      "* For insert-only suggestions, repeat the anchor line unchanged, then append new lines\n" +
+      "* Do not change the anchor fields (path/side/line/startLine) from the candidate — only edit the body"
+    : "";
+
   return `You are validating candidate review comments for PR #${prNumber} in ${repoFullName}.
 
 IMPORTANT: This is Phase 2 (validator) of a two-pass review pipeline.
@@ -106,6 +116,13 @@ Reject if:
 * It's not anchored to a valid changed line
 * It's already reported (dedupe against existing comments)
 
+### Deduplication (STRICT)
+
+Before approving a candidate, check for duplicates:
+1. **Among candidates**: If two or more candidates describe the same underlying bug (same root cause, even if anchored to different lines or worded differently), approve only the ONE with the best anchor and clearest explanation. Reject the rest with reason "duplicate of candidate N".
+2. **Against existing comments**: If a candidate repeats an issue already covered by an existing PR comment (from \`${commentsPath}\`), reject it with reason "already reported in existing comments".
+3. Same file + overlapping line range + same issue = duplicate, even if the body text differs.${suggestionBlockRules}
+
 When rejecting, write a concise reason.
 
 =======================
@@ -129,7 +146,7 @@ Write \`${reviewValidatedPath}\` with this schema:
       "status": "approved",
       "comment": {
         "path": "src/index.ts",
-        "body": "[P1] Title\n\n1 paragraph.",
+        "body": "[P1] Title\\n\\n1 paragraph.",
         "line": 42,
         "startLine": null,
         "side": "RIGHT",

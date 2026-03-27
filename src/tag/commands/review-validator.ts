@@ -45,6 +45,8 @@ export async function prepareReviewValidatorMode({
     descriptionPath: `${promptsDir}/pr_description.txt`,
   };
 
+  const includeSuggestions = process.env.INCLUDE_SUGGESTIONS !== "false";
+
   await createPrompt({
     githubContext: context,
     commentId: trackingCommentId,
@@ -56,6 +58,7 @@ export async function prepareReviewValidatorMode({
     },
     generatePrompt: generateReviewValidatorPrompt,
     reviewArtifacts,
+    includeSuggestions,
   });
 
   core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-review");
