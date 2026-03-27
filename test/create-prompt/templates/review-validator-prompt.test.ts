@@ -48,34 +48,24 @@ describe("generateReviewValidatorPrompt", () => {
     expect(prompt).toContain("pr_description.txt");
   });
 
-  it("instructs reading PR description in Phase 1", () => {
-    const context = createBaseContext({
-      reviewArtifacts: {
-        diffPath: "/tmp/test/pr.diff",
-        commentsPath: "/tmp/test/existing_comments.json",
-        descriptionPath: "/tmp/test/pr_description.txt",
-      },
-    });
-
-    const prompt = generateReviewValidatorPrompt(context);
-
-    expect(prompt).toContain("Read the PR description");
-    expect(prompt).toContain("/tmp/test/pr_description.txt");
-    // Verify description is read before comments
-    const descIdx = prompt.indexOf("Read the PR description");
-    const commentsIdx = prompt.indexOf("Read existing comments");
-    expect(descIdx).toBeLessThan(commentsIdx);
-  });
-
-  it("includes validation phases and output schema", () => {
+  it("instructs to invoke the review skill for Pass 2", () => {
     const context = createBaseContext();
 
     const prompt = generateReviewValidatorPrompt(context);
 
-    expect(prompt).toContain("Phase 1: Load context");
-    expect(prompt).toContain("Phase 2: Validate candidates");
-    expect(prompt).toContain("Phase 3: Write review_validated.json");
-    expect(prompt).toContain("Phase 4: Post approved items");
+    expect(prompt).toContain("Invoke the 'review' skill");
+    expect(prompt).toContain("Pass 2: Validation");
+  });
+
+  it("preserves validating candidate review comments framing", () => {
+    const context = createBaseContext();
+
+    const prompt = generateReviewValidatorPrompt(context);
+
+    expect(prompt).toContain(
+      "You are validating candidate review comments for PR",
+    );
+    expect(prompt).toContain("Phase 2 (validator) of a two-pass review pipeline");
   });
 
   it("instructs to post summary in tracking comment, not in submit_review body", () => {
@@ -83,7 +73,7 @@ describe("generateReviewValidatorPrompt", () => {
     const prompt = generateReviewValidatorPrompt(context);
 
     expect(prompt).toContain("github_comment___update_droid_comment");
-    expect(prompt).toContain("do **NOT** include a `body` parameter");
+    expect(prompt).toContain("Do **NOT** include a `body` parameter");
     expect(prompt).toContain(
       "Do **NOT** post the summary as a separate comment or as the body of `submit_review`",
     );
@@ -110,5 +100,33 @@ describe("generateReviewValidatorPrompt", () => {
     expect(prompt).toContain("PR Number: 77");
     expect(prompt).toContain("PR Head SHA: sha999");
     expect(prompt).toContain("PR Base Ref: main");
+  });
+
+  it("includes output schema with validated results", () => {
+    const context = createBaseContext();
+
+    const prompt = generateReviewValidatorPrompt(context);
+
+    expect(prompt).toContain("review_validated");
+    expect(prompt).toContain('"version": 1');
+    expect(prompt).toContain('"status": "approved"');
+    expect(prompt).toContain('"status": "rejected"');
+  });
+
+  it("includes suggestion block rules reference when suggestions enabled", () => {
+    const context = createBaseContext({ includeSuggestions: true });
+
+    const prompt = generateReviewValidatorPrompt(context);
+
+    expect(prompt).toContain("suggestion block rules");
+  });
+
+  it("excludes suggestion blocks when suggestions disabled", () => {
+    const context = createBaseContext({ includeSuggestions: false });
+
+    const prompt = generateReviewValidatorPrompt(context);
+
+    expect(prompt).toContain("Do NOT include code suggestion blocks");
+    expect(prompt).not.toContain("suggestion block rules");
   });
 });

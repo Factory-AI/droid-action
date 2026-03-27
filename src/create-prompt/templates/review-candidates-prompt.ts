@@ -30,18 +30,8 @@ export function generateReviewCandidatesPrompt(
   const includeSuggestions = context.includeSuggestions !== false;
 
   const bodyFieldDescription = includeSuggestions
-    ? "  - `body`: Comment text starting with priority tag [P0|P1|P2], then title, then 1 paragraph explanation\n" +
-      "    If you have **high confidence** a fix will address the issue and won't break CI, append a GitHub suggestion block:\n" +
-      "\n" +
-      "    ```suggestion\n" +
-      "    <replacement code>\n" +
-      "    ```\n" +
-      "\n" +
-      "    **Suggestion rules:**\n" +
-      "    - Keep suggestion blocks ≤ 100 lines\n" +
-      "    - Preserve exact leading whitespace\n" +
-      "    - Use RIGHT-side anchors only; do not include removed/LEFT-side lines\n" +
-      "    - For insert-only suggestions, repeat the anchor line unchanged, then append new lines"
+    ? "  - `body`: Comment text starting with priority tag [P0|P1|P2], then title, then 1 paragraph explanation.\n" +
+      "    Follow the suggestion block rules from the review skill when including suggestions."
     : "  - `body`: Comment text starting with priority tag [P0|P1|P2], then title, then 1 paragraph explanation";
 
   const sideFieldDescription = includeSuggestions
@@ -49,11 +39,15 @@ export function generateReviewCandidatesPrompt(
       "    If you include a suggestion block, choose a RIGHT-side anchor and keep it unchanged so the validator can reuse it."
     : '  - `side`: "RIGHT" for new/modified code (default), "LEFT" only for removed code';
 
+  const skillInstruction = includeSuggestions
+    ? "Invoke the 'review' skill to load the review methodology, then execute its **Pass 1: Candidate Generation** procedure — including suggestion block rules."
+    : "Invoke the 'review' skill to load the review methodology, then execute its **Pass 1: Candidate Generation** procedure. Do NOT include code suggestion blocks.";
+
   return `You are a senior staff software engineer and expert code reviewer.
 
 Your task: Review PR #${prNumber} in ${repoFullName} and generate a JSON file with **high-confidence, actionable** review comments that pinpoint genuine issues.
 
-${includeSuggestions ? "Before starting, invoke the 'review' skill to load the review methodology. Follow its bug patterns, analysis discipline, reporting gate, priority levels, and suggestion block rules throughout your review." : "Before starting, invoke the 'review' skill to load the review methodology. Follow its bug patterns, analysis discipline, reporting gate, and priority levels throughout your review. Do NOT include code suggestion blocks."}
+${skillInstruction}
 
 <context>
 Repo: ${repoFullName}
@@ -67,101 +61,6 @@ Precomputed data files:
 - Full PR Diff: \`${diffPath}\`
 - Existing Comments: \`${commentsPath}\`
 </context>
-
-<understanding_phase>
-**Step 0: Understand the PR intent**
-
-1. Read the PR description from \`${descriptionPath}\` to understand the purpose and scope of the changes.
-2. If the PR description contains a ticket URL (e.g., Jira, Linear, GitHub issue link) or a ticket ID, **always fetch it** using FetchUrl or the appropriate tool to understand the full requirements and acceptance criteria. This context is critical for evaluating whether the implementation is correct and complete.
-</understanding_phase>
-
-<review_guidelines>
-- You are currently checked out to the PR branch.
-- Review ALL modified files in the PR branch.
-- Do NOT duplicate comments already in \`${commentsPath}\`.
-</review_guidelines>
-
-<triage_phase>
-**Step 1: Analyze and group the modified files**
-
-Before reviewing, you must triage the PR to enable parallel review:
-
-1. Read the diff file (\`${diffPath}\`) to identify ALL modified files
-2. Group the files into logical clusters based on:
-   - **Related functionality**: Files in the same module or feature area
-   - **File relationships**: A component and its tests, a class and its interface
-   - **Risk profile**: Security-sensitive files together, database/migration files together
-   - **Dependencies**: Files that import each other or share types
-
-3. Document your grouping briefly, for example:
-   - Group 1 (Auth): src/auth/login.ts, src/auth/session.ts, tests/auth.test.ts
-   - Group 2 (API handlers): src/api/users.ts, src/api/orders.ts
-   - Group 3 (Database): src/db/migrations/001.ts, src/db/schema.ts
-
-Guidelines for grouping:
-- Aim for 3-6 groups to balance parallelism with context coherence
-- Keep related files together so reviewers have full context
-- Each group should be reviewable independently
-</triage_phase>
-
-<parallel_review_phase>
-**Step 2: Spawn parallel subagents to review each group**
-
-After grouping, use the Task tool to spawn parallel \`file-group-reviewer\` subagents. Each subagent will review one group of files independently.
-
-**IMPORTANT**: Spawn ALL subagents in a single response to enable parallel execution.
-
-For each group, invoke the Task tool with:
-- \`subagent_type\`: "file-group-reviewer"
-- \`description\`: Brief label (e.g., "Review auth module")
-- \`prompt\`: Must include:
-  1. The PR context (repo, PR number, base/head refs)
-  2. The list of assigned files for this group
-  3. The relevant diff sections for those files (extract from \`${diffPath}\`)
-  4. Instructions to return a JSON array of findings
-
-Example Task invocation for one group:
-\`\`\`
-Task(
-  subagent_type: "file-group-reviewer",
-  description: "Review auth module",
-  prompt: """
-    Review the following files from PR #${prNumber} in ${repoFullName}.
-    
-    PR Context:
-    - Head SHA: ${prHeadSha}
-    - Base Ref: ${prBaseRef}
-    
-    Assigned files:
-    - src/auth/login.ts
-    - src/auth/session.ts
-    - tests/auth.test.ts
-    
-    Diff for these files:
-    <paste relevant diff sections here>
-    
-    Return a JSON array of issues found. If no issues, return [].
-  """
-)
-\`\`\`
-
-Spawn all group reviewers in parallel by including multiple Task calls in one response.
-</parallel_review_phase>
-
-<aggregation_phase>
-**Step 3: Aggregate subagent results**
-
-After all subagents complete, collect and merge their findings:
-
-1. **Collect results**: Each subagent returns a JSON array of comment objects
-2. **Merge arrays**: Combine all arrays into a single comments array
-3. **Add commit_id**: Add \`"commit_id": "${prHeadSha}"\` to each comment object
-4. **Deduplicate**: If multiple subagents flagged the same location (same path + line), keep only one comment (prefer higher priority: P0 > P1 > P2)
-5. **Filter existing**: Remove any comments that duplicate issues already in \`${commentsPath}\`
-6. **Write reviewSummary**: Synthesize a 1-3 sentence overall assessment based on all findings
-
-Write the final aggregated result to \`${reviewCandidatesPath}\` using the schema in \`<output_spec>\`.
-</aggregation_phase>
 
 <output_spec>
 Write output to \`${reviewCandidatesPath}\` using this exact schema:
