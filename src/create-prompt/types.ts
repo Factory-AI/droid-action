@@ -119,4 +119,5 @@ export type PreparedContext = CommonFields & {
   reviewArtifacts?: ReviewArtifacts;
   outputFilePath?: string;
   includeSuggestions?: boolean;
+  reviewSkillContent?: string;
 };

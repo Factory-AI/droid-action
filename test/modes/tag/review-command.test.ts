@@ -6,6 +6,7 @@ import { createMockContext } from "../../mockContext";
 import * as promptModule from "../../../src/create-prompt";
 import * as mcpInstaller from "../../../src/mcp/install-mcp-server";
 import * as comments from "../../../src/github/operations/comments/create-initial";
+import * as skillLoader from "../../../src/utils/load-skill";
 import * as childProcess from "child_process";
 import * as fsPromises from "fs/promises";
 
@@ -39,12 +40,16 @@ describe("prepareReviewMode", () => {
   let execSyncSpy: ReturnType<typeof spyOn>;
   let writeFileSpy: ReturnType<typeof spyOn>;
   let mkdirSpy: ReturnType<typeof spyOn>;
+  let loadSkillSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
     process.env.DROID_ARGS = "";
     delete process.env.REVIEW_MODEL;
     process.env.RUNNER_TEMP = "/tmp/test-runner";
 
+    loadSkillSpy = spyOn(skillLoader, "loadSkill").mockResolvedValue(
+      "mock skill content",
+    );
     promptSpy = spyOn(promptModule, "createPrompt").mockResolvedValue();
     mcpSpy = spyOn(mcpInstaller, "prepareMcpTools").mockResolvedValue(
       "mock-config",
@@ -84,6 +89,7 @@ describe("prepareReviewMode", () => {
     execSyncSpy.mockRestore();
     writeFileSpy.mockRestore();
     mkdirSpy.mockRestore();
+    loadSkillSpy.mockRestore();
     process.env.DROID_ARGS = originalArgs;
     if (originalReviewModel !== undefined) {
       process.env.REVIEW_MODEL = originalReviewModel;

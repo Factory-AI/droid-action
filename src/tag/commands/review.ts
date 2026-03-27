@@ -9,6 +9,7 @@ import { createInitialComment } from "../../github/operations/comments/create-in
 import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
 import { isEntityContext } from "../../github/context";
 import { generateReviewCandidatesPrompt } from "../../create-prompt/templates/review-candidates-prompt";
+import { loadSkill } from "../../utils/load-skill";
 import type { Octokits } from "../../github/api/client";
 import type { PrepareResult } from "../../prepare/types";
 
@@ -85,6 +86,7 @@ export async function prepareReviewMode({
   });
 
   const includeSuggestions = process.env.INCLUDE_SUGGESTIONS !== "false";
+  const reviewSkillContent = await loadSkill("review");
 
   await createPrompt({
     githubContext: context,
@@ -98,6 +100,7 @@ export async function prepareReviewMode({
     generatePrompt: generateReviewCandidatesPrompt,
     reviewArtifacts,
     includeSuggestions,
+    reviewSkillContent,
   });
   core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-review");
 

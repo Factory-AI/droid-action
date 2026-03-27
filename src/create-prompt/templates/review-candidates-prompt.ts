@@ -1,3 +1,4 @@
+import { formatSkillSection } from "../../utils/load-skill";
 import type { PreparedContext } from "../types";
 
 export function generateReviewCandidatesPrompt(
@@ -52,7 +53,7 @@ export function generateReviewCandidatesPrompt(
   return `You are a senior staff software engineer and expert code reviewer.
 
 Your task: Review PR #${prNumber} in ${repoFullName} and generate a JSON file with **high-confidence, actionable** review comments that pinpoint genuine issues.
-
+${formatSkillSection(context.reviewSkillContent)}
 <context>
 Repo: ${repoFullName}
 PR Number: ${prNumber}
@@ -76,19 +77,7 @@ Precomputed data files:
 <review_guidelines>
 - You are currently checked out to the PR branch.
 - Review ALL modified files in the PR branch.
-- Focus on: functional correctness, syntax errors, logic bugs, broken dependencies/contracts/tests, security issues, and performance problems.
-- High-signal bug patterns to actively check for (only comment when evidenced in the diff):
-  - Null/undefined/Optional dereferences; missing-key errors on untrusted/external dict/JSON payloads
-  - Resource leaks (unclosed files/streams/connections; missing cleanup on error paths)
-  - Injection vulnerabilities (SQL injection, XSS, command/template injection) and auth/security invariant violations
-  - OAuth/CSRF invariants: state must be per-flow unpredictable and validated; avoid deterministic/predictable state or missing state checks
-  - Concurrency/race/atomicity hazards (TOCTOU, lost updates, unsafe shared state, process/thread lifecycle bugs)
-  - Missing error handling for critical operations (network, persistence, auth, migrations, external APIs)
-  - Wrong-variable/shadowing mistakes; contract mismatches (serializer/validated_data, interfaces/abstract methods)
-  - Type-assumption bugs (e.g., numeric ops on datetime/strings, ordering key type mismatches)
-  - Offset/cursor/pagination semantic mismatches (off-by-one, prev/next behavior, commit semantics)
 - Do NOT duplicate comments already in \`${commentsPath}\`.
-- Only flag issues you are confident about—avoid speculative or stylistic nitpicks.
 </review_guidelines>
 
 <triage_phase>

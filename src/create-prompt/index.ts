@@ -305,6 +305,7 @@ export type PromptCreationOptions = {
   reviewArtifacts?: ReviewArtifacts;
   outputFilePath?: string;
   includeSuggestions?: boolean;
+  reviewSkillContent?: string;
 };
 
 export async function createPrompt({
@@ -320,6 +321,7 @@ export async function createPrompt({
   reviewArtifacts,
   outputFilePath,
   includeSuggestions,
+  reviewSkillContent,
 }: PromptCreationOptions) {
   try {
     const droidCommentId = commentId?.toString();
@@ -338,6 +340,10 @@ export async function createPrompt({
 
     if (includeSuggestions !== undefined) {
       preparedContext.includeSuggestions = includeSuggestions;
+    }
+
+    if (reviewSkillContent) {
+      preparedContext.reviewSkillContent = reviewSkillContent;
     }
 
     await mkdir(`${process.env.RUNNER_TEMP || "/tmp"}/droid-prompts`, {

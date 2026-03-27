@@ -1,3 +1,4 @@
+import { formatSkillSection } from "../../utils/load-skill";
 import type { PreparedContext } from "../types";
 
 export function generateReviewValidatorPrompt(
@@ -43,7 +44,7 @@ export function generateReviewValidatorPrompt(
   return `You are validating candidate review comments for PR #${prNumber} in ${repoFullName}.
 
 IMPORTANT: This is Phase 2 (validator) of a two-pass review pipeline.
-
+${formatSkillSection(context.reviewSkillContent)}
 ### Context
 
 * Repo: ${repoFullName}
@@ -101,20 +102,11 @@ Read:
 
 ## Phase 2: Validate candidates
 
-Apply the same Reporting Gate as review:
+Apply the Reporting Gate, confidence calibration, and deduplication rules from the review methodology above.
 
-### Approve ONLY if at least one is true
-* Definite runtime failure
-* Incorrect logic with a concrete trigger path and wrong outcome
-* Security vulnerability with realistic exploit
-* Data corruption/loss
-* Breaking contract change (discoverable in code/tests)
-
-Reject if:
-* It's speculative / "might" without a concrete trigger
-* It's stylistic / naming / formatting
+Additionally reject if:
 * It's not anchored to a valid changed line
-* It's already reported (dedupe against existing comments)
+* It's already reported (dedupe against existing comments in \`${commentsPath}\`)
 
 ### Deduplication (STRICT)
 
