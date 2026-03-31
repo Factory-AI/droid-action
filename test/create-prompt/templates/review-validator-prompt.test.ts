@@ -65,7 +65,9 @@ describe("generateReviewValidatorPrompt", () => {
     expect(prompt).toContain(
       "You are validating candidate review comments for PR",
     );
-    expect(prompt).toContain("Phase 2 (validator) of a two-pass review pipeline");
+    expect(prompt).toContain(
+      "Phase 2 (validator) of a two-pass review pipeline",
+    );
   });
 
   it("instructs to post summary in tracking comment, not in submit_review body", () => {

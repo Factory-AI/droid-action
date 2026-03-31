@@ -91,14 +91,18 @@ inputs:
     description: "Number of days of commits to scan for scheduled security scans. Only applies when security_scan_schedule is enabled."
     required: false
     default: "7"
+  review_depth:
+    description: "Review depth preset: 'shallow' (fast, uses kimi-k2-0711) or 'deep' (thorough, uses gpt-5.2 with high reasoning). Defaults to deep. Setting review_model or reasoning_effort explicitly overrides the preset values."
+    required: false
+    default: "deep"
   review_model:
-    description: "Override the model used for code review (e.g., 'claude-sonnet-4-5-20250929', 'gpt-5.1-codex'). Only applies to review flows."
+    description: "Override the model used for code review (e.g., 'claude-sonnet-4-5-20250929', 'gpt-5.1-codex'). If empty, the model is determined by review_depth."
     required: false
-    default: "gpt-5.2"
+    default: ""
   reasoning_effort:
-    description: "Override reasoning effort for review flows (passed to Droid Exec as --reasoning-effort). If empty and review_model is also empty, the action defaults internally to gpt-5.2 at high reasoning."
+    description: "Override reasoning effort for review flows (passed to Droid Exec as --reasoning-effort). If empty, determined by review_depth (shallow=default, deep=high)."
     required: false
-    default: "high"
+    default: ""
   include_suggestions:
     description: "Include code suggestion blocks in review comments when the fix is high-confidence. Set to 'false' to disable suggestions."
     required: false
@@ -187,6 +191,7 @@ runs:
         SECURITY_NOTIFY_TEAM: ${{ inputs.security_notify_team }}
         SECURITY_SCAN_SCHEDULE: ${{ inputs.security_scan_schedule }}
         SECURITY_SCAN_DAYS: ${{ inputs.security_scan_days }}
+        REVIEW_DEPTH: ${{ inputs.review_depth }}
         REVIEW_MODEL: ${{ inputs.review_model }}
         REASONING_EFFORT: ${{ inputs.reasoning_effort }}
         REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
@@ -345,6 +350,7 @@ runs:
         REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
         REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
         DROID_COMMENT_ID: ${{ steps.prepare.outputs.droid_comment_id }}
+        REVIEW_DEPTH: ${{ inputs.review_depth }}
         REVIEW_MODEL: ${{ inputs.review_model }}
         REASONING_EFFORT: ${{ inputs.reasoning_effort }}
         INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}

@@ -624,7 +624,12 @@ export function createGitHubPRServer({
             path: z
               .string()
               .describe("The file path to comment on (e.g., 'src/index.js')"),
-            body: z.string().min(1).describe("The comment text (supports markdown and GitHub code suggestion blocks)"),
+            body: z
+              .string()
+              .min(1)
+              .describe(
+                "The comment text (supports markdown and GitHub code suggestion blocks)",
+              ),
             line: z
               .number()
               .int()
