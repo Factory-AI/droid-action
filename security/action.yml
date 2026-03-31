@@ -70,37 +70,15 @@ runs:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
 
-    - name: Install Security Skills
+    - name: Install Security Plugin
       shell: bash
       run: |
-        echo "Installing security skills from Factory-AI/skills..."
-        SKILLS_DIR="$HOME/.factory/skills"
-        mkdir -p "$SKILLS_DIR"
-
-        TEMP_DIR=$(mktemp -d)
-        git clone --filter=blob:none --sparse \
-          "https://github.com/Factory-AI/skills.git" \
-          "$TEMP_DIR" 2>/dev/null || {
-          echo "Warning: Could not clone skills repo."
-          exit 0
+        echo "Installing security-engineer plugin from factory-plugins marketplace..."
+        droid plugin marketplace add https://github.com/Factory-AI/factory-plugins 2>/dev/null || true
+        droid plugin install security-engineer@factory-plugins --scope user 2>/dev/null || {
+          echo "Warning: Could not install security-engineer plugin. Security review may have limited functionality."
         }
-
-        cd "$TEMP_DIR"
-        git sparse-checkout set \
-          skills/threat-model-generation \
-          skills/commit-security-scan \
-          skills/vulnerability-validation \
-          skills/security-review 2>/dev/null || true
-
-        for skill in threat-model-generation commit-security-scan vulnerability-validation security-review; do
-          if [ -d "skills/$skill" ]; then
-            cp -r "skills/$skill" "$SKILLS_DIR/"
-            echo "  Installed skill: $skill"
-          fi
-        done
-
-        rm -rf "$TEMP_DIR"
-        echo "Security skills installation complete"
+        echo "Security plugin installation complete"
 
     - name: Generate Security Prompt
       id: prompt

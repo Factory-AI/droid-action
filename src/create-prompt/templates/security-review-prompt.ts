@@ -38,7 +38,7 @@ ${notifyTeam ? `- Notify Team: ${notifyTeam} (mention on critical findings)` : "
 
 ## Security Skills Available
 
-You have access to these Factory security skills (installed in ~/.factory/skills/):
+You have access to security skills from the security-engineer plugin (security-engineer@factory-plugins):
 
 1. **threat-model-generation** - Generate STRIDE-based threat model for the repository
 2. **commit-security-scan** - Scan code changes for security vulnerabilities
