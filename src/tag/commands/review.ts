@@ -11,6 +11,7 @@ import { isEntityContext } from "../../github/context";
 import { generateReviewCandidatesPrompt } from "../../create-prompt/templates/review-candidates-prompt";
 import type { Octokits } from "../../github/api/client";
 import type { PrepareResult } from "../../prepare/types";
+import { resolveReviewConfig } from "../../utils/review-depth";
 
 type ReviewCommandOptions = {
   context: GitHubContext;
@@ -153,11 +154,14 @@ export async function prepareReviewMode({
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
   droidArgParts.push('--tag "code-review"');
 
-  const reviewModel = process.env.REVIEW_MODEL?.trim();
-  const reasoningEffort = process.env.REASONING_EFFORT?.trim();
+  const { model, reasoningEffort } = resolveReviewConfig({
+    reviewModel: process.env.REVIEW_MODEL?.trim(),
+    reasoningEffort: process.env.REASONING_EFFORT?.trim(),
+    reviewDepth: process.env.REVIEW_DEPTH?.trim(),
+  });
 
-  if (reviewModel) {
-    droidArgParts.push(`--model "${reviewModel}"`);
+  if (model) {
+    droidArgParts.push(`--model "${model}"`);
   }
   if (reasoningEffort) {
     droidArgParts.push(`--reasoning-effort "${reasoningEffort}"`);

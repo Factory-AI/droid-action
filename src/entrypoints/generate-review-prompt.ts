@@ -15,6 +15,7 @@ import { prepareMcpTools } from "../mcp/install-mcp-server";
 import { generateReviewCandidatesPrompt } from "../create-prompt/templates/review-candidates-prompt";
 import { generateSecurityReviewPrompt } from "../create-prompt/templates/security-review-prompt";
 import { normalizeDroidArgs, parseAllowedTools } from "../utils/parse-tools";
+import { resolveReviewConfig } from "../utils/review-depth";
 
 async function run() {
   try {
@@ -174,14 +175,19 @@ async function run() {
     droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
     droidArgParts.push('--tag "code-review"');
 
-    const reviewModel =
+    const rawModel =
       reviewType === "security"
         ? process.env.SECURITY_MODEL?.trim() || process.env.REVIEW_MODEL?.trim()
         : process.env.REVIEW_MODEL?.trim();
-    const reasoningEffort = process.env.REASONING_EFFORT?.trim();
 
-    if (reviewModel) {
-      droidArgParts.push(`--model "${reviewModel}"`);
+    const { model, reasoningEffort } = resolveReviewConfig({
+      reviewModel: rawModel,
+      reasoningEffort: process.env.REASONING_EFFORT?.trim(),
+      reviewDepth: process.env.REVIEW_DEPTH?.trim(),
+    });
+
+    if (model) {
+      droidArgParts.push(`--model "${model}"`);
     }
     if (reasoningEffort) {
       droidArgParts.push(`--reasoning-effort "${reasoningEffort}"`);
