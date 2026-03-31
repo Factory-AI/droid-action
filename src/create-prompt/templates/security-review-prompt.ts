@@ -49,9 +49,20 @@ You have access to security skills from the security-engineer plugin (security-e
 
 ### Step 1: Threat Model Check
 - Check if \`.factory/threat-model.md\` exists in the repository
-- If missing: Invoke the **threat-model-generation** skill to generate one, then use it as context
-- If exists but older than 90 days: Note it may be stale, but proceed with existing
-- If exists and current: Use it as context for the security scan
+- If exists: Read it and use it as context for the security scan
+- If missing: Invoke the **threat-model-generation** skill to build a STRIDE threat model in-session before proceeding. Specifically:
+  1. Scan the repository structure to identify key components (APIs, services, databases, auth systems, external integrations)
+  2. Identify trust boundaries (e.g., client/server, internal/external, authenticated/unauthenticated)
+  3. Map data flows across those boundaries (user input paths, API endpoints, file I/O, network calls)
+  4. For each STRIDE category, identify the top attack surfaces relevant to this codebase:
+     - **Spoofing**: Auth mechanisms, session management, token handling
+     - **Tampering**: Input validation points, database queries, file operations
+     - **Repudiation**: Logging and audit trail coverage
+     - **Information Disclosure**: Error handling, secrets management, data exposure paths
+     - **Denial of Service**: Rate limiting, resource-intensive operations, unbounded inputs
+     - **Elevation of Privilege**: Authorization checks, role-based access, privilege boundaries
+  5. Use this threat model analysis as context when scanning the PR diff in subsequent steps
+  - Do NOT mention the missing threat model file in the summary comment — just generate the analysis silently and proceed
 
 ### Step 2: Security Scan
 - Invoke the **commit-security-scan** skill on the PR diff
