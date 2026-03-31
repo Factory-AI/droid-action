@@ -1,4 +1,7 @@
-export type ReviewDepth = "shallow" | "deep";
+export enum ReviewDepth {
+  Shallow = "shallow",
+  Deep = "deep",
+}
 
 const SHALLOW_DEFAULTS = {
   model: "kimi-k2-0711",
@@ -14,8 +17,8 @@ export const REVIEW_DEPTH_PRESETS: Record<
   ReviewDepth,
   { model: string; reasoningEffort: string | undefined }
 > = {
-  shallow: SHALLOW_DEFAULTS,
-  deep: DEEP_DEFAULTS,
+  [ReviewDepth.Shallow]: SHALLOW_DEFAULTS,
+  [ReviewDepth.Deep]: DEEP_DEFAULTS,
 };
 
 /**
@@ -27,9 +30,9 @@ export function resolveReviewConfig(options?: {
   reasoningEffort?: string;
   reviewDepth?: string;
 }): { model: string; reasoningEffort: string | undefined } {
-  const depth = (options?.reviewDepth || "deep") as ReviewDepth;
+  const depth = (options?.reviewDepth || ReviewDepth.Deep) as ReviewDepth;
   const defaults =
-    REVIEW_DEPTH_PRESETS[depth] ?? REVIEW_DEPTH_PRESETS["shallow"];
+    REVIEW_DEPTH_PRESETS[depth] ?? REVIEW_DEPTH_PRESETS[ReviewDepth.Shallow];
 
   return {
     model: options?.reviewModel || defaults.model,
