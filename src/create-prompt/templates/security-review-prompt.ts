@@ -49,8 +49,9 @@ You have access to security skills from the security-engineer plugin (security-e
 
 ### Step 1: Threat Model Check
 - Check if \`.factory/threat-model.md\` exists in the repository
-- If missing: Note this in the summary (threat model generation is done separately, not during PR review)
-- If exists: Use it as context for the security scan
+- If missing: Invoke the **threat-model-generation** skill to generate one, then use it as context
+- If exists but older than 90 days: Note it may be stale, but proceed with existing
+- If exists and current: Use it as context for the security scan
 
 ### Step 2: Security Scan
 - Invoke the **commit-security-scan** skill on the PR diff
