@@ -103,13 +103,11 @@ export async function prepareTagExecution({
   );
   const commentId = commentData.id;
 
-  // Handle parallel review mode when both flags are set
+  // Handle when both automatic review flags are set
   if (
     context.inputs.automaticReview &&
     context.inputs.automaticSecurityReview
   ) {
-    // Output flags for parallel workflow jobs
-    const runCodeReview = true;
     let runSecurityReview = true;
 
     // Check if security review already exists on this PR (run once behavior)
@@ -121,19 +119,16 @@ export async function prepareTagExecution({
       runSecurityReview = false;
     }
 
-    // Set outputs for downstream jobs
-    core.setOutput("run_code_review", runCodeReview.toString());
+    core.setOutput("run_code_review", "true");
     core.setOutput("run_security_review", runSecurityReview.toString());
 
-    // For parallel mode, return early - individual jobs will run their own reviews
-    return {
-      skipped: false,
-      branchInfo: {
-        baseBranch: "",
-        currentBranch: "",
-      },
-      mcpTools: "",
-    };
+    // Prepare the code review (creates prompt file needed by the Droid Exec step)
+    return prepareReviewMode({
+      context,
+      octokit,
+      githubToken,
+      trackingCommentId: commentId,
+    });
   }
 
   if (context.inputs.automaticReview) {
