@@ -20,9 +20,15 @@ import type {
   PreparedContext,
   EventData,
   ReviewArtifacts,
+  FixContext,
 } from "./types";
 
-export type { CommonFields, PreparedContext, ReviewArtifacts } from "./types";
+export type {
+  CommonFields,
+  PreparedContext,
+  ReviewArtifacts,
+  FixContext,
+} from "./types";
 
 const BASE_ALLOWED_TOOLS = [
   "Execute",
@@ -303,6 +309,7 @@ export type PromptCreationOptions = {
   disallowedTools?: string[];
   includeActionsTools?: boolean;
   reviewArtifacts?: ReviewArtifacts;
+  fixContext?: FixContext;
   outputFilePath?: string;
   includeSuggestions?: boolean;
 };
@@ -318,6 +325,7 @@ export async function createPrompt({
   disallowedTools = [],
   includeActionsTools = false,
   reviewArtifacts,
+  fixContext,
   outputFilePath,
   includeSuggestions,
 }: PromptCreationOptions) {
@@ -331,6 +339,10 @@ export async function createPrompt({
       prBranchData,
       reviewArtifacts,
     );
+
+    if (fixContext) {
+      preparedContext.fixContext = fixContext;
+    }
 
     if (outputFilePath) {
       preparedContext.outputFilePath = outputFilePath;
