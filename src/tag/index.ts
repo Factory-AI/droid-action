@@ -119,10 +119,16 @@ export async function prepareTagExecution({
       runSecurityReview = false;
     }
 
+    if (runSecurityReview) {
+      // Signal to the code review prompt to spawn a security-reviewer subagent
+      core.exportVariable("SECURITY_REVIEW_ENABLED", "true");
+      core.setOutput("install_security_skills", "true");
+    }
+
     core.setOutput("run_code_review", "true");
     core.setOutput("run_security_review", runSecurityReview.toString());
 
-    // Prepare the code review (creates prompt file needed by the Droid Exec step)
+    // Prepare the code review (security review runs as a subagent within pass 1)
     return prepareReviewMode({
       context,
       octokit,
@@ -160,7 +166,8 @@ export async function prepareTagExecution({
       };
     }
 
-    core.setOutput("run_code_review", "false");
+    // Standalone security review uses the two-pass pipeline (candidates + validator)
+    core.setOutput("run_code_review", "true");
     core.setOutput("run_security_review", "true");
     return prepareSecurityReviewMode({
       context,
@@ -180,7 +187,8 @@ export async function prepareTagExecution({
   }
 
   if (commandContext?.command === "security") {
-    core.setOutput("run_code_review", "false");
+    // Standalone security review uses the two-pass pipeline (candidates + validator)
+    core.setOutput("run_code_review", "true");
     core.setOutput("run_security_review", "true");
     return prepareSecurityReviewMode({
       context,
