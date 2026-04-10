@@ -18,17 +18,21 @@ export function createBranchLink(
   return `\n[View branch](${branchUrl})`;
 }
 
-export type CommentType = "default" | "security";
+export type CommentType = "default" | "security" | "review_and_security";
 
 export function createCommentBody(
   jobRunLink: string,
   branchLink: string = "",
   type: CommentType = "default",
 ): string {
-  const message =
-    type === "security"
-      ? "Droid is running a security check…"
-      : "Droid is working…";
+  let message: string;
+  if (type === "review_and_security") {
+    message = "Droid is reviewing code and running a security check…";
+  } else if (type === "security") {
+    message = "Droid is running a security check…";
+  } else {
+    message = "Droid is working…";
+  }
 
   return `${message}
 

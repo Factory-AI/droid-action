@@ -90,16 +90,25 @@ export async function prepareTagExecution({
 
   const commandContext = extractCommandFromContext(context);
 
-  // Determine if this is a security-related command for the initial comment
-  const isSecurityCommand =
-    context.inputs.automaticSecurityReview ||
-    commandContext?.command === "security" ||
-    commandContext?.command === "security-full";
+  // Determine comment type based on what's being run
+  const isDualReview =
+    context.inputs.automaticReview && context.inputs.automaticSecurityReview;
+  const isSecurityOnly =
+    !isDualReview &&
+    (context.inputs.automaticSecurityReview ||
+      commandContext?.command === "security" ||
+      commandContext?.command === "security-full");
+
+  const commentType = isDualReview
+    ? "review_and_security"
+    : isSecurityOnly
+      ? "security"
+      : "default";
 
   const commentData = await createInitialComment(
     octokit.rest,
     context,
-    isSecurityCommand ? "security" : "default",
+    commentType,
   );
   const commentId = commentData.id;
 
