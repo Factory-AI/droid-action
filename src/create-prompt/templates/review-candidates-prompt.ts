@@ -60,7 +60,7 @@ Spawn it with:
 
 **IMPORTANT**: Spawn the security-reviewer in the SAME response as the file-group-reviewer subagents so they all run in parallel.
 
-After all subagents complete (both file-group-reviewers and security-reviewer), merge the security findings into the \`comments\` array alongside code review findings. Security findings use the same schema but include STRIDE category tags in their body (e.g., \`[P1] [T] Title\`).
+After all subagents complete (both file-group-reviewers and security-reviewer), merge the security findings into the \`comments\` array alongside code review findings. Security findings use the same schema but are prefixed with \`[security]\` in their body (e.g., \`[P1] [security] Title\`).
 `
     : "";
 

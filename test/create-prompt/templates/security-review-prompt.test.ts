@@ -47,7 +47,7 @@ describe("generateSecurityCandidatesPrompt", () => {
     expect(prompt).toContain("comments");
     expect(prompt).toContain("reviewSummary");
     expect(prompt).toContain("commit_id");
-    expect(prompt).toContain("STRIDE");
+    expect(prompt).toContain("[security]");
   });
 
   it("includes critical constraints to not post to GitHub", () => {

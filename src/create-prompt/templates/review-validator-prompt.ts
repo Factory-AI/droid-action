@@ -126,6 +126,7 @@ After writing \`${reviewValidatedPath}\`, post comments ONLY for \`status === "a
 * Do **NOT** post comments individually — batch them all into one \`submit_review\` call.
 * Do **NOT** include a \`body\` parameter in \`submit_review\`.
 * Use \`github_comment___update_droid_comment\` to update the tracking comment with the review summary.
+* If any approved comments contain \`[security]\` in their body, prepend a security badge to the tracking comment: \`![Security Review](https://img.shields.io/badge/security%20review-ran-blue)\`. This indicates that security analysis was performed as part of the review.
 * Do **NOT** post the summary as a separate comment or as the body of \`submit_review\`.
 * Do not approve or request changes.
 `;

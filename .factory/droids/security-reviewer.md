@@ -33,7 +33,7 @@ Return your findings as a JSON array (no wrapper object, just the array):
 [
   {
     "path": "src/api/users.ts",
-    "body": "[P1] [T] SQL injection via unsanitized user input\n\nThe search parameter is concatenated directly into the SQL query without parameterization, allowing an attacker to inject arbitrary SQL.",
+    "body": "[P1] [security] SQL injection via unsanitized user input\n\nThe search parameter is concatenated directly into the SQL query without parameterization, allowing an attacker to inject arbitrary SQL.",
     "line": 42,
     "startLine": null,
     "side": "RIGHT"
@@ -46,7 +46,7 @@ If no security issues found, return an empty array: `[]`
 Field definitions:
 
 - `path`: Relative file path (must match exactly as provided in your assignment)
-- `body`: Comment text starting with priority tag [P0|P1|P2|P3], then STRIDE category tag [S|T|R|I|D|E], then title, then 1 paragraph explanation
+- `body`: Comment text starting with priority tag [P0|P1|P2|P3], then `[security]` tag, then title, then 1 paragraph explanation
   - P0: Critical — immediately exploitable (RCE, auth bypass, hardcoded secrets)
   - P1: High — exploitable with conditions (SQL injection behind auth, stored XSS)
   - P2: Medium — requires specific conditions (CSRF, info disclosure)

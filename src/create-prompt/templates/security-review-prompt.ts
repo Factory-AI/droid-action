@@ -62,7 +62,7 @@ Write output to \`${reviewCandidatesPath}\` using this exact schema:
   "comments": [
     {
       "path": "src/index.ts",
-      "body": "[P1] [T] Title\\n\\n1 paragraph.",
+      "body": "[P1] [security] Title\\n\\n1 paragraph.",
       "line": 42,
       "startLine": null,
       "side": "RIGHT",
@@ -87,7 +87,7 @@ Write output to \`${reviewCandidatesPath}\` using this exact schema:
 
 - **comments**: Array of comment objects
   - \`path\`: Relative file path
-  - \`body\`: Comment text starting with priority tag [P0|P1|P2|P3] and STRIDE category [S|T|R|I|D|E], then title, then 1 paragraph explanation
+  - \`body\`: Comment text starting with priority tag [P0|P1|P2|P3] and \`[security]\` tag, then title, then 1 paragraph explanation
   - \`line\`: Target line number (single-line) or end line number (multi-line). Must be >= 0.
   - \`startLine\`: \`null\` for single-line comments, or start line number for multi-line comments
   - \`side\`: "RIGHT" for new/modified code (default), "LEFT" only for removed code
