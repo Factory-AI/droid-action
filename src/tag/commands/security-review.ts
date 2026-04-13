@@ -1,12 +1,14 @@
 import * as core from "@actions/core";
+import { execSync } from "child_process";
 import type { GitHubContext } from "../../github/context";
 import { fetchPRBranchData } from "../../github/data/pr-fetcher";
+import { computeReviewArtifacts } from "../../github/data/review-artifacts";
 import { createPrompt } from "../../create-prompt";
 import { prepareMcpTools } from "../../mcp/install-mcp-server";
 import { createInitialComment } from "../../github/operations/comments/create-initial";
 import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
 import { isEntityContext } from "../../github/context";
-import { generateSecurityReviewPrompt } from "../../create-prompt/templates/security-review-prompt";
+import { generateSecurityCandidatesPrompt } from "../../create-prompt/templates/security-review-prompt";
 import type { Octokits } from "../../github/api/client";
 import type { PrepareResult } from "../../prepare/types";
 
@@ -48,6 +50,41 @@ export async function prepareSecurityReviewMode({
     currentBranch: prData.headRefName,
   };
 
+  // Checkout the PR branch before computing diff
+  console.log(
+    `Checking out PR #${context.entityNumber} branch for diff computation...`,
+  );
+  try {
+    execSync("git reset --hard HEAD", { encoding: "utf8", stdio: "pipe" });
+    execSync(`gh pr checkout ${context.entityNumber}`, {
+      encoding: "utf8",
+      stdio: "pipe",
+      env: { ...process.env, GH_TOKEN: githubToken },
+    });
+    console.log(
+      `Successfully checked out PR branch: ${execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf8" }).trim()}`,
+    );
+  } catch (e) {
+    console.error(`Failed to checkout PR branch: ${e}`);
+    throw new Error(
+      `Failed to checkout PR #${context.entityNumber} branch for security review`,
+    );
+  }
+
+  // Pre-compute review artifacts (diff, existing comments, and PR description)
+  const tempDir = process.env.RUNNER_TEMP || "/tmp";
+  const reviewArtifacts = await computeReviewArtifacts({
+    baseRef: prData.baseRefName,
+    tempDir,
+    octokit,
+    owner: context.repository.owner,
+    repo: context.repository.repo,
+    prNumber: context.entityNumber,
+    title: prData.title,
+    body: prData.body,
+    githubToken,
+  });
+
   await createPrompt({
     githubContext: context,
     commentId,
@@ -57,11 +94,11 @@ export async function prepareSecurityReviewMode({
       headRefName: prData.headRefName,
       headRefOid: prData.headRefOid,
     },
-    generatePrompt: generateSecurityReviewPrompt,
+    generatePrompt: generateSecurityCandidatesPrompt,
+    reviewArtifacts,
   });
   core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-security-review");
 
-  // Signal that security skills should be installed
   core.setOutput("install_security_skills", "true");
 
   const rawUserArgs = process.env.DROID_ARGS || "";
@@ -76,21 +113,27 @@ export async function prepareSecurityReviewMode({
     "Glob",
     "LS",
     "Execute",
+    "Edit",
+    "Create",
+    "ApplyPatch",
     "github_comment___update_droid_comment",
-    "github_inline_comment___create_inline_comment",
   ];
 
-  const reviewTools = [
-    "github_pr___list_review_comments",
-    "github_pr___submit_review",
-    "github_pr___delete_comment",
-    "github_pr___minimize_comment",
-    "github_pr___reply_to_comment",
-    "github_pr___resolve_review_thread",
-  ];
+  const candidateGenerationTools = ["Task", "FetchUrl", "Skill"];
+
+  const safeUserAllowedMCPTools = userAllowedMCPTools.filter(
+    (tool) =>
+      tool === "github_comment___update_droid_comment" ||
+      (!tool.startsWith("github_pr___") &&
+        tool !== "github_inline_comment___create_inline_comment"),
+  );
 
   const allowedTools = Array.from(
-    new Set([...baseTools, ...reviewTools, ...userAllowedMCPTools]),
+    new Set([
+      ...baseTools,
+      ...candidateGenerationTools,
+      ...safeUserAllowedMCPTools,
+    ]),
   );
 
   const mcpTools = await prepareMcpTools({
@@ -105,8 +148,8 @@ export async function prepareSecurityReviewMode({
 
   const droidArgParts: string[] = [];
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
+  droidArgParts.push('--tag "code-review"');
 
-  // Add model override if specified (prefer SECURITY_MODEL, fallback to REVIEW_MODEL)
   const securityModel =
     process.env.SECURITY_MODEL?.trim() || process.env.REVIEW_MODEL?.trim();
   if (securityModel) {
@@ -119,6 +162,8 @@ export async function prepareSecurityReviewMode({
 
   core.setOutput("droid_args", droidArgParts.join(" ").trim());
   core.setOutput("mcp_tools", mcpTools);
+  core.setOutput("review_pr_number", context.entityNumber.toString());
+  core.setOutput("droid_comment_id", commentId.toString());
 
   return {
     commentId,

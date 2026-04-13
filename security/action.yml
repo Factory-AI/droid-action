@@ -32,11 +32,35 @@ inputs:
     description: "Path to write security results JSON"
     required: false
     default: ""
+  review_candidates_path:
+    description: "Path to write review candidates JSON (pass 1)."
+    required: false
+    default: "${{ runner.temp }}/droid-prompts/review_candidates.json"
+  review_validated_path:
+    description: "Path to write review validated JSON (pass 2)."
+    required: false
+    default: "${{ runner.temp }}/droid-prompts/review_validated.json"
+  review_depth:
+    description: "Review depth preset for the validator."
+    required: false
+    default: "deep"
+  review_model:
+    description: "Override the model used for the validator."
+    required: false
+    default: ""
+  reasoning_effort:
+    description: "Override reasoning effort for the validator."
+    required: false
+    default: ""
+  include_suggestions:
+    description: "Include code suggestion blocks in review comments."
+    required: false
+    default: "false"
 
 outputs:
   conclusion:
     description: "Review conclusion (success/failure)"
-    value: ${{ steps.review.outputs.conclusion }}
+    value: ${{ steps.validator.outputs.conclusion }}
 
 runs:
   using: "composite"
@@ -80,6 +104,15 @@ runs:
         }
         echo "Security plugin installation complete"
 
+    - name: Setup Custom Droids
+      shell: bash
+      run: |
+        mkdir -p ~/.factory/droids
+        if [ -d "${{ github.action_path }}/../.factory/droids" ]; then
+          cp -r ${{ github.action_path }}/../.factory/droids/* ~/.factory/droids/
+          echo "Copied custom droids to ~/.factory/droids/"
+        fi
+
     - name: Generate Security Prompt
       id: prompt
       shell: bash
@@ -93,6 +126,8 @@ runs:
         SECURITY_BLOCK_ON_CRITICAL: ${{ inputs.security_block_on_critical }}
         SECURITY_BLOCK_ON_HIGH: ${{ inputs.security_block_on_high }}
         REVIEW_TYPE: "security"
+        REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
+        INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}
         DROID_OUTPUT_FILE: ${{ inputs.output_file }}
 
     - name: Run Security Review
@@ -107,3 +142,46 @@ runs:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
         DROID_OUTPUT_FILE: ${{ inputs.output_file }}
+
+    - name: Prepare Validator
+      id: prepare_validator
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../src/entrypoints/prepare-validator.ts
+      env:
+        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+        REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
+        REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
+        REVIEW_DEPTH: ${{ inputs.review_depth }}
+        REVIEW_MODEL: ${{ inputs.review_model }}
+        REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+        INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}
+        DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
+
+    - name: Run Validator
+      id: validator
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../base-action/src/index.ts
+      env:
+        INPUT_PROMPT_FILE: ${{ runner.temp }}/droid-prompts/droid-prompt.txt
+        INPUT_DROID_ARGS: ${{ steps.prepare_validator.outputs.droid_args }}
+        INPUT_MCP_TOOLS: ${{ steps.prepare_validator.outputs.mcp_tools }}
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+
+    - name: Update tracking comment
+      if: always() && inputs.tracking_comment_id
+      continue-on-error: true
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../src/entrypoints/update-comment-link.ts
+      env:
+        DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
+        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        OUTPUT_FILE: ${{ inputs.output_file }}
+        TRIGGER_USERNAME: ${{ github.event.pull_request.user.login || github.event.sender.login || github.triggering_actor || github.actor || '' }}
+        PREPARE_SUCCESS: "true"
+        DROID_SUCCESS: ${{ steps.validator.outcome == 'success' }}

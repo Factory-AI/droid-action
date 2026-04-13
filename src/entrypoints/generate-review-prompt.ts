@@ -13,7 +13,7 @@ import { computeReviewArtifacts } from "../github/data/review-artifacts";
 import { createPrompt } from "../create-prompt";
 import { prepareMcpTools } from "../mcp/install-mcp-server";
 import { generateReviewCandidatesPrompt } from "../create-prompt/templates/review-candidates-prompt";
-import { generateSecurityReviewPrompt } from "../create-prompt/templates/security-review-prompt";
+import { generateSecurityCandidatesPrompt } from "../create-prompt/templates/security-review-prompt";
 import { normalizeDroidArgs, parseAllowedTools } from "../utils/parse-tools";
 import { resolveReviewConfig } from "../utils/review-depth";
 
@@ -91,7 +91,7 @@ async function run() {
     // Select prompt generator based on review type
     const generatePrompt =
       reviewType === "security"
-        ? generateSecurityReviewPrompt
+        ? generateSecurityCandidatesPrompt
         : generateReviewCandidatesPrompt;
 
     // Pass the output file path so the prompt can instruct the Droid
@@ -139,19 +139,15 @@ async function run() {
 
     // Task tool is needed for parallel subagent reviews in candidate generation phase.
     // FetchUrl is needed to fetch linked tickets from the PR description.
-    // Skill is needed so file-group-reviewer subagents can invoke the review-guidelines skill.
-    const candidateGenerationTools =
-      reviewType === "code" ? ["Task", "FetchUrl", "Skill"] : [];
+    // Skill is needed so subagents can invoke review/security-review skills.
+    const candidateGenerationTools = ["Task", "FetchUrl", "Skill"];
 
-    const safeUserAllowedMCPTools =
-      reviewType === "code"
-        ? userAllowedMCPTools.filter(
-            (tool) =>
-              tool === "github_comment___update_droid_comment" ||
-              (!tool.startsWith("github_pr___") &&
-                tool !== "github_inline_comment___create_inline_comment"),
-          )
-        : userAllowedMCPTools;
+    const safeUserAllowedMCPTools = userAllowedMCPTools.filter(
+      (tool) =>
+        tool === "github_comment___update_droid_comment" ||
+        (!tool.startsWith("github_pr___") &&
+          tool !== "github_inline_comment___create_inline_comment"),
+    );
 
     const allowedTools = Array.from(
       new Set([
@@ -200,7 +196,8 @@ async function run() {
     // Output for next step - use core.setOutput which handles GITHUB_OUTPUT internally
     core.setOutput("droid_args", droidArgParts.join(" ").trim());
     core.setOutput("mcp_tools", mcpTools);
-    core.setOutput("review_use_validator", (reviewType === "code").toString());
+    // Both code and security reviews use the two-pass pipeline (candidates + validator)
+    core.setOutput("review_use_validator", "true");
 
     console.log(`Generated ${reviewType} review prompt`);
   } catch (error) {

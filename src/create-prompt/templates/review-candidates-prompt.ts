@@ -43,11 +43,32 @@ export function generateReviewCandidatesPrompt(
     ? "Invoke the 'review' skill to load the review methodology, then execute its **Pass 1: Candidate Generation** procedure — including suggestion block rules."
     : "Invoke the 'review' skill to load the review methodology, then execute its **Pass 1: Candidate Generation** procedure. Do NOT include code suggestion blocks.";
 
+  const securityReviewEnabled = process.env.SECURITY_REVIEW_ENABLED === "true";
+
+  const securitySubagentInstruction = securityReviewEnabled
+    ? `
+
+## Security Review (run concurrently)
+
+In addition to the code review, you MUST also spawn a \`security-reviewer\` subagent via the Task tool.
+This subagent runs **concurrently** with the file-group-reviewer subagents during Step 2.
+
+Spawn it with:
+- \`subagent_type\`: "security-reviewer"
+- \`description\`: "Security review"
+- \`prompt\`: Include the full PR context (repo, PR number, head SHA, base ref) and the paths to precomputed data files (diff, description, existing comments). The security-reviewer will invoke the security-review skill and return a JSON array of security findings.
+
+**IMPORTANT**: Spawn the security-reviewer in the SAME response as the file-group-reviewer subagents so they all run in parallel.
+
+After all subagents complete (both file-group-reviewers and security-reviewer), merge the security findings into the \`comments\` array alongside code review findings. Security findings use the same schema but are prefixed with \`[security]\` in their body (e.g., \`[P1] [security] Title\`).
+`
+    : "";
+
   return `You are a senior staff software engineer and expert code reviewer.
 
 Your task: Review PR #${prNumber} in ${repoFullName} and generate a JSON file with **high-confidence, actionable** review comments that pinpoint genuine issues.
 
-${skillInstruction}
+${skillInstruction}${securitySubagentInstruction}
 
 <context>
 Repo: ${repoFullName}
