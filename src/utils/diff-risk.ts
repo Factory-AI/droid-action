@@ -76,9 +76,19 @@ export function computeRiskScore(stats: DiffStats): number {
   return Math.round(weightedScore * 100) / 100;
 }
 
+export function getRiskThresholds() {
+  return {
+    lowMax: 0.3,
+    mediumMax: 0.5,
+    highMax: 0.8,
+  };
+}
+
 export function classifyRisk(stats: DiffStats): RiskAssessment {
   const score = computeRiskScore(stats);
+  const thresholds = getRiskThresholds();
   const reasons: string[] = [];
+  console.log(`Using thresholds: ${JSON.stringify(thresholds)}`);
 
   if (stats.hasLockfileChanges) {
     reasons.push("Lockfile changes detected — verify dependency integrity");

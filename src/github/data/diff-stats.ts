@@ -32,6 +32,10 @@ const MIGRATION_PATTERNS = [
   /\.sql$/,
 ];
 
+export function isRenamedFile(line: string): boolean {
+  return line.includes("{") && line.includes("=>");
+}
+
 export async function computeDiffStats(
   baseRef: string,
   headRef?: string,

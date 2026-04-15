@@ -3,7 +3,9 @@ import { computeDiffStats } from "../github/data/diff-stats";
 import {
   classifyRisk,
   formatRiskSummary,
+  computeRiskScore,
   type RiskAssessment,
+  type DiffStats,
 } from "../utils/diff-risk";
 import { resolveReviewDepthFromRisk } from "../create-prompt/templates/review-risk-prompt";
 import { resolveReviewConfig } from "../utils/review-depth";
@@ -14,6 +16,7 @@ export type RiskAssessmentResult = {
   model: string;
   reasoningEffort: string | undefined;
   summary: string;
+  diffStats: DiffStats;
 };
 
 export async function performRiskAssessment(
@@ -28,8 +31,17 @@ export async function performRiskAssessment(
   console.log("Computing diff statistics for risk assessment...");
 
   const stats = await computeDiffStats(baseRef, options?.headRef);
+  const rawScore = computeRiskScore(stats);
   const assessment = classifyRisk(stats);
   const summary = formatRiskSummary(assessment);
+
+  const totalLinesChanged = stats.additions + stats.deletions;
+  const isLargePR = totalLinesChanged > 500;
+  const isMediumPR = totalLinesChanged > 100 && totalLinesChanged <= 500;
+
+  console.log(
+    `Diff stats: ${totalLinesChanged} lines changed, large=${isLargePR}, medium=${isMediumPR}, raw_score=${rawScore}`,
+  );
 
   const effectiveDepth = resolveReviewDepthFromRisk(
     assessment,
@@ -41,6 +53,12 @@ export async function performRiskAssessment(
     reasoningEffort: options?.reasoningEffort,
     reviewDepth: effectiveDepth,
   });
+
+  const hasSecurityImplications = stats.changedFiles.some(
+    (f) => f.includes(".env") || f.includes("secret") || f.includes("auth"),
+  );
+
+  console.log(`Security implications: ${hasSecurityImplications}`);
 
   core.setOutput("risk_level", assessment.level);
   core.setOutput("risk_score", assessment.score.toString());
@@ -57,5 +75,6 @@ export async function performRiskAssessment(
     model,
     reasoningEffort,
     summary,
+    diffStats: stats,
   };
 }

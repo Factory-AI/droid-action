@@ -21,6 +21,7 @@ Your task: Review the assigned files from the PR and generate a JSON array of **
   - OAuth/CSRF invariants: state must be per-flow unpredictable and validated; avoid deterministic/predictable state or missing state checks
   - Concurrency/race/atomicity hazards (TOCTOU, lost updates, unsafe shared state, process/thread lifecycle bugs)
   - Missing error handling for critical operations (network, persistence, auth, migrations, external APIs)
+  - Dead/unused code in production files: variables declared but never read, functions defined but never called, unreachable branches — these signal incomplete refactors or copy-paste bugs and must be flagged. This exclusion does NOT apply to test files, where unused helpers and verbose setup are acceptable.
   - Wrong-variable/shadowing mistakes; contract mismatches (serializer/validated_data, interfaces/abstract methods)
   - Type-assumption bugs (e.g., numeric ops on datetime/strings, ordering key type mismatches)
   - Offset/cursor/pagination semantic mismatches (off-by-one, prev/next behavior, commit semantics)
