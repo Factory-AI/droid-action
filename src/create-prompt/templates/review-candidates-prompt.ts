@@ -51,16 +51,16 @@ export function generateReviewCandidatesPrompt(
 ## Security Review (run concurrently)
 
 In addition to the code review, you MUST also spawn a \`security-reviewer\` subagent via the Task tool.
-This subagent runs **concurrently** with the file-group-reviewer subagents during Step 2.
+This subagent runs **concurrently** with the review subagents during Step 2.
 
 Spawn it with:
 - \`subagent_type\`: "security-reviewer"
 - \`description\`: "Security review"
 - \`prompt\`: Include the full PR context (repo, PR number, head SHA, base ref) and the paths to precomputed data files (diff, description, existing comments). The security-reviewer will invoke the security-review skill and return a JSON array of security findings.
 
-**IMPORTANT**: Spawn the security-reviewer in the SAME response as the file-group-reviewer subagents so they all run in parallel.
+**IMPORTANT**: Spawn the security-reviewer in the SAME response as the review subagents so they all run in parallel.
 
-After all subagents complete (both file-group-reviewers and security-reviewer), merge the security findings into the \`comments\` array alongside code review findings. Security findings use the same schema but are prefixed with \`[security]\` in their body (e.g., \`[P1] [security] Title\`).
+After all subagents complete (both review workers and security-reviewer), merge the security findings into the \`comments\` array alongside code review findings. Security findings use the same schema but are prefixed with \`[security]\` in their body (e.g., \`[P1] [security] Title\`).
 `
     : "";
 
