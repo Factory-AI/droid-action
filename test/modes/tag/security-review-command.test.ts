@@ -1,9 +1,18 @@
-import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  spyOn,
+  mock,
+} from "bun:test";
 import * as core from "@actions/core";
 import { prepareSecurityReviewMode } from "../../../src/tag/commands/security-review";
 import { createMockContext } from "../../mockContext";
 
 import * as prFetcher from "../../../src/github/data/pr-fetcher";
+import * as reviewArtifacts from "../../../src/github/data/review-artifacts";
 import * as promptModule from "../../../src/create-prompt";
 import * as mcpInstaller from "../../../src/mcp/install-mcp-server";
 import * as comments from "../../../src/github/operations/comments/create-initial";
@@ -14,11 +23,18 @@ const MOCK_PR_DATA = {
   headRefOid: "123abc",
 } as const;
 
+const MOCK_REVIEW_ARTIFACTS = {
+  diffPath: "/tmp/droid-prompts/pr.diff",
+  commentsPath: "/tmp/droid-prompts/existing_comments.json",
+  descriptionPath: "/tmp/droid-prompts/pr_description.txt",
+};
+
 describe("prepareSecurityReviewMode", () => {
   const originalArgs = process.env.DROID_ARGS;
   const originalReviewModel = process.env.REVIEW_MODEL;
   const originalSecurityModel = process.env.SECURITY_MODEL;
   let fetchPRSpy: ReturnType<typeof spyOn>;
+  let computeArtifactsSpy: ReturnType<typeof spyOn>;
   let promptSpy: ReturnType<typeof spyOn>;
   let mcpSpy: ReturnType<typeof spyOn>;
   let setOutputSpy: ReturnType<typeof spyOn>;
@@ -38,6 +54,11 @@ describe("prepareSecurityReviewMode", () => {
       body: "Test description",
     });
 
+    computeArtifactsSpy = spyOn(
+      reviewArtifacts,
+      "computeReviewArtifacts",
+    ).mockResolvedValue(MOCK_REVIEW_ARTIFACTS);
+
     promptSpy = spyOn(promptModule, "createPrompt").mockResolvedValue();
     mcpSpy = spyOn(mcpInstaller, "prepareMcpTools").mockResolvedValue(
       "mock-config",
@@ -50,10 +71,19 @@ describe("prepareSecurityReviewMode", () => {
     exportVariableSpy = spyOn(core, "exportVariable").mockImplementation(
       () => {},
     );
+
+    // Mock execSync for git checkout
+    mock.module("child_process", () => ({
+      execSync: (cmd: string) => {
+        if (cmd.includes("git rev-parse")) return "feature/security-review\n";
+        return "";
+      },
+    }));
   });
 
   afterEach(() => {
     fetchPRSpy.mockRestore();
+    computeArtifactsSpy.mockRestore();
     promptSpy.mockRestore();
     mcpSpy.mockRestore();
     setOutputSpy.mockRestore();
@@ -73,7 +103,7 @@ describe("prepareSecurityReviewMode", () => {
     }
   });
 
-  it("prepares security review flow with limited toolset when tracking comment exists", async () => {
+  it("prepares security review flow with candidate generation toolset", async () => {
     const context = createMockContext({
       eventName: "issue_comment",
       isPR: true,
@@ -105,36 +135,25 @@ describe("prepareSecurityReviewMode", () => {
       expect.objectContaining({
         allowedTools: expect.arrayContaining([
           "Execute",
+          "Task",
+          "Skill",
           "github_comment___update_droid_comment",
-          "github_inline_comment___create_inline_comment",
-          "github_pr___list_review_comments",
-          "github_pr___submit_review",
-          "github_pr___resolve_review_thread",
         ]),
       }),
     );
+    // Should NOT include inline comment or direct review tools (validator handles posting)
+    const mcpCall = mcpSpy.mock.calls[0] as any[];
+    const allowedTools = mcpCall[0].allowedTools as string[];
+    expect(allowedTools).not.toContain(
+      "github_inline_comment___create_inline_comment",
+    );
+    expect(allowedTools).not.toContain("github_pr___submit_review");
+
     expect(createInitialSpy).not.toHaveBeenCalled();
     expect(result.commentId).toBe(555);
     expect(result.branchInfo.baseBranch).toBe("main");
     expect(result.branchInfo.currentBranch).toBe("feature/security-review");
     expect(result.branchInfo.droidBranch).toBeUndefined();
-
-    const droidArgsCall = setOutputSpy.mock.calls.find(
-      (call: unknown[]) => call[0] === "droid_args",
-    ) as [string, string] | undefined;
-    expect(droidArgsCall?.[1]).toContain("Execute");
-    [
-      "github_comment___update_droid_comment",
-      "github_inline_comment___create_inline_comment",
-      "github_pr___list_review_comments",
-      "github_pr___submit_review",
-      "github_pr___delete_comment",
-      "github_pr___minimize_comment",
-      "github_pr___reply_to_comment",
-      "github_pr___resolve_review_thread",
-    ].forEach((tool) => {
-      expect(droidArgsCall?.[1]).toContain(tool);
-    });
 
     expect(exportVariableSpy).toHaveBeenCalledWith(
       "DROID_EXEC_RUN_TYPE",
@@ -333,5 +352,38 @@ describe("prepareSecurityReviewMode", () => {
     expect(droidArgsCall?.[1]).toContain(
       '--model "claude-sonnet-4-5-20250929"',
     );
+  });
+
+  it("outputs review_pr_number and droid_comment_id", async () => {
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: {
+        comment: {
+          id: 108,
+          body: "@droid security-review",
+        },
+      } as any,
+      entityNumber: 31,
+    });
+
+    const octokit = { rest: {}, graphql: () => {} } as any;
+
+    await prepareSecurityReviewMode({
+      context,
+      octokit,
+      githubToken: "token",
+      trackingCommentId: 561,
+    });
+
+    const prNumberCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "review_pr_number",
+    ) as [string, string] | undefined;
+    expect(prNumberCall?.[1]).toBe("31");
+
+    const commentIdCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "droid_comment_id",
+    ) as [string, string] | undefined;
+    expect(commentIdCall?.[1]).toBe("561");
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { generateSecurityReviewPrompt } from "../../../src/create-prompt/templates/security-review-prompt";
+import { generateSecurityCandidatesPrompt } from "../../../src/create-prompt/templates/security-review-prompt";
 import type { PreparedContext } from "../../../src/create-prompt/types";
 
 function createBaseContext(
@@ -21,83 +21,55 @@ function createBaseContext(
   } as PreparedContext;
 }
 
-describe("generateSecurityReviewPrompt", () => {
-  it("includes security context and skill workflow", () => {
-    const prompt = generateSecurityReviewPrompt(createBaseContext());
+describe("generateSecurityCandidatesPrompt", () => {
+  it("includes security context and skill invocation", () => {
+    const prompt = generateSecurityCandidatesPrompt(createBaseContext());
 
     expect(prompt).toContain("security-focused code review");
-    expect(prompt).toContain("## Security Skills Available");
-    expect(prompt).toContain("threat-model-generation");
-    expect(prompt).toContain("commit-security-scan");
-    expect(prompt).toContain("vulnerability-validation");
     expect(prompt).toContain("security-review");
-    expect(prompt).toContain("## Review Workflow");
-    expect(prompt).toContain("gh pr diff 42 --repo test-owner/test-repo");
-    expect(prompt).toContain(
-      "gh api repos/test-owner/test-repo/pulls/42/files",
-    );
-    expect(prompt).toContain("security-review-results.json");
-    expect(prompt).toContain("Do NOT post inline comments");
+    expect(prompt).toContain("Invoke the 'security-review' skill");
+    expect(prompt).toContain("Pass 1: Candidate Generation");
+    expect(prompt).toContain("DO NOT");
   });
 
-  it("lists STRIDE security categories", () => {
-    const prompt = generateSecurityReviewPrompt(createBaseContext());
+  it("includes PR context with correct values", () => {
+    const prompt = generateSecurityCandidatesPrompt(createBaseContext());
 
-    expect(prompt).toContain("Spoofing");
-    expect(prompt).toContain("Tampering");
-    expect(prompt).toContain("Repudiation");
-    expect(prompt).toContain("Information Disclosure");
-    expect(prompt).toContain("Denial of Service");
-    expect(prompt).toContain("Elevation of Privilege");
+    expect(prompt).toContain("PR Number: 42");
+    expect(prompt).toContain("test-owner/test-repo");
   });
 
-  it("includes severity definitions", () => {
-    const prompt = generateSecurityReviewPrompt(createBaseContext());
+  it("includes output spec with correct schema", () => {
+    const prompt = generateSecurityCandidatesPrompt(createBaseContext());
 
-    expect(prompt).toContain("CRITICAL");
-    expect(prompt).toContain("HIGH");
-    expect(prompt).toContain("MEDIUM");
-    expect(prompt).toContain("LOW");
+    expect(prompt).toContain("version");
+    expect(prompt).toContain("meta");
+    expect(prompt).toContain("comments");
+    expect(prompt).toContain("reviewSummary");
+    expect(prompt).toContain("commit_id");
+    expect(prompt).toContain("[security]");
   });
 
-  it("uses outputFilePath when provided", () => {
+  it("includes critical constraints to not post to GitHub", () => {
+    const prompt = generateSecurityCandidatesPrompt(createBaseContext());
+
+    expect(prompt).toContain("DO NOT** post to GitHub");
+    expect(prompt).toContain("DO NOT** invoke any PR mutation tools");
+  });
+
+  it("uses precomputed data files when review artifacts provided", () => {
     const context = createBaseContext({
-      outputFilePath: "/tmp/results/security-results.json",
+      reviewArtifacts: {
+        diffPath: "/tmp/droid-prompts/pr.diff",
+        commentsPath: "/tmp/droid-prompts/existing_comments.json",
+        descriptionPath: "/tmp/droid-prompts/pr_description.txt",
+      },
     });
 
-    const prompt = generateSecurityReviewPrompt(context);
+    const prompt = generateSecurityCandidatesPrompt(context);
 
-    expect(prompt).toContain("/tmp/results/security-results.json");
-    expect(prompt).not.toContain(
-      "Write findings to `security-review-results.json`",
-    );
-  });
-
-  it("falls back to default filename when outputFilePath is not set", () => {
-    const context = createBaseContext();
-
-    const prompt = generateSecurityReviewPrompt(context);
-
-    expect(prompt).toContain("security-review-results.json");
-  });
-
-  it("includes security configuration from context", () => {
-    const contextWithConfig = createBaseContext({
-      githubContext: {
-        inputs: {
-          securitySeverityThreshold: "high",
-          securityBlockOnCritical: true,
-          securityBlockOnHigh: true,
-          securityNotifyTeam: "@org/security-team",
-        },
-      } as any,
-    });
-
-    const prompt = generateSecurityReviewPrompt(contextWithConfig);
-
-    expect(prompt).toContain("Severity Threshold: high");
-    expect(prompt).toContain("Block on Critical: true");
-    expect(prompt).toContain("Block on High: true");
-    expect(prompt).toContain("@org/security-team");
+    expect(prompt).toContain("/tmp/droid-prompts/pr.diff");
+    expect(prompt).toContain("/tmp/droid-prompts/existing_comments.json");
+    expect(prompt).toContain("/tmp/droid-prompts/pr_description.txt");
   });
 });

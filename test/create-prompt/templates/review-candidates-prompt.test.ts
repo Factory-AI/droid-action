@@ -52,55 +52,23 @@ describe("generateReviewCandidatesPrompt", () => {
     expect(prompt).toContain("pr_description.txt");
   });
 
-  it("includes understanding phase with ticket fetching instructions", () => {
-    const context = createBaseContext({
-      reviewArtifacts: {
-        diffPath: "/tmp/test/pr.diff",
-        commentsPath: "/tmp/test/existing_comments.json",
-        descriptionPath: "/tmp/test/pr_description.txt",
-      },
-    });
-
-    const prompt = generateReviewCandidatesPrompt(context);
-
-    expect(prompt).toContain("<understanding_phase>");
-    expect(prompt).toContain("Understand the PR intent");
-    expect(prompt).toContain("Read the PR description from");
-    expect(prompt).toContain("/tmp/test/pr_description.txt");
-  });
-
-  it("instructs to fetch ticket URLs from PR description", () => {
+  it("instructs to invoke the review skill for Pass 1", () => {
     const context = createBaseContext();
 
     const prompt = generateReviewCandidatesPrompt(context);
 
-    expect(prompt).toContain("ticket URL");
-    expect(prompt).toContain("ticket ID");
-    expect(prompt).toContain("always fetch it");
-    expect(prompt).toContain("FetchUrl");
+    expect(prompt).toContain("Invoke the 'review' skill");
+    expect(prompt).toContain("Pass 1: Candidate Generation");
   });
 
-  it("places understanding phase before review guidelines", () => {
+  it("includes senior engineer framing", () => {
     const context = createBaseContext();
 
     const prompt = generateReviewCandidatesPrompt(context);
 
-    const understandingIdx = prompt.indexOf("<understanding_phase>");
-    const guidelinesIdx = prompt.indexOf("<review_guidelines>");
-    expect(understandingIdx).toBeGreaterThan(-1);
-    expect(guidelinesIdx).toBeGreaterThan(-1);
-    expect(understandingIdx).toBeLessThan(guidelinesIdx);
-  });
-
-  it("includes triage and parallel review phases", () => {
-    const context = createBaseContext();
-
-    const prompt = generateReviewCandidatesPrompt(context);
-
-    expect(prompt).toContain("<triage_phase>");
-    expect(prompt).toContain("<parallel_review_phase>");
-    expect(prompt).toContain("<aggregation_phase>");
-    expect(prompt).toContain("file-group-reviewer");
+    expect(prompt).toContain(
+      "You are a senior staff software engineer and expert code reviewer",
+    );
   });
 
   it("includes output spec with correct schema", () => {
@@ -145,5 +113,22 @@ describe("generateReviewCandidatesPrompt", () => {
     expect(prompt).toContain("PR Head Ref: feat/my-branch");
     expect(prompt).toContain("PR Head SHA: sha123abc");
     expect(prompt).toContain("PR Base Ref: develop");
+  });
+
+  it("includes suggestion block rules reference when suggestions enabled", () => {
+    const context = createBaseContext({ includeSuggestions: true });
+
+    const prompt = generateReviewCandidatesPrompt(context);
+
+    expect(prompt).toContain("suggestion block rules");
+  });
+
+  it("excludes suggestion blocks when suggestions disabled", () => {
+    const context = createBaseContext({ includeSuggestions: false });
+
+    const prompt = generateReviewCandidatesPrompt(context);
+
+    expect(prompt).toContain("Do NOT include code suggestion blocks");
+    expect(prompt).not.toContain("suggestion block rules");
   });
 });

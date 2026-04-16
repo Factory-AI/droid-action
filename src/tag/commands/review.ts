@@ -8,10 +8,10 @@ import { prepareMcpTools } from "../../mcp/install-mcp-server";
 import { createInitialComment } from "../../github/operations/comments/create-initial";
 import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
 import { isEntityContext } from "../../github/context";
-import { generateReviewPrompt } from "../../create-prompt/templates/review-prompt";
 import { generateReviewCandidatesPrompt } from "../../create-prompt/templates/review-candidates-prompt";
 import type { Octokits } from "../../github/api/client";
 import type { PrepareResult } from "../../prepare/types";
+import { resolveReviewConfig } from "../../utils/review-depth";
 
 type ReviewCommandOptions = {
   context: GitHubContext;
@@ -85,8 +85,7 @@ export async function prepareReviewMode({
     githubToken,
   });
 
-  const reviewUseValidator =
-    (process.env.REVIEW_USE_VALIDATOR ?? "true").trim() !== "false";
+  const includeSuggestions = process.env.INCLUDE_SUGGESTIONS !== "false";
 
   await createPrompt({
     githubContext: context,
@@ -97,10 +96,9 @@ export async function prepareReviewMode({
       headRefName: prData.headRefName,
       headRefOid: prData.headRefOid,
     },
-    generatePrompt: reviewUseValidator
-      ? generateReviewCandidatesPrompt
-      : generateReviewPrompt,
+    generatePrompt: generateReviewCandidatesPrompt,
     reviewArtifacts,
+    includeSuggestions,
   });
   core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-review");
 
@@ -124,36 +122,20 @@ export async function prepareReviewMode({
 
   // Task tool is needed for parallel subagent reviews in candidate generation phase.
   // FetchUrl is needed to fetch linked tickets from the PR description.
-  const candidateGenerationTools = reviewUseValidator
-    ? ["Task", "FetchUrl"]
-    : [];
+  // Skill is needed so review subagents can invoke the review-guidelines skill.
+  const candidateGenerationTools = ["Task", "FetchUrl", "Skill"];
 
-  const reviewTools = reviewUseValidator
-    ? []
-    : [
-        "github_inline_comment___create_inline_comment",
-        "github_pr___list_review_comments",
-        "github_pr___submit_review",
-        "github_pr___delete_comment",
-        "github_pr___minimize_comment",
-        "github_pr___reply_to_comment",
-        "github_pr___resolve_review_thread",
-      ];
-
-  const safeUserAllowedMCPTools = reviewUseValidator
-    ? userAllowedMCPTools.filter(
-        (tool) =>
-          tool === "github_comment___update_droid_comment" ||
-          (!tool.startsWith("github_pr___") &&
-            tool !== "github_inline_comment___create_inline_comment"),
-      )
-    : userAllowedMCPTools;
+  const safeUserAllowedMCPTools = userAllowedMCPTools.filter(
+    (tool) =>
+      tool === "github_comment___update_droid_comment" ||
+      (!tool.startsWith("github_pr___") &&
+        tool !== "github_inline_comment___create_inline_comment"),
+  );
 
   const allowedTools = Array.from(
     new Set([
       ...baseTools,
       ...candidateGenerationTools,
-      ...reviewTools,
       ...safeUserAllowedMCPTools,
     ]),
   );
@@ -172,11 +154,14 @@ export async function prepareReviewMode({
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
   droidArgParts.push('--tag "code-review"');
 
-  const reviewModel = process.env.REVIEW_MODEL?.trim();
-  const reasoningEffort = process.env.REASONING_EFFORT?.trim();
+  const { model, reasoningEffort } = resolveReviewConfig({
+    reviewModel: process.env.REVIEW_MODEL?.trim(),
+    reasoningEffort: process.env.REASONING_EFFORT?.trim(),
+    reviewDepth: process.env.REVIEW_DEPTH?.trim(),
+  });
 
-  if (reviewModel) {
-    droidArgParts.push(`--model "${reviewModel}"`);
+  if (model) {
+    droidArgParts.push(`--model "${model}"`);
   }
   if (reasoningEffort) {
     droidArgParts.push(`--reasoning-effort "${reasoningEffort}"`);

@@ -9,6 +9,7 @@ import { prepareMcpTools } from "../../mcp/install-mcp-server";
 import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
 import type { PrepareResult } from "../../prepare/types";
 import { generateReviewValidatorPrompt } from "../../create-prompt/templates/review-validator-prompt";
+import { resolveReviewConfig } from "../../utils/review-depth";
 
 export async function prepareReviewValidatorMode({
   context,
@@ -45,6 +46,8 @@ export async function prepareReviewValidatorMode({
     descriptionPath: `${promptsDir}/pr_description.txt`,
   };
 
+  const includeSuggestions = process.env.INCLUDE_SUGGESTIONS !== "false";
+
   await createPrompt({
     githubContext: context,
     commentId: trackingCommentId,
@@ -56,6 +59,7 @@ export async function prepareReviewValidatorMode({
     },
     generatePrompt: generateReviewValidatorPrompt,
     reviewArtifacts,
+    includeSuggestions,
   });
 
   core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-review");
@@ -76,7 +80,6 @@ export async function prepareReviewValidatorMode({
     "Create",
     "Edit",
     "github_comment___update_droid_comment",
-    "github_inline_comment___create_inline_comment",
   ];
 
   const validatorTools = ["github_pr___submit_review"];
@@ -99,11 +102,14 @@ export async function prepareReviewValidatorMode({
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
   droidArgParts.push('--tag "code-review"');
 
-  const reviewModel = process.env.REVIEW_MODEL?.trim();
-  const reasoningEffort = process.env.REASONING_EFFORT?.trim();
+  const { model, reasoningEffort } = resolveReviewConfig({
+    reviewModel: process.env.REVIEW_MODEL?.trim(),
+    reasoningEffort: process.env.REASONING_EFFORT?.trim(),
+    reviewDepth: process.env.REVIEW_DEPTH?.trim(),
+  });
 
-  if (reviewModel) {
-    droidArgParts.push(`--model "${reviewModel}"`);
+  if (model) {
+    droidArgParts.push(`--model "${model}"`);
   }
   if (reasoningEffort) {
     droidArgParts.push(`--reasoning-effort "${reasoningEffort}"`);

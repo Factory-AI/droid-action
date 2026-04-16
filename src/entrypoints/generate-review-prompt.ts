@@ -12,18 +12,15 @@ import { fetchPRBranchData } from "../github/data/pr-fetcher";
 import { computeReviewArtifacts } from "../github/data/review-artifacts";
 import { createPrompt } from "../create-prompt";
 import { prepareMcpTools } from "../mcp/install-mcp-server";
-import { generateReviewPrompt } from "../create-prompt/templates/review-prompt";
 import { generateReviewCandidatesPrompt } from "../create-prompt/templates/review-candidates-prompt";
-import { generateSecurityReviewPrompt } from "../create-prompt/templates/security-review-prompt";
+import { generateSecurityCandidatesPrompt } from "../create-prompt/templates/security-review-prompt";
 import { normalizeDroidArgs, parseAllowedTools } from "../utils/parse-tools";
+import { resolveReviewConfig } from "../utils/review-depth";
 
 async function run() {
   try {
     const githubToken = process.env.GITHUB_TOKEN!;
     const reviewType = process.env.REVIEW_TYPE || "code";
-    const reviewUseValidator =
-      reviewType === "code" &&
-      (process.env.REVIEW_USE_VALIDATOR ?? "true").trim() !== "false";
     const commentId = parseInt(process.env.DROID_COMMENT_ID || "0");
 
     if (!commentId) {
@@ -91,17 +88,16 @@ async function run() {
       githubToken,
     });
 
-    // Select prompt generator based on review type and validator mode
+    // Select prompt generator based on review type
     const generatePrompt =
       reviewType === "security"
-        ? generateSecurityReviewPrompt
-        : reviewUseValidator
-          ? generateReviewCandidatesPrompt
-          : generateReviewPrompt;
+        ? generateSecurityCandidatesPrompt
+        : generateReviewCandidatesPrompt;
 
     // Pass the output file path so the prompt can instruct the Droid
     // to write structured findings for the combine step
     const outputFilePath = process.env.DROID_OUTPUT_FILE || undefined;
+    const includeSuggestions = process.env.INCLUDE_SUGGESTIONS !== "false";
 
     await createPrompt({
       githubContext: context,
@@ -114,6 +110,7 @@ async function run() {
       generatePrompt,
       reviewArtifacts,
       outputFilePath,
+      includeSuggestions,
     });
 
     // Set run type
@@ -142,30 +139,20 @@ async function run() {
 
     // Task tool is needed for parallel subagent reviews in candidate generation phase.
     // FetchUrl is needed to fetch linked tickets from the PR description.
-    const candidateGenerationTools = reviewUseValidator
-      ? ["Task", "FetchUrl"]
-      : [];
+    // Skill is needed so subagents can invoke review/security-review skills.
+    const candidateGenerationTools = ["Task", "FetchUrl", "Skill"];
 
-    // When validator is enabled, the candidate generation phase should NOT
-    // have access to PR mutation tools. When disabled, allow them.
-    const reviewTools = reviewUseValidator
-      ? []
-      : ["github_pr___list_review_comments"];
-
-    const safeUserAllowedMCPTools = reviewUseValidator
-      ? userAllowedMCPTools.filter(
-          (tool) =>
-            tool === "github_comment___update_droid_comment" ||
-            (!tool.startsWith("github_pr___") &&
-              tool !== "github_inline_comment___create_inline_comment"),
-        )
-      : userAllowedMCPTools;
+    const safeUserAllowedMCPTools = userAllowedMCPTools.filter(
+      (tool) =>
+        tool === "github_comment___update_droid_comment" ||
+        (!tool.startsWith("github_pr___") &&
+          tool !== "github_inline_comment___create_inline_comment"),
+    );
 
     const allowedTools = Array.from(
       new Set([
         ...baseTools,
         ...candidateGenerationTools,
-        ...reviewTools,
         ...safeUserAllowedMCPTools,
       ]),
     );
@@ -184,14 +171,19 @@ async function run() {
     droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
     droidArgParts.push('--tag "code-review"');
 
-    const reviewModel =
+    const rawModel =
       reviewType === "security"
         ? process.env.SECURITY_MODEL?.trim() || process.env.REVIEW_MODEL?.trim()
         : process.env.REVIEW_MODEL?.trim();
-    const reasoningEffort = process.env.REASONING_EFFORT?.trim();
 
-    if (reviewModel) {
-      droidArgParts.push(`--model "${reviewModel}"`);
+    const { model, reasoningEffort } = resolveReviewConfig({
+      reviewModel: rawModel,
+      reasoningEffort: process.env.REASONING_EFFORT?.trim(),
+      reviewDepth: process.env.REVIEW_DEPTH?.trim(),
+    });
+
+    if (model) {
+      droidArgParts.push(`--model "${model}"`);
     }
     if (reasoningEffort) {
       droidArgParts.push(`--reasoning-effort "${reasoningEffort}"`);
@@ -204,11 +196,10 @@ async function run() {
     // Output for next step - use core.setOutput which handles GITHUB_OUTPUT internally
     core.setOutput("droid_args", droidArgParts.join(" ").trim());
     core.setOutput("mcp_tools", mcpTools);
-    core.setOutput("review_use_validator", reviewUseValidator.toString());
+    // Both code and security reviews use the two-pass pipeline (candidates + validator)
+    core.setOutput("review_use_validator", "true");
 
-    console.log(
-      `Generated ${reviewType} review prompt (validator=${reviewUseValidator})`,
-    );
+    console.log(`Generated ${reviewType} review prompt`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     core.setFailed(`Generate prompt failed: ${errorMessage}`);

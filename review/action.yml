@@ -12,22 +12,22 @@ inputs:
   tracking_comment_id:
     description: "ID of the tracking comment to update"
     required: true
+  review_depth:
+    description: "Review depth preset: 'shallow' (fast, uses kimi-k2-0711) or 'deep' (thorough, uses gpt-5.2 with high reasoning). Defaults to deep. Setting review_model or reasoning_effort explicitly overrides the preset values."
+    required: false
+    default: "deep"
   review_model:
-    description: "Model to use for review"
+    description: "Override the model used for review. If empty, determined by review_depth."
     required: false
-    default: "gpt-5.2"
+    default: ""
   reasoning_effort:
-    description: "Reasoning effort for review (passed to Droid Exec as --reasoning-effort)"
+    description: "Override reasoning effort for review. If empty, determined by review_depth (shallow=default, deep=high)."
     required: false
-    default: "high"
+    default: ""
   output_file:
     description: "Path to write review results JSON"
     required: false
     default: ""
-  review_use_validator:
-    description: "Enable two-pass review: generate candidate comments, then validate and post only approved ones."
-    required: false
-    default: "true"
   review_candidates_path:
     description: "Path to write review candidates JSON (pass 1)."
     required: false
@@ -36,6 +36,10 @@ inputs:
     description: "Path to write review validated JSON (pass 2)."
     required: false
     default: "${{ runner.temp }}/droid-prompts/review_validated.json"
+  include_suggestions:
+    description: "Include code suggestion blocks in review comments when the fix is high-confidence. Set to 'false' to disable suggestions."
+    required: false
+    default: "true"
 
 outputs:
   conclusion:
@@ -82,11 +86,12 @@ runs:
       env:
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
         DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
+        REVIEW_DEPTH: ${{ inputs.review_depth }}
         REVIEW_MODEL: ${{ inputs.review_model }}
         REVIEW_TYPE: "code"
-        REVIEW_USE_VALIDATOR: ${{ inputs.review_use_validator }}
         REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
         REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+        INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}
         DROID_OUTPUT_FILE: ${{ inputs.output_file }}
 
     - name: Setup Custom Droids
@@ -113,22 +118,21 @@ runs:
 
     - name: Prepare Validator
       id: prepare_validator
-      if: steps.prompt.outputs.review_use_validator == 'true'
       shell: bash
       run: |
         bun run ${{ github.action_path }}/../src/entrypoints/prepare-validator.ts
       env:
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
-        REVIEW_USE_VALIDATOR: ${{ inputs.review_use_validator }}
         REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
         REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
+        REVIEW_DEPTH: ${{ inputs.review_depth }}
         REVIEW_MODEL: ${{ inputs.review_model }}
         REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+        INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}
         DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
 
     - name: Run Validator
       id: validator
-      if: steps.prompt.outputs.review_use_validator == 'true'
       shell: bash
       run: |
         bun run ${{ github.action_path }}/../base-action/src/index.ts
@@ -153,4 +157,4 @@ runs:
         OUTPUT_FILE: ${{ inputs.output_file }}
         TRIGGER_USERNAME: ${{ github.event.pull_request.user.login || github.event.sender.login || github.triggering_actor || github.actor || '' }}
         PREPARE_SUCCESS: "true"
-        DROID_SUCCESS: ${{ (steps.prompt.outputs.review_use_validator == 'true' && steps.validator.outcome == 'success') || (steps.prompt.outputs.review_use_validator != 'true' && steps.review.outcome == 'success') }}
+        DROID_SUCCESS: ${{ steps.validator.outcome == 'success' }}

@@ -90,26 +90,33 @@ export async function prepareTagExecution({
 
   const commandContext = extractCommandFromContext(context);
 
-  // Determine if this is a security-related command for the initial comment
-  const isSecurityCommand =
-    context.inputs.automaticSecurityReview ||
-    commandContext?.command === "security" ||
-    commandContext?.command === "security-full";
+  // Determine comment type based on what's being run
+  const isDualReview =
+    context.inputs.automaticReview && context.inputs.automaticSecurityReview;
+  const isSecurityOnly =
+    !isDualReview &&
+    (context.inputs.automaticSecurityReview ||
+      commandContext?.command === "security" ||
+      commandContext?.command === "security-full");
+
+  const commentType = isDualReview
+    ? "review_and_security"
+    : isSecurityOnly
+      ? "security"
+      : "default";
 
   const commentData = await createInitialComment(
     octokit.rest,
     context,
-    isSecurityCommand ? "security" : "default",
+    commentType,
   );
   const commentId = commentData.id;
 
-  // Handle parallel review mode when both flags are set
+  // Handle when both automatic review flags are set
   if (
     context.inputs.automaticReview &&
     context.inputs.automaticSecurityReview
   ) {
-    // Output flags for parallel workflow jobs
-    const runCodeReview = true;
     let runSecurityReview = true;
 
     // Check if security review already exists on this PR (run once behavior)
@@ -121,19 +128,22 @@ export async function prepareTagExecution({
       runSecurityReview = false;
     }
 
-    // Set outputs for downstream jobs
-    core.setOutput("run_code_review", runCodeReview.toString());
+    if (runSecurityReview) {
+      // Signal to the code review prompt to spawn a security-reviewer subagent
+      core.exportVariable("SECURITY_REVIEW_ENABLED", "true");
+      core.setOutput("install_security_skills", "true");
+    }
+
+    core.setOutput("run_code_review", "true");
     core.setOutput("run_security_review", runSecurityReview.toString());
 
-    // For parallel mode, return early - individual jobs will run their own reviews
-    return {
-      skipped: false,
-      branchInfo: {
-        baseBranch: "",
-        currentBranch: "",
-      },
-      mcpTools: "",
-    };
+    // Prepare the code review (security review runs as a subagent within pass 1)
+    return prepareReviewMode({
+      context,
+      octokit,
+      githubToken,
+      trackingCommentId: commentId,
+    });
   }
 
   if (context.inputs.automaticReview) {
@@ -165,7 +175,8 @@ export async function prepareTagExecution({
       };
     }
 
-    core.setOutput("run_code_review", "false");
+    // Standalone security review uses the two-pass pipeline (candidates + validator)
+    core.setOutput("run_code_review", "true");
     core.setOutput("run_security_review", "true");
     return prepareSecurityReviewMode({
       context,
@@ -185,7 +196,8 @@ export async function prepareTagExecution({
   }
 
   if (commandContext?.command === "security") {
-    core.setOutput("run_code_review", "false");
+    // Standalone security review uses the two-pass pipeline (candidates + validator)
+    core.setOutput("run_code_review", "true");
     core.setOutput("run_security_review", "true");
     return prepareSecurityReviewMode({
       context,

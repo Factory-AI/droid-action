@@ -43,7 +43,7 @@ The gh CLI is installed and authenticated via GH_TOKEN.
 
 ## Security Skills Available
 
-You have access to these Factory security skills (installed in ~/.factory/skills/):
+You have access to security skills from the security-engineer plugin (security-engineer@factory-plugins):
 
 1. **threat-model-generation** - Generate STRIDE-based threat model for the repository
 2. **commit-security-scan** - Scan code for security vulnerabilities
