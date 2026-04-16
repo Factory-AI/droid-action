@@ -1,5 +1,5 @@
 name: "Droid Exec Action v1.0"
-description: "Flexible GitHub automation platform with Droid. Auto-detects mode based on event type: PR reviews, @droid mentions, or custom automation."
+description: "Flexible automation platform with Droid. Auto-detects mode based on event type: PR reviews, @droid mentions, or custom automation."
 branding:
   icon: "at-sign"
   color: "orange"
