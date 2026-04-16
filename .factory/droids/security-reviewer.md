@@ -1,6 +1,6 @@
 ---
 name: security-reviewer
-description: Performs security-focused review of PR changes. Spawned as a parallel subagent alongside code review file-group-reviewers to identify security vulnerabilities.
+description: Performs security-focused review of PR changes. Spawned as a parallel subagent alongside code review to identify security vulnerabilities.
 model: inherit
 tools: ["Read", "Grep", "Glob", "LS", "Skill"]
 ---
