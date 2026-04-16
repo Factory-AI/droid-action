@@ -122,7 +122,7 @@ export async function prepareReviewMode({
 
   // Task tool is needed for parallel subagent reviews in candidate generation phase.
   // FetchUrl is needed to fetch linked tickets from the PR description.
-  // Skill is needed so file-group-reviewer subagents can invoke the review-guidelines skill.
+  // Skill is needed so review subagents can invoke the review-guidelines skill.
   const candidateGenerationTools = ["Task", "FetchUrl", "Skill"];
 
   const safeUserAllowedMCPTools = userAllowedMCPTools.filter(
