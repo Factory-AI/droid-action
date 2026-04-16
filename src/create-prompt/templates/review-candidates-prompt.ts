@@ -22,6 +22,9 @@ export function generateReviewCandidatesPrompt(
   const descriptionPath =
     context.reviewArtifacts?.descriptionPath ??
     "$RUNNER_TEMP/droid-prompts/pr_description.txt";
+  const changedFilesPath =
+    context.reviewArtifacts?.changedFilesPath ??
+    "$RUNNER_TEMP/droid-prompts/changed_files.txt";
 
   const reviewCandidatesPath =
     process.env.REVIEW_CANDIDATES_PATH ??
@@ -81,6 +84,11 @@ Precomputed data files:
 - PR Description: \`${descriptionPath}\`
 - Full PR Diff: \`${diffPath}\`
 - Existing Comments: \`${commentsPath}\`
+- Changed File Contents: \`${changedFilesPath}\`
+
+IMPORTANT: The changed file contents have been pre-read into \`${changedFilesPath}\`.
+When spawning file-group-reviewer subagents, include the relevant file contents from this
+artifact in each subagent's prompt so they do NOT need to re-read files with the Read tool.
 </context>
 
 <output_spec>

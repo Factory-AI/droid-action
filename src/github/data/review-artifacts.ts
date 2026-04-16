@@ -137,7 +137,62 @@ export async function storeDescription(
 }
 
 /**
- * Pre-compute all review artifacts (diff, comments, description) in parallel.
+ * Pre-read all changed files and store them in a single artifact file.
+ * This eliminates the need for the LLM to read files one-by-one during review.
+ */
+export async function computeAndStoreChangedFiles(
+  baseRef: string,
+  tempDir: string,
+): Promise<string> {
+  const promptsDir = `${tempDir}/droid-prompts`;
+  await mkdir(promptsDir, { recursive: true });
+
+  let changedFiles: string[];
+  try {
+    const mergeBase = execSync(
+      `git merge-base HEAD refs/remotes/origin/${baseRef}`,
+      { encoding: "utf8" },
+    ).trim();
+    const output = execSync(
+      `git --no-pager diff --name-only ${mergeBase}..HEAD`,
+      { encoding: "utf8" },
+    );
+    changedFiles = output
+      .trim()
+      .split("\n")
+      .filter((f) => f.length > 0);
+  } catch {
+    console.log("Failed to get changed files list, skipping pre-read");
+    const emptyPath = `${promptsDir}/changed_files.txt`;
+    await writeFile(emptyPath, "");
+    return emptyPath;
+  }
+
+  const sections: string[] = [];
+  for (const filePath of changedFiles) {
+    try {
+      const content = execSync(`git show HEAD:${filePath}`, {
+        encoding: "utf8",
+        maxBuffer: 5 * 1024 * 1024,
+      });
+      sections.push(
+        `=== FILE: ${filePath} ===\n${content}\n=== END: ${filePath} ===`,
+      );
+    } catch {
+      sections.push(`=== FILE: ${filePath} ===\n[binary or deleted file]\n=== END: ${filePath} ===`);
+    }
+  }
+
+  const changedFilesPath = `${promptsDir}/changed_files.txt`;
+  await writeFile(changedFilesPath, sections.join("\n\n"));
+  console.log(
+    `Stored ${changedFiles.length} changed file contents (${sections.join("").length} bytes) at ${changedFilesPath}`,
+  );
+  return changedFilesPath;
+}
+
+/**
+ * Pre-compute all review artifacts (diff, comments, description, changed files) in parallel.
  */
 export async function computeReviewArtifacts(opts: {
   baseRef: string;
@@ -150,20 +205,22 @@ export async function computeReviewArtifacts(opts: {
   body: string;
   githubToken?: string;
 }): Promise<ReviewArtifacts> {
-  const [diffPath, commentsPath, descriptionPath] = await Promise.all([
-    computeAndStoreDiff(opts.baseRef, opts.tempDir, {
-      githubToken: opts.githubToken,
-      prNumber: opts.prNumber,
-    }),
-    fetchAndStoreComments(
-      opts.octokit,
-      opts.owner,
-      opts.repo,
-      opts.prNumber,
-      opts.tempDir,
-    ),
-    storeDescription(opts.title, opts.body, opts.tempDir),
-  ]);
+  const [diffPath, commentsPath, descriptionPath, changedFilesPath] =
+    await Promise.all([
+      computeAndStoreDiff(opts.baseRef, opts.tempDir, {
+        githubToken: opts.githubToken,
+        prNumber: opts.prNumber,
+      }),
+      fetchAndStoreComments(
+        opts.octokit,
+        opts.owner,
+        opts.repo,
+        opts.prNumber,
+        opts.tempDir,
+      ),
+      storeDescription(opts.title, opts.body, opts.tempDir),
+      computeAndStoreChangedFiles(opts.baseRef, opts.tempDir),
+    ]);
 
-  return { diffPath, commentsPath, descriptionPath };
+  return { diffPath, commentsPath, descriptionPath, changedFilesPath };
 }

@@ -107,6 +107,7 @@ export type ReviewArtifacts = {
   diffPath: string;
   commentsPath: string;
   descriptionPath: string;
+  changedFilesPath?: string;
 };
 
 export type PreparedContext = CommonFields & {
