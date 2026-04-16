@@ -67,7 +67,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run Droid Exec
-        uses: Factory-AI/droid-action@v3
+        uses: Factory-AI/droid-action@v5
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
 ```
@@ -104,7 +104,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run Droid Auto Review
-        uses: Factory-AI/droid-action@v3
+        uses: Factory-AI/droid-action@v5
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
@@ -150,11 +150,67 @@ Set `automatic_review: true` to run code reviews automatically on non-draft PRs.
 
 ### Review Configuration
 
-| Input              | Default   | Purpose                                                                 |
-| ------------------ | --------- | ----------------------------------------------------------------------- |
-| `automatic_review` | `false`   | Automatically run code review on PRs without requiring `@droid review`. |
-| `review_model`     | `gpt-5.2` | Override the model used for code review.                                |
-| `fill_model`       | `""`      | Override the model used for PR description fill.                        |
+| Input              | Default | Purpose                                                                                              |
+| ------------------ | ------- | ---------------------------------------------------------------------------------------------------- |
+| `automatic_review` | `false` | Automatically run code review on PRs without requiring `@droid review`.                              |
+| `review_depth`     | `deep`  | Review depth preset: `shallow` (fast) or `deep` (thorough). See [Review Depth](#review-depth) below. |
+| `review_model`     | `""`    | Override the model for code review. When empty, determined by `review_depth`.                        |
+| `reasoning_effort` | `""`    | Override reasoning effort for review. When empty, determined by `review_depth`.                      |
+| `fill_model`       | `""`    | Override the model used for PR description fill.                                                     |
+
+### Review Depth
+
+The `review_depth` input controls which model and reasoning effort are used for code reviews. Two presets are available:
+
+| Depth       | Model          | Reasoning Effort | Best For                                                |
+| ----------- | -------------- | ---------------- | ------------------------------------------------------- |
+| **deep**    | `gpt-5.2`      | `high`           | Thorough reviews catching subtle bugs and design issues |
+| **shallow** | `kimi-k2-0711` | default          | Fast, cost-effective reviews for straightforward PRs    |
+
+**Examples:**
+
+```yaml
+# Deep review (default - no extra config needed)
+- uses: Factory-AI/droid-action@v5
+  with:
+    factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+    automatic_review: true
+
+# Shallow review for faster feedback
+- uses: Factory-AI/droid-action@v5
+  with:
+    factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+    automatic_review: true
+    review_depth: shallow
+
+# Fully custom model (overrides depth preset entirely)
+- uses: Factory-AI/droid-action@v5
+  with:
+    factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+    automatic_review: true
+    review_model: claude-sonnet-4-5-20250929
+    reasoning_effort: high
+```
+
+> **Tip:** Setting `review_model` or `reasoning_effort` explicitly always takes priority over the depth preset. You can mix and match -- for example, use `review_depth: shallow` but override just `reasoning_effort: high` to get the shallow model with higher reasoning.
+
+### Updating Review Models
+
+The depth presets are defined in [`src/utils/review-depth.ts`](src/utils/review-depth.ts). To change which models are used for shallow or deep reviews, edit the `REVIEW_DEPTH_PRESETS` object:
+
+```typescript
+const SHALLOW_DEFAULTS = {
+  model: "kimi-k2-0711", // Change to any supported model
+  reasoningEffort: undefined, // undefined = use model default
+};
+
+const DEEP_DEFAULTS = {
+  model: "gpt-5.2", // Change to any supported model
+  reasoningEffort: "high", // "high" | "medium" | "low" | undefined
+};
+```
+
+Individual users can also override these defaults per-workflow without modifying the source by setting `review_model` and/or `reasoning_effort` inputs directly in their workflow YAML.
 
 ### Security Configuration
 
@@ -168,6 +224,20 @@ Set `automatic_review: true` to run code reviews automatically on non-draft PRs.
 | `security_notify_team`        | `""`     | GitHub team to @mention on critical findings (e.g., `@org/security-team`).                                        |
 | `security_scan_schedule`      | `false`  | Configuration for scheduled security scans (when invoked from scheduled workflows).                               |
 | `security_scan_days`          | `7`      | Number of days of commits to scan for scheduled security scans.                                                   |
+
+## Custom Review Guidelines
+
+You can add repository-specific review guidelines by creating a `.factory/skills/review-guidelines/SKILL.md` file:
+
+```markdown
+Additional checks for this codebase:
+
+- React hooks rules violations
+- Missing TypeScript types on public APIs
+- Prisma query performance issues
+```
+
+These guidelines are automatically loaded and injected into all review prompts (code review, security review, and validation passes). No workflow changes needed.
 
 ## Security Skills
 

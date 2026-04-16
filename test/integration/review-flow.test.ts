@@ -8,6 +8,7 @@ import * as createInitial from "../../src/github/operations/comments/create-init
 import * as mcpInstaller from "../../src/mcp/install-mcp-server";
 import * as actorValidation from "../../src/github/validation/actor";
 import * as promptModule from "../../src/create-prompt";
+import * as reviewArtifactsModule from "../../src/github/data/review-artifacts";
 import * as core from "@actions/core";
 import * as childProcess from "node:child_process";
 
@@ -22,6 +23,7 @@ describe("review command integration", () => {
   let setOutputSpy: ReturnType<typeof spyOn>;
   let exportVarSpy: ReturnType<typeof spyOn>;
   let promptSpy: ReturnType<typeof spyOn>;
+  let computeArtifactsSpy: ReturnType<typeof spyOn>;
   let execSyncSpy: ReturnType<typeof spyOn>;
 
   beforeEach(async () => {
@@ -37,6 +39,14 @@ describe("review command integration", () => {
     mcpSpy = spyOn(mcpInstaller, "prepareMcpTools").mockResolvedValue("{}");
     actorSpy = spyOn(actorValidation, "checkHumanActor").mockResolvedValue();
     promptSpy = spyOn(promptModule, "createPrompt").mockResolvedValue();
+    computeArtifactsSpy = spyOn(
+      reviewArtifactsModule,
+      "computeReviewArtifacts",
+    ).mockResolvedValue({
+      diffPath: `${tmpDir}/droid-prompts/pr.diff`,
+      commentsPath: `${tmpDir}/droid-prompts/existing_comments.json`,
+      descriptionPath: `${tmpDir}/droid-prompts/pr_description.txt`,
+    });
     setOutputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
     exportVarSpy = spyOn(core, "exportVariable").mockImplementation(() => {});
 
@@ -57,6 +67,7 @@ describe("review command integration", () => {
     mcpSpy.mockRestore();
     actorSpy.mockRestore();
     promptSpy.mockRestore();
+    computeArtifactsSpy.mockRestore();
     setOutputSpy.mockRestore();
     exportVarSpy.mockRestore();
     execSyncSpy.mockRestore();
@@ -224,7 +235,8 @@ describe("review command integration", () => {
       (call: unknown[]) => call[0] === "run_security_review",
     ) as [string, string] | undefined;
 
-    expect(runCodeReviewCall?.[1]).toBe("false");
+    // Standalone security now uses two-pass pipeline (candidates + validator)
+    expect(runCodeReviewCall?.[1]).toBe("true");
     expect(runSecurityReviewCall?.[1]).toBe("true");
   });
 });
