@@ -120,10 +120,10 @@ export async function prepareReviewMode({
     "github_comment___update_droid_comment",
   ];
 
-  // Task tool is needed for parallel subagent reviews in candidate generation phase.
   // FetchUrl is needed to fetch linked tickets from the PR description.
-  // Skill is needed so review subagents can invoke the review-guidelines skill.
-  const candidateGenerationTools = ["Task", "FetchUrl", "Skill"];
+  // Skill is needed so the reviewer can invoke the review-guidelines skill.
+  // Task tool disabled to force single-pass review (no subagent fan-out).
+  const candidateGenerationTools = ["FetchUrl", "Skill"];
 
   const safeUserAllowedMCPTools = userAllowedMCPTools.filter(
     (tool) =>
