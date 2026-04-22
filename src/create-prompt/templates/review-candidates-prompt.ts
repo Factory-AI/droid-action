@@ -87,7 +87,7 @@ Before reviewing, you must triage the PR to enable parallel review:
    - Group 3 (Database): src/db/migrations/001.ts, src/db/schema.ts
 
 Guidelines for grouping:
-- Aim for 3-6 groups to balance parallelism with context coherence
+- Aim for 1-2 files per group to ensure deep, thorough review of each file
 - Keep related files together so reviewers have full context
 - Each group should be reviewable independently
 </triage_phase>
