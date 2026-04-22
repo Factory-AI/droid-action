@@ -100,11 +100,16 @@ Apply the same Reporting Gate as review:
 * Data corruption/loss
 * Breaking contract change (discoverable in code/tests)
 
-Reject if:
+Reject if ANY of these are true:
 * It's speculative / "might" without a concrete trigger
 * It's stylistic / naming / formatting
 * It's not anchored to a valid changed line
 * It's already reported (dedupe against existing comments)
+* The issue is about code that existed before this PR and was not modified
+* The finding describes a theoretical concern but no concrete wrong behavior
+* You cannot construct a specific input or scenario that triggers the bug
+
+Be aggressive about rejecting. When in doubt, reject. Only approve findings where you can clearly articulate the trigger path and the observable wrong behavior.
 
 When rejecting, write a concise reason.
 

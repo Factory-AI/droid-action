@@ -66,7 +66,7 @@ Precomputed data files:
   - Type-assumption bugs (e.g., numeric ops on datetime/strings, ordering key type mismatches)
   - Offset/cursor/pagination semantic mismatches (off-by-one, prev/next behavior, commit semantics)
 - Do NOT duplicate comments already in \`${commentsPath}\`.
-- Only flag issues you are confident about—avoid speculative or stylistic nitpicks.
+- When in doubt about whether something is a bug, report it. Missing a real bug is far worse than a false positive. Avoid purely stylistic nitpicks, but do report any issue where the code could behave incorrectly.
 </review_guidelines>
 
 <triage_phase>
