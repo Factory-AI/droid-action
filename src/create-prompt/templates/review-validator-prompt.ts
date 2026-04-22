@@ -100,13 +100,13 @@ Apply the same Reporting Gate as review:
 * Data corruption/loss
 * Breaking contract change (discoverable in code/tests)
 
-Reject if:
-* It's speculative / "might" without a concrete trigger
-* It's stylistic / naming / formatting
-* It's not anchored to a valid changed line
+Reject ONLY if:
+* It's purely stylistic / naming / formatting with no correctness impact
+* It's not anchored to a valid changed line in the diff
 * It's already reported (dedupe against existing comments)
+* The described issue is factually wrong (the code actually handles the case correctly)
 
-When rejecting, write a concise reason.
+When in doubt between approving and rejecting, APPROVE. The cost of missing a real bug is much higher than the cost of a false positive. When rejecting, write a concise reason.
 
 =======================
 

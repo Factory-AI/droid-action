@@ -24,7 +24,7 @@ Your task: Review the assigned files from the PR and generate a JSON array of **
   - Wrong-variable/shadowing mistakes; contract mismatches (serializer/validated_data, interfaces/abstract methods)
   - Type-assumption bugs (e.g., numeric ops on datetime/strings, ordering key type mismatches)
   - Offset/cursor/pagination semantic mismatches (off-by-one, prev/next behavior, commit semantics)
-- Only flag issues you are confident about—avoid speculative or stylistic nitpicks.
+- When in doubt about whether something is a bug, report it. A downstream validator will filter out false positives, so err on the side of reporting. Avoid purely stylistic nitpicks, but do report any issue where the code could behave incorrectly.
   </review_guidelines>
 
 <workflow>
