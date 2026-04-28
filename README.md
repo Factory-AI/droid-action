@@ -262,7 +262,7 @@ The `review_depth` input controls which model and reasoning effort are used for 
 
 > **Tip:** Setting `review_model` or `reasoning_effort` explicitly always takes priority over the depth preset. You can mix and match -- for example, use `review_depth: shallow` but override just `reasoning_effort: high` to get the shallow model with higher reasoning.
 
-The default models (`gpt-5.2` for `deep`, `kimi-k2-0711` for `shallow`) are managed by Factory and may change over time. To pin a specific model regardless of the depth preset, set `review_model` to any supported model in your workflow (see the third example above).
+The default models (`gpt-5.2` for `deep`, `kimi-k2-0711` for `shallow`) are managed by Factory and may change over time. To pin a specific model regardless of the depth preset, set `review_model` to any model identifier supported by `droid exec --model` -- the [CLI reference](https://docs.factory.ai/reference/cli-reference#available-models) has the canonical list. Both short forms (`claude-sonnet-4-6`, `gpt-5.5`, `kimi-k2.6`) and fully-versioned forms (`claude-sonnet-4-5-20250929`, `claude-haiku-4-5-20251001`) are valid -- versioned IDs pin to a specific release, short forms float with the latest minor.
 
 ### Security Configuration
 
