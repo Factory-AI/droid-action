@@ -264,15 +264,13 @@ The `review_depth` input controls which model and reasoning effort are used for 
 
 The default models (`gpt-5.2` for `deep`, `kimi-k2-0711` for `shallow`) are managed by Factory and may change over time. To pin a specific model regardless of the depth preset, set `review_model` to any model ID supported by `droid exec --model`. A few common choices:
 
-| Model ID              | Notes                                                          |
-| --------------------- | -------------------------------------------------------------- |
-| `claude-opus-4-7`     | Claude Opus 4.7 — strongest reasoning, highest cost            |
-| `claude-sonnet-4-6`   | Claude Sonnet 4.6 — balanced quality and cost                  |
-| `claude-haiku-4-5`    | Claude Haiku 4.5 — fastest Anthropic option                    |
-| `gpt-5.5`             | GPT-5.5 — strong general-purpose reasoning                     |
-| `gpt-5.5-pro`         | GPT-5.5 Pro — deeper reasoning, slower                         |
-| `gpt-5.3-codex`       | GPT-5.3 Codex — code-tuned variant                             |
-| `kimi-k2.6`           | Droid Core (Kimi K2.6) — fast and cost-effective               |
+- `claude-opus-4-7`
+- `claude-sonnet-4-6`
+- `claude-haiku-4-5`
+- `gpt-5.5`
+- `gpt-5.5-pro`
+- `gpt-5.3-codex`
+- `kimi-k2.6`
 
 See the [CLI reference](https://docs.factory.ai/reference/cli-reference#available-models) for the canonical, up-to-date list.
 
