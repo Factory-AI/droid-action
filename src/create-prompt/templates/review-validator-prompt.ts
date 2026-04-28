@@ -66,6 +66,10 @@ If the diff is large, read in chunks (offset/limit). **Do not proceed until you 
 2. Preserve ordering: keep results in the same order as candidates.
 3. **Posting rule (STRICT):** Only post comments where \`status === "approved"\`. Never post rejected items.
 
+### Language
+
+Approved comments and the review summary must be in the language the PR author is using. Detect the language from the PR description and title at \`${descriptionPath}\`; fall back to English if uncertain. Do **not** mirror the language of the source files being reviewed (localized files, translations, \`docs/jp/...\`, etc.) — match the PR author's language. If a candidate was written in the wrong language (e.g., Japanese on an English PR because the diff touched JP docs), rewrite the body into the correct language while preserving meaning, the priority tag (\`[P0]\`/\`[P1]\`/\`[P2]\`/\`[P3]\`), and any \`[security]\` marker. Approve it if the underlying finding is otherwise valid; do not reject solely on language. Priority tags and the \`[security]\` marker remain in English regardless.
+
 ### Output: Write \`${reviewValidatedPath}\`
 
 \`\`\`json
