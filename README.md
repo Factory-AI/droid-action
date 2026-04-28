@@ -262,7 +262,19 @@ The `review_depth` input controls which model and reasoning effort are used for 
 
 > **Tip:** Setting `review_model` or `reasoning_effort` explicitly always takes priority over the depth preset. You can mix and match -- for example, use `review_depth: shallow` but override just `reasoning_effort: high` to get the shallow model with higher reasoning.
 
-The default models (`gpt-5.2` for `deep`, `kimi-k2-0711` for `shallow`) are managed by Factory and may change over time. To pin a specific model regardless of the depth preset, set `review_model` to any model ID supported by `droid exec --model` (e.g. `claude-sonnet-4-6`, `gpt-5.5`, `kimi-k2.6`) -- the [CLI reference](https://docs.factory.ai/reference/cli-reference#available-models) has the full list.
+The default models (`gpt-5.2` for `deep`, `kimi-k2-0711` for `shallow`) are managed by Factory and may change over time. To pin a specific model regardless of the depth preset, set `review_model` to any model ID supported by `droid exec --model`. A few common choices:
+
+| Model ID              | Notes                                                          |
+| --------------------- | -------------------------------------------------------------- |
+| `claude-opus-4-7`     | Claude Opus 4.7 — strongest reasoning, highest cost            |
+| `claude-sonnet-4-6`   | Claude Sonnet 4.6 — balanced quality and cost                  |
+| `claude-haiku-4-5`    | Claude Haiku 4.5 — fastest Anthropic option                    |
+| `gpt-5.5`             | GPT-5.5 — strong general-purpose reasoning                     |
+| `gpt-5.5-pro`         | GPT-5.5 Pro — deeper reasoning, slower                         |
+| `gpt-5.3-codex`       | GPT-5.3 Codex — code-tuned variant                             |
+| `kimi-k2.6`           | Droid Core (Kimi K2.6) — fast and cost-effective               |
+
+See the [CLI reference](https://docs.factory.ai/reference/cli-reference#available-models) for the canonical, up-to-date list.
 
 ### Security Configuration
 
