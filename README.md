@@ -262,23 +262,7 @@ The `review_depth` input controls which model and reasoning effort are used for 
 
 > **Tip:** Setting `review_model` or `reasoning_effort` explicitly always takes priority over the depth preset. You can mix and match -- for example, use `review_depth: shallow` but override just `reasoning_effort: high` to get the shallow model with higher reasoning.
 
-### Updating Review Models
-
-The depth presets are defined in [`src/utils/review-depth.ts`](src/utils/review-depth.ts). To change which models are used for shallow or deep reviews, edit the `REVIEW_DEPTH_PRESETS` object:
-
-```typescript
-const SHALLOW_DEFAULTS = {
-  model: "kimi-k2-0711", // Change to any supported model
-  reasoningEffort: undefined, // undefined = use model default
-};
-
-const DEEP_DEFAULTS = {
-  model: "gpt-5.2", // Change to any supported model
-  reasoningEffort: "high", // "high" | "medium" | "low" | undefined
-};
-```
-
-Individual users can also override these defaults per-workflow without modifying the source by setting `review_model` and/or `reasoning_effort` inputs directly in their workflow YAML.
+The default models (`gpt-5.2` for `deep`, `kimi-k2-0711` for `shallow`) are managed by Factory and may change over time. To pin a specific model regardless of the depth preset, set `review_model` to any supported model in your workflow (see the third example above).
 
 ### Security Configuration
 
