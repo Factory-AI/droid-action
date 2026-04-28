@@ -19,6 +19,29 @@ Everything runs inside GitHub Actions using your Factory API key, so the bot nev
 
 ## Installation
 
+### Quick Setup with `/install-code-review` (Recommended)
+
+The fastest way to get up and running is the guided installer built into the Droid CLI. From any local clone of your repo, run:
+
+```bash
+droid
+> /install-code-review
+```
+
+The guided flow will:
+
+- Detect whether your repository lives on GitHub or GitLab.
+- Help you install the Droid GitHub App (or configure GitLab access).
+- Generate the workflow files (`droid.yml` and `droid-review.yml`) with sensible defaults.
+- Prompt you for `review_depth`, security review options, and other inputs.
+- Open a PR/MR containing the new workflow files for you to review and merge.
+
+For GitHub-only setups you can also run `/install-github-app`. See the [Automated Code Review guide](https://docs.factory.ai/guides/droid-exec/code-review) and the [GitHub App installation guide](https://docs.factory.ai/cli/features/install-github-app) for full details.
+
+### Manual Setup
+
+If you prefer to wire things up by hand:
+
 1. **Install the Droid GitHub App**
    - Install from the Factory dashboard and grant it access to the repositories where you want Droid to operate.
 2. **Create a Factory API Key**
@@ -108,9 +131,10 @@ jobs:
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
+          automatic_security_review: true
 ```
 
-Set `automatic_review: true` to run code reviews automatically on non-draft PRs.
+Set `automatic_review: true` to run code reviews automatically on non-draft PRs. Set `automatic_security_review: true` to additionally run a STRIDE-based security review concurrently on every non-draft PR.
 
 ## Using the Commands
 
@@ -128,16 +152,60 @@ Set `automatic_review: true` to run code reviews automatically on non-draft PRs.
 
 ### `@droid security`
 
-- Mention `@droid security` in a PR comment.
-- Droid performs a security-focused review using STRIDE methodology (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege).
-- Findings include severity levels, CWE references, and suggested fixes.
+- Mention `@droid security` in a PR comment to trigger an on-demand security review of the PR diff.
+- Droid runs a security-focused review using STRIDE methodology (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege) along with OWASP Top 10 and OWASP LLM Top 10 checks.
+- Each finding includes a severity level, CWE reference (where applicable), an explanation, and a suggested fix posted as inline review comments.
+- Set `automatic_security_review: true` in your auto-review workflow to run the security pass on every non-draft PR alongside the standard code review (the two run concurrently).
 
 ### `@droid security --full`
 
-- Performs a full repository security scan (not just PR changes).
-- Creates a new branch with a security report at `.factory/security/reports/security-report-{date}.md`.
-- Opens a PR with findings and auto-generated patches where possible.
-- Useful for scheduled security audits.
+- Performs a full repository security scan instead of just PR changes — useful for scheduled audits or onboarding a new repo.
+- Creates a new branch and opens a PR containing a security report at `.factory/security/reports/security-report-{date}.md` plus auto-generated patches where Droid is confident in the fix.
+- To run on a schedule, invoke the action from a cron-triggered workflow with `security_scan_schedule: true`. Use `security_scan_days` to control how many days of recent commits are included.
+
+#### Enabling automatic security review
+
+To run the security review on every non-draft PR (alongside the regular code review), add `automatic_security_review: true` to your `droid-review.yml`:
+
+```yaml
+- name: Run Droid Auto Review
+  uses: Factory-AI/droid-action@v5
+  with:
+    factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+    automatic_review: true
+    automatic_security_review: true
+```
+
+#### Scheduling full-repo scans
+
+```yaml
+name: Droid Security Scan
+
+on:
+  schedule:
+    - cron: "0 9 * * 1" # Every Monday at 09:00 UTC
+  workflow_dispatch:
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: Factory-AI/droid-action@v5
+        with:
+          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          security_scan_schedule: true
+          security_scan_days: 7
+```
 
 ## Configuration
 
