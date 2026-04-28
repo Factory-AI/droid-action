@@ -206,5 +206,6 @@ The report file should follow this structure:
 2. **Patches**: Test all generated patches before committing. Ensure they don't break functionality.
 3. **PR Description**: Update the PR body with actual finding counts before creating.
 4. **Commit Messages**: Use semantic commit format: \`fix(security): [VULN-XXX] Description\`
+5. **Language**: Write the human-readable parts of the report (titles, descriptions, exploitation, impact, recommended fix, PR body) in the repository's primary language — detect this from the existing README, top-level docs, and any prior PR/issue text. Fall back to English when uncertain. Do **not** mirror the language of source files inside the scan when those files are localized translations (e.g., \`docs/jp/...\`). Severity labels (CRITICAL/HIGH/MEDIUM/LOW), CWE identifiers, severity tags, file paths, and code snippets stay in their canonical form regardless.
 `;
 }

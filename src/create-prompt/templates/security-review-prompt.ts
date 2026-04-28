@@ -98,6 +98,10 @@ Write output to \`${reviewCandidatesPath}\` using this exact schema:
 </schema_details>
 </output_spec>
 
+<language>
+Write every finding — titles, explanations, suggestion prose, and the \`reviewSummary.body\` — in the language the PR author is using. Detect the language from the PR description and title at \`${descriptionPath}\`; fall back to English if uncertain. Do **not** mirror the language of the source files being reviewed: when the diff includes localized files (translations, \`docs/jp/...\`, \`docs/ko/...\`, \`.es.mdx\`, etc.), still write findings in the PR author's language, not the file's. Priority tags (\`[P0]\`/\`[P1]\`/\`[P2]\`/\`[P3]\`) and the \`[security]\` marker remain in English regardless.
+</language>
+
 <critical_constraints>
 **DO NOT** post to GitHub.
 **DO NOT** invoke any PR mutation tools (inline comments, submit review, delete/minimize/reply/resolve, etc.).
