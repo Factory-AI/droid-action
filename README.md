@@ -90,7 +90,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run Droid Exec
-        uses: Factory-AI/droid-action@v5
+        uses: Factory-AI/droid-action@main
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
 ```
@@ -127,7 +127,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run Droid Auto Review
-        uses: Factory-AI/droid-action@v5
+        uses: Factory-AI/droid-action@main
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
@@ -169,7 +169,7 @@ To run the security review on every non-draft PR (alongside the regular code rev
 
 ```yaml
 - name: Run Droid Auto Review
-  uses: Factory-AI/droid-action@v5
+  uses: Factory-AI/droid-action@main
   with:
     factory_api_key: ${{ secrets.FACTORY_API_KEY }}
     automatic_review: true
@@ -200,7 +200,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: Factory-AI/droid-action@v5
+      - uses: Factory-AI/droid-action@main
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           security_scan_schedule: true
@@ -239,20 +239,20 @@ The `review_depth` input controls which model and reasoning effort are used for 
 
 ```yaml
 # Deep review (default - no extra config needed)
-- uses: Factory-AI/droid-action@v5
+- uses: Factory-AI/droid-action@main
   with:
     factory_api_key: ${{ secrets.FACTORY_API_KEY }}
     automatic_review: true
 
 # Shallow review for faster feedback
-- uses: Factory-AI/droid-action@v5
+- uses: Factory-AI/droid-action@main
   with:
     factory_api_key: ${{ secrets.FACTORY_API_KEY }}
     automatic_review: true
     review_depth: shallow
 
 # Fully custom model (overrides depth preset entirely)
-- uses: Factory-AI/droid-action@v5
+- uses: Factory-AI/droid-action@main
   with:
     factory_api_key: ${{ secrets.FACTORY_API_KEY }}
     automatic_review: true
