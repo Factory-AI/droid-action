@@ -159,6 +159,7 @@ async function run() {
       branchName: undefined,
       triggerUsername,
       errorDetails,
+      securityReviewRan: process.env.AUTOMATIC_SECURITY_REVIEW === "true",
     };
 
     const updatedBody = updateCommentBody(commentInput);
