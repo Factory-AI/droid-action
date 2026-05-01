@@ -16,7 +16,11 @@ export type CommentUpdateInput = {
   branchName?: string;
   triggerUsername?: string;
   errorDetails?: string;
+  securityReviewRan?: boolean;
 };
+
+export const SECURITY_REVIEW_BADGE =
+  "![Security Review](https://img.shields.io/badge/security%20review-ran-blue)";
 
 export function ensureProperlyEncodedUrl(url: string): string | null {
   try {
@@ -77,6 +81,7 @@ export function updateCommentBody(input: CommentUpdateInput): string {
     branchName,
     triggerUsername,
     errorDetails,
+    securityReviewRan,
   } = input;
 
   // Extract content from the original comment body
@@ -208,6 +213,10 @@ export function updateCommentBody(input: CommentUpdateInput): string {
 
   // Remove any existing duration info at the bottom
   bodyContent = bodyContent.replace(/\n*---\n*Duration: [0-9]+m? [0-9]+s/g, "");
+
+  if (securityReviewRan && !bodyContent.includes("security%20review-ran")) {
+    bodyContent = `${SECURITY_REVIEW_BADGE}\n\n${bodyContent}`.trim();
+  }
 
   // Add the cleaned body content
   newBody += bodyContent;

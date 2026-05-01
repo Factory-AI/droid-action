@@ -441,4 +441,62 @@ describe("updateCommentBody", () => {
       expect(result).not.toContain("tree/droid/issue-123");
     });
   });
+
+  describe("security review badge", () => {
+    const SHIELD_URL_FRAGMENT = "security%20review-ran";
+
+    it("prepends the security badge when securityReviewRan is true", () => {
+      const input: CommentUpdateInput = {
+        ...baseInput,
+        currentBody: "Droid is reviewing code and running a security check…",
+        executionDetails: { duration_ms: 60000 },
+        securityReviewRan: true,
+      };
+
+      const result = updateCommentBody(input);
+      expect(result).toContain(SHIELD_URL_FRAGMENT);
+      expect(result).toContain(
+        "![Security Review](https://img.shields.io/badge/security%20review-ran-blue)",
+      );
+    });
+
+    it("does not add the badge when securityReviewRan is false", () => {
+      const input: CommentUpdateInput = {
+        ...baseInput,
+        currentBody: "Droid is working…",
+        executionDetails: { duration_ms: 60000 },
+        securityReviewRan: false,
+      };
+
+      const result = updateCommentBody(input);
+      expect(result).not.toContain(SHIELD_URL_FRAGMENT);
+    });
+
+    it("does not add the badge when securityReviewRan is undefined", () => {
+      const input: CommentUpdateInput = {
+        ...baseInput,
+        currentBody: "Droid is working…",
+        executionDetails: { duration_ms: 60000 },
+      };
+
+      const result = updateCommentBody(input);
+      expect(result).not.toContain(SHIELD_URL_FRAGMENT);
+    });
+
+    it("does not double-prepend when the badge is already present", () => {
+      const input: CommentUpdateInput = {
+        ...baseInput,
+        currentBody:
+          "Droid is reviewing code and running a security check…\n\n" +
+          "![Security Review](https://img.shields.io/badge/security%20review-ran-blue)\n\n" +
+          "Validator approved 2 findings.",
+        executionDetails: { duration_ms: 60000 },
+        securityReviewRan: true,
+      };
+
+      const result = updateCommentBody(input);
+      const occurrences = result.split(SHIELD_URL_FRAGMENT).length - 1;
+      expect(occurrences).toBe(1);
+    });
+  });
 });

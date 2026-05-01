@@ -352,6 +352,7 @@ runs:
         USE_STICKY_COMMENT: ${{ inputs.use_sticky_comment }}
         TRACK_PROGRESS: ${{ inputs.track_progress }}
         AUTOMATIC_REVIEW: ${{ inputs.automatic_review }}
+        AUTOMATIC_SECURITY_REVIEW: ${{ inputs.automatic_security_review }}
 
     - name: Collect .factory debug files
       if: always() && steps.prepare.outputs.contains_trigger == 'true'
