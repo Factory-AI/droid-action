@@ -135,6 +135,14 @@ inputs:
     description: "Show full JSON output from Droid Exec. WARNING: This outputs ALL Droid messages including tool execution results which may contain secrets, API keys, or other sensitive information. These logs are publicly visible in GitHub Actions. Only enable for debugging in non-sensitive environments."
     required: false
     default: "false"
+  debug_artifacts:
+    description: "Debug artifact upload mode: none or redacted. Raw runtime state is not uploaded."
+    required: false
+    default: "none"
+  debug_artifact_retention_days:
+    description: "Retention days for sanitized debug artifacts."
+    required: false
+    default: "1"
 
 outputs:
   github_token:
@@ -164,6 +172,14 @@ runs:
       run: |
         cd ${GITHUB_ACTION_PATH}
         bun install
+
+    - name: Validate debug artifact mode
+      shell: bash
+      run: |
+        case "${{ inputs.debug_artifacts }}" in
+          none|redacted) ;;
+          *) echo "debug_artifacts must be one of: none, redacted" >&2; exit 1 ;;
+        esac
 
     - name: Prepare action
       id: prepare
@@ -353,3 +369,22 @@ runs:
         TRACK_PROGRESS: ${{ inputs.track_progress }}
         AUTOMATIC_REVIEW: ${{ inputs.automatic_review }}
         AUTOMATIC_SECURITY_REVIEW: ${{ inputs.automatic_security_review }}
+
+    - name: Prepare redacted debug artifacts
+      if: always() && steps.prepare.outputs.contains_trigger == 'true' && inputs.debug_artifacts == 'redacted'
+      shell: bash
+      run: |
+        bun run ${GITHUB_ACTION_PATH}/src/entrypoints/prepare-debug-artifacts.ts
+      env:
+        DEBUG_ARTIFACTS_MODE: ${{ inputs.debug_artifacts }}
+        DEBUG_ARTIFACTS_DIR: ${{ runner.temp }}/droid-debug-artifacts
+        DROID_PROMPTS_DIR: ${{ runner.temp }}/droid-prompts
+
+    - name: Upload redacted debug artifacts
+      if: always() && steps.prepare.outputs.contains_trigger == 'true' && inputs.debug_artifacts == 'redacted'
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      with:
+        name: droid-debug-${{ github.run_id }}
+        path: ${{ runner.temp }}/droid-debug-artifacts/**
+        if-no-files-found: error
+        retention-days: ${{ inputs.debug_artifact_retention_days }}

@@ -216,6 +216,15 @@ jobs:
 | `factory_api_key` | **Required.** Grants Droid Exec permission to run via Factory.                                         |
 | `github_token`    | Optional override if you prefer a custom GitHub App/token. By default the installed app token is used. |
 
+### Debug Artifacts
+
+| Input                           | Default | Purpose                                                                                              |
+| ------------------------------- | ------- | ---------------------------------------------------------------------------------------------------- |
+| `debug_artifacts`               | `none`  | Debug artifact upload mode. Set to `redacted` to upload a sanitized, allowlisted Droid debug bundle. |
+| `debug_artifact_retention_days` | `1`     | Retention days for sanitized debug artifacts.                                                        |
+
+Raw Droid runtime state is not uploaded. In `redacted` mode, the action builds a new allowlisted bundle under the runner temp directory and applies best-effort redaction before upload.
+
 ### Review Configuration
 
 | Input              | Default | Purpose                                                                                              |

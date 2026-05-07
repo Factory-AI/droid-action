@@ -40,4 +40,16 @@ describe("action.yml debug artifact invariants", () => {
       /(?:\.factory|droid-prompts)[\s\S]{0,500}include-hidden-files:\s*true/,
     );
   });
+
+  it("keeps redacted upload-artifact usage SHA-pinned", () => {
+    expect(actionYml).toContain("Upload redacted debug artifacts");
+    expect(actionYml).not.toContain("FACTORY_HOME: $HOME/.factory");
+    expect(actionYml).toContain(
+      "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+    );
+    expect(actionYml).toContain(
+      "path: ${{ runner.temp }}/droid-debug-artifacts/**",
+    );
+    expect(actionYml).toContain("if-no-files-found: error");
+  });
 });
