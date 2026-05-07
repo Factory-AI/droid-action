@@ -85,6 +85,30 @@ describe("Command Parser", () => {
       expect(result?.raw).toBe("@droid review");
     });
 
+    it("should detect @droid fix", () => {
+      const result = parseDroidCommand("@droid fix this bug");
+      expect(result?.command).toBe("fix");
+      expect(result?.raw).toBe("@droid fix");
+    });
+
+    it("should be case insensitive for @droid fix", () => {
+      const result = parseDroidCommand("@DROID FIX the issue");
+      expect(result?.command).toBe("fix");
+      expect(result?.raw).toBe("@DROID FIX");
+    });
+
+    it("should detect @droid fix with extra spaces", () => {
+      const result = parseDroidCommand("@droid    fix");
+      expect(result?.command).toBe("fix");
+      expect(result?.raw).toBe("@droid    fix");
+    });
+
+    it("should detect standalone @droid fix", () => {
+      const result = parseDroidCommand("@droid fix");
+      expect(result?.command).toBe("fix");
+      expect(result?.raw).toBe("@droid fix");
+    });
+
     it("should parse @droid security review as security", () => {
       const result = parseDroidCommand("@droid security review");
       expect(result?.command).toBe("security");
@@ -242,6 +266,39 @@ describe("Command Parser", () => {
       expect(result?.command).toBe("review");
       expect(result?.location).toBe("comment");
       expect(result?.timestamp).toBe("2024-01-01T00:00:00Z");
+    });
+
+    it("should extract fix from PR review comment", () => {
+      const context = createContext("pull_request_review_comment", {
+        action: "created",
+        comment: {
+          body: "@droid fix this issue",
+          created_at: "2024-01-01T00:00:00Z",
+        },
+        pull_request: {
+          number: 1,
+        },
+      } as unknown as PullRequestReviewCommentEvent);
+      const result = extractCommandFromContext(context);
+      expect(result?.command).toBe("fix");
+      expect(result?.location).toBe("comment");
+    });
+
+    it("should extract fix from issue comment on PR", () => {
+      const context = createContext("issue_comment", {
+        action: "created",
+        comment: {
+          body: "@droid fix",
+          created_at: "2024-01-01T00:00:00Z",
+        },
+        issue: {
+          number: 1,
+          pull_request: { url: "" },
+        },
+      } as unknown as IssueCommentEvent);
+      const result = extractCommandFromContext(context);
+      expect(result?.command).toBe("fix");
+      expect(result?.location).toBe("comment");
     });
 
     it("should extract from PR review body", () => {

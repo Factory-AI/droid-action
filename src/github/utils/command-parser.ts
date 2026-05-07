@@ -6,6 +6,7 @@ import type { GitHubContext } from "../context";
 
 export type DroidCommand =
   | "fill"
+  | "fix"
   | "review"
   | "security"
   | "security-full"
@@ -46,6 +47,16 @@ export function parseDroidCommand(text: string): ParsedCommand | null {
       command: "review",
       raw: reviewMatch[0],
       location: "body", // Will be set by caller
+    };
+  }
+
+  // Check for @droid fix command (case insensitive)
+  const fixMatch = text.match(/@droid\s+fix/i);
+  if (fixMatch) {
+    return {
+      command: "fix",
+      raw: fixMatch[0],
+      location: "body",
     };
   }
 
