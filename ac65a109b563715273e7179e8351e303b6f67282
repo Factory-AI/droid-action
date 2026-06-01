@@ -1,0 +1,41 @@
+test/gitlab/prompts.test.ts
+  5b5167d13de9c41e 1-129
+src/gitlab/prompts/candidates.ts
+  5b5167d13de9c41e 1-148
+test/gitlab/review-artifacts.test.ts
+  5b5167d13de9c41e 1-139,141-144,146-153
+src/entrypoints/gitlab-prepare.ts
+  5b5167d13de9c41e 4-5,7,13-23,35-37,40,53-66,74-89,105,114-116,151-161,196,198,201-204,210,215,219,224-233,247-255,258-270,272,276-278,287-297
+src/gitlab/prompts/types.ts
+  5b5167d13de9c41e 1-29
+src/gitlab/prompts/validator.ts
+  5b5167d13de9c41e 1-132
+src/mcp/gitlab-mr-server.ts
+  5b5167d13de9c41e 188-219
+src/gitlab/data/review-artifacts.ts
+  5b5167d13de9c41e 1-94
+gitlab/templates/review.yml
+  5b5167d13de9c41e 72-78,84-86,88-99,101-106,108-114,117,120,131-133
+src/entrypoints/gitlab-prepare-validator.ts
+  5b5167d13de9c41e 1-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "ac65a109b563715273e7179e8351e303b6f67282",
+  "prompts": {
+    "5b5167d13de9c41e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "07086754-bd31-47c8-baf5-fac790bbf80c",
+        "model": "factory-router"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 984,
+      "total_deletions": 43,
+      "accepted_lines": 977,
+      "overriden_lines": 2
+    }
+  }
+}
