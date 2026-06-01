@@ -1,0 +1,27 @@
+review/action.yml
+  5b5167d13de9c41e 16
+README.md
+  5b5167d13de9c41e 236,265
+src/utils/review-depth.ts
+  5b5167d13de9c41e 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "3bfa6cf57d63c32ce44d846d8c0be74e1f2ffcd1",
+  "prompts": {
+    "5b5167d13de9c41e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "07086754-bd31-47c8-baf5-fac790bbf80c",
+        "model": "factory-router"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 5,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    }
+  }
+}
