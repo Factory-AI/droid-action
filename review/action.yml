@@ -13,7 +13,7 @@ inputs:
     description: "ID of the tracking comment to update"
     required: true
   review_depth:
-    description: "Review depth preset: 'shallow' (fast, uses kimi-k2-0711) or 'deep' (thorough, uses gpt-5.2 with high reasoning). Defaults to deep. Setting review_model or reasoning_effort explicitly overrides the preset values."
+    description: "Review depth preset: 'shallow' (fast, uses kimi-k2.6) or 'deep' (thorough, uses gpt-5.2 with high reasoning). Defaults to deep. Setting review_model or reasoning_effort explicitly overrides the preset values."
     required: false
     default: "deep"
   review_model:

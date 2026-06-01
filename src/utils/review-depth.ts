@@ -4,7 +4,7 @@ export enum ReviewDepth {
 }
 
 const SHALLOW_DEFAULTS = {
-  model: "kimi-k2-0711",
+  model: "kimi-k2.6",
   reasoningEffort: undefined as string | undefined,
 };
 
