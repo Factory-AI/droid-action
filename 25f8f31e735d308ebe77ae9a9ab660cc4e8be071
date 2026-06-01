@@ -1,0 +1,35 @@
+src/create-prompt/templates/review-candidates-prompt.ts
+  c3986e8eebc00292 43-44
+action.yml
+  c3986e8eebc00292 246-259
+.factory/skills/deep-review/review-notes-format.md
+  c3986e8eebc00292 1-134
+.factory/skills/discover-conventions/SKILL.md
+  c3986e8eebc00292 1-123
+test/create-prompt/templates/review-candidates-prompt.test.ts
+  c3986e8eebc00292 60-61
+.factory/skills/deep-review/review-worker.md
+  c3986e8eebc00292 1-205
+.factory/skills/deep-review/SKILL.md
+  c3986e8eebc00292 1-236
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "25f8f31e735d308ebe77ae9a9ab660cc4e8be071",
+  "prompts": {
+    "c3986e8eebc00292": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "e3bee975-81a6-43cf-9f74-d901a50e66c3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 718,
+      "total_deletions": 6,
+      "accepted_lines": 716,
+      "overriden_lines": 0
+    }
+  }
+}
