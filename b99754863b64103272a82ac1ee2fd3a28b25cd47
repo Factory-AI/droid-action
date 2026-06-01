@@ -1,0 +1,25 @@
+src/mcp/gitlab-mr-server.ts
+  5b5167d13de9c41e 1-313
+test/mcp/gitlab-mr-server.test.ts
+  5b5167d13de9c41e 1-62,65-150,152-154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "b99754863b64103272a82ac1ee2fd3a28b25cd47",
+  "prompts": {
+    "5b5167d13de9c41e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "07086754-bd31-47c8-baf5-fac790bbf80c",
+        "model": "factory-router"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 468,
+      "total_deletions": 0,
+      "accepted_lines": 464,
+      "overriden_lines": 3
+    }
+  }
+}
