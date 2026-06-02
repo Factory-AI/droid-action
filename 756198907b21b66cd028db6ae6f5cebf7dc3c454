@@ -1,0 +1,31 @@
+templates/README.md
+  5b5167d13de9c41e 17,21-23,26-33
+gitlab/examples/factory/droid-review.yml
+  5b5167d13de9c41e 17-19
+README.md
+  5b5167d13de9c41e 51-53
+docs/gitlab-setup.md
+  5b5167d13de9c41e 46-48
+templates/droid-review.yml
+  5b5167d13de9c41e 9-15,69-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "756198907b21b66cd028db6ae6f5cebf7dc3c454",
+  "prompts": {
+    "5b5167d13de9c41e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "07086754-bd31-47c8-baf5-fac790bbf80c",
+        "model": "factory-router"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 41,
+      "total_deletions": 18,
+      "accepted_lines": 36,
+      "overriden_lines": 0
+    }
+  }
+}
