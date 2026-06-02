@@ -8,9 +8,10 @@ GitHub action code lives at `action.yml` (root) and `.github/workflows/`.
 
 ## Components in this directory
 
-| File               | Component      | Usage                                                            |
-| ------------------ | -------------- | ---------------------------------------------------------------- |
-| `droid-review.yml` | `droid-review` | Automated MR code review (two-pass, optional security subagent). |
+| File               | Component      | Usage                                                                                       |
+| ------------------ | -------------- | ------------------------------------------------------------------------------------------- |
+| `droid-review.yml` | `droid-review` | Automated MR code review (two-pass, optional security subagent).                            |
+| `fill.yml`         | `fill`         | `@droid fill` — fills MR descriptions from the diff. Triggered via title/description/label. |
 
 ## Consuming a component
 

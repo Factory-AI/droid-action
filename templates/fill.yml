@@ -1,0 +1,146 @@
+# GitLab CI/CD Component: fill
+#
+# `@droid fill` for merge requests. Fills MR descriptions from the diff.
+# Triggered via `@droid fill` in MR title/description, the `droid:fill`
+# label, or `automatic_fill: "true"` to run on every MR event.
+#
+# Consumed via:
+#   include:
+#     - project: "factory-components/droid-action"
+#       ref: main
+#       file: "/templates/fill.yml"
+#
+# Or, once Catalog-published:
+#   include:
+#     - component: gitlab.com/factory-components/droid-action/fill@<tag>
+#
+# Catalog requires this file to live at `templates/<name>.yml`.
+# See ./README.md for the full directory contract.
+
+spec:
+  inputs:
+    automatic_fill:
+      description: |
+        Run `@droid fill` on every MR event, deciding whether to fill
+        based on the description content. If `false` (default), fill
+        only runs when an explicit `@droid fill` trigger phrase is
+        found in the MR title, description, or `droid:fill` label.
+      default: "false"
+    trigger_phrase:
+      description: |
+        Phrase to look for to invoke droid (e.g. `@droid fill`).
+        Mirrors the GitHub action's `trigger_phrase` input.
+      default: "@droid"
+    fill_model:
+      description: |
+        Override the model used for `@droid fill`. Empty = use the
+        Droid CLI default.
+      default: ""
+    settings:
+      description: |
+        Droid Exec settings as a JSON string or a path to a JSON file.
+        Merged into ~/.factory/droid/settings.json on the runner before
+        `droid exec` runs. Mirrors the GitHub action's `settings` input.
+      default: ""
+    droid_action_repo:
+      description: |
+        Git repo (clone URL) of droid-action. Defaults to the gitlab.com
+        mirror so GitLab runners with restricted egress only need
+        gitlab.com + app.factory.ai access. Override if you mirror it
+        privately.
+      default: "https://gitlab.com/factory-components/droid-action.git"
+    droid_action_ref:
+      description: |
+        Git ref (tag/branch/sha) of droid-action to clone at runtime.
+        The same ref SHOULD match the `include: remote:` URL above.
+      default: "dev"
+    stage:
+      description: "GitLab CI stage to assign the droid-fill job to."
+      default: "test"
+---
+stages:
+  - $[[ inputs.stage ]]
+
+droid-fill:
+  stage: $[[ inputs.stage ]]
+  image: oven/bun:1.2.11
+  rules:
+    # Always-on mode: fire on every MR event and decide via description content.
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $AUTOMATIC_FILL == "true"'
+    # Explicit trigger in MR title.
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TITLE =~ /@droid\s+fill/i'
+    # Explicit trigger via label.
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_LABELS =~ /(^|,)\s*droid:fill\s*(,|$)/i'
+  variables:
+    DROID_STATE_FILE: "$CI_PROJECT_DIR/.droid-state.json"
+    DROID_PROMPT_FILE: "/tmp/droid-prompts/droid-prompt.txt"
+    DROID_ACTION_DIR: "/tmp/droid-action"
+    DROID_ACTION_REPO: "$[[ inputs.droid_action_repo ]]"
+    DROID_ACTION_REF: "$[[ inputs.droid_action_ref ]]"
+    AUTOMATIC_FILL: "$[[ inputs.automatic_fill ]]"
+    TRIGGER_PHRASE: "$[[ inputs.trigger_phrase ]]"
+    FILL_MODEL: "$[[ inputs.fill_model ]]"
+    DROID_SETTINGS: "$[[ inputs.settings ]]"
+    DROID_SUCCESS: "true"
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y -qq --no-install-recommends git ca-certificates curl
+    - git clone --depth 1 --branch "$DROID_ACTION_REF" "$DROID_ACTION_REPO" "$DROID_ACTION_DIR"
+    - cd "$DROID_ACTION_DIR" && bun install --frozen-lockfile
+    - cd "$CI_PROJECT_DIR"
+    - curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh
+    - export PATH="$HOME/.local/bin:$PATH"
+    - droid --version
+    - mkdir -p ~/.factory/droids
+    - |
+      if [ -d "$DROID_ACTION_DIR/.factory/droids" ]; then
+        cp -r "$DROID_ACTION_DIR/.factory/droids/." ~/.factory/droids/
+        echo "Copied custom droids from $DROID_ACTION_DIR/.factory/droids to ~/.factory/droids"
+      fi
+  script:
+    - export PATH="$HOME/.local/bin:$PATH"
+    - |
+      if ! bun run "$DROID_ACTION_DIR/src/entrypoints/gitlab-fill-prepare.ts"; then
+        export DROID_SUCCESS=false
+        echo "gitlab-fill-prepare exited non-zero" > /tmp/droid-error.txt
+        exit 1
+      fi
+    - |
+      if ! grep -q '"shouldRunFill": true' "$DROID_STATE_FILE"; then
+        echo "shouldRunFill=false in state; skipping droid exec."
+        exit 0
+      fi
+    - |
+      if [ -f /tmp/droid-prompts/resolved-env.sh ]; then
+        # shellcheck disable=SC1091
+        . /tmp/droid-prompts/resolved-env.sh
+      fi
+    - |
+      droid mcp remove gitlab_mr 2>/dev/null || true
+      droid mcp add gitlab_mr "bun run $DROID_ACTION_DIR/src/mcp/gitlab-mr-server.ts" \
+        --env CI_PROJECT_ID="$CI_PROJECT_ID" \
+        --env CI_API_V4_URL="$CI_API_V4_URL" \
+        --env GITLAB_TOKEN="$GITLAB_TOKEN" \
+        --env DROID_MR_IID="$DROID_MR_IID"
+    - |
+      set -o pipefail
+      FILL_TOOLS="Read,Grep,Glob,LS,Execute,Skill,gitlab_mr___update_mr_description"
+      FILL_LOG="/tmp/droid-prompts/fill-output.jsonl"
+      DROID_ARGS="exec -f $DROID_PROMPT_FILE --enabled-tools $FILL_TOOLS --output-format stream-json --skip-permissions-unsafe --tag droid-fill"
+      if [ -n "$FILL_MODEL" ]; then DROID_ARGS="$DROID_ARGS --model $FILL_MODEL"; fi
+      echo "Running fill: droid $DROID_ARGS"
+      if ! droid $DROID_ARGS 2>&1 | tee "$FILL_LOG"; then
+        export DROID_SUCCESS=false
+        echo "droid exec fill failed" > /tmp/droid-error.txt
+        exit 1
+      fi
+  after_script:
+    - mkdir -p "$CI_PROJECT_DIR/.droid-debug/prompts" || true
+    - cp -r /tmp/droid-prompts/. "$CI_PROJECT_DIR/.droid-debug/prompts/" 2>/dev/null || true
+    - cp /tmp/droid-error.txt "$CI_PROJECT_DIR/.droid-debug/" 2>/dev/null || true
+  artifacts:
+    when: always
+    paths:
+      - .droid-state.json
+      - .droid-debug/
+    expire_in: 1 week

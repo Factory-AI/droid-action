@@ -18,6 +18,7 @@ export type ParsedGitlabContext = {
     targetBranchSha: string | null;
     diffBaseSha: string | null;
     title: string | null;
+    labels: string[];
   } | null;
   commit: {
     sha: string;
@@ -32,6 +33,7 @@ export type ParsedGitlabContext = {
   inputs: {
     automaticReview: boolean;
     automaticSecurityReview: boolean;
+    automaticFill: boolean;
     triggerPhrase: string;
     reviewDepth: string;
     reviewModel: string;
@@ -81,6 +83,11 @@ export function parseGitlabContext(): ParsedGitlabContext {
     process.env.CI_PROJECT_URL || `${serverUrl}/${projectPath}`;
 
   const mrIid = optional("CI_MERGE_REQUEST_IID");
+  const labelsRaw = optional("CI_MERGE_REQUEST_LABELS") ?? "";
+  const labels = labelsRaw
+    .split(",")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
   const mr = mrIid
     ? {
         iid: parseInt(mrIid, 10),
@@ -88,6 +95,7 @@ export function parseGitlabContext(): ParsedGitlabContext {
         targetBranchSha: optional("CI_MERGE_REQUEST_TARGET_BRANCH_SHA"),
         diffBaseSha: optional("CI_MERGE_REQUEST_DIFF_BASE_SHA"),
         title: optional("CI_MERGE_REQUEST_TITLE"),
+        labels,
       }
     : null;
 
@@ -119,6 +127,7 @@ export function parseGitlabContext(): ParsedGitlabContext {
     inputs: {
       automaticReview: process.env.AUTOMATIC_REVIEW === "true",
       automaticSecurityReview: process.env.AUTOMATIC_SECURITY_REVIEW === "true",
+      automaticFill: process.env.AUTOMATIC_FILL === "true",
       triggerPhrase: process.env.TRIGGER_PHRASE ?? "@droid",
       reviewDepth: process.env.REVIEW_DEPTH ?? "deep",
       reviewModel: process.env.REVIEW_MODEL ?? "",
