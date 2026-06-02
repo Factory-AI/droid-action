@@ -1,0 +1,23 @@
+gitlab/templates/review.yml
+  5b5167d13de9c41e 30-41,82-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "5a8d4352cfbd372db50c2f7a8644caa6333c3581",
+  "prompts": {
+    "5b5167d13de9c41e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "07086754-bd31-47c8-baf5-fac790bbf80c",
+        "model": "factory-router"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 14,
+      "total_deletions": 0,
+      "accepted_lines": 14,
+      "overriden_lines": 0
+    }
+  }
+}
