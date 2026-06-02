@@ -1,0 +1,25 @@
+test/gitlab/api-client.test.ts
+  5b5167d13de9c41e 4-5,217-282,284
+src/gitlab/api/client.ts
+  5b5167d13de9c41e 53-61,90,93,151-193,195,218-228
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "7c721d1f2c7d174f688f9795981ef3d0d19f3266",
+  "prompts": {
+    "5b5167d13de9c41e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "07086754-bd31-47c8-baf5-fac790bbf80c",
+        "model": "factory-router"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 148,
+      "total_deletions": 13,
+      "accepted_lines": 138,
+      "overriden_lines": 1
+    }
+  }
+}
