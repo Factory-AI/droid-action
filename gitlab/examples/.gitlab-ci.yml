@@ -1,9 +1,21 @@
 # Example project-root .gitlab-ci.yml.
 #
-# If the project doesn't have a .gitlab-ci.yml yet, create one with at
-# minimum the include line below. If it already has one, just append the
-# `- local: "factory/droid-review.yml"` entry to its existing `include:`
-# block (or add a new `include:` block if there isn't one).
+# Add ONE of the include forms below to your existing `include:` block (or
+# create this file if the project doesn't have one yet).
 
+# --- Preferred: CI/CD Catalog component -------------------------------------
+# Pulls the component straight from the Catalog. No files to copy into your
+# repo. Pin to a released version (e.g. @1.0.0). Configure inputs inline.
 include:
-  - local: "factory/droid-review.yml"
+  - component: gitlab.com/factory-components/droid-action/droid-review@1.0.0
+    inputs:
+      gitlab_token: $DROID_GITLAB_TOKEN
+      factory_api_key: $FACTORY_API_KEY
+
+# --- Fallback: local copy ---------------------------------------------------
+# Use this if you can't consume the Catalog (e.g. self-managed without the
+# component mirrored). Copy templates/droid-review.yml into your repo at
+# factory/droid-review.yml and include it locally instead of the block above:
+#
+# include:
+#   - local: "factory/droid-review.yml"

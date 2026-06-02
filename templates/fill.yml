@@ -38,14 +38,15 @@ spec:
       default: ""
     droid_action_repo:
       description: |
-        Git repo (clone URL) of droid-action. Override if you mirror it
-        privately. Must be reachable from your GitLab runner.
-      default: "https://github.com/Factory-AI/droid-action.git"
+        Git repo (clone URL) of droid-action cloned at runtime. Defaults to
+        the GitLab mirror so the job has no github.com dependency. Override
+        if you host a private mirror. Must be reachable from your runner.
+      default: "https://gitlab.com/factory-components/droid-action.git"
     droid_action_ref:
       description: |
         Git ref (tag/branch/sha) of droid-action to clone at runtime.
-        The same ref SHOULD match the `include: remote:` URL above.
-      default: "dev"
+        SHOULD match the version of the component you include.
+      default: "main"
     stage:
       description: "GitLab CI stage to assign the droid-fill job to."
       default: "test"
