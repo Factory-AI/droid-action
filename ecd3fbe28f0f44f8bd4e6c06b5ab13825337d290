@@ -1,0 +1,29 @@
+docs/gitlab-setup.md
+  5b5167d13de9c41e 18-19,31,35-40
+gitlab/examples/.gitlab-ci.example.yml
+  5b5167d13de9c41e 1-70
+gitlab/examples/README.md
+  5b5167d13de9c41e 1-6,8-24
+gitlab/examples/.gitlab-ci.minimal.yml
+  5b5167d13de9c41e 1-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "ecd3fbe28f0f44f8bd4e6c06b5ab13825337d290",
+  "prompts": {
+    "5b5167d13de9c41e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "07086754-bd31-47c8-baf5-fac790bbf80c",
+        "model": "factory-router"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 217,
+      "total_deletions": 39,
+      "accepted_lines": 114,
+      "overriden_lines": 1
+    }
+  }
+}
