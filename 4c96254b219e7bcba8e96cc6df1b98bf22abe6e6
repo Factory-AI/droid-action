@@ -1,0 +1,37 @@
+src/gitlab/context.ts
+  5b5167d13de9c41e 21,36,86-90,98,130
+test/gitlab/fill-prompt.test.ts
+  5b5167d13de9c41e 1-60
+src/entrypoints/gitlab-fill-prepare.ts
+  5b5167d13de9c41e 1-205,207-225
+gitlab/templates/fill.yml
+  5b5167d13de9c41e 1-125
+test/gitlab/context.test.ts
+  5b5167d13de9c41e 27,33
+src/gitlab/prompts/fill.ts
+  5b5167d13de9c41e 1-12,14-61
+test/gitlab/fill-trigger.test.ts
+  5b5167d13de9c41e 1-108,111-114,117-131
+src/gitlab/validation/trigger.ts
+  5b5167d13de9c41e 1-36,38-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "4c96254b219e7bcba8e96cc6df1b98bf22abe6e6",
+  "prompts": {
+    "5b5167d13de9c41e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "07086754-bd31-47c8-baf5-fac790bbf80c",
+        "model": "factory-router"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 712,
+      "total_deletions": 0,
+      "accepted_lines": 698,
+      "overriden_lines": 7
+    }
+  }
+}
