@@ -1,0 +1,45 @@
+gitlab/examples/factory/droid-review.yml
+  5b5167d13de9c41e 17
+templates/droid-review.yml
+  5b5167d13de9c41e 1-13
+  9b451af2eba84f38 70
+docs/gitlab-setup.md
+  5b5167d13de9c41e 46
+templates/README.md
+  5b5167d13de9c41e 1-31
+README.md
+  5b5167d13de9c41e 51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "1e3e0aa0889ae909745c6c023254e61cd779010b",
+  "prompts": {
+    "5b5167d13de9c41e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "07086754-bd31-47c8-baf5-fac790bbf80c",
+        "model": "factory-router"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 77,
+      "total_deletions": 7,
+      "accepted_lines": 47,
+      "overriden_lines": 0
+    },
+    "9b451af2eba84f38": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "5753b7cf-acdf-4faf-bd59-c8c1f6047878",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 82,
+      "total_deletions": 10,
+      "accepted_lines": 1,
+      "overriden_lines": 1
+    }
+  }
+}
