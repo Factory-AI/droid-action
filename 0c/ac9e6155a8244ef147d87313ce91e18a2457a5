@@ -1,0 +1,93 @@
+src/gitlab/data/review-artifacts.ts
+  5b5167d13de9c41e 1-94
+src/entrypoints/gitlab-fill-prepare.ts
+  5b5167d13de9c41e 1-205,207-225
+src/gitlab/prompts/validator.ts
+  5b5167d13de9c41e 1-132
+gitlab/templates/fill.yml
+  5b5167d13de9c41e 1-125
+test/gitlab/token.test.ts
+  5b5167d13de9c41e 1-50
+src/entrypoints/gitlab-update-comment-link.ts
+  5b5167d13de9c41e 1-113
+test/gitlab/api-client.test.ts
+  5b5167d13de9c41e 1-31,33-212,217-282,284
+test/gitlab/review-artifacts.test.ts
+  5b5167d13de9c41e 1-139,141-144,146-153
+review/action.yml
+  5b5167d13de9c41e 16
+src/gitlab/operations/tracking-note.ts
+  5b5167d13de9c41e 1-68,71-72,88-110
+README.md
+  5b5167d13de9c41e 41-62
+src/mcp/gitlab-mr-server.ts
+  5b5167d13de9c41e 1-313
+src/gitlab/prompts/fill.ts
+  5b5167d13de9c41e 1-12,14-61
+test/gitlab/review-config-resolution.test.ts
+  5b5167d13de9c41e 1-52
+test/gitlab/prompts.test.ts
+  5b5167d13de9c41e 1-129
+test/gitlab/context.test.ts
+  5b5167d13de9c41e 1-187
+src/gitlab/api/config.ts
+  5b5167d13de9c41e 1-7
+test/gitlab/tracking-note.test.ts
+  5b5167d13de9c41e 1-95
+src/utils/review-depth.ts
+  5b5167d13de9c41e 7
+src/gitlab/context.ts
+  5b5167d13de9c41e 1-71,73-146
+src/gitlab/validation/trigger.ts
+  5b5167d13de9c41e 1-36,38-92
+gitlab/templates/review.yml
+  5b5167d13de9c41e 1-99,101-106,108-115,117,120,122-127,131-133,142,144,147,149,151-156,162-168,174
+test/gitlab/fill-prompt.test.ts
+  5b5167d13de9c41e 1-60
+test/mcp/gitlab-mr-server.test.ts
+  5b5167d13de9c41e 1-62,65-150,152-154
+src/gitlab/token.ts
+  5b5167d13de9c41e 1-23
+action.yml
+  5b5167d13de9c41e 95
+docs/gitlab-setup.md
+  5b5167d13de9c41e 1-26,28-66,68-129,131,136-149
+src/entrypoints/gitlab-prepare.ts
+  5b5167d13de9c41e 1-162,175-187,195-207,210,215,219,224-233,247-255,258-270,272,276-278,287-297
+test/gitlab/exec-telemetry.test.ts
+  5b5167d13de9c41e 1-116
+src/gitlab/types.ts
+  5b5167d13de9c41e 1-81
+src/entrypoints/gitlab-prepare-validator.ts
+  5b5167d13de9c41e 1-97
+src/gitlab/api/client.ts
+  5b5167d13de9c41e 1-97,99-193,195,218-228
+test/gitlab/fill-trigger.test.ts
+  5b5167d13de9c41e 1-108,111-114,117-131
+src/gitlab/prompts/candidates.ts
+  5b5167d13de9c41e 1-148
+src/gitlab/data/exec-telemetry.ts
+  5b5167d13de9c41e 1-122,124-149
+src/gitlab/prompts/types.ts
+  5b5167d13de9c41e 1-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "0cac9e6155a8244ef147d87313ce91e18a2457a5",
+  "prompts": {
+    "5b5167d13de9c41e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "07086754-bd31-47c8-baf5-fac790bbf80c",
+        "model": "factory-router"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 13,
+      "total_deletions": 0,
+      "accepted_lines": 4175,
+      "overriden_lines": 0
+    }
+  }
+}
