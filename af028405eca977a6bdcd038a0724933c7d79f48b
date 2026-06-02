@@ -1,0 +1,42 @@
+gitlab/examples/.gitlab-ci.yml
+  9b451af2eba84f38 3-4,6-8,10-21
+templates/droid-review.yml
+  9b451af2eba84f38 63-66
+.gitlab-ci.yml
+  9b451af2eba84f38 1-48
+templates/fill.yml
+  9b451af2eba84f38 41-44,48-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "af028405eca977a6bdcd038a0724933c7d79f48b",
+  "prompts": {
+    "5b5167d13de9c41e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "07086754-bd31-47c8-baf5-fac790bbf80c",
+        "model": "factory-router"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 13,
+      "overriden_lines": 0
+    },
+    "9b451af2eba84f38": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "5753b7cf-acdf-4faf-bd59-c8c1f6047878",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 75,
+      "total_deletions": 13,
+      "accepted_lines": 77,
+      "overriden_lines": 0
+    }
+  }
+}
