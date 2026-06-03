@@ -1,0 +1,29 @@
+templates/droid-review.yml
+  5b5167d13de9c41e 76-78,82-85
+src/gitlab/token.ts
+  5b5167d13de9c41e 13
+test/gitlab/token.test.ts
+  5b5167d13de9c41e 42,44
+src/mcp/gitlab-mr-server.ts
+  5b5167d13de9c41e 27-71,265
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "7ad303f11eb51315865319694e83a96d6a5e748e",
+  "prompts": {
+    "5b5167d13de9c41e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "07086754-bd31-47c8-baf5-fac790bbf80c",
+        "model": "auto"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 56,
+      "total_deletions": 45,
+      "accepted_lines": 56,
+      "overriden_lines": 0
+    }
+  }
+}
