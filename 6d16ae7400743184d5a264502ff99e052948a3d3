@@ -1,0 +1,31 @@
+src/create-prompt/terminology.ts
+  5b5167d13de9c41e 12
+src/gitlab/prompts/terminology.ts
+  5b5167d13de9c41e 13,36
+src/core/review/prompts/candidates.ts
+  5b5167d13de9c41e 60
+src/core/review/tracking/format.ts
+  5b5167d13de9c41e 2-6
+src/core/review/prompts/types.ts
+  5b5167d13de9c41e 28-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "6d16ae7400743184d5a264502ff99e052948a3d3",
+  "prompts": {
+    "5b5167d13de9c41e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "07086754-bd31-47c8-baf5-fac790bbf80c",
+        "model": "auto"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 11,
+      "total_deletions": 6,
+      "accepted_lines": 11,
+      "overriden_lines": 0
+    }
+  }
+}
