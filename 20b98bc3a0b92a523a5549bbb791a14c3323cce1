@@ -1,0 +1,29 @@
+src/core/review/artifacts/types.ts
+  5b5167d13de9c41e 1-25
+src/gitlab/data/review-artifacts.ts
+  5b5167d13de9c41e 12-14,17-18,22,69-81,83
+src/core/review/artifacts/write.ts
+  5b5167d13de9c41e 1-41
+src/create-prompt/types.ts
+  5b5167d13de9c41e 2,107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "20b98bc3a0b92a523a5549bbb791a14c3323cce1",
+  "prompts": {
+    "5b5167d13de9c41e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "07086754-bd31-47c8-baf5-fac790bbf80c",
+        "model": "auto"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 246,
+      "total_deletions": 155,
+      "accepted_lines": 246,
+      "overriden_lines": 0
+    }
+  }
+}
