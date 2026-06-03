@@ -73,17 +73,18 @@ spec:
       default: "https://gitlab.com/factory-components/droid-action.git"
     droid_action_ref:
       description: |
-        Git ref (tag/branch/sha) of droid-action to clone at runtime.
-        The same ref SHOULD match the `include: remote:` URL above.
+        Git tag or branch of droid-action to clone at runtime (SHAs are
+        not supported because the clone uses `--branch`). The same ref
+        SHOULD match the `include: remote:` URL above.
         Internal: most users leave this at the default.
       default: "main"
     stage:
-      description: "GitLab CI stage to assign the droid-review job to."
+      description: |
+        GitLab CI stage to assign the droid-review job to. The consuming
+        project's `.gitlab-ci.yml` must include this stage in its
+        `stages:` list (or omit the list to use the default ordering).
       default: "test"
 ---
-stages:
-  - $[[ inputs.stage ]]
-
 droid-review:
   stage: $[[ inputs.stage ]]
   image: oven/bun:1.2.11

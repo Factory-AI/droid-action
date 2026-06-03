@@ -24,37 +24,51 @@ function errorResult(error: unknown) {
   };
 }
 
-const ReviewCommentSchema = z.object({
-  path: z
-    .string()
-    .describe(
-      "Path of the file to comment on (use the new_path from the diff)",
-    ),
-  body: z.string().min(1).describe("Comment text (supports markdown)"),
-  line: z
-    .number()
-    .int()
-    .optional()
-    .describe(
-      "Line number in the new file for single-line comments, or end line for multi-line",
-    ),
-  side: z
-    .enum(["LEFT", "RIGHT"])
-    .optional()
-    .default("RIGHT")
-    .describe(
-      "Side of the diff: RIGHT for new/modified code, LEFT for removed code",
-    ),
-  old_path: z
-    .string()
-    .optional()
-    .describe("Path in the old file (defaults to path if unset)"),
-  old_line: z
-    .number()
-    .int()
-    .optional()
-    .describe("Line number in the old file (required when side=LEFT)"),
-});
+const ReviewCommentSchema = z
+  .object({
+    path: z
+      .string()
+      .describe(
+        "Path of the file to comment on (use the new_path from the diff)",
+      ),
+    body: z.string().min(1).describe("Comment text (supports markdown)"),
+    line: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        "Line number in the new file. Required for side=RIGHT (the default).",
+      ),
+    side: z
+      .enum(["LEFT", "RIGHT"])
+      .optional()
+      .default("RIGHT")
+      .describe(
+        "Side of the diff: RIGHT for new/modified code, LEFT for removed code",
+      ),
+    old_path: z
+      .string()
+      .optional()
+      .describe("Path in the old file (defaults to path if unset)"),
+    old_line: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        "Line number in the old file. Required for side=LEFT comments.",
+      ),
+  })
+  .refine(
+    (c) => {
+      const side = c.side ?? "RIGHT";
+      if (side === "LEFT") return typeof c.old_line === "number";
+      return typeof c.line === "number";
+    },
+    {
+      message:
+        "Inline diff discussions require a line anchor: provide `line` for side=RIGHT comments, or `old_line` for side=LEFT comments.",
+    },
+  );
 
 type ReviewComment = z.infer<typeof ReviewCommentSchema>;
 
@@ -247,9 +261,8 @@ export function createGitlabMrServer({
         .describe("Optional summary note body in markdown"),
       comments: z
         .array(ReviewCommentSchema)
-        .max(30)
         .optional()
-        .describe("Inline review comments (max 30 per call)"),
+        .describe("Inline review comments"),
     },
     async ({ mr_iid, body, comments }) => {
       try {

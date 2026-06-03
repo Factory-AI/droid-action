@@ -39,9 +39,9 @@ describe("setupGitlabToken", () => {
     expect(setupGitlabToken()).toBe("glpat-override");
   });
 
-  it("falls back to CI_JOB_TOKEN", () => {
+  it("does NOT fall back to CI_JOB_TOKEN (its scopes are insufficient for notes/discussions)", () => {
     process.env.CI_JOB_TOKEN = "ci-job-token";
-    expect(setupGitlabToken()).toBe("ci-job-token");
+    expect(() => setupGitlabToken()).toThrow(MissingGitlabTokenError);
   });
 
   it("throws MissingGitlabTokenError when nothing is set", () => {

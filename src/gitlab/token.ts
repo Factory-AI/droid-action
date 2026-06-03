@@ -10,10 +10,7 @@ export class MissingGitlabTokenError extends Error {
 }
 
 export function setupGitlabToken(): string {
-  const token =
-    process.env.GITLAB_TOKEN ||
-    process.env.OVERRIDE_GITLAB_TOKEN ||
-    process.env.CI_JOB_TOKEN;
+  const token = process.env.GITLAB_TOKEN || process.env.OVERRIDE_GITLAB_TOKEN;
 
   if (!token) {
     throw new MissingGitlabTokenError();
