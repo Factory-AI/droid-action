@@ -1,0 +1,39 @@
+src/core/review/prompts/candidates.ts
+  5b5167d13de9c41e 1-146
+src/create-prompt/templates/review-validator-prompt.ts
+  5b5167d13de9c41e 1-11,23-46
+src/gitlab/prompts/candidates.ts
+  5b5167d13de9c41e 2,4-7,9-11,14-15,21-34
+src/core/review/prompts/types.ts
+  5b5167d13de9c41e 1-91
+src/core/review/prompts/validator.ts
+  5b5167d13de9c41e 1-138
+src/create-prompt/templates/review-candidates-prompt.ts
+  5b5167d13de9c41e 1-11,23-43
+src/gitlab/prompts/validator.ts
+  5b5167d13de9c41e 2,4-9,11,15-16,22-36
+src/gitlab/prompts/terminology.ts
+  5b5167d13de9c41e 1-48
+src/create-prompt/terminology.ts
+  5b5167d13de9c41e 1-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "fdda9ef41a711c0b504169281685d7f289892cc4",
+  "prompts": {
+    "5b5167d13de9c41e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "07086754-bd31-47c8-baf5-fac790bbf80c",
+        "model": "auto"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 572,
+      "total_deletions": 511,
+      "accepted_lines": 571,
+      "overriden_lines": 0
+    }
+  }
+}
