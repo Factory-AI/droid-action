@@ -1,0 +1,39 @@
+README.md
+  42491a22c388c28a 292-325
+src/github/context.ts
+  42491a22c388c28a 101-106,170
+src/entrypoints/collect-inputs.ts
+  42491a22c388c28a 24
+test/mockContext.ts
+  42491a22c388c28a 30
+src/custom-automation/index.ts
+  42491a22c388c28a 1-86
+src/prepare/index.ts
+  42491a22c388c28a 6-10,15-22,24-33
+src/entrypoints/prepare.ts
+  42491a22c388c28a 14,46-49
+action.yml
+  42491a22c388c28a 33-36,206
+test/custom-automation.test.ts
+  42491a22c388c28a 1-197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "447183a5f79ccd5745a5a389bec5ba21d00ff5f8",
+  "prompts": {
+    "42491a22c388c28a": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "29a1410d-35e6-4fd3-8d3f-7b4990029e27",
+        "model": "claude-fable-5"
+      },
+      "human_author": "eric-factory",
+      "messages": [],
+      "total_additions": 361,
+      "total_deletions": 7,
+      "accepted_lines": 359,
+      "overriden_lines": 0
+    }
+  }
+}

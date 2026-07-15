@@ -1,0 +1,23 @@
+README.md
+  b9d6b8533a389d19 243-283
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "95dbf0205dd4545432107b7429a99cd1fd02a000",
+  "prompts": {
+    "b9d6b8533a389d19": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "2fcf97cf-9d0c-4729-bcbe-b000b0e799b7",
+        "model": "claude-opus-4-8-fast"
+      },
+      "human_author": "eric-factory",
+      "messages": [],
+      "total_additions": 41,
+      "total_deletions": 0,
+      "accepted_lines": 41,
+      "overriden_lines": 0
+    }
+  }
+}
