@@ -1,0 +1,31 @@
+base-action/src/run-droid.ts
+  9c1e4227527619ff 7-11,385-388,390-393,396,403-405,407,411-414,430-433
+test/comment-logic.test.ts
+  9c1e4227527619ff 543-559
+base-action/src/utils/model-policy-error.ts
+  9c1e4227527619ff 20-51
+src/github/operations/comment-logic.ts
+  9c1e4227527619ff 24,26,31-39,230-231
+base-action/test/model-policy-error.test.ts
+  9c1e4227527619ff 3-4,40-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "3a9aaebccd77be9353c199e8dd4d173017fe6c0b",
+  "prompts": {
+    "9c1e4227527619ff": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "0f9106d4-743d-4917-ade8-e6f890916832",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 128,
+      "total_deletions": 13,
+      "accepted_lines": 127,
+      "overriden_lines": 0
+    }
+  }
+}
