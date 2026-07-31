@@ -1,0 +1,40 @@
+base-action/src/run-droid.ts
+  9c1e4227527619ff 264-271,273,276,278,285-292,415,419-421
+base-action/test/model-policy-error.test.ts
+  9c1e4227527619ff 24-31
+base-action/src/utils/model-policy-error.ts
+  9c1e4227527619ff 2-5,7-10,16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "52c8513f600b1ac876bc8a01c462df1a65222136",
+  "prompts": {
+    "5b5167d13de9c41e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "07086754-bd31-47c8-baf5-fac790bbf80c",
+        "model": "auto"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 11,
+      "total_deletions": 6,
+      "accepted_lines": 28,
+      "overriden_lines": 0
+    },
+    "9c1e4227527619ff": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "0f9106d4-743d-4917-ade8-e6f890916832",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 42,
+      "total_deletions": 10,
+      "accepted_lines": 42,
+      "overriden_lines": 0
+    }
+  }
+}
