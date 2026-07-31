@@ -1,0 +1,68 @@
+src/tag/commands/security-scan.ts
+  9c1e4227527619ff 11,91-97,101-102
+src/entrypoints/generate-review-prompt.ts
+  9c1e4227527619ff 19,189-202,210-211
+src/entrypoints/gitlab-prepare.ts
+  9c1e4227527619ff 39,250-257,262,264-266,268-275,310
+test/comment-logic.test.ts
+  9c1e4227527619ff 502-566
+src/tag/commands/review-validator.ts
+  9c1e4227527619ff 13,106-114,122-123
+src/entrypoints/update-comment-link.ts
+  9c1e4227527619ff 117-122,168
+base-action/src/utils/model-policy-error.ts
+  9c1e4227527619ff 1-40
+src/tag/commands/security-review.ts
+  9c1e4227527619ff 14,154-160,164-165
+base-action/src/run-droid.ts
+  9c1e4227527619ff 7,260-267,270,306-316,363-384,397-407
+src/utils/model-policy.ts
+  9c1e4227527619ff 1-171
+src/github/operations/comment-logic.ts
+  9c1e4227527619ff 19,23-30,94,216-223,233-239
+test/model-policy.test.ts
+  9c1e4227527619ff 1-142,144-209
+src/tag/commands/fill.ts
+  9c1e4227527619ff 12,98-101,105-106
+action.yml
+  9c1e4227527619ff 300,353-355
+review/action.yml
+  9c1e4227527619ff 88,127,163-165
+base-action/test/model-policy-error.test.ts
+  9c1e4227527619ff 1-75
+src/tag/commands/review.ts
+  9c1e4227527619ff 15,165-173,181-182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "6f9635b91838b224eab9ed33514be6ab294d19a2",
+  "prompts": {
+    "7c56fecf7260f9cb": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "34870a75-a4d4-4dde-baa9-121d102483d7",
+        "model": "auto"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 269,
+      "overriden_lines": 0
+    },
+    "9c1e4227527619ff": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "0f9106d4-743d-4917-ade8-e6f890916832",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 759,
+      "total_deletions": 42,
+      "accepted_lines": 751,
+      "overriden_lines": 1
+    }
+  }
+}
