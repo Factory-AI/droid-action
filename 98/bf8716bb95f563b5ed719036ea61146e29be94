@@ -1,0 +1,25 @@
+src/github/operations/comment-logic.ts
+  9c1e4227527619ff 99-103
+test/comment-logic.test.ts
+  9c1e4227527619ff 45-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "98bf8716bb95f563b5ed719036ea61146e29be94",
+  "prompts": {
+    "9c1e4227527619ff": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "0f9106d4-743d-4917-ade8-e6f890916832",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 30,
+      "total_deletions": 2,
+      "accepted_lines": 30,
+      "overriden_lines": 0
+    }
+  }
+}
