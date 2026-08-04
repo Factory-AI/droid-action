@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach, spyOn } from "bun:test";
 import { setupDroidSettings } from "../src/setup-droid-settings";
 import { tmpdir } from "os";
 import { mkdir, writeFile, readFile, rm } from "fs/promises";
@@ -14,6 +14,16 @@ const testHomeDir = join(
 const settingsPath = join(testHomeDir, ".factory", "droid", "settings.json");
 const testSettingsDir = join(testHomeDir, ".factory-test");
 const testSettingsPath = join(testSettingsDir, "test-settings.json");
+
+function stringifyLogArg(value: unknown): string {
+  if (typeof value === "string") return value;
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
 
 describe("setupDroidSettings", () => {
   beforeEach(async () => {
@@ -144,5 +154,76 @@ describe("setupDroidSettings", () => {
     expect(settings.existingKey).toBe("existingValue");
     expect(settings.newKey).toBe("newValue");
     expect(settings.model).toBe("gpt-5-codex");
+  });
+
+  test("should not log existing settings contents", async () => {
+    await mkdir(join(testHomeDir, ".factory", "droid"), { recursive: true });
+    await writeFile(
+      settingsPath,
+      JSON.stringify(
+        {
+          customModels: [
+            {
+              apiKey: "custom-model-secret-test-value",
+            },
+          ],
+          mcp: {
+            env: {
+              GITHUB_TOKEN: "test-github-token-value",
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const messages: string[] = [];
+    const logSpy = spyOn(console, "log").mockImplementation((...args) => {
+      messages.push(args.map(stringifyLogArg).join(" "));
+    });
+
+    try {
+      console.log("object serialization check", {
+        apiKey: "custom-model-secret-test-value",
+        mcp: {
+          env: {
+            GITHUB_TOKEN: "test-github-token-value",
+          },
+        },
+      });
+      const serializedObjectOutput = messages.join("\n");
+      expect(serializedObjectOutput).toContain("apiKey");
+      expect(serializedObjectOutput).toContain("GITHUB_TOKEN");
+      expect(serializedObjectOutput).toContain(
+        "custom-model-secret-test-value",
+      );
+      expect(serializedObjectOutput).toContain("test-github-token-value");
+      messages.length = 0;
+
+      await setupDroidSettings(
+        JSON.stringify({ model: "test-model" }),
+        testHomeDir,
+      );
+    } finally {
+      logSpy.mockRestore();
+    }
+
+    const settingsContent = await readFile(settingsPath, "utf-8");
+    const settings = JSON.parse(settingsContent);
+    const output = messages.join("\n");
+
+    expect(settings.enableAllProjectMcpServers).toBe(true);
+    expect(settings.model).toBe("test-model");
+    expect(settings.customModels[0].apiKey).toBe(
+      "custom-model-secret-test-value",
+    );
+    expect(settings.mcp.env.GITHUB_TOKEN).toBe("test-github-token-value");
+
+    expect(output).toContain("Found existing settings file");
+    expect(output).not.toContain("custom-model-secret-test-value");
+    expect(output).not.toContain("test-github-token-value");
+    expect(output).not.toContain("apiKey");
+    expect(output).not.toContain("GITHUB_TOKEN");
   });
 });
