@@ -1,0 +1,36 @@
+scripts/ci-medic-sandbox.ts
+  b21091ad433f027c 244-246,249
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "155b0b6de250144c51a4be5a8dc647fd7ef0577f",
+  "prompts": {
+    "6f56589adc2e37fa": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "7a7ccefb-501e-470f-a9cb-0b383405ffa5",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 1003,
+      "total_deletions": 224,
+      "accepted_lines": 1001,
+      "overriden_lines": 0
+    },
+    "b21091ad433f027c": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "d9555fd9-b3ce-4bfb-86ce-beacf95ea552",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 3,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    }
+  }
+}
