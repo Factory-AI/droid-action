@@ -1,0 +1,44 @@
+test/medic.test.ts
+  b21091ad433f027c 129-159
+templates/droid-ci-medic.yml
+  b21091ad433f027c 19-22,25
+src/mcp/install-mcp-server.ts
+  b21091ad433f027c 112-116
+src/mcp/github-comment-server.ts
+  b21091ad433f027c 67-68,71-72,74
+src/medic/index.ts
+  b21091ad433f027c 241-245,247-248
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "68f5fa0df696504ab1336bea47117116a658cbac",
+  "prompts": {
+    "6f56589adc2e37fa": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "7a7ccefb-501e-470f-a9cb-0b383405ffa5",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 637,
+      "total_deletions": 26,
+      "accepted_lines": 2405,
+      "overriden_lines": 3
+    },
+    "b21091ad433f027c": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "d9555fd9-b3ce-4bfb-86ce-beacf95ea552",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 53,
+      "total_deletions": 10,
+      "accepted_lines": 53,
+      "overriden_lines": 0
+    }
+  }
+}
