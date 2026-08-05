@@ -1,0 +1,48 @@
+.github/workflows/ci.yml
+  b21091ad433f027c 1-44
+README.md
+  b21091ad433f027c 54-61
+src/medic/gate.ts
+  b21091ad433f027c 4,126-173
+src/medic/index.ts
+  6f56589adc2e37fa 337,339-343,362
+  b21091ad433f027c 9,16-17,259-290
+test/medic.test.ts
+  b21091ad433f027c 19-23
+src/medic/scope.ts
+  b21091ad433f027c 1-66,70-76,80-92
+  6f56589adc2e37fa 67-69,77-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "65c0dbd729b4697e548fa6ac7ddf2b4fc490930d",
+  "prompts": {
+    "6f56589adc2e37fa": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "7a7ccefb-501e-470f-a9cb-0b383405ffa5",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 14,
+      "total_deletions": 4,
+      "accepted_lines": 2590,
+      "overriden_lines": 0
+    },
+    "b21091ad433f027c": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "d9555fd9-b3ce-4bfb-86ce-beacf95ea552",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 229,
+      "total_deletions": 1,
+      "accepted_lines": 241,
+      "overriden_lines": 0
+    }
+  }
+}
