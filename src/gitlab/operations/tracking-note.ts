@@ -62,6 +62,32 @@ export function buildTrackingNoteBody(options: TrackingNoteOptions): string {
     lines.push(`Job log: ${options.jobUrl}`);
   }
 
+  const review = options.review;
+  if (review) {
+    const summary = review.summaryBody?.trim();
+    if (summary) {
+      lines.push("");
+      lines.push(summary);
+    }
+
+    const counts: string[] = [];
+    if (typeof review.posted === "number") {
+      counts.push(
+        `${review.posted} inline ${review.posted === 1 ? "comment" : "comments"} posted`,
+      );
+    }
+    if (typeof review.failed === "number" && review.failed > 0) {
+      counts.push(`${review.failed} could not be anchored to the diff`);
+    }
+    if (typeof review.skipped === "number" && review.skipped > 0) {
+      counts.push(`${review.skipped} skipped`);
+    }
+    if (counts.length > 0) {
+      lines.push("");
+      lines.push(counts.join(" • "));
+    }
+  }
+
   if (options.state === "failure" && options.errorDetails) {
     lines.push("");
     lines.push("<details><summary>Error details</summary>");

@@ -4,6 +4,19 @@
 # (candidate generation + validator), inline MR comments, sticky tracking
 # note with telemetry, optional parallel security-reviewer subagent.
 #
+# Everything that touches the MR goes through the GitLab REST API from CI,
+# never from inside the model: prepare fetches the diff/notes/description
+# onto disk, the two `droid exec` passes only read those files and write
+# JSON, then `gitlab-post-review` posts the approved findings and
+# `gitlab-update-comment-link` renders the tracking note.
+#
+# The passes get no MR tool (`--enabled-tools` below) and run with
+# GITLAB_TOKEN stripped from their environment, so a prompt-injected diff
+# has neither a tool nor a credential for writing to your project. They do
+# keep `Execute` for investigating the code, which means they can still run
+# shell commands and reach the network — treat the review job like any
+# other CI job that builds untrusted code.
+#
 # Consumed via:
 #   include:
 #     - project: "factory-components/droid-action"
@@ -91,7 +104,10 @@ droid-review:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
   variables:
-    DROID_STATE_FILE: "$CI_PROJECT_DIR/.droid-state.json"
+    # Outside the worktree on purpose: the MR being reviewed is checked out
+    # into CI_PROJECT_DIR, so a branch that commits `.droid-state.json` as a
+    # symlink could otherwise redirect this write to an arbitrary path.
+    DROID_STATE_FILE: "/tmp/droid-prompts/.droid-state.json"
     DROID_PROMPT_FILE: "/tmp/droid-prompts/droid-prompt.txt"
     DROID_ACTION_DIR: "/tmp/droid-action"
     DROID_ACTION_REPO: "$[[ inputs.droid_action_repo ]]"
@@ -140,24 +156,20 @@ droid-review:
       fi
     - |
       # Source the resolved env shim from gitlab-prepare to expose
-      # RESOLVED_MODEL / RESOLVED_REASONING_EFFORT / DROID_MR_IID /
-      # DROID_TRACKING_NOTE_ID for both droid exec calls and the MCP server.
-      if [ -f /tmp/droid-prompts/resolved-env.sh ]; then
+      # RESOLVED_MODEL / RESOLVED_REASONING_EFFORT for the droid exec calls,
+      # plus DROID_MR_IID / DROID_TRACKING_NOTE_ID for any extra steps a
+      # consuming project bolts onto this job.
+      # Resolve the same path gitlab-prepare wrote it to, so overriding
+      # DROID_PROMPT_FILE or DROID_RESOLVED_ENV_FILE keeps working.
+      RESOLVED_ENV_SHIM="${DROID_RESOLVED_ENV_FILE:-$(dirname "$DROID_PROMPT_FILE")/resolved-env.sh}"
+      if [ -f "$RESOLVED_ENV_SHIM" ]; then
         # shellcheck disable=SC1091
-        . /tmp/droid-prompts/resolved-env.sh
+        . "$RESOLVED_ENV_SHIM"
       fi
     - |
-      droid mcp remove gitlab_mr 2>/dev/null || true
-      droid mcp add gitlab_mr "bun run $DROID_ACTION_DIR/src/mcp/gitlab-mr-server.ts" \
-        --env CI_PROJECT_ID="$CI_PROJECT_ID" \
-        --env CI_API_V4_URL="$CI_API_V4_URL" \
-        --env GITLAB_TOKEN="$GITLAB_TOKEN" \
-        --env DROID_MR_IID="$DROID_MR_IID" \
-        --env DROID_TRACKING_NOTE_ID="$DROID_TRACKING_NOTE_ID"
-    - |
       # ---- Pass 1: candidate generation ----
-      # Note: gitlab_mr___submit_review and the MR-mutation tools are
-      # NOT included here. Pass 1 must only WRITE the candidates JSON.
+      # Pass 1 must only WRITE the candidates JSON; it gets no tool that
+      # can reach GitLab.
       set -o pipefail
       PASS1_TOOLS="Read,Grep,Glob,LS,Execute,Edit,Create,ApplyPatch,Task,Skill,FetchUrl"
       PASS1_LOG="/tmp/droid-prompts/pass1-output.jsonl"
@@ -165,7 +177,9 @@ droid-review:
       if [ -n "$RESOLVED_MODEL" ]; then DROID_ARGS="$DROID_ARGS --model $RESOLVED_MODEL"; fi
       if [ -n "$RESOLVED_REASONING_EFFORT" ]; then DROID_ARGS="$DROID_ARGS --reasoning-effort $RESOLVED_REASONING_EFFORT"; fi
       echo "Running Pass 1 (candidates): droid $DROID_ARGS"
-      if ! droid $DROID_ARGS 2>&1 | tee "$PASS1_LOG"; then
+      # The pass reads files and writes JSON; it never needs the GitLab token,
+      # so keep it out of the environment the model's Execute tool inherits.
+      if ! env -u GITLAB_TOKEN -u OVERRIDE_GITLAB_TOKEN droid $DROID_ARGS 2>&1 | tee "$PASS1_LOG"; then
         export DROID_SUCCESS=false
         echo "droid exec pass 1 (candidates) failed" > /tmp/droid-error.txt
         exit 1
@@ -178,25 +192,38 @@ droid-review:
         exit 1
       fi
     - |
-      # ---- Pass 2: validator (posts approved comments) ----
-      # gitlab_mr___submit_review and gitlab_mr___update_tracking_note are
-      # the only MR-mutation tools we expose. The model batches all approved
-      # findings into a single submit_review call.
+      # ---- Pass 2: validator (writes review_validated.json) ----
+      # Pass 2 decides which candidates survive and writes the validated
+      # JSON. Posting happens in the next step, from CI, so this pass gets
+      # no MR-mutation tool either.
       set -o pipefail
-      PASS2_TOOLS="Read,Grep,Glob,LS,Execute,Edit,Create,ApplyPatch,Skill,gitlab_mr___submit_review,gitlab_mr___update_tracking_note"
+      PASS2_TOOLS="Read,Grep,Glob,LS,Execute,Edit,Create,ApplyPatch,Skill"
       PASS2_LOG="/tmp/droid-prompts/pass2-output.jsonl"
       DROID_ARGS="exec -f $DROID_PROMPT_FILE --enabled-tools $PASS2_TOOLS --output-format stream-json --skip-permissions-unsafe --tag code-review"
       if [ -n "$RESOLVED_MODEL" ]; then DROID_ARGS="$DROID_ARGS --model $RESOLVED_MODEL"; fi
       if [ -n "$RESOLVED_REASONING_EFFORT" ]; then DROID_ARGS="$DROID_ARGS --reasoning-effort $RESOLVED_REASONING_EFFORT"; fi
       echo "Running Pass 2 (validator): droid $DROID_ARGS"
-      if ! droid $DROID_ARGS 2>&1 | tee "$PASS2_LOG"; then
+      if ! env -u GITLAB_TOKEN -u OVERRIDE_GITLAB_TOKEN droid $DROID_ARGS 2>&1 | tee "$PASS2_LOG"; then
         export DROID_SUCCESS=false
         echo "droid exec pass 2 (validator) failed" > /tmp/droid-error.txt
+        exit 1
+      fi
+    - |
+      # ---- Post the approved findings via the GitLab REST API ----
+      # Reads review_validated.json and creates one inline discussion per
+      # approved comment. Comments that cannot be anchored are reported in
+      # the job log and counted in the tracking note.
+      if ! bun run "$DROID_ACTION_DIR/src/entrypoints/gitlab-post-review.ts"; then
+        export DROID_SUCCESS=false
+        echo "gitlab-post-review failed to post the review" > /tmp/droid-error.txt
         exit 1
       fi
   after_script:
     - export PATH="$HOME/.local/bin:$PATH"
     - export DROID_ERROR_DETAILS="$(cat /tmp/droid-error.txt 2>/dev/null || true)"
+    # after_script runs in a fresh shell, so the `export DROID_SUCCESS=false`
+    # above never reaches it. The error file is the signal that survives.
+    - if [ -s /tmp/droid-error.txt ]; then export DROID_SUCCESS=false; fi
     - export DROID_PASS1_LOG="/tmp/droid-prompts/pass1-output.jsonl"
     - export DROID_PASS2_LOG="/tmp/droid-prompts/pass2-output.jsonl"
     # Stage debug artifacts that live outside CI_PROJECT_DIR so GitLab can
@@ -208,6 +235,7 @@ droid-review:
   artifacts:
     when: always
     paths:
-      - .droid-state.json
+      # The state file now lives in /tmp/droid-prompts, so it is staged into
+      # .droid-debug/prompts/ along with the rest of the debug output.
       - .droid-debug/
     expire_in: 1 week

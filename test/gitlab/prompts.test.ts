@@ -51,12 +51,12 @@ describe("generateGitlabReviewCandidatesPrompt", () => {
     expect(prompt).toContain("Pass 1: Candidate Generation");
   });
 
-  it("explicitly forbids GitLab posting tools", () => {
+  it("explicitly forbids writing to GitLab by any route", () => {
     const prompt = generateGitlabReviewCandidatesPrompt(baseCtx());
     expect(prompt).toContain("post to GitLab");
     expect(prompt).toMatch(/DO NOT\*?\*?\s+post to GitLab/);
-    expect(prompt).toContain("gitlab_mr___submit_review");
-    expect(prompt).toContain("gitlab_mr___update_tracking_note");
+    expect(prompt).toContain("GitLab REST API");
+    expect(prompt).toContain("glab");
   });
 
   it("includes the security-reviewer subagent block only when enabled", () => {
@@ -96,12 +96,18 @@ describe("generateGitlabReviewValidatorPrompt", () => {
     expect(prompt).not.toContain("github_pr___submit_review");
   });
 
-  it("instructs the model to batch approved findings via gitlab_mr___submit_review", () => {
+  it("makes the validated file the deliverable instead of a posting tool", () => {
     const prompt = generateGitlabReviewValidatorPrompt(baseCtx());
-    expect(prompt).toContain("gitlab_mr___submit_review");
-    expect(prompt).toContain("single batched review");
-    expect(prompt).toContain("mr_iid: 42");
-    expect(prompt).toContain("gitlab_mr___update_tracking_note");
+    expect(prompt).toContain("Do not post anything yourself");
+    expect(prompt).toContain(
+      "Writing `/tmp/droid-prompts/review_validated.json` is your final action",
+    );
+    expect(prompt).toContain("through the GitLab API");
+    expect(prompt).not.toContain("submit_review");
+    expect(prompt).not.toContain("gitlab_mr___");
+    expect(prompt).not.toContain("update_tracking_note");
+    // An approved comment with no anchor is silently unpostable.
+    expect(prompt).toContain("without a usable line anchor");
   });
 
   it("enforces the approved/rejected ordering contract", () => {

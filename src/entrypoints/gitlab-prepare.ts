@@ -26,7 +26,11 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import { parseGitlabContext, isMergeRequestContext } from "../gitlab/context";
-import { setupGitlabToken, MissingGitlabTokenError } from "../gitlab/token";
+import {
+  setupGitlabToken,
+  MissingGitlabTokenError,
+  UnexpandedGitlabTokenError,
+} from "../gitlab/token";
 import { GitlabClient } from "../gitlab/api/client";
 import {
   buildTrackingNoteBody,
@@ -67,13 +71,22 @@ export type PrepareState = {
   securityReviewEnabled: boolean;
 
   reason?: string;
+  /**
+   * Set by gitlab-prepare-validator when Pass 1 left no usable candidates
+   * file, so Pass 2 never runs for real and never writes the validated
+   * review. The posting step reads it to no-op instead of failing the job.
+   */
+  validatorSkippedReason?: string;
 };
 
+// The Component runs each step as its own process, so these paths have to
+// resolve identically in all of them; the other entrypoints import them
+// from here rather than redefining them.
 function promptFilePath(): string {
   return process.env.DROID_PROMPT_FILE || "/tmp/droid-prompts/droid-prompt.txt";
 }
 
-function promptsDir(): string {
+export function promptsDir(): string {
   return path.dirname(promptFilePath());
 }
 
@@ -84,7 +97,7 @@ function candidatesFilePath(): string {
   );
 }
 
-function validatedFilePath(): string {
+export function validatedFilePath(): string {
   return (
     process.env.REVIEW_VALIDATED_PATH ||
     path.join(promptsDir(), "review_validated.json")
@@ -93,7 +106,19 @@ function validatedFilePath(): string {
 
 function resolvedEnvShimPath(): string {
   return (
-    process.env.DROID_RESOLVED_ENV_FILE || "/tmp/droid-prompts/resolved-env.sh"
+    process.env.DROID_RESOLVED_ENV_FILE ||
+    path.join(promptsDir(), "resolved-env.sh")
+  );
+}
+
+/**
+ * Deliberately not under `CI_PROJECT_DIR`: that holds the checked-out MR, so
+ * a branch could commit `.droid-state.json` as a symlink and redirect this
+ * write anywhere the job can reach.
+ */
+export function stateFilePath(): string {
+  return (
+    process.env.DROID_STATE_FILE || path.join(promptsDir(), ".droid-state.json")
   );
 }
 
@@ -118,13 +143,6 @@ async function writeResolvedEnvShim(
   }
   await fs.writeFile(filePath, lines.join("\n") + "\n");
   console.log(`Wrote resolved env shim to ${filePath}`);
-}
-
-function stateFilePath(): string {
-  return (
-    process.env.DROID_STATE_FILE ||
-    path.join(process.env.CI_PROJECT_DIR || "/tmp", ".droid-state.json")
-  );
 }
 
 async function writeState(state: PrepareState): Promise<void> {
@@ -187,7 +205,12 @@ async function run(): Promise<void> {
   try {
     token = setupGitlabToken();
   } catch (err) {
-    if (err instanceof MissingGitlabTokenError) {
+    // Both token errors carry setup instructions that are worth surfacing on
+    // their own line, ahead of the stack trace.
+    if (
+      err instanceof MissingGitlabTokenError ||
+      err instanceof UnexpandedGitlabTokenError
+    ) {
       console.error(err.message);
     }
     throw err;

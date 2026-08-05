@@ -4,6 +4,10 @@
  * Post-step for the GitLab CI/CD Component: edit the sticky tracking note
  * to reflect the final outcome (success/failure) and link to the pipeline.
  *
+ * The review summary and the posted/failed counts come from the
+ * `review_post_results.json` that `gitlab-post-review` writes, since on
+ * GitLab the agent never touches the note itself.
+ *
  * Inputs (env):
  *   GITLAB_TOKEN           - access token (api scope)
  *   DROID_STATE_FILE       - JSON state written by gitlab-prepare
@@ -12,31 +16,35 @@
  *   AUTOMATIC_SECURITY_REVIEW - "true" to render the security badge
  *   TRIGGER_USERNAME       - optional, e.g. GITLAB_USER_LOGIN
  *   CI_PIPELINE_URL / CI_JOB_URL - used to keep links fresh
+ *   REVIEW_POST_RESULTS_PATH - override for review_post_results.json
  */
 
 import * as fs from "fs/promises";
-import * as path from "path";
 import { setupGitlabToken } from "../gitlab/token";
 import { GitlabClient } from "../gitlab/api/client";
 import { buildTrackingNoteBody } from "../gitlab/operations/tracking-note";
 import { collectExecTelemetry } from "../gitlab/data/exec-telemetry";
+import type { ReviewPostOutcome } from "../core/review/tracking/types";
+import { postResultsFilePath, type PostResults } from "./gitlab-post-review";
+import { stateFilePath, type PrepareState } from "./gitlab-prepare";
 
-type PrepareState = {
-  shouldRunReview: boolean;
-  projectId: string;
-  projectPath: string;
-  mrIid: number | null;
-  trackingNoteId: number | null;
-  pipelineUrl: string | null;
-  jobUrl: string | null;
-  reason?: string;
-};
-
-function stateFilePath(): string {
-  return (
-    process.env.DROID_STATE_FILE ||
-    path.join(process.env.CI_PROJECT_DIR || "/tmp", ".droid-state.json")
-  );
+async function readPostResults(): Promise<ReviewPostOutcome | null> {
+  const filePath = postResultsFilePath();
+  try {
+    const raw = await fs.readFile(filePath, "utf8");
+    const results = JSON.parse(raw) as PostResults;
+    return {
+      posted: results.posted ?? null,
+      failed: results.failed ?? null,
+      skipped: results.skipped ?? null,
+      summaryBody: results.summaryBody ?? null,
+    };
+  } catch {
+    // Absent whenever posting did not get that far (skipped review, failed
+    // pass). The note still renders, just without review counts.
+    console.log(`No post-results file at ${filePath}; omitting review counts.`);
+    return null;
+  }
 }
 
 async function readState(): Promise<PrepareState | null> {
@@ -89,8 +97,11 @@ async function run(): Promise<void> {
       process.env.DROID_PASS2_LOG || "/tmp/droid-prompts/pass2-output.jsonl",
   });
 
+  const review = await readPostResults();
+
   const body = buildTrackingNoteBody({
     state: droidSuccess ? "success" : "failure",
+    review,
     pipelineUrl,
     jobUrl,
     triggerUsername,

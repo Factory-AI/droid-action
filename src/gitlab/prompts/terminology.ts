@@ -1,6 +1,13 @@
 import type { ReviewTerminology } from "../../core/review/prompts/types";
-import { SECURITY_BADGE } from "../operations/tracking-note";
 
+/**
+ * GitLab runs the review with `postingMode: "file"`: the agent never holds
+ * an MR-mutation tool, so this terminology deliberately omits the
+ * submit-review / tracking-tool names that only apply to the MCP posting
+ * mode. `src/entrypoints/gitlab-post-review.ts` does the posting, and
+ * `src/entrypoints/gitlab-update-comment-link.ts` renders the tracking
+ * note (security badge included).
+ */
 export const GITLAB_TERMINOLOGY: ReviewTerminology = {
   entityNoun: "MR",
   entityNumberSigil: "!",
@@ -22,28 +29,7 @@ export const GITLAB_TERMINOLOGY: ReviewTerminology = {
   lineFieldDescription:
     "Target line number in the new file (single-line) or end line number (multi-line). Must be ≥ 0.",
   mutationToolForbiddance:
-    "(`gitlab_mr___submit_review`, `gitlab_mr___create_mr_note`, `gitlab_mr___update_mr_note`, `gitlab_mr___update_mr_description`, `gitlab_mr___update_tracking_note`, etc.)",
-  submitReviewToolName: "gitlab_mr___submit_review",
-  submitReviewExtraArg: "", // populated dynamically below via factory
-  submitReviewBodyExclusionTrailer:
-    " (we use a separate tracking note for the summary)",
-  updateTrackingToolName: "gitlab_mr___update_tracking_note",
+    "(no MR notes, discussions, description edits, approvals, or label changes — " +
+    "whether through an MCP tool, the GitLab REST API, `glab`, or `curl`)",
   trackingCommentName: "sticky tracking note",
-  summaryEntityName: "top-level note",
-  summaryPostingExtraExclusion: "",
-  approvalChangesNote:
-    "Do not approve the MR or request changes (GitLab approval rules are handled out-of-band).",
-  securityBadgeInstruction: `If any approved comments contain \`[security]\` in their body, ensure a security badge is prepended to the tracking note body using exactly this markdown image (no surrounding backticks or code fences): ${SECURITY_BADGE.trim()} — this indicates that security analysis was performed as part of the review.`,
 };
-
-/**
- * Build the GitLab terminology with the runtime MR IID baked into the
- * "passing them in the comments array parameter along with mr_iid: N" arg.
- * GitLab's submit_review tool needs the IID re-asserted in the call.
- */
-export function gitlabTerminologyFor(mrIid: number): ReviewTerminology {
-  return {
-    ...GITLAB_TERMINOLOGY,
-    submitReviewExtraArg: ` along with \`mr_iid: ${mrIid}\``,
-  };
-}

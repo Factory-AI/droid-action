@@ -43,27 +43,39 @@ export interface ReviewTerminology {
   pathFieldDescription: string;
   /** Free-form description for the `line` field (small wording variation) */
   lineFieldDescription: string;
-  /** Free-form blurb listing mutation tools the candidates pass MUST NOT use */
+  /** Free-form blurb listing mutation tools/APIs the candidates pass MUST NOT use */
   mutationToolForbiddance: string;
+
+  // The fields below only apply to `postingMode: "tool"` (the agent posts
+  // its own findings through MCP). Platforms that post from CI instead
+  // (see `postingMode: "file"`) leave them undefined.
+
   /** MCP tool name for posting a batched review (Pass 2) */
-  submitReviewToolName: string;
+  submitReviewToolName?: string;
   /** Extra args appended to the submit_review instruction (e.g. " along with `mr_iid: 5`") */
-  submitReviewExtraArg: string;
+  submitReviewExtraArg?: string;
   /** Trailing clause on the "Do NOT include a body parameter" line */
-  submitReviewBodyExclusionTrailer: string;
+  submitReviewBodyExclusionTrailer?: string;
   /** MCP tool name for updating the sticky tracking comment/note */
-  updateTrackingToolName: string;
+  updateTrackingToolName?: string;
   /** Human-readable name for the sticky comment (e.g. "tracking comment" or "sticky tracking note") */
-  trackingCommentName: string;
+  trackingCommentName?: string;
   /** "comment" (GH) or "top-level note" (GL), used in "post the summary as a separate X" */
-  summaryEntityName: string;
+  summaryEntityName?: string;
   /** Trailing clause on the summary-forbiddance line (e.g. " or as the body of `submit_review`" on GH; "" on GL) */
-  summaryPostingExtraExclusion: string;
+  summaryPostingExtraExclusion?: string;
   /** Approval/changes line at the end of validator instructions */
-  approvalChangesNote: string;
-  /** Optional security-badge instruction line — GL only */
-  securityBadgeInstruction?: string;
+  approvalChangesNote?: string;
 }
+
+/**
+ * Who turns approved findings into review comments.
+ *
+ * - "tool": the agent calls the platform's MCP submit-review tool itself.
+ * - "file": the validated JSON on disk is the deliverable, and a CI step
+ *   posts it through the platform API afterwards.
+ */
+export type ReviewPostingMode = "tool" | "file";
 
 export interface ReviewPromptContext {
   terminology: ReviewTerminology;
@@ -87,6 +99,8 @@ export interface ReviewPromptContext {
   candidatesPath: string;
   /** On-disk path where Pass 2 writes the validated JSON (validator only) */
   validatedPath?: string;
+  /** How approved findings get posted (validator only). Defaults to "tool". */
+  postingMode?: ReviewPostingMode;
   includeSuggestions: boolean;
   /** Spawn security-reviewer subagent during Pass 1 (candidates only) */
   securityReviewEnabled: boolean;

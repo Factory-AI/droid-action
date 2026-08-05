@@ -81,6 +81,35 @@ describe("buildTrackingNoteBody", () => {
     expect(body).toContain("`sess-2`");
   });
 
+  it("renders the review summary and posted count from the post step", () => {
+    const body = buildTrackingNoteBody({
+      state: "success",
+      review: {
+        posted: 3,
+        failed: 0,
+        skipped: 0,
+        summaryBody: "Three issues worth fixing before merge.",
+      },
+    });
+    expect(body).toContain("Three issues worth fixing before merge.");
+    expect(body).toContain("3 inline comments posted");
+    expect(body).not.toContain("could not be anchored");
+    expect(body).not.toContain("skipped");
+  });
+
+  it("surfaces unanchored and skipped counts only when non-zero", () => {
+    const body = buildTrackingNoteBody({
+      state: "success",
+      review: { posted: 1, failed: 2, skipped: 1 },
+    });
+    expect(body).toContain("1 inline comment posted");
+    expect(body).toContain("2 could not be anchored to the diff");
+    expect(body).toContain("1 skipped");
+
+    const empty = buildTrackingNoteBody({ state: "success", review: {} });
+    expect(empty).not.toContain("inline comment");
+  });
+
   it("omits telemetry block entirely when telemetry is missing or empty", () => {
     const none = buildTrackingNoteBody({ state: "success" });
     expect(none).not.toContain("turns");

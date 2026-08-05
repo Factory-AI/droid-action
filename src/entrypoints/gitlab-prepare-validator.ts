@@ -20,19 +20,18 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { generateGitlabReviewValidatorPrompt } from "../gitlab/prompts/validator";
 import type { GitlabReviewPromptContext } from "../gitlab/prompts/types";
-import type { PrepareState } from "./gitlab-prepare";
-
-function stateFilePath(): string {
-  return (
-    process.env.DROID_STATE_FILE ||
-    path.join(process.env.CI_PROJECT_DIR || "/tmp", ".droid-state.json")
-  );
-}
+import { stateFilePath, type PrepareState } from "./gitlab-prepare";
 
 async function readState(): Promise<PrepareState> {
   const filePath = stateFilePath();
   const raw = await fs.readFile(filePath, "utf8");
   return JSON.parse(raw) as PrepareState;
+}
+
+async function writeState(state: PrepareState): Promise<void> {
+  const filePath = stateFilePath();
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, JSON.stringify(state, null, 2));
 }
 
 function ensure<T>(value: T | null | undefined, name: string): T {
@@ -89,6 +88,10 @@ async function run(): Promise<void> {
       promptPath,
       "No review findings to validate. Pass 1 candidates were invalid. Exit with success.",
     );
+    // Pass 2 will not write the validated file, and the posting step treats a
+    // missing one as a failure. Record the short circuit so it can no-op
+    // instead of turning this soft landing into a red pipeline.
+    await writeState({ ...state, validatorSkippedReason: message });
     return;
   }
 

@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from "bun:test";
 import {
   setupGitlabToken,
   MissingGitlabTokenError,
+  UnexpandedGitlabTokenError,
 } from "../../src/gitlab/token";
 
 const KEYS = ["GITLAB_TOKEN", "OVERRIDE_GITLAB_TOKEN", "CI_JOB_TOKEN"];
@@ -46,5 +47,17 @@ describe("setupGitlabToken", () => {
 
   it("throws MissingGitlabTokenError when nothing is set", () => {
     expect(() => setupGitlabToken()).toThrow(MissingGitlabTokenError);
+  });
+
+  it("rejects an unexpanded variable reference instead of sending it as a token", () => {
+    for (const literal of ["$GITLAB_TOKEN", "${GITLAB_TOKEN}", " $MY_TOKEN "]) {
+      process.env.GITLAB_TOKEN = literal;
+      expect(() => setupGitlabToken()).toThrow(UnexpandedGitlabTokenError);
+    }
+  });
+
+  it("accepts token values that merely contain a dollar sign", () => {
+    process.env.GITLAB_TOKEN = "glpat-ab$cd-ef";
+    expect(setupGitlabToken()).toBe("glpat-ab$cd-ef");
   });
 });
