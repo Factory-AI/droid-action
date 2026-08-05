@@ -1,0 +1,29 @@
+src/medic/index.ts
+  b21091ad433f027c 16-17,115-122,124-125,144-152,156,177-180
+test/medic.test.ts
+  b21091ad433f027c 147-175
+src/mcp/install-mcp-server.ts
+  b21091ad433f027c 111
+src/mcp/github-comment-server.ts
+  b21091ad433f027c 58-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "515ceae954e96922be3bf93426bf90e26339a82c",
+  "prompts": {
+    "b21091ad433f027c": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "d9555fd9-b3ce-4bfb-86ce-beacf95ea552",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 81,
+      "total_deletions": 11,
+      "accepted_lines": 76,
+      "overriden_lines": 1
+    }
+  }
+}
