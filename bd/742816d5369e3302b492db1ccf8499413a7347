@@ -1,0 +1,27 @@
+src/mcp/install-mcp-server.ts
+  b21091ad433f027c 87-98,117,125,132,157
+src/medic/index.ts
+  b21091ad433f027c 16-35,170
+test/medic.test.ts
+  b21091ad433f027c 1,7-8,77-143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "bd742816d5369e3302b492db1ccf8499413a7347",
+  "prompts": {
+    "b21091ad433f027c": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "d9555fd9-b3ce-4bfb-86ce-beacf95ea552",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 107,
+      "total_deletions": 33,
+      "accepted_lines": 107,
+      "overriden_lines": 0
+    }
+  }
+}
