@@ -1,0 +1,27 @@
+scripts/ci-medic-sandbox.ts
+  b21091ad433f027c 313
+templates/droid-ci-medic.yml
+  b21091ad433f027c 9-10,14,47-50
+README.md
+  b21091ad433f027c 22-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "382dd80ea0dcce97e31529e08fd8ccc006dd5927",
+  "prompts": {
+    "b21091ad433f027c": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "d9555fd9-b3ce-4bfb-86ce-beacf95ea552",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 15,
+      "total_deletions": 2,
+      "accepted_lines": 15,
+      "overriden_lines": 0
+    }
+  }
+}
