@@ -11,6 +11,7 @@ import { checkWritePermissions } from "../github/validation/permissions";
 import { createOctokit } from "../github/api/client";
 import { parseGitHubContext, isEntityContext } from "../github/context";
 import { shouldTriggerTag } from "../tag";
+import { shouldTriggerCustomAutomation } from "../custom-automation";
 import { prepare } from "../prepare";
 import { collectActionInputsPresence } from "./collect-inputs";
 
@@ -42,8 +43,10 @@ async function run() {
       }
     }
 
-    // Check trigger conditions
-    const containsTrigger = shouldTriggerTag(context);
+    // Check trigger conditions: @droid tag / automatic review flows, or a
+    // custom automation `prompt` input (Factory Custom CI automations).
+    const containsTrigger =
+      shouldTriggerTag(context) || shouldTriggerCustomAutomation(context);
 
     console.log(`Trigger result: ${containsTrigger}`);
 

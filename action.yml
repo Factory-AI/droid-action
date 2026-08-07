@@ -30,6 +30,10 @@ inputs:
     description: "Droid Exec settings as JSON string or path to settings JSON file"
     required: false
     default: ""
+  prompt:
+    description: "Custom automation task prompt. When set, Droid Exec runs this prompt directly on automation events (schedule, workflow_dispatch, repository_dispatch, workflow_run) and on entity events that carry no @droid command and no automatic-review flags. Used by Factory-managed Custom CI automations."
+    required: false
+    default: ""
 
   # Auth configuration
   factory_api_key:
@@ -199,6 +203,7 @@ runs:
         FILL_MODEL: ${{ inputs.fill_model }}
         ADDITIONAL_PERMISSIONS: ${{ inputs.additional_permissions }}
         DROID_ARGS: ${{ inputs.droid_args }}
+        PROMPT: ${{ inputs.prompt }}
         INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}
         ALL_INPUTS: ${{ toJson(inputs) }}
 

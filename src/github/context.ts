@@ -98,6 +98,12 @@ type BaseContext = {
     securityNotifyTeam: string;
     securityScanSchedule: boolean;
     securityScanDays: number;
+    /**
+     * Custom automation task prompt (the `prompt` action input). When set,
+     * Droid Exec runs it directly instead of the tag/review flows for events
+     * that carry no explicit @droid command.
+     */
+    prompt: string;
   };
 };
 
@@ -161,6 +167,7 @@ export function parseGitHubContext(): GitHubContext {
         1,
         parseInt(process.env.SECURITY_SCAN_DAYS ?? "7", 10) || 7,
       ),
+      prompt: process.env.PROMPT ?? "",
     },
   };
 

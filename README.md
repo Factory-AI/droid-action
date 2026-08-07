@@ -285,10 +285,44 @@ To leave comments and approvals on your PRs, Droid needs a GitHub token. There a
 
 ### Core Inputs
 
-| Input             | Purpose                                                                                                |
-| ----------------- | ------------------------------------------------------------------------------------------------------ |
-| `factory_api_key` | **Required.** Grants Droid Exec permission to run via Factory.                                         |
-| `github_token`    | Optional override if you prefer a custom GitHub App/token. By default the installed app token is used. |
+| Input             | Purpose                                                                                                                                                                                                                                                                                                  |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `factory_api_key` | **Required.** Grants Droid Exec permission to run via Factory.                                                                                                                                                                                                                                           |
+| `github_token`    | Optional override if you prefer a custom GitHub App/token. By default the installed app token is used.                                                                                                                                                                                                   |
+| `prompt`          | Custom automation task. When set, Droid Exec runs this prompt directly on automation events (`schedule`, `workflow_dispatch`, `repository_dispatch`, `workflow_run`) and on PR/issue events that carry no `@droid` command and no automatic-review flags. Used by Factory-managed Custom CI automations. |
+| `droid_args`      | Additional arguments passed to the Droid CLI (e.g. `-m <model>` to pick the model for a custom `prompt` run).                                                                                                                                                                                            |
+
+### Custom Automations
+
+Run an arbitrary task on a schedule (or manual dispatch) by passing a `prompt`:
+
+```yaml
+name: Code Consolidation
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 16 * * 1-5"
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+  actions: read
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: Factory-AI/droid-action@main
+        with:
+          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          prompt: |
+            Find duplicated code across the repository, consolidate it,
+            and open a pull request with the changes.
+          droid_args: "-m claude-fable-5"
+```
+
+Explicit `@droid` commands and the `automatic_review` / `automatic_security_review` flows always take precedence; the `prompt` only runs when no command or review flow claimed the event. Workflows created from the Factory Automations UI (Custom template) generate this shape automatically.
 
 ### Review Configuration
 

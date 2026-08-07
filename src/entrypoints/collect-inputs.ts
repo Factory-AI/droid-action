@@ -21,6 +21,7 @@ export function collectActionInputsPresence(): void {
     factory_api_key: "",
     github_token: "",
     droid_args: "",
+    prompt: "",
     max_turns: "",
     use_sticky_comment: "false",
     experimental_allowed_domains: "",
