@@ -64,6 +64,31 @@ spec:
         Merged into ~/.factory/droid/settings.json on the runner before
         `droid exec` runs. Mirrors the GitHub action's `settings` input.
       default: ""
+    org_guidelines_source:
+      description: |
+        Where organization-wide review guidelines live. Accepts a local
+        file path on the runner (e.g. a group-level file-type CI/CD
+        variable), an http(s) URL to the raw markdown (same-instance
+        URLs authenticate with $CI_JOB_TOKEN), a git clone URL ending
+        in `.git`, or a GitLab project path (e.g. "my-group/review-
+        guidelines") cloned from $CI_SERVER_HOST using $CI_JOB_TOKEN
+        (add the consuming projects to the guidelines repo's job-token
+        allowlist). The guidelines are installed as a user-level
+        `org-review-guidelines` skill on the runner, separate from a
+        project's own `.factory/skills/review-guidelines` skill; both
+        apply, and the project-level skill wins on conflicts.
+        Empty = disabled.
+      default: ""
+    org_guidelines_ref:
+      description: |
+        Git sources only: branch or tag of the org guidelines repo to
+        clone. Empty = the repo's default branch.
+      default: ""
+    org_guidelines_path:
+      description: |
+        Git sources only: path of the guidelines markdown file inside
+        the org guidelines repo.
+      default: "review-guidelines.md"
     droid_action_repo:
       description: |
         Git repo (clone URL) of droid-action. Defaults to the gitlab.com
@@ -105,6 +130,9 @@ droid-review:
     SECURITY_BLOCK_ON_CRITICAL: "$[[ inputs.security_block_on_critical ]]"
     SECURITY_BLOCK_ON_HIGH: "$[[ inputs.security_block_on_high ]]"
     DROID_SETTINGS: "$[[ inputs.settings ]]"
+    ORG_GUIDELINES_SOURCE: "$[[ inputs.org_guidelines_source ]]"
+    ORG_GUIDELINES_REF: "$[[ inputs.org_guidelines_ref ]]"
+    ORG_GUIDELINES_PATH: "$[[ inputs.org_guidelines_path ]]"
     DROID_SUCCESS: "true"
   before_script:
     - apt-get update -qq
@@ -124,6 +152,10 @@ droid-review:
         cp -r "$DROID_ACTION_DIR/.factory/droids/." ~/.factory/droids/
         echo "Copied custom droids from $DROID_ACTION_DIR/.factory/droids to ~/.factory/droids"
       fi
+    # Install org-wide review guidelines (if configured) as a user-level
+    # `org-review-guidelines` skill so they apply alongside, and never
+    # shadow, a project's own `.factory/skills/review-guidelines` skill.
+    - bash "$DROID_ACTION_DIR/gitlab/install-org-guidelines.sh"
   script:
     - export PATH="$HOME/.local/bin:$PATH"
     - |

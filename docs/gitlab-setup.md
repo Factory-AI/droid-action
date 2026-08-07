@@ -88,6 +88,61 @@ the `droid-review` job. Expect ~5-10 minutes for a typical change.
 | `security_block_on_critical` | `"true"`  | Block merge on CRITICAL security findings. (Mirrors GitHub action; surface-level parity.)                                                    |
 | `security_block_on_high`     | `"false"` | Block merge on HIGH security findings. (Mirrors GitHub action; surface-level parity.)                                                        |
 | `settings`                   | `""`      | Droid Exec settings as a JSON string or a path to a JSON file. Merged into `~/.factory/droid/settings.json` before each `droid exec` call.   |
+| `org_guidelines_source`      | `""`      | Org-wide review guidelines source: a local file path on the runner, an http(s) URL to the raw markdown, a git clone URL ending in `.git`, or a GitLab project path (e.g. `my-group/review-guidelines`) cloned with `$CI_JOB_TOKEN`. Empty = disabled. |
+| `org_guidelines_ref`         | `""`      | Git sources only: branch or tag of the org guidelines repo. Empty = default branch.                                                          |
+| `org_guidelines_path`        | `"review-guidelines.md"` | Git sources only: path of the guidelines markdown file inside the org guidelines repo.                                        |
+
+## Org-wide review guidelines
+
+Repository-specific guidelines live in the project itself at
+`.factory/skills/review-guidelines/SKILL.md` (same as the GitHub action).
+To apply one set of guidelines across every project in your org, point
+`org_guidelines_source` at a single markdown file:
+
+```yaml
+include:
+  - project: "factory-components/droid-action"
+    ref: main
+    file: "/templates/droid-review.yml"
+    inputs:
+      org_guidelines_source: "my-group/review-guidelines" # project path (see below for other forms)
+      org_guidelines_path: "review-guidelines.md"
+```
+
+`org_guidelines_source` accepts, in order of lookup:
+
+- **A git clone URL** (ending in `.git`, or `ssh://` / `git@` form). Cloned
+  as-is; `org_guidelines_ref` / `org_guidelines_path` select the file.
+- **An http(s) URL** to the raw markdown. Fetched with `curl`; URLs on the
+  same GitLab instance get a `JOB-TOKEN` header, so the repository files
+  API works for private repos, e.g.
+  `https://gitlab.com/api/v4/projects/<id>/repository/files/review-guidelines.md/raw?ref=main`.
+  Any other public URL works too.
+- **A local file path** on the runner. Useful with a group-level
+  **file-type CI/CD variable**: define `DROID_ORG_GUIDELINES` (type: File)
+  on the group and set `org_guidelines_source: "$DROID_ORG_GUIDELINES"`.
+  No network access or allowlisting needed.
+- **A GitLab project path** (e.g. `my-group/review-guidelines`, anything
+  that is not a URL or an existing file). Cloned from `$CI_SERVER_HOST`
+  with `$CI_JOB_TOKEN`; add your projects (or the parent group) to the
+  guidelines repo's **job token allowlist** (guidelines repo → Settings →
+  CI/CD → Job token permissions).
+
+Before each review, the job materializes the file as a **user-level**
+`org-review-guidelines` skill on the runner
+(`~/.factory/skills/org-review-guidelines/SKILL.md`). Because it lives
+outside the project tree, it never collides with a project's own
+`review-guidelines` skill — both apply, and the project-level skill takes
+precedence on conflicts.
+
+Notes:
+
+- The guidelines file is plain markdown; if it starts with `---` YAML
+  frontmatter it is installed verbatim as the skill file.
+- An unreachable source logs a warning and the review proceeds without
+  org guidelines; it never fails the pipeline.
+- Set the inputs once in a group-level include (or in each project's
+  `factory/droid-review.yml`) to roll out org-wide.
 
 ## What you get
 

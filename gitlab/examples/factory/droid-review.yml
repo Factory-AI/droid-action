@@ -24,6 +24,8 @@ include:
       automatic_security_review: "false" # enable to flag vulns alongside the regular review
       security_block_on_critical: "true" # block merge on CRITICAL findings (when security review is on)
       security_block_on_high: "false" # block merge on HIGH findings
+      # org_guidelines_source: "my-group/review-guidelines" # org-wide guidelines: file path, raw URL, clone URL, or project path
+      # org_guidelines_path: "review-guidelines.md" # git sources only: markdown file inside the repo
 
 droid-review:
   variables:
