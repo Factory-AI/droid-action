@@ -1,0 +1,23 @@
+review/action.yml
+  1f3e84772adc9f8e 6,89,134,155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "6441e872650d2a21a7678ac595046ea29e143e31",
+  "prompts": {
+    "1f3e84772adc9f8e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fdd11-f220-76c0-969e-e5484c4acdc2",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Andrew Seo",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 4,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    }
+  }
+}
