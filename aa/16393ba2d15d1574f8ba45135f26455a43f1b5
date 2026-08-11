@@ -1,0 +1,27 @@
+src/medic/gate.ts
+  c5dd869c9feaf8db 201-250
+src/medic/index.ts
+  c5dd869c9feaf8db 14,316-327
+test/medic.test.ts
+  c5dd869c9feaf8db 5,341-403
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "aa16393ba2d15d1574f8ba45135f26455a43f1b5",
+  "prompts": {
+    "c5dd869c9feaf8db": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "3191c8fb-2096-4a89-b380-c846b1a5a959",
+        "model": "auto"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 132,
+      "total_deletions": 0,
+      "accepted_lines": 132,
+      "overriden_lines": 0
+    }
+  }
+}
