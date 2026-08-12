@@ -1,0 +1,25 @@
+src/steward/index.ts
+  81088f208c7c3cad 273,404-406
+templates/droid-ci-steward.yml
+  81088f208c7c3cad 18-22,24,28-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "cd4b821bd3e824eeb8ae3224336fafdaf35e3e5d",
+  "prompts": {
+    "81088f208c7c3cad": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "dd994d81-e078-4865-af57-e9b5b566d8a8",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 16,
+      "total_deletions": 17,
+      "accepted_lines": 16,
+      "overriden_lines": 0
+    }
+  }
+}
