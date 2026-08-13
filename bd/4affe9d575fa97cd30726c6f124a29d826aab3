@@ -1,0 +1,45 @@
+src/entrypoints/gitlab-post-review.ts
+  c298cc4a2d11cc40 44-45,177-246,253-254,312-353,357,379-390,393-395,406,422-433,441,443-444,446-469,478,485,487-498,500-508,598,611-612,616-618,621-622
+test/gitlab/tracking-note.test.ts
+  c298cc4a2d11cc40 100,103,106,108,114
+src/core/review/tracking/types.ts
+  c298cc4a2d11cc40 32-33
+src/gitlab/api/client.ts
+  c298cc4a2d11cc40 10-22,28-29
+src/gitlab/operations/tracking-note.ts
+  c298cc4a2d11cc40 79-88
+src/entrypoints/gitlab-update-comment-link.ts
+  c298cc4a2d11cc40 38
+src/gitlab/prompts/terminology.ts
+  c298cc4a2d11cc40 30-33
+src/create-prompt/terminology.ts
+  c298cc4a2d11cc40 21-24
+src/core/review/prompts/validator.ts
+  c298cc4a2d11cc40 78-80
+test/gitlab/post-review.test.ts
+  c298cc4a2d11cc40 7,15,23-40,53-82,86,92-94,102-105,108,111-116,118,176,181,192-214,219-220,224-247,249-263,382-383,386-388,398-403,476-477,489,494-499,503,506,516-517
+test/gitlab/api-client.test.ts
+  c298cc4a2d11cc40 107-109
+test/gitlab/prompts.test.ts
+  c298cc4a2d11cc40 111-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "bd4affe9d575fa97cd30726c6f124a29d826aab3",
+  "prompts": {
+    "c298cc4a2d11cc40": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "905bcdcb-93b5-4be0-a6d1-5f736fab3c6e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 425,
+      "total_deletions": 45,
+      "accepted_lines": 417,
+      "overriden_lines": 2
+    }
+  }
+}
