@@ -1,0 +1,33 @@
+src/entrypoints/gitlab-post-review.ts
+  c298cc4a2d11cc40 384-386,388
+src/core/review/prompts/validator.ts
+  c298cc4a2d11cc40 77-81
+test/gitlab/tracking-note.test.ts
+  c298cc4a2d11cc40 109-111
+src/core/review/tracking/types.ts
+  c298cc4a2d11cc40 34
+src/gitlab/operations/tracking-note.ts
+  c298cc4a2d11cc40 90-92
+test/gitlab/post-review.test.ts
+  c298cc4a2d11cc40 273-297
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "67f044039b90c3a2bf9c48bff9e0cf1e738e19d2",
+  "prompts": {
+    "c298cc4a2d11cc40": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "905bcdcb-93b5-4be0-a6d1-5f736fab3c6e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 41,
+      "total_deletions": 9,
+      "accepted_lines": 41,
+      "overriden_lines": 0
+    }
+  }
+}
