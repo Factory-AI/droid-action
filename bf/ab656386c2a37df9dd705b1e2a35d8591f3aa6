@@ -1,0 +1,149 @@
+src/create-prompt/types.ts
+  5b5167d13de9c41e 2,107
+action.yml
+  b21091ad433f027c 138-173,230-238,251,261,270,278,301,313,337-349,356,381,407,415
+test/mockContext.ts
+  b21091ad433f027c 30-38
+src/github/context.ts
+  b21091ad433f027c 101-109,173-190,274-284
+base-action/src/run-droid.ts
+  9c1e4227527619ff 7-11,264-271,273,276,278,285-292,385-388,390-393,396,403-405,407,411-415,419-421,430-433
+src/github/utils/command-parser.ts
+  5b5167d13de9c41e 2-5,9-13,15-16
+src/mcp/install-mcp-server.ts
+  b21091ad433f027c 87-98,111-120,124-126,132,153-157
+src/github/operations/comment-logic.ts
+  9c1e4227527619ff 24,26,31-39,99-103,230-231
+src/tag/index.ts
+  b21091ad433f027c 14-15,21,24-25,82-84
+test/comment-logic.test.ts
+  9c1e4227527619ff 45-69,543-559
+src/mcp/github-actions-server.ts
+  b21091ad433f027c 31-37,39-46,49-54,56-60
+src/mcp/github-comment-server.ts
+  b21091ad433f027c 58-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "bfab656386c2a37df9dd705b1e2a35d8591f3aa6",
+  "prompts": {
+    "5b5167d13de9c41e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "07086754-bd31-47c8-baf5-fac790bbf80c",
+        "model": "auto"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 246,
+      "total_deletions": 155,
+      "accepted_lines": 847,
+      "overriden_lines": 0
+    },
+    "6f56589adc2e37fa": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "7a7ccefb-501e-470f-a9cb-0b383405ffa5",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 1003,
+      "total_deletions": 224,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "7c56fecf7260f9cb": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "34870a75-a4d4-4dde-baa9-121d102483d7",
+        "model": "auto"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "81088f208c7c3cad": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "dd994d81-e078-4865-af57-e9b5b566d8a8",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 16,
+      "total_deletions": 17,
+      "accepted_lines": 16,
+      "overriden_lines": 0
+    },
+    "9c1e4227527619ff": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "0f9106d4-743d-4917-ade8-e6f890916832",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 128,
+      "total_deletions": 13,
+      "accepted_lines": 195,
+      "overriden_lines": 0
+    },
+    "b21091ad433f027c": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "d9555fd9-b3ce-4bfb-86ce-beacf95ea552",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 3,
+      "accepted_lines": 244,
+      "overriden_lines": 0
+    },
+    "b9d6b8533a389d19": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "2fcf97cf-9d0c-4729-bcbe-b000b0e799b7",
+        "model": "claude-opus-4-8-fast"
+      },
+      "human_author": "eric-factory",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "c298cc4a2d11cc40": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "905bcdcb-93b5-4be0-a6d1-5f736fab3c6e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 41,
+      "total_deletions": 9,
+      "accepted_lines": 443,
+      "overriden_lines": 0
+    },
+    "c5dd869c9feaf8db": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "3191c8fb-2096-4a89-b380-c846b1a5a959",
+        "model": "auto"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 94,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    }
+  }
+}
