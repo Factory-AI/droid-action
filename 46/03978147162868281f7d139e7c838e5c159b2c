@@ -1,0 +1,23 @@
+test/github/token.test.ts
+  1fe898bf63897e23 37,43,51,65,76,81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "4603978147162868281f7d139e7c838e5c159b2c",
+  "prompts": {
+    "1fe898bf63897e23": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "62f23d13-3a0b-4393-a6dc-98ecb7688483",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Kirk Strauser",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 0,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    }
+  }
+}
