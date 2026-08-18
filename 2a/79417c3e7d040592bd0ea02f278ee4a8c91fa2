@@ -36,6 +36,10 @@ src/core/review/tracking/format.ts
   5b5167d13de9c41e 1-20
 test/comment-logic.test.ts
   9c1e4227527619ff 45-69,543-559
+README.md
+  5b5167d13de9c41e 236
+  b21091ad433f027c 12-29,31-33,39-61
+  b9d6b8533a389d19 243-283
 src/entrypoints/gitlab-post-review.ts
   c298cc4a2d11cc40 44-45,177-246,253-254,312-353,357,379-390,393-395,406,422-433,441,443-444,446-469,478,485,487-498,500-508,598,611-612,616-618,621-622
 src/gitlab/data/review-artifacts.ts
@@ -93,7 +97,7 @@ base-action/src/run-droid.ts
 {
   "schema_version": "authorship/3.0.0",
   "git_ai_version": "1.2.2",
-  "base_commit_sha": "4603978147162868281f7d139e7c838e5c159b2c",
+  "base_commit_sha": "2a79417c3e7d040592bd0ea02f278ee4a8c91fa2",
   "prompts": {
     "5b5167d13de9c41e": {
       "agent_id": {
@@ -105,7 +109,7 @@ base-action/src/run-droid.ts
       "messages": [],
       "total_additions": 246,
       "total_deletions": 155,
-      "accepted_lines": 847,
+      "accepted_lines": 848,
       "overriden_lines": 0
     },
     "6f56589adc2e37fa": {
@@ -170,7 +174,7 @@ base-action/src/run-droid.ts
       "messages": [],
       "total_additions": 4,
       "total_deletions": 3,
-      "accepted_lines": 2319,
+      "accepted_lines": 2363,
       "overriden_lines": 0
     },
     "b9d6b8533a389d19": {
@@ -183,7 +187,7 @@ base-action/src/run-droid.ts
       "messages": [],
       "total_additions": 1,
       "total_deletions": 1,
-      "accepted_lines": 0,
+      "accepted_lines": 41,
       "overriden_lines": 0
     },
     "c298cc4a2d11cc40": {

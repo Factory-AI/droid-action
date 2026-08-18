@@ -93,7 +93,7 @@ base-action/src/run-droid.ts
 {
   "schema_version": "authorship/3.0.0",
   "git_ai_version": "1.2.2",
-  "base_commit_sha": "4603978147162868281f7d139e7c838e5c159b2c",
+  "base_commit_sha": "7e4b9ade9d2dd35cff9c9b0b83502697253aee51",
   "prompts": {
     "5b5167d13de9c41e": {
       "agent_id": {
