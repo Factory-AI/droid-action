@@ -1,0 +1,25 @@
+package.json
+  53ccb13ef68925a0 15,19,23-28
+base-action/package.json
+  53ccb13ef68925a0 14-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "a686f8a15ebaa5b56a4b84758ded0ed4e9ac7641",
+  "prompts": {
+    "53ccb13ef68925a0": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "5ea31aee-5257-4d8b-82c8-ddbc267fb3a8",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 14,
+      "total_deletions": 8,
+      "accepted_lines": 13,
+      "overriden_lines": 0
+    }
+  }
+}
