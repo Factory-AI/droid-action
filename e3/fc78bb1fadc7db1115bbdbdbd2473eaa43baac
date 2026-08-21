@@ -1,0 +1,23 @@
+base-action/test/mcp-test/package.json
+  fdc30e6ef76c88ec 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "e3fc78bb1fadc7db1115bbdbdbd2473eaa43baac",
+  "prompts": {
+    "fdc30e6ef76c88ec": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "70afc178-0215-4600-8d69-029a6b667340",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}
