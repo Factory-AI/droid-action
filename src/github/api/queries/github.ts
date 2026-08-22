@@ -12,6 +12,10 @@ export const PR_QUERY = `
         baseRefName
         headRefName
         headRefOid
+        isCrossRepository
+        headRepository {
+          nameWithOwner
+        }
         createdAt
         additions
         deletions

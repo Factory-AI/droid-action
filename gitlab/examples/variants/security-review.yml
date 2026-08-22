@@ -1,0 +1,26 @@
+# Variant: code review plus a parallel security reviewer
+#
+# Drop at `factory/droid-review.yml`. Adds a security-focused subagent that
+# runs alongside the regular review; its findings are prefixed
+# `[security]` and posted as inline comments like any other finding, and
+# the tracking note gains a security badge.
+#
+# `security_block_on_*` exist for parity with the GitHub action and are
+# accepted here, but nothing in the GitLab path enforces them yet: CRITICAL
+# and HIGH findings are reported as comments, not merge blockers. To gate
+# merges today, use GitLab's own controls (a required approval rule, or a
+# job that fails on the finding counts in `.droid-debug/`).
+#
+# Security review adds a second reviewer pass, so expect the job to take
+# roughly 1.5-2x as long as review alone.
+
+include:
+  - project: "factory-components/droid-action"
+    ref: main
+    file: "/templates/droid-review.yml"
+    inputs:
+      automatic_review: "true"
+      review_depth: "deep"
+      automatic_security_review: "true"
+      security_block_on_critical: "true"
+      security_block_on_high: "false"

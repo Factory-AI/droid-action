@@ -21,6 +21,8 @@ async function run() {
     // Pass 1 had a transient issue from counting as full failures.
     const candidatesPath = process.env.REVIEW_CANDIDATES_PATH || "";
     if (candidatesPath) {
+      let validationError: string | null = null;
+
       try {
         const content = await readFile(candidatesPath, "utf8");
         const parsed = JSON.parse(content);
@@ -34,19 +36,64 @@ async function run() {
         console.log(
           `Pass 1 candidates validated: ${parsed.comments.length} comments found`,
         );
-      } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        console.error(
-          `Pass 1 candidates JSON is invalid or missing: ${message}`,
+      } catch (firstError) {
+        const firstMessage =
+          firstError instanceof Error ? firstError.message : String(firstError);
+        console.warn(
+          `Pass 1 candidates validation failed on first attempt: ${firstMessage}`,
         );
-        console.error(
-          "Skipping Pass 2 (validator) to avoid a full pipeline failure",
-        );
-        core.setOutput("validator_should_run", "false");
-        core.notice(
-          "Pass 1 candidates validation failed - skipping validator pass",
-        );
-        return;
+
+        // Retry once after a short delay in case of partially-flushed write
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        try {
+          const content = await readFile(candidatesPath, "utf8");
+          const parsed = JSON.parse(content);
+
+          if (!parsed || typeof parsed !== "object") {
+            throw new Error("Candidates file is not a valid JSON object");
+          }
+
+          // Try to repair: if comments array is malformed but we can extract some valid entries
+          if (!Array.isArray(parsed.comments)) {
+            throw new Error(
+              "Missing or invalid 'comments' array in candidates",
+            );
+          }
+
+          // Filter out any malformed comments (keep only valid objects)
+          const validComments = parsed.comments.filter(
+            (c: any) => c && typeof c === "object",
+          );
+
+          if (validComments.length === 0) {
+            throw new Error("No valid comments found in candidates array");
+          }
+
+          console.log(
+            `Pass 1 candidates validated on retry: ${validComments.length} valid comments found`,
+          );
+        } catch (retryError) {
+          validationError =
+            retryError instanceof Error
+              ? retryError.message
+              : String(retryError);
+          console.error(
+            `Pass 1 candidates JSON is invalid or missing after retry: ${validationError}`,
+          );
+          console.error(
+            "Review cannot proceed without valid Pass 1 output - this indicates a Pass 1 failure",
+          );
+
+          // Make this loud: it's a lost review, not a graceful skip
+          core.warning(
+            `Pass 1 candidates validation failed - review was not completed. Reason: ${validationError}`,
+          );
+          core.setOutput("validator_should_run", "false");
+          core.setOutput("validation_skip_reason", validationError);
+          core.setOutput("review_outcome", "skipped_invalid_candidates");
+          return;
+        }
       }
     }
 

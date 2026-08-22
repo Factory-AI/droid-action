@@ -1,0 +1,34 @@
+# Variant: self-managed GitLab
+#
+# Drop at `factory/droid-review.yml`. `include: project:` only resolves
+# projects on the same GitLab instance, so a self-managed instance needs a
+# mirror of droid-action (import it once, then pull updates on whatever
+# cadence you like).
+#
+# Two refs point at that mirror and should match:
+#   * `include: ref:` — where the component YAML is read from at pipeline
+#     creation time.
+#   * `droid_action_ref` — what the job clones at runtime.
+# Pin both to a tag so a mirror update cannot change review behaviour
+# mid-sprint.
+#
+# Runners need egress to your instance and to app.factory.ai (the Droid CLI
+# installer and API). Everything else is fetched from the mirror.
+#
+# The job clones `droid_action_repo` with no credentials, which works for
+# the public gitlab.com default. A private mirror needs either Internal
+# visibility (any signed-in user, including the runner) or the CI job token
+# form below, with your review project added to the mirror's
+# Settings → CI/CD → "Token Access" allowlist:
+#
+#   droid_action_repo: "https://gitlab-ci-token:$CI_JOB_TOKEN@gitlab.example.com/tools/droid-action.git"
+
+include:
+  - project: "tools/droid-action" # your mirror's path
+    ref: "v1.0.0"
+    file: "/templates/droid-review.yml"
+    inputs:
+      automatic_review: "true"
+      review_depth: "deep"
+      droid_action_repo: "https://gitlab.example.com/tools/droid-action.git"
+      droid_action_ref: "v1.0.0"

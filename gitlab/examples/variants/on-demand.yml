@@ -1,0 +1,24 @@
+# Variant: review only when someone asks for it
+#
+# Drop at `factory/droid-review.yml`. The job appears in every MR pipeline
+# but waits for a click in the pipeline view, so reviews cost nothing until
+# a human wants one — useful while trialling Droid on a busy project.
+#
+# `allow_failure: true` keeps a failed or unrun review from turning the MR
+# pipeline red. Drop it once you want review failures to be blocking.
+#
+# Keep `automatic_review: "true"`: it controls whether the job reviews when
+# it runs, while `when: manual` controls whether it runs at all. Setting the
+# input to "false" would make the manual job a no-op.
+
+include:
+  - project: "factory-components/droid-action"
+    ref: main
+    file: "/templates/droid-review.yml"
+    inputs:
+      automatic_review: "true"
+      review_depth: "deep"
+
+droid-review:
+  when: manual
+  allow_failure: true

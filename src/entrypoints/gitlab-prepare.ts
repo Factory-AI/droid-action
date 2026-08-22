@@ -77,6 +77,10 @@ export type PrepareState = {
    * review. The posting step reads it to no-op instead of failing the job.
    */
   validatorSkippedReason?: string;
+  /**
+   * The outcome of the review: succeeded, failed, or skipped_invalid_candidates
+   */
+  reviewOutcome?: string;
 };
 
 // The Component runs each step as its own process, so these paths have to

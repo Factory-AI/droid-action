@@ -64,6 +64,8 @@ async function run(): Promise<void> {
 
   // Validate that Pass 1 produced a valid candidates JSON file.
   // If invalid or missing, skip Pass 2 gracefully rather than failing.
+  let validationError: string | null = null;
+
   try {
     const content = await fs.readFile(candidatesPath, "utf8");
     const parsed = JSON.parse(content);
@@ -77,22 +79,69 @@ async function run(): Promise<void> {
     console.log(
       `Pass 1 candidates validated: ${parsed.comments.length} comments found`,
     );
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    console.error(`Pass 1 candidates JSON is invalid or missing: ${message}`);
-    console.error(
-      "Skipping Pass 2 (validator) to avoid a full pipeline failure",
+  } catch (firstError) {
+    const firstMessage =
+      firstError instanceof Error ? firstError.message : String(firstError);
+    console.warn(
+      `Pass 1 candidates validation failed on first attempt: ${firstMessage}`,
     );
-    // Write a no-op prompt so droid exec exits cleanly
-    await fs.writeFile(
-      promptPath,
-      "No review findings to validate. Pass 1 candidates were invalid. Exit with success.",
-    );
-    // Pass 2 will not write the validated file, and the posting step treats a
-    // missing one as a failure. Record the short circuit so it can no-op
-    // instead of turning this soft landing into a red pipeline.
-    await writeState({ ...state, validatorSkippedReason: message });
-    return;
+
+    // Retry once after a short delay in case of partially-flushed write
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    try {
+      const content = await fs.readFile(candidatesPath, "utf8");
+      const parsed = JSON.parse(content);
+
+      if (!parsed || typeof parsed !== "object") {
+        throw new Error("Candidates file is not a valid JSON object");
+      }
+
+      // Try to repair: if comments array is malformed but we can extract some valid entries
+      if (!Array.isArray(parsed.comments)) {
+        throw new Error("Missing or invalid 'comments' array in candidates");
+      }
+
+      // Filter out any malformed comments (keep only valid objects)
+      const validComments = parsed.comments.filter(
+        (c: any) => c && typeof c === "object",
+      );
+
+      if (validComments.length === 0) {
+        throw new Error("No valid comments found in candidates array");
+      }
+
+      console.log(
+        `Pass 1 candidates validated on retry: ${validComments.length} valid comments found`,
+      );
+    } catch (retryError) {
+      validationError =
+        retryError instanceof Error ? retryError.message : String(retryError);
+      console.error(
+        `Pass 1 candidates JSON is invalid or missing after retry: ${validationError}`,
+      );
+      console.error(
+        "Review cannot proceed without valid Pass 1 output - this indicates a Pass 1 failure",
+      );
+
+      // Write a no-op prompt so droid exec exits cleanly
+      await fs.writeFile(
+        promptPath,
+        `No review findings to validate. Pass 1 candidates validation failed: ${validationError}. Exit with success.`,
+      );
+
+      // Record the skip reason with explicit telemetry
+      await writeState({
+        ...state,
+        validatorSkippedReason: validationError,
+        reviewOutcome: "skipped_invalid_candidates",
+      });
+
+      console.warn(
+        `Pass 1 candidates validation failed - review was not completed. Reason: ${validationError}`,
+      );
+      return;
+    }
   }
 
   const promptCtx: GitlabReviewPromptContext = {

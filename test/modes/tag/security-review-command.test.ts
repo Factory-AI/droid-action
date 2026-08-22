@@ -52,6 +52,8 @@ describe("prepareSecurityReviewMode", () => {
       headRefOid: MOCK_PR_DATA.headRefOid,
       title: "Test PR",
       body: "Test description",
+      isCrossRepository: false,
+      headRepositoryNameWithOwner: null,
     });
 
     computeArtifactsSpy = spyOn(
