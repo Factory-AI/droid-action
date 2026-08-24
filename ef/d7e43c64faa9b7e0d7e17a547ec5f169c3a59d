@@ -1,0 +1,25 @@
+test/github/data/pr-fetcher.test.ts
+  203f032de7cdc43e 1-48,50-116,118-125,127-138,140-142,144-151,153-155,157-162,164-166,169,174-194,196-209,212-219,221-231,233-248,251-253,255-270,272-293
+src/github/data/pr-fetcher.ts
+  203f032de7cdc43e 4,20,23-138,155-160,165-169,185-187,204-209,213-217,229-231
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "efd7e43c64faa9b7e0d7e17a547ec5f169c3a59d",
+  "prompts": {
+    "203f032de7cdc43e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "b2a0a08e-b996-4fc5-9205-390367eb5d8e",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 645,
+      "total_deletions": 98,
+      "accepted_lines": 420,
+      "overriden_lines": 10
+    }
+  }
+}
