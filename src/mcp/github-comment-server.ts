@@ -6,7 +6,10 @@ import { z } from "zod";
 import { GITHUB_API_URL } from "../github/api/config";
 import { Octokit } from "@octokit/rest";
 import { updateDroidComment } from "../github/operations/comments/update-droid-comment";
-import { prepareDroidCommentBody } from "../github/operations/comments/common";
+import {
+  prepareDroidCommentBody,
+  type PrValidationSource,
+} from "../github/operations/comments/common";
 
 // Get repository information from environment variables
 const REPO_OWNER = process.env.REPO_OWNER;
@@ -55,10 +58,11 @@ server.tool(
       const isPullRequestReviewComment =
         eventName === "pull_request_review_comment";
 
-      let sanitizedBody = prepareDroidCommentBody(
-        body,
-        process.env.DROID_PR_REVIEW_MARKER === "true",
-      );
+      const prValidationSource: PrValidationSource | undefined =
+        process.env.DROID_PR_VALIDATION_SOURCE === "review"
+          ? "review"
+          : undefined;
+      let sanitizedBody = prepareDroidCommentBody(body, prValidationSource);
 
       // CI Steward keeps its lifetime run budget in a marker on this comment.
       // Droid replaces the whole body, so carry the marker forward or every

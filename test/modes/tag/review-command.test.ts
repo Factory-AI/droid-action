@@ -156,7 +156,7 @@ describe("prepareReviewMode", () => {
     expect(promptSpy).toHaveBeenCalled();
     expect(mcpSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        includePrReviewMarker: true,
+        prValidationSource: "review",
         allowedTools: expect.arrayContaining([
           "Execute",
           "github_comment___update_droid_comment",

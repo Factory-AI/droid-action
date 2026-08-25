@@ -3,7 +3,7 @@ import {
   updateCommentBody,
   type CommentUpdateInput,
 } from "../src/github/operations/comment-logic";
-import { DROID_PR_REVIEW_MARKER } from "../src/github/operations/comments/common";
+import { createPrValidationMarker } from "../src/github/operations/comments/common";
 
 describe("updateCommentBody", () => {
   const baseInput = {
@@ -108,14 +108,15 @@ describe("updateCommentBody", () => {
       expect(result).not.toContain("running a security check");
     });
 
-    it("preserves the hidden PR review marker in the final summary", () => {
+    it("preserves the hidden PR validation marker in the final summary", () => {
+      const marker = createPrValidationMarker("review");
       const input = {
         ...baseInput,
-        currentBody: `Droid is reviewing code…\n\n${DROID_PR_REVIEW_MARKER}`,
+        currentBody: `Droid is reviewing code…\n\n${marker}`,
       };
 
       const result = updateCommentBody(input);
-      expect(result).toContain(DROID_PR_REVIEW_MARKER);
+      expect(result).toContain(marker);
     });
 
     it("includes error details when provided", () => {

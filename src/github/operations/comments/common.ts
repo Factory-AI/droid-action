@@ -1,7 +1,11 @@
 import { GITHUB_SERVER_URL } from "../../api/config";
 import { sanitizeContent } from "../../utils/sanitizer";
 
-export const DROID_PR_REVIEW_MARKER = "<!-- factory-pr-review -->";
+export type PrValidationSource = "review";
+
+export function createPrValidationMarker(source: PrValidationSource): string {
+  return `<!-- factory-pr-validation: source=${source} -->`;
+}
 
 export function createJobRunLink(
   owner: string,
@@ -28,28 +32,36 @@ export type CommentType =
   | "security_scan"
   | "review_and_security";
 
-function isReviewCommentType(type: CommentType): boolean {
-  return (
-    type === "review" || type === "security" || type === "review_and_security"
-  );
+function getPrValidationSource(
+  type: CommentType,
+): PrValidationSource | undefined {
+  return type === "review" ||
+    type === "security" ||
+    type === "review_and_security"
+    ? "review"
+    : undefined;
 }
 
-export function appendPrReviewMarker(content: string): string {
-  if (content.includes(DROID_PR_REVIEW_MARKER)) {
+export function appendPrValidationMarker(
+  content: string,
+  source: PrValidationSource,
+): string {
+  const marker = createPrValidationMarker(source);
+  if (content.includes(marker)) {
     return content;
   }
   const trimmedContent = content.trimEnd();
-  return trimmedContent
-    ? `${trimmedContent}\n\n${DROID_PR_REVIEW_MARKER}`
-    : DROID_PR_REVIEW_MARKER;
+  return trimmedContent ? `${trimmedContent}\n\n${marker}` : marker;
 }
 
 export function prepareDroidCommentBody(
   content: string,
-  includePrReviewMarker: boolean,
+  prValidationSource?: PrValidationSource,
 ): string {
   const sanitized = sanitizeContent(content);
-  return includePrReviewMarker ? appendPrReviewMarker(sanitized) : sanitized;
+  return prValidationSource
+    ? appendPrValidationMarker(sanitized, prValidationSource)
+    : sanitized;
 }
 
 export function createCommentBody(
@@ -70,5 +82,6 @@ export function createCommentBody(
 
 ${jobRunLink}${branchLink}`;
 
-  return isReviewCommentType(type) ? appendPrReviewMarker(body) : body;
+  const source = getPrValidationSource(type);
+  return source ? appendPrValidationMarker(body, source) : body;
 }

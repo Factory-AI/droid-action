@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import {
-  DROID_PR_REVIEW_MARKER,
-  appendPrReviewMarker,
+  appendPrValidationMarker,
   createBranchLink,
   createCommentBody,
   createJobRunLink,
+  createPrValidationMarker,
   prepareDroidCommentBody,
 } from "../../src/github/operations/comments/common";
 import { GITHUB_SERVER_URL } from "../../src/github/api/config";
@@ -48,26 +48,25 @@ describe("comments common helpers", () => {
 
   it("adds the hidden marker to PR review tracking comments", () => {
     const jobLink = createJobRunLink("factory", "droid", "run-102");
+    const marker = createPrValidationMarker("review");
 
-    expect(createCommentBody(jobLink, "", "review")).toEndWith(
-      DROID_PR_REVIEW_MARKER,
-    );
-    expect(createCommentBody(jobLink, "", "security")).toEndWith(
-      DROID_PR_REVIEW_MARKER,
-    );
+    expect(marker).toBe("<!-- factory-pr-validation: source=review -->");
+    expect(createCommentBody(jobLink, "", "review")).toEndWith(marker);
+    expect(createCommentBody(jobLink, "", "security")).toEndWith(marker);
     expect(createCommentBody(jobLink, "", "security_scan")).not.toContain(
-      DROID_PR_REVIEW_MARKER,
+      marker,
     );
-    expect(createCommentBody(jobLink)).not.toContain(DROID_PR_REVIEW_MARKER);
+    expect(createCommentBody(jobLink)).not.toContain(marker);
   });
 
-  it("restores the PR review marker after sanitizing comment updates", () => {
+  it("restores the PR validation marker after sanitizing comment updates", () => {
+    const marker = createPrValidationMarker("review");
     const body = prepareDroidCommentBody(
-      `Review complete\n\n${DROID_PR_REVIEW_MARKER}`,
-      true,
+      `Review complete\n\n${marker}`,
+      "review",
     );
 
-    expect(body).toBe(`Review complete\n\n${DROID_PR_REVIEW_MARKER}`);
-    expect(appendPrReviewMarker(body)).toBe(body);
+    expect(body).toBe(`Review complete\n\n${marker}`);
+    expect(appendPrValidationMarker(body, "review")).toBe(body);
   });
 });
