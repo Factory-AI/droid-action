@@ -1,0 +1,27 @@
+src/tag/index.ts
+  50fcb6948d4b8282 112-116,121-126
+src/github/operations/comments/common.ts
+  50fcb6948d4b8282 2,4,24-44,47-53,63,69,72-73
+test/modes/tag/review-command.test.ts
+  50fcb6948d4b8282 159,247-251
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "5f2d88f6eecebd0ec85bf44d98094ebfb1fe0009",
+  "prompts": {
+    "50fcb6948d4b8282": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "f1775c06-cf38-490d-9450-331abe0aeefe",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Andrew Seo",
+      "messages": [],
+      "total_additions": 60,
+      "total_deletions": 8,
+      "accepted_lines": 54,
+      "overriden_lines": 0
+    }
+  }
+}
