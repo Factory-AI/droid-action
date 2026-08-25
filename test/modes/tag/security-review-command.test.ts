@@ -147,6 +147,7 @@ describe("prepareSecurityReviewMode", () => {
     expect(promptSpy).toHaveBeenCalled();
     expect(mcpSpy).toHaveBeenCalledWith(
       expect.objectContaining({
+        includePrReviewMarker: true,
         allowedTools: expect.arrayContaining([
           "Execute",
           "Task",
@@ -196,7 +197,11 @@ describe("prepareSecurityReviewMode", () => {
       githubToken: "token",
     });
 
-    expect(createInitialSpy).toHaveBeenCalled();
+    expect(createInitialSpy).toHaveBeenCalledWith(
+      octokit.rest,
+      context,
+      "security",
+    );
     expect(result.commentId).toBe(777);
   });
 

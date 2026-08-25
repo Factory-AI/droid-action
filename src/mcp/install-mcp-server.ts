@@ -11,6 +11,7 @@ type PrepareConfigParams = {
   owner: string;
   repo: string;
   droidCommentId?: string;
+  includePrReviewMarker?: boolean;
   allowedTools: string[];
   mode: "tag";
   context: GitHubContext;
@@ -56,6 +57,7 @@ export async function prepareMcpTools(
     owner,
     repo,
     droidCommentId,
+    includePrReviewMarker,
     allowedTools,
     context,
     mode: _mode,
@@ -108,6 +110,9 @@ export async function prepareMcpTools(
         REPO_OWNER: owner,
         REPO_NAME: repo,
         ...(droidCommentId && { DROID_COMMENT_ID: droidCommentId }),
+        ...(includePrReviewMarker && {
+          DROID_PR_REVIEW_MARKER: "true",
+        }),
         ...(stewardPrNumber && { STEWARD_PR_NUMBER: stewardPrNumber }),
         ...(process.env.STEWARD_RUN_ID && {
           STEWARD_RUN_ID: process.env.STEWARD_RUN_ID,

@@ -109,12 +109,21 @@ export async function prepareTagExecution({
     (context.inputs.automaticSecurityReview ||
       commandContext?.command === "security" ||
       commandContext?.command === "security-full");
+  const isCodeReview =
+    context.inputs.automaticReview ||
+    commandContext?.command === "review" ||
+    commandContext?.command === "default" ||
+    !commandContext;
 
   const commentType = isDualReview
     ? "review_and_security"
     : isSecurityOnly
-      ? "security"
-      : "default";
+      ? commandContext?.command === "security-full"
+        ? "security_scan"
+        : "security"
+      : isCodeReview
+        ? "review"
+        : "default";
 
   const commentData = await createInitialComment(
     octokit.rest,

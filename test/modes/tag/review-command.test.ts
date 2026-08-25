@@ -156,6 +156,7 @@ describe("prepareReviewMode", () => {
     expect(promptSpy).toHaveBeenCalled();
     expect(mcpSpy).toHaveBeenCalledWith(
       expect.objectContaining({
+        includePrReviewMarker: true,
         allowedTools: expect.arrayContaining([
           "Execute",
           "github_comment___update_droid_comment",
@@ -243,7 +244,11 @@ describe("prepareReviewMode", () => {
       githubToken: "token",
     });
 
-    expect(createInitialSpy).toHaveBeenCalled();
+    expect(createInitialSpy).toHaveBeenCalledWith(
+      octokit.rest,
+      context,
+      "review",
+    );
     expect(result.commentId).toBe(777);
   });
 

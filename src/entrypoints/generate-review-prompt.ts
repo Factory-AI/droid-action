@@ -172,6 +172,7 @@ async function run() {
       owner: context.repository.owner,
       repo: context.repository.repo,
       droidCommentId: commentId.toString(),
+      includePrReviewMarker: true,
       allowedTools,
       mode: "tag",
       context,

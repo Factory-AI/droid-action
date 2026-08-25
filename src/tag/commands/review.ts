@@ -37,7 +37,8 @@ export async function prepareReviewMode({
   }
 
   const commentId =
-    trackingCommentId ?? (await createInitialComment(octokit.rest, context)).id;
+    trackingCommentId ??
+    (await createInitialComment(octokit.rest, context, "review")).id;
 
   const prData = await fetchPRBranchData({
     octokits: octokit,
@@ -153,6 +154,7 @@ export async function prepareReviewMode({
     owner: context.repository.owner,
     repo: context.repository.repo,
     droidCommentId: commentId.toString(),
+    includePrReviewMarker: true,
     allowedTools,
     mode: "tag",
     context,

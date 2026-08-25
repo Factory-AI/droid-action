@@ -1,8 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import {
+  DROID_PR_REVIEW_MARKER,
+  appendPrReviewMarker,
   createBranchLink,
   createCommentBody,
   createJobRunLink,
+  prepareDroidCommentBody,
 } from "../../src/github/operations/comments/common";
 import { GITHUB_SERVER_URL } from "../../src/github/api/config";
 
@@ -41,5 +44,30 @@ describe("comments common helpers", () => {
 
     expect(body).toContain(jobLink);
     expect(body).not.toContain("View branch");
+  });
+
+  it("adds the hidden marker to PR review tracking comments", () => {
+    const jobLink = createJobRunLink("factory", "droid", "run-102");
+
+    expect(createCommentBody(jobLink, "", "review")).toEndWith(
+      DROID_PR_REVIEW_MARKER,
+    );
+    expect(createCommentBody(jobLink, "", "security")).toEndWith(
+      DROID_PR_REVIEW_MARKER,
+    );
+    expect(createCommentBody(jobLink, "", "security_scan")).not.toContain(
+      DROID_PR_REVIEW_MARKER,
+    );
+    expect(createCommentBody(jobLink)).not.toContain(DROID_PR_REVIEW_MARKER);
+  });
+
+  it("restores the PR review marker after sanitizing comment updates", () => {
+    const body = prepareDroidCommentBody(
+      `Review complete\n\n${DROID_PR_REVIEW_MARKER}`,
+      true,
+    );
+
+    expect(body).toBe(`Review complete\n\n${DROID_PR_REVIEW_MARKER}`);
+    expect(appendPrReviewMarker(body)).toBe(body);
   });
 });
