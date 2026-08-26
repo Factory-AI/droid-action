@@ -27,6 +27,70 @@ describe("review command integration", () => {
   let computeArtifactsSpy: ReturnType<typeof spyOn>;
   let execSyncSpy: ReturnType<typeof spyOn>;
 
+  function createAutomaticReviewContext(automaticReview: boolean) {
+    return createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      inputs: {
+        automaticReview,
+        automaticSecurityReview: true,
+      },
+      payload: {
+        comment: {
+          id: 888,
+          body: "",
+          user: { login: "human-reviewer" },
+          created_at: "2024-02-02T00:00:00Z",
+        },
+        issue: {
+          number: 7,
+          pull_request: {},
+        },
+      } as any,
+    });
+  }
+
+  function createAutomaticReviewOctokit(hasExistingSecurityReview: boolean) {
+    const octokit = {
+      rest: {
+        issues: {
+          listComments: () =>
+            Promise.resolve({
+              data: hasExistingSecurityReview
+                ? [
+                    {
+                      user: { id: 209825114, login: "factory-droid[bot]" },
+                      body: "## Security Review Summary",
+                    },
+                  ]
+                : [],
+            }),
+        },
+      },
+      graphql: () =>
+        Promise.resolve({
+          repository: {
+            pullRequest: {
+              baseRefName: "main",
+              headRefName: "feature/review",
+              headRefOid: "def456",
+            },
+          },
+        }),
+    } as any;
+
+    graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
+      repository: {
+        pullRequest: {
+          baseRefName: "main",
+          headRefName: "feature/review",
+          headRefOid: "def456",
+        },
+      },
+    });
+    return octokit;
+  }
+
   beforeEach(async () => {
     tmpDir = await mkdtemp(path.join(os.tmpdir(), "review-int-"));
     process.env.RUNNER_TEMP = tmpDir;
@@ -259,5 +323,79 @@ describe("review command integration", () => {
     // Standalone security now uses two-pass pipeline (candidates + validator)
     expect(runCodeReviewCall?.[1]).toBe("true");
     expect(runSecurityReviewCall?.[1]).toBe("true");
+  });
+
+  it("does not create a comment when automatic security review is skipped", async () => {
+    const context = createAutomaticReviewContext(false);
+    const octokit = createAutomaticReviewOctokit(true);
+
+    const result = await prepareTagExecution({
+      context,
+      octokit,
+      githubToken: "token",
+    });
+
+    expect(result).toEqual({
+      skipped: true,
+      reason: "security_review_exists",
+      branchInfo: {
+        baseBranch: "",
+        currentBranch: "",
+      },
+      mcpTools: "",
+    });
+    expect(createCommentSpy).not.toHaveBeenCalled();
+    expect(setOutputSpy).toHaveBeenCalledWith("run_code_review", "false");
+    expect(setOutputSpy).toHaveBeenCalledWith("run_security_review", "false");
+  });
+
+  it("creates a review-only comment when automatic security is skipped", async () => {
+    const context = createAutomaticReviewContext(true);
+    const octokit = createAutomaticReviewOctokit(true);
+
+    const result = await prepareTagExecution({
+      context,
+      octokit,
+      githubToken: "token",
+    });
+
+    expect(result.skipped).toBeFalsy();
+    expect(createCommentSpy).toHaveBeenCalledWith(
+      octokit.rest,
+      context,
+      "default",
+      DroidRunType.Review,
+    );
+    expect(setOutputSpy).toHaveBeenCalledWith("run_code_review", "true");
+    expect(setOutputSpy).toHaveBeenCalledWith("run_security_review", "false");
+    expect(exportVarSpy).not.toHaveBeenCalledWith(
+      "SECURITY_REVIEW_ENABLED",
+      "true",
+    );
+  });
+
+  it("creates a combined comment when both automatic reviews will run", async () => {
+    const context = createAutomaticReviewContext(true);
+    const octokit = createAutomaticReviewOctokit(false);
+
+    const result = await prepareTagExecution({
+      context,
+      octokit,
+      githubToken: "token",
+    });
+
+    expect(result.skipped).toBeFalsy();
+    expect(createCommentSpy).toHaveBeenCalledWith(
+      octokit.rest,
+      context,
+      "review_and_security",
+      DroidRunType.Review,
+    );
+    expect(setOutputSpy).toHaveBeenCalledWith("run_code_review", "true");
+    expect(setOutputSpy).toHaveBeenCalledWith("run_security_review", "true");
+    expect(exportVarSpy).toHaveBeenCalledWith(
+      "SECURITY_REVIEW_ENABLED",
+      "true",
+    );
   });
 });

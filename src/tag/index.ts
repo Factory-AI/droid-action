@@ -110,12 +110,37 @@ export async function prepareTagExecution({
   });
   setDroidRunType(runType);
 
+  let runAutomaticSecurityReview = context.inputs.automaticSecurityReview;
+  if (runAutomaticSecurityReview) {
+    const hasExisting = await hasExistingSecurityReview(octokit, context);
+    if (hasExisting) {
+      console.log(
+        "Security review already exists on this PR, skipping security",
+      );
+      runAutomaticSecurityReview = false;
+
+      if (!context.inputs.automaticReview) {
+        core.setOutput("run_code_review", "false");
+        core.setOutput("run_security_review", "false");
+        return {
+          skipped: true,
+          reason: "security_review_exists",
+          branchInfo: {
+            baseBranch: "",
+            currentBranch: "",
+          },
+          mcpTools: "",
+        };
+      }
+    }
+  }
+
   // Determine comment type based on what's being run
   const isDualReview =
-    context.inputs.automaticReview && context.inputs.automaticSecurityReview;
+    context.inputs.automaticReview && runAutomaticSecurityReview;
   const isSecurityOnly =
-    !isDualReview &&
-    (context.inputs.automaticSecurityReview ||
+    !context.inputs.automaticReview &&
+    (runAutomaticSecurityReview ||
       commandContext?.command === "security" ||
       commandContext?.command === "security-full");
 
@@ -138,25 +163,17 @@ export async function prepareTagExecution({
     context.inputs.automaticReview &&
     context.inputs.automaticSecurityReview
   ) {
-    let runSecurityReview = true;
-
-    // Check if security review already exists on this PR (run once behavior)
-    const hasExisting = await hasExistingSecurityReview(octokit, context);
-    if (hasExisting) {
-      console.log(
-        "Security review already exists on this PR, skipping security",
-      );
-      runSecurityReview = false;
-    }
-
-    if (runSecurityReview) {
+    if (runAutomaticSecurityReview) {
       // Signal to the code review prompt to spawn a security-reviewer subagent
       core.exportVariable("SECURITY_REVIEW_ENABLED", "true");
       core.setOutput("install_security_skills", "true");
     }
 
     core.setOutput("run_code_review", "true");
-    core.setOutput("run_security_review", runSecurityReview.toString());
+    core.setOutput(
+      "run_security_review",
+      runAutomaticSecurityReview.toString(),
+    );
 
     // Prepare the code review (security review runs as a subagent within pass 1)
     return prepareReviewMode({
@@ -181,23 +198,6 @@ export async function prepareTagExecution({
   }
 
   if (context.inputs.automaticSecurityReview) {
-    // Check if security review already exists on this PR (run once behavior)
-    const hasExisting = await hasExistingSecurityReview(octokit, context);
-    if (hasExisting) {
-      console.log("Security review already exists on this PR, skipping");
-      core.setOutput("run_code_review", "false");
-      core.setOutput("run_security_review", "false");
-      return {
-        skipped: true,
-        reason: "security_review_exists",
-        branchInfo: {
-          baseBranch: "",
-          currentBranch: "",
-        },
-        mcpTools: "",
-      };
-    }
-
     // Standalone security review uses the two-pass pipeline (candidates + validator)
     core.setOutput("run_code_review", "true");
     core.setOutput("run_security_review", "true");
