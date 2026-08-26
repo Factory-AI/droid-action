@@ -2,6 +2,7 @@ import * as core from "@actions/core";
 import { mkdir, writeFile } from "fs/promises";
 import type { WorkflowRunEvent } from "@octokit/webhooks-types";
 import type { AutomationContext } from "../github/context";
+import { DroidRunType } from "../run-type";
 import type { Octokits } from "../github/api/client";
 import { prepareMcpTools } from "../mcp/install-mcp-server";
 import {
@@ -161,6 +162,7 @@ export async function prepareStewardMode(
   context: AutomationContext,
   octokit: Octokits,
   githubToken: string,
+  runType: DroidRunType.CiSteward = DroidRunType.CiSteward,
 ): Promise<PrepareResult> {
   if (context.eventName !== "workflow_run") {
     throw new Error("CI Steward requires a workflow_run event");
@@ -361,7 +363,6 @@ export async function prepareStewardMode(
   core.setOutput("steward_pr_number", pr.number.toString());
   core.setOutput("run_code_review", "false");
   core.exportVariable("STEWARD_PR_NUMBER", pr.number.toString());
-  core.exportVariable("DROID_EXEC_RUN_TYPE", "ci-steward");
   // The comment server rebuilds the marker from these instead of re-reading
   // the comment, so a transient read failure can no longer drop it and reset
   // the pull request's lifetime count. They are passed as two digit-only
@@ -421,6 +422,7 @@ ${config.instructions || "(none)"}`;
     owner: context.repository.owner,
     repo: context.repository.repo,
     droidCommentId: comment.data.id.toString(),
+    runType,
     allowedTools,
     mode: "tag",
     context,

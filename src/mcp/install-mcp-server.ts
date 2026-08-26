@@ -4,6 +4,7 @@ import path from "path";
 import { GITHUB_API_URL, GITHUB_SERVER_URL } from "../github/api/config";
 import type { GitHubContext } from "../github/context";
 import { isEntityContext } from "../github/context";
+import type { DroidRunType } from "../run-type";
 import { Octokit } from "@octokit/rest";
 
 type PrepareConfigParams = {
@@ -11,6 +12,7 @@ type PrepareConfigParams = {
   owner: string;
   repo: string;
   droidCommentId?: string;
+  runType: DroidRunType | null;
   allowedTools: string[];
   mode: "tag";
   context: GitHubContext;
@@ -56,6 +58,7 @@ export async function prepareMcpTools(
     owner,
     repo,
     droidCommentId,
+    runType,
     allowedTools,
     context,
     mode: _mode,
@@ -108,6 +111,7 @@ export async function prepareMcpTools(
         REPO_OWNER: owner,
         REPO_NAME: repo,
         ...(droidCommentId && { DROID_COMMENT_ID: droidCommentId }),
+        ...(runType && { DROID_EXEC_RUN_TYPE: runType }),
         ...(stewardPrNumber && { STEWARD_PR_NUMBER: stewardPrNumber }),
         ...(process.env.STEWARD_RUN_ID && {
           STEWARD_RUN_ID: process.env.STEWARD_RUN_ID,

@@ -17,6 +17,7 @@ import {
   type ParsedGitHubContext,
 } from "../../context";
 import type { Octokit } from "@octokit/rest";
+import { getPrValidationRunType, type DroidRunType } from "../../../run-type";
 
 const DROID_APP_BOT_ID = 209825114;
 
@@ -24,11 +25,17 @@ export async function createInitialComment(
   octokit: Octokit,
   context: ParsedGitHubContext,
   commentType: CommentType = "default",
+  runType?: DroidRunType | null,
 ) {
   const { owner, repo } = context.repository;
 
   const jobRunLink = createJobRunLink(owner, repo, context.runId);
-  const initialBody = createCommentBody(jobRunLink, "", commentType);
+  const initialBody = createCommentBody(
+    jobRunLink,
+    "",
+    commentType,
+    getPrValidationRunType(runType),
+  );
 
   try {
     let response;

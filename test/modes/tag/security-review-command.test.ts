@@ -16,6 +16,7 @@ import * as reviewArtifacts from "../../../src/github/data/review-artifacts";
 import * as promptModule from "../../../src/create-prompt";
 import * as mcpInstaller from "../../../src/mcp/install-mcp-server";
 import * as comments from "../../../src/github/operations/comments/create-initial";
+import { DroidRunType } from "../../../src/run-type";
 
 const MOCK_PR_DATA = {
   baseRefName: "main",
@@ -133,6 +134,7 @@ describe("prepareSecurityReviewMode", () => {
     expect(promptSpy).toHaveBeenCalled();
     expect(mcpSpy).toHaveBeenCalledWith(
       expect.objectContaining({
+        runType: DroidRunType.SecurityReview,
         allowedTools: expect.arrayContaining([
           "Execute",
           "Task",
@@ -154,11 +156,6 @@ describe("prepareSecurityReviewMode", () => {
     expect(result.branchInfo.baseBranch).toBe("main");
     expect(result.branchInfo.currentBranch).toBe("feature/security-review");
     expect(result.branchInfo.droidBranch).toBeUndefined();
-
-    expect(exportVariableSpy).toHaveBeenCalledWith(
-      "DROID_EXEC_RUN_TYPE",
-      "droid-security-review",
-    );
   });
 
   it("creates tracking comment when not provided", async () => {
@@ -182,7 +179,12 @@ describe("prepareSecurityReviewMode", () => {
       githubToken: "token",
     });
 
-    expect(createInitialSpy).toHaveBeenCalled();
+    expect(createInitialSpy).toHaveBeenCalledWith(
+      octokit.rest,
+      context,
+      "security",
+      DroidRunType.SecurityReview,
+    );
     expect(result.commentId).toBe(777);
   });
 

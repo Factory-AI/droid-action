@@ -14,12 +14,14 @@ import type { PrepareResult } from "../../prepare/types";
 import { resolveReviewConfig } from "../../utils/review-depth";
 import { applyModelPolicyFallback } from "../../utils/model-policy";
 import { retryWithBackoff } from "../../utils/retry";
+import { assertDroidRunType, DroidRunType } from "../../run-type";
 
 type ReviewCommandOptions = {
   context: GitHubContext;
   octokit: Octokits;
   githubToken: string;
   trackingCommentId?: number;
+  runType?: DroidRunType | null;
 };
 
 export async function prepareReviewMode({
@@ -27,6 +29,7 @@ export async function prepareReviewMode({
   octokit,
   githubToken,
   trackingCommentId,
+  runType = DroidRunType.Review,
 }: ReviewCommandOptions): Promise<PrepareResult> {
   if (!isEntityContext(context)) {
     throw new Error("Review command requires an entity event context");
@@ -35,9 +38,15 @@ export async function prepareReviewMode({
   if (!context.isPR) {
     throw new Error("Review command is only supported on pull requests");
   }
+  assertDroidRunType(runType, [
+    DroidRunType.Default,
+    DroidRunType.Review,
+    null,
+  ]);
 
   const commentId =
-    trackingCommentId ?? (await createInitialComment(octokit.rest, context)).id;
+    trackingCommentId ??
+    (await createInitialComment(octokit.rest, context, "default", runType)).id;
 
   const prData = await fetchPRBranchData({
     octokits: octokit,
@@ -108,8 +117,6 @@ export async function prepareReviewMode({
     reviewArtifacts,
     includeSuggestions,
   });
-  core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-review");
-
   const rawUserArgs = process.env.DROID_ARGS || "";
   const normalizedUserArgs = normalizeDroidArgs(rawUserArgs);
   const userAllowedMCPTools = parseAllowedTools(normalizedUserArgs).filter(
@@ -153,6 +160,7 @@ export async function prepareReviewMode({
     owner: context.repository.owner,
     repo: context.repository.repo,
     droidCommentId: commentId.toString(),
+    runType,
     allowedTools,
     mode: "tag",
     context,

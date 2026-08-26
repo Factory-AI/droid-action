@@ -11,21 +11,25 @@ import type { PrepareResult } from "../../prepare/types";
 import { generateReviewValidatorPrompt } from "../../create-prompt/templates/review-validator-prompt";
 import { resolveReviewConfig } from "../../utils/review-depth";
 import { applyModelPolicyFallback } from "../../utils/model-policy";
+import { assertDroidRunType, DroidRunType } from "../../run-type";
 
 export async function prepareReviewValidatorMode({
   context,
   octokit,
   githubToken,
   trackingCommentId,
+  runType = DroidRunType.Review,
 }: {
   context: GitHubContext;
   octokit: Octokits;
   githubToken: string;
   trackingCommentId: number;
+  runType?: DroidRunType;
 }): Promise<PrepareResult> {
   if (!isEntityContext(context) || !context.isPR) {
     throw new Error("review validator mode requires pull request context");
   }
+  assertDroidRunType(runType, DroidRunType.Review);
 
   const prData = await fetchPRBranchData({
     octokits: octokit,
@@ -63,8 +67,6 @@ export async function prepareReviewValidatorMode({
     includeSuggestions,
   });
 
-  core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-review");
-
   const rawUserArgs = process.env.DROID_ARGS || "";
   const normalizedUserArgs = normalizeDroidArgs(rawUserArgs);
   const userAllowedMCPTools = parseAllowedTools(normalizedUserArgs).filter(
@@ -94,6 +96,7 @@ export async function prepareReviewValidatorMode({
     owner: context.repository.owner,
     repo: context.repository.repo,
     droidCommentId: trackingCommentId.toString(),
+    runType,
     allowedTools,
     mode: "tag",
     context,

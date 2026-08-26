@@ -5,6 +5,7 @@ import { createMockContext } from "../../mockContext";
 import * as prFetcher from "../../../src/github/data/pr-fetcher";
 import * as promptModule from "../../../src/create-prompt";
 import * as mcpInstaller from "../../../src/mcp/install-mcp-server";
+import { DroidRunType } from "../../../src/run-type";
 
 const MOCK_PR_DATA = {
   title: "Test PR",
@@ -98,6 +99,7 @@ describe("prepareFillMode", () => {
     expect(promptSpy).toHaveBeenCalled();
     expect(mcpSpy).toHaveBeenCalledWith(
       expect.objectContaining({
+        runType: DroidRunType.Fill,
         allowedTools: expect.arrayContaining([
           "github_pr___update_pr_description",
         ]),
@@ -112,10 +114,6 @@ describe("prepareFillMode", () => {
     ) as [string, string] | undefined;
     expect(droidArgsCall?.[1]).toContain("github_pr___update_pr_description");
     expect(droidArgsCall?.[1]).toContain("Execute");
-    expect(exportVariableSpy).toHaveBeenCalledWith(
-      "DROID_EXEC_RUN_TYPE",
-      "droid-fill",
-    );
   });
 
   it("throws when invoked on non-PR context", async () => {
