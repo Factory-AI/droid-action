@@ -2,6 +2,7 @@ import * as core from "@actions/core";
 import type { DroidCommand } from "./core/review/triggers/parse-command";
 
 export enum DroidRunType {
+  Default = "droid-default",
   Review = "droid-review",
   SecurityReview = "droid-security-review",
   Fill = "droid-fill",
@@ -10,6 +11,7 @@ export enum DroidRunType {
 }
 
 export type PrValidationRunType =
+  | DroidRunType.Default
   | DroidRunType.Review
   | DroidRunType.SecurityReview
   | DroidRunType.SecurityScan;
@@ -19,11 +21,14 @@ export function setDroidRunType(runType: DroidRunType): void {
 }
 
 export function assertDroidRunType(
-  runType: DroidRunType,
-  expected: DroidRunType,
+  runType: DroidRunType | null,
+  expected: DroidRunType | null | readonly (DroidRunType | null)[],
 ): void {
-  if (runType !== expected) {
-    throw new Error(`Expected run type ${expected}, received ${runType}`);
+  const expectedRunTypes = Array.isArray(expected) ? expected : [expected];
+  if (!expectedRunTypes.includes(runType)) {
+    throw new Error(
+      `Expected run type ${expectedRunTypes.join(" or ")}, received ${runType}`,
+    );
   }
 }
 
@@ -36,9 +41,10 @@ export function parseDroidRunType(
 }
 
 export function getPrValidationRunType(
-  runType: DroidRunType | undefined,
+  runType: DroidRunType | null | undefined,
 ): PrValidationRunType | undefined {
-  return runType === DroidRunType.Review ||
+  return runType === DroidRunType.Default ||
+    runType === DroidRunType.Review ||
     runType === DroidRunType.SecurityReview ||
     runType === DroidRunType.SecurityScan
     ? runType
@@ -53,7 +59,7 @@ export function resolveTagRunType({
   automaticReview: boolean;
   automaticSecurityReview: boolean;
   command: DroidCommand | null;
-}): DroidRunType {
+}): DroidRunType | null {
   if (automaticReview) {
     return DroidRunType.Review;
   }
@@ -69,8 +75,10 @@ export function resolveTagRunType({
     case "security-full":
       return DroidRunType.SecurityScan;
     case "review":
-    case "default":
-    case null:
       return DroidRunType.Review;
+    case "default":
+      return DroidRunType.Default;
+    case null:
+      return null;
   }
 }

@@ -13,8 +13,8 @@ describe("DroidRunType", () => {
     [true, false, null, DroidRunType.Review],
     [false, true, null, DroidRunType.SecurityReview],
     [false, false, "review", DroidRunType.Review],
-    [false, false, "default", DroidRunType.Review],
-    [false, false, null, DroidRunType.Review],
+    [false, false, "default", DroidRunType.Default],
+    [false, false, null, null],
     [false, false, "security", DroidRunType.SecurityReview],
     [false, false, "security-full", DroidRunType.SecurityScan],
     [false, false, "fill", DroidRunType.Fill],
@@ -32,6 +32,7 @@ describe("DroidRunType", () => {
   );
 
   it("parses only known run types", () => {
+    expect(parseDroidRunType(DroidRunType.Default)).toBe(DroidRunType.Default);
     expect(parseDroidRunType(DroidRunType.Review)).toBe(DroidRunType.Review);
     expect(parseDroidRunType("unknown")).toBeUndefined();
   });
@@ -43,6 +44,9 @@ describe("DroidRunType", () => {
   });
 
   it("selects the run types that produce PR validation markers", () => {
+    expect(getPrValidationRunType(DroidRunType.Default)).toBe(
+      DroidRunType.Default,
+    );
     expect(getPrValidationRunType(DroidRunType.Review)).toBe(
       DroidRunType.Review,
     );

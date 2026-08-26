@@ -108,7 +108,9 @@ export async function prepareTagExecution({
     automaticSecurityReview: context.inputs.automaticSecurityReview,
     command: commandContext?.command ?? null,
   });
-  setDroidRunType(runType);
+  if (runType) {
+    setDroidRunType(runType);
+  }
 
   let runAutomaticSecurityReview = context.inputs.automaticSecurityReview;
   if (runAutomaticSecurityReview) {

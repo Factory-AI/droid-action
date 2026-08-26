@@ -18,7 +18,7 @@ type SecurityScanCommandOptions = {
   octokit: Octokits;
   githubToken: string;
   scanScope: ScanScope;
-  runType?: DroidRunType;
+  runType?: DroidRunType | null;
 };
 
 export async function prepareSecurityScanMode({

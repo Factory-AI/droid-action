@@ -22,4 +22,23 @@ describe("prepareMcpTools", () => {
       DroidRunType.Review,
     );
   });
+
+  it("omits the run type from the comment server when unresolved", async () => {
+    const config = JSON.parse(
+      await prepareMcpTools({
+        githubToken: "token",
+        owner: "factory",
+        repo: "droid",
+        droidCommentId: "123",
+        runType: null,
+        allowedTools: ["github_comment___update_droid_comment"],
+        mode: "tag",
+        context: createMockContext({ isPR: true }),
+      }),
+    );
+
+    expect(config.mcpServers.github_comment.env).not.toHaveProperty(
+      "DROID_EXEC_RUN_TYPE",
+    );
+  });
 });

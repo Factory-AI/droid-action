@@ -49,6 +49,7 @@ describe("comments common helpers", () => {
 
   it("adds the run type marker to PR validation tracking comments", () => {
     const jobLink = createJobRunLink("factory", "droid", "run-102");
+    const defaultMarker = createPrValidationMarker(DroidRunType.Default);
     const reviewMarker = createPrValidationMarker(DroidRunType.Review);
     const securityReviewMarker = createPrValidationMarker(
       DroidRunType.SecurityReview,
@@ -57,6 +58,9 @@ describe("comments common helpers", () => {
       DroidRunType.SecurityScan,
     );
 
+    expect(defaultMarker).toBe(
+      "<!-- factory-pr-validation: run-type=droid-default -->",
+    );
     expect(reviewMarker).toBe(
       "<!-- factory-pr-validation: run-type=droid-review -->",
     );
@@ -66,6 +70,9 @@ describe("comments common helpers", () => {
     expect(securityScanMarker).toBe(
       "<!-- factory-pr-validation: run-type=droid-security-scan -->",
     );
+    expect(
+      createCommentBody(jobLink, "", "default", DroidRunType.Default),
+    ).toEndWith(defaultMarker);
     expect(
       createCommentBody(jobLink, "", "default", DroidRunType.Review),
     ).toEndWith(reviewMarker);

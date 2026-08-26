@@ -21,7 +21,7 @@ type ReviewCommandOptions = {
   octokit: Octokits;
   githubToken: string;
   trackingCommentId?: number;
-  runType?: DroidRunType;
+  runType?: DroidRunType | null;
 };
 
 export async function prepareReviewMode({
@@ -38,7 +38,11 @@ export async function prepareReviewMode({
   if (!context.isPR) {
     throw new Error("Review command is only supported on pull requests");
   }
-  assertDroidRunType(runType, DroidRunType.Review);
+  assertDroidRunType(runType, [
+    DroidRunType.Default,
+    DroidRunType.Review,
+    null,
+  ]);
 
   const commentId =
     trackingCommentId ??

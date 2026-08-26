@@ -243,6 +243,91 @@ describe("review command integration", () => {
     expect(runSecurityReviewCall?.[1]).toBe("false");
   });
 
+  it("uses the default run type for a bare @droid command", async () => {
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: {
+        comment: {
+          id: 888,
+          body: "@droid",
+          user: { login: "human-reviewer" },
+          created_at: "2024-02-02T00:00:00Z",
+        },
+        issue: {
+          number: 7,
+          pull_request: {},
+        },
+      } as any,
+    });
+    const octokit = createAutomaticReviewOctokit(false);
+
+    const result = await prepareTagExecution({
+      context,
+      octokit,
+      githubToken: "token",
+    });
+
+    expect(result.skipped).toBeFalsy();
+    expect(exportVarSpy).toHaveBeenCalledWith(
+      "DROID_EXEC_RUN_TYPE",
+      DroidRunType.Default,
+    );
+    expect(createCommentSpy).toHaveBeenCalledWith(
+      octokit.rest,
+      context,
+      "default",
+      DroidRunType.Default,
+    );
+    expect(mcpSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ runType: DroidRunType.Default }),
+    );
+  });
+
+  it("keeps the run type null when no command is parsed", async () => {
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      inputs: {
+        triggerPhrase: "/droid",
+      },
+      payload: {
+        comment: {
+          id: 888,
+          body: "/droid",
+          user: { login: "human-reviewer" },
+          created_at: "2024-02-02T00:00:00Z",
+        },
+        issue: {
+          number: 7,
+          pull_request: {},
+        },
+      } as any,
+    });
+    const octokit = createAutomaticReviewOctokit(false);
+
+    const result = await prepareTagExecution({
+      context,
+      octokit,
+      githubToken: "token",
+    });
+
+    expect(result.skipped).toBeFalsy();
+    expect(exportVarSpy).not.toHaveBeenCalledWith(
+      "DROID_EXEC_RUN_TYPE",
+      expect.anything(),
+    );
+    expect(createCommentSpy).toHaveBeenCalledWith(
+      octokit.rest,
+      context,
+      "default",
+      null,
+    );
+    expect(mcpSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ runType: null }),
+    );
+  });
+
   it("sets security flag only for @droid security", async () => {
     const context = createMockContext({
       eventName: "issue_comment",

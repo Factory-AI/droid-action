@@ -25,7 +25,7 @@ export async function createInitialComment(
   octokit: Octokit,
   context: ParsedGitHubContext,
   commentType: CommentType = "default",
-  runType?: DroidRunType,
+  runType?: DroidRunType | null,
 ) {
   const { owner, repo } = context.repository;
 

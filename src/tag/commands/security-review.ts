@@ -20,7 +20,7 @@ type SecurityReviewCommandOptions = {
   octokit: Octokits;
   githubToken: string;
   trackingCommentId?: number;
-  runType?: DroidRunType;
+  runType?: DroidRunType | null;
 };
 
 export async function prepareSecurityReviewMode({

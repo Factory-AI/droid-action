@@ -12,7 +12,7 @@ type PrepareConfigParams = {
   owner: string;
   repo: string;
   droidCommentId?: string;
-  runType: DroidRunType;
+  runType: DroidRunType | null;
   allowedTools: string[];
   mode: "tag";
   context: GitHubContext;
@@ -111,7 +111,7 @@ export async function prepareMcpTools(
         REPO_OWNER: owner,
         REPO_NAME: repo,
         ...(droidCommentId && { DROID_COMMENT_ID: droidCommentId }),
-        DROID_EXEC_RUN_TYPE: runType,
+        ...(runType && { DROID_EXEC_RUN_TYPE: runType }),
         ...(stewardPrNumber && { STEWARD_PR_NUMBER: stewardPrNumber }),
         ...(process.env.STEWARD_RUN_ID && {
           STEWARD_RUN_ID: process.env.STEWARD_RUN_ID,

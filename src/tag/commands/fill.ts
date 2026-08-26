@@ -17,7 +17,7 @@ type FillCommandOptions = {
   octokit: Octokits;
   githubToken: string;
   trackingCommentId?: number;
-  runType?: DroidRunType;
+  runType?: DroidRunType | null;
 };
 
 export async function prepareFillMode({
