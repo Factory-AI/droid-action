@@ -51,11 +51,13 @@ describe("comments common helpers", () => {
     const marker = createPrValidationMarker("review");
 
     expect(marker).toBe("<!-- factory-pr-validation: source=review -->");
-    expect(createCommentBody(jobLink, "", "review")).toEndWith(marker);
-    expect(createCommentBody(jobLink, "", "security")).toEndWith(marker);
-    expect(createCommentBody(jobLink, "", "security_scan")).not.toContain(
+    expect(createCommentBody(jobLink, "", "default", "review")).toEndWith(
       marker,
     );
+    expect(createCommentBody(jobLink, "", "security", "review")).toEndWith(
+      marker,
+    );
+    expect(createCommentBody(jobLink, "", "security")).not.toContain(marker);
     expect(createCommentBody(jobLink)).not.toContain(marker);
   });
 

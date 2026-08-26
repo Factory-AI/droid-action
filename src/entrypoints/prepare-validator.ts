@@ -6,6 +6,7 @@ import { setupGitHubToken } from "../github/token";
 import { createOctokit } from "../github/api/client";
 import { parseGitHubContext, isEntityContext } from "../github/context";
 import { prepareReviewValidatorMode } from "../tag/commands/review-validator";
+import { DroidRunType, setDroidRunType } from "../run-type";
 
 async function run() {
   try {
@@ -14,6 +15,8 @@ async function run() {
     if (!isEntityContext(context) || !context.isPR) {
       throw new Error("prepare-validator requires a pull request context");
     }
+    const runType = DroidRunType.Review;
+    setDroidRunType(runType);
 
     // Validate that Pass 1 produced a valid candidates JSON file.
     // If the file is missing or invalid, skip Pass 2 gracefully rather than
@@ -57,12 +60,12 @@ async function run() {
     if (!trackingCommentId || Number.isNaN(trackingCommentId)) {
       throw new Error("DROID_COMMENT_ID is required for validator run");
     }
-
     const result = await prepareReviewValidatorMode({
       context,
       octokit,
       githubToken,
       trackingCommentId,
+      runType,
     });
 
     core.setOutput("github_token", githubToken);

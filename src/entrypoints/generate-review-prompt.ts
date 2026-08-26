@@ -18,11 +18,17 @@ import { normalizeDroidArgs, parseAllowedTools } from "../utils/parse-tools";
 import { resolveReviewConfig } from "../utils/review-depth";
 import { applyModelPolicyFallback } from "../utils/model-policy";
 import { retryWithBackoff } from "../utils/retry";
+import { DroidRunType, setDroidRunType } from "../run-type";
 
 async function run() {
   try {
     const githubToken = process.env.GITHUB_TOKEN!;
     const reviewType = process.env.REVIEW_TYPE || "code";
+    const runType =
+      reviewType === "security"
+        ? DroidRunType.SecurityReview
+        : DroidRunType.Review;
+    setDroidRunType(runType);
     const commentId = parseInt(process.env.DROID_COMMENT_ID || "0");
 
     if (!commentId) {
@@ -123,11 +129,6 @@ async function run() {
       includeSuggestions,
     });
 
-    // Set run type
-    const runType =
-      reviewType === "security" ? "droid-security-review" : "droid-review";
-    core.exportVariable("DROID_EXEC_RUN_TYPE", runType);
-
     const rawUserArgs = process.env.DROID_ARGS || "";
     const normalizedUserArgs = normalizeDroidArgs(rawUserArgs);
     const userAllowedMCPTools = parseAllowedTools(normalizedUserArgs).filter(
@@ -172,7 +173,7 @@ async function run() {
       owner: context.repository.owner,
       repo: context.repository.repo,
       droidCommentId: commentId.toString(),
-      prValidationSource: "review",
+      runType,
       allowedTools,
       mode: "tag",
       context,

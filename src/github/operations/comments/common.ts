@@ -25,22 +25,7 @@ export function createBranchLink(
   return `\n[View branch](${branchUrl})`;
 }
 
-export type CommentType =
-  | "default"
-  | "review"
-  | "security"
-  | "security_scan"
-  | "review_and_security";
-
-function getPrValidationSource(
-  type: CommentType,
-): PrValidationSource | undefined {
-  return type === "review" ||
-    type === "security" ||
-    type === "review_and_security"
-    ? "review"
-    : undefined;
-}
+export type CommentType = "default" | "security" | "review_and_security";
 
 export function appendPrValidationMarker(
   content: string,
@@ -68,11 +53,12 @@ export function createCommentBody(
   jobRunLink: string,
   branchLink: string = "",
   type: CommentType = "default",
+  prValidationSource?: PrValidationSource,
 ): string {
   let message: string;
   if (type === "review_and_security") {
     message = "Droid is reviewing code and running a security check…";
-  } else if (type === "security" || type === "security_scan") {
+  } else if (type === "security") {
     message = "Droid is running a security check…";
   } else {
     message = "Droid is working…";
@@ -82,6 +68,7 @@ export function createCommentBody(
 
 ${jobRunLink}${branchLink}`;
 
-  const source = getPrValidationSource(type);
-  return source ? appendPrValidationMarker(body, source) : body;
+  return prValidationSource
+    ? appendPrValidationMarker(body, prValidationSource)
+    : body;
 }

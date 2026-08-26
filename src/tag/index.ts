@@ -13,6 +13,7 @@ import type { PrepareResult } from "../prepare/types";
 import type { Octokits } from "../github/api/client";
 import { isAutomationContext } from "../github/context";
 import { prepareStewardMode } from "../steward";
+import { DroidRunType, resolveTagRunType, setDroidRunType } from "../run-type";
 
 const DROID_APP_BOT_ID = 209825114;
 const SECURITY_REVIEW_MARKER = "## Security Review Summary";
@@ -81,7 +82,9 @@ export async function prepareTagExecution({
   githubToken,
 }: PrepareTagOptions): Promise<PrepareResult> {
   if (isAutomationContext(context)) {
-    return prepareStewardMode(context, octokit, githubToken);
+    const runType = DroidRunType.CiSteward;
+    setDroidRunType(runType);
+    return prepareStewardMode(context, octokit, githubToken, runType);
   }
   if (!isEntityContext(context)) {
     throw new Error("Tag execution requires entity context");
@@ -100,6 +103,12 @@ export async function prepareTagExecution({
   }
 
   const commandContext = extractCommandFromContext(context);
+  const runType = resolveTagRunType({
+    automaticReview: context.inputs.automaticReview,
+    automaticSecurityReview: context.inputs.automaticSecurityReview,
+    command: commandContext?.command ?? null,
+  });
+  setDroidRunType(runType);
 
   // Determine comment type based on what's being run
   const isDualReview =
@@ -109,26 +118,18 @@ export async function prepareTagExecution({
     (context.inputs.automaticSecurityReview ||
       commandContext?.command === "security" ||
       commandContext?.command === "security-full");
-  const isCodeReview =
-    context.inputs.automaticReview ||
-    commandContext?.command === "review" ||
-    commandContext?.command === "default" ||
-    !commandContext;
 
   const commentType = isDualReview
     ? "review_and_security"
     : isSecurityOnly
-      ? commandContext?.command === "security-full"
-        ? "security_scan"
-        : "security"
-      : isCodeReview
-        ? "review"
-        : "default";
+      ? "security"
+      : "default";
 
   const commentData = await createInitialComment(
     octokit.rest,
     context,
     commentType,
+    runType,
   );
   const commentId = commentData.id;
 
@@ -163,6 +164,7 @@ export async function prepareTagExecution({
       octokit,
       githubToken,
       trackingCommentId: commentId,
+      runType,
     });
   }
 
@@ -174,6 +176,7 @@ export async function prepareTagExecution({
       octokit,
       githubToken,
       trackingCommentId: commentId,
+      runType,
     });
   }
 
@@ -203,6 +206,7 @@ export async function prepareTagExecution({
       octokit,
       githubToken,
       trackingCommentId: commentId,
+      runType,
     });
   }
 
@@ -212,6 +216,7 @@ export async function prepareTagExecution({
       octokit,
       githubToken,
       trackingCommentId: commentId,
+      runType,
     });
   }
 
@@ -224,6 +229,7 @@ export async function prepareTagExecution({
       octokit,
       githubToken,
       trackingCommentId: commentId,
+      runType,
     });
   }
 
@@ -233,6 +239,7 @@ export async function prepareTagExecution({
       octokit,
       githubToken,
       scanScope: { type: "full" },
+      runType,
     });
   }
 
@@ -249,6 +256,7 @@ export async function prepareTagExecution({
       octokit,
       githubToken,
       trackingCommentId: commentId,
+      runType,
     });
   }
 

@@ -9,6 +9,7 @@ import { generateSecurityReportPrompt } from "../../create-prompt/templates/secu
 import type { Octokits } from "../../github/api/client";
 import type { PrepareResult } from "../../prepare/types";
 import { applyModelPolicyFallback } from "../../utils/model-policy";
+import { assertDroidRunType, DroidRunType } from "../../run-type";
 
 export type ScanScope = { type: "full" } | { type: "scheduled"; days: number };
 
@@ -17,6 +18,7 @@ type SecurityScanCommandOptions = {
   octokit: Octokits;
   githubToken: string;
   scanScope: ScanScope;
+  runType?: DroidRunType;
 };
 
 export async function prepareSecurityScanMode({
@@ -24,10 +26,12 @@ export async function prepareSecurityScanMode({
   octokit,
   githubToken,
   scanScope,
+  runType = DroidRunType.SecurityScan,
 }: SecurityScanCommandOptions): Promise<PrepareResult> {
   if (!isEntityContext(context)) {
     throw new Error("Security scan command requires an entity event context");
   }
+  assertDroidRunType(runType, DroidRunType.SecurityScan);
 
   // Fetch the repository's default branch (could be main, master, develop, etc.)
   const defaultBranch = await fetchRepoDefaultBranch({
@@ -51,8 +55,6 @@ export async function prepareSecurityScanMode({
     generatePrompt: (ctx) =>
       generateSecurityReportPrompt(ctx, scanScope, branchName),
   });
-  core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-security-scan");
-
   // Signal that security skills should be installed
   core.setOutput("install_security_skills", "true");
 
@@ -79,6 +81,7 @@ export async function prepareSecurityScanMode({
     githubToken,
     owner: context.repository.owner,
     repo: context.repository.repo,
+    runType,
     allowedTools,
     mode: "tag",
     context,

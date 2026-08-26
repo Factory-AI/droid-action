@@ -13,17 +13,25 @@ import type { PrepareResult } from "../../prepare/types";
 import { generateReviewValidatorPrompt } from "../../create-prompt/templates/review-validator-prompt";
 import { resolveReviewConfig } from "../../utils/review-depth";
 import { applyModelPolicyFallback } from "../../utils/model-policy";
+import { assertDroidRunType, DroidRunType } from "../../run-type";
 
 export async function prepareReviewValidatorMode(options: {
   context: GitHubContext;
   octokit: Octokits;
   githubToken: string;
   trackingCommentId: number;
+  runType?: DroidRunType;
 }): Promise<PrepareResult> {
-  const { context, octokit, trackingCommentId } = options;
+  const {
+    context,
+    octokit,
+    trackingCommentId,
+    runType = DroidRunType.Review,
+  } = options;
   if (!isEntityContext(context) || !context.isPR) {
     throw new Error("review validator mode requires pull request context");
   }
+  assertDroidRunType(runType, DroidRunType.Review);
 
   const prData = await fetchPRBranchData({
     octokits: octokit,
@@ -60,8 +68,6 @@ export async function prepareReviewValidatorMode(options: {
     reviewArtifacts,
     includeSuggestions,
   });
-
-  core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-review");
 
   const rawUserArgs = process.env.DROID_ARGS || "";
   const normalizedUserArgs = stripToolSelectionArgs(

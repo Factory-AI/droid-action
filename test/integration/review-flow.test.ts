@@ -11,6 +11,7 @@ import * as promptModule from "../../src/create-prompt";
 import * as reviewArtifactsModule from "../../src/github/data/review-artifacts";
 import * as core from "@actions/core";
 import * as childProcess from "node:child_process";
+import { DroidRunType } from "../../src/run-type";
 
 describe("review command integration", () => {
   const originalRunnerTemp = process.env.RUNNER_TEMP;
@@ -155,6 +156,16 @@ describe("review command integration", () => {
     expect(result.branchInfo.baseBranch).toBe("main");
     expect(result.branchInfo.currentBranch).toBe("feature/review");
     expect(promptSpy).toHaveBeenCalled();
+    expect(exportVarSpy).toHaveBeenCalledWith(
+      "DROID_EXEC_RUN_TYPE",
+      DroidRunType.Review,
+    );
+    expect(createCommentSpy).toHaveBeenCalledWith(
+      octokit.rest,
+      context,
+      "default",
+      DroidRunType.Review,
+    );
 
     // Verify output flags were set correctly for code review only
     const runCodeReviewCall = setOutputSpy.mock.calls.find(
@@ -227,6 +238,16 @@ describe("review command integration", () => {
     expect(result.branchInfo.baseBranch).toBe("main");
     expect(result.branchInfo.currentBranch).toBe("feature/security");
     expect(promptSpy).toHaveBeenCalled();
+    expect(exportVarSpy).toHaveBeenCalledWith(
+      "DROID_EXEC_RUN_TYPE",
+      DroidRunType.SecurityReview,
+    );
+    expect(createCommentSpy).toHaveBeenCalledWith(
+      octokit.rest,
+      context,
+      "security",
+      DroidRunType.SecurityReview,
+    );
 
     const runCodeReviewCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "run_code_review",
