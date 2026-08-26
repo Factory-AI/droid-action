@@ -2,8 +2,8 @@ import { describe, expect, it } from "bun:test";
 import {
   assertDroidRunType,
   DroidRunType,
+  getPrValidationRunType,
   parseDroidRunType,
-  prValidationSourceForRunType,
   resolveTagRunType,
 } from "../src/run-type";
 
@@ -42,17 +42,17 @@ describe("DroidRunType", () => {
     ).toThrow("Expected run type droid-review, received droid-fill");
   });
 
-  it("maps PR review run types to the review validation source", () => {
-    expect(prValidationSourceForRunType(DroidRunType.Review)).toBe("review");
-    expect(prValidationSourceForRunType(DroidRunType.SecurityReview)).toBe(
-      "review",
+  it("selects the run types that produce PR validation markers", () => {
+    expect(getPrValidationRunType(DroidRunType.Review)).toBe(
+      DroidRunType.Review,
     );
-    expect(prValidationSourceForRunType(DroidRunType.Fill)).toBeUndefined();
-    expect(
-      prValidationSourceForRunType(DroidRunType.SecurityScan),
-    ).toBeUndefined();
-    expect(
-      prValidationSourceForRunType(DroidRunType.CiSteward),
-    ).toBeUndefined();
+    expect(getPrValidationRunType(DroidRunType.SecurityReview)).toBe(
+      DroidRunType.SecurityReview,
+    );
+    expect(getPrValidationRunType(DroidRunType.SecurityScan)).toBe(
+      DroidRunType.SecurityScan,
+    );
+    expect(getPrValidationRunType(DroidRunType.Fill)).toBeUndefined();
+    expect(getPrValidationRunType(DroidRunType.CiSteward)).toBeUndefined();
   });
 });

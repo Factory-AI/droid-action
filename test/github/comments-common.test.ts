@@ -8,6 +8,7 @@ import {
   prepareDroidCommentBody,
 } from "../../src/github/operations/comments/common";
 import { GITHUB_SERVER_URL } from "../../src/github/api/config";
+import { DroidRunType } from "../../src/run-type";
 
 describe("comments common helpers", () => {
   it("creates a job run link using the configured GitHub server", () => {
@@ -46,29 +47,47 @@ describe("comments common helpers", () => {
     expect(body).not.toContain("View branch");
   });
 
-  it("adds the hidden marker to PR review tracking comments", () => {
+  it("adds the run type marker to PR validation tracking comments", () => {
     const jobLink = createJobRunLink("factory", "droid", "run-102");
-    const marker = createPrValidationMarker("review");
+    const reviewMarker = createPrValidationMarker(DroidRunType.Review);
+    const securityReviewMarker = createPrValidationMarker(
+      DroidRunType.SecurityReview,
+    );
+    const securityScanMarker = createPrValidationMarker(
+      DroidRunType.SecurityScan,
+    );
 
-    expect(marker).toBe("<!-- factory-pr-validation: source=review -->");
-    expect(createCommentBody(jobLink, "", "default", "review")).toEndWith(
-      marker,
+    expect(reviewMarker).toBe(
+      "<!-- factory-pr-validation: run-type=droid-review -->",
     );
-    expect(createCommentBody(jobLink, "", "security", "review")).toEndWith(
-      marker,
+    expect(securityReviewMarker).toBe(
+      "<!-- factory-pr-validation: run-type=droid-security-review -->",
     );
-    expect(createCommentBody(jobLink, "", "security")).not.toContain(marker);
-    expect(createCommentBody(jobLink)).not.toContain(marker);
+    expect(securityScanMarker).toBe(
+      "<!-- factory-pr-validation: run-type=droid-security-scan -->",
+    );
+    expect(
+      createCommentBody(jobLink, "", "default", DroidRunType.Review),
+    ).toEndWith(reviewMarker);
+    expect(
+      createCommentBody(jobLink, "", "security", DroidRunType.SecurityReview),
+    ).toEndWith(securityReviewMarker);
+    expect(
+      createCommentBody(jobLink, "", "security", DroidRunType.SecurityScan),
+    ).toEndWith(securityScanMarker);
+    expect(createCommentBody(jobLink)).not.toContain("factory-pr-validation");
   });
 
   it("restores the PR validation marker after sanitizing comment updates", () => {
-    const marker = createPrValidationMarker("review");
+    const marker = createPrValidationMarker(DroidRunType.SecurityReview);
     const body = prepareDroidCommentBody(
       `Review complete\n\n${marker}`,
-      "review",
+      DroidRunType.SecurityReview,
     );
 
     expect(body).toBe(`Review complete\n\n${marker}`);
-    expect(appendPrValidationMarker(body, "review")).toBe(body);
+    expect(appendPrValidationMarker(body, DroidRunType.SecurityReview)).toBe(
+      body,
+    );
   });
 });

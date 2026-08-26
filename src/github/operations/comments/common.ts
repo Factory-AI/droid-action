@@ -1,10 +1,9 @@
 import { GITHUB_SERVER_URL } from "../../api/config";
 import { sanitizeContent } from "../../utils/sanitizer";
+import type { PrValidationRunType } from "../../../run-type";
 
-export type PrValidationSource = "review";
-
-export function createPrValidationMarker(source: PrValidationSource): string {
-  return `<!-- factory-pr-validation: source=${source} -->`;
+export function createPrValidationMarker(runType: PrValidationRunType): string {
+  return `<!-- factory-pr-validation: run-type=${runType} -->`;
 }
 
 export function createJobRunLink(
@@ -29,9 +28,9 @@ export type CommentType = "default" | "security" | "review_and_security";
 
 export function appendPrValidationMarker(
   content: string,
-  source: PrValidationSource,
+  runType: PrValidationRunType,
 ): string {
-  const marker = createPrValidationMarker(source);
+  const marker = createPrValidationMarker(runType);
   if (content.includes(marker)) {
     return content;
   }
@@ -41,11 +40,11 @@ export function appendPrValidationMarker(
 
 export function prepareDroidCommentBody(
   content: string,
-  prValidationSource?: PrValidationSource,
+  prValidationRunType?: PrValidationRunType,
 ): string {
   const sanitized = sanitizeContent(content);
-  return prValidationSource
-    ? appendPrValidationMarker(sanitized, prValidationSource)
+  return prValidationRunType
+    ? appendPrValidationMarker(sanitized, prValidationRunType)
     : sanitized;
 }
 
@@ -53,7 +52,7 @@ export function createCommentBody(
   jobRunLink: string,
   branchLink: string = "",
   type: CommentType = "default",
-  prValidationSource?: PrValidationSource,
+  prValidationRunType?: PrValidationRunType,
 ): string {
   let message: string;
   if (type === "review_and_security") {
@@ -68,7 +67,7 @@ export function createCommentBody(
 
 ${jobRunLink}${branchLink}`;
 
-  return prValidationSource
-    ? appendPrValidationMarker(body, prValidationSource)
+  return prValidationRunType
+    ? appendPrValidationMarker(body, prValidationRunType)
     : body;
 }

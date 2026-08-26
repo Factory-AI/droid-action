@@ -1,6 +1,5 @@
 import * as core from "@actions/core";
 import type { DroidCommand } from "./core/review/triggers/parse-command";
-import type { PrValidationSource } from "./github/operations/comments/common";
 
 export enum DroidRunType {
   Review = "droid-review",
@@ -9,6 +8,11 @@ export enum DroidRunType {
   SecurityScan = "droid-security-scan",
   CiSteward = "ci-steward",
 }
+
+export type PrValidationRunType =
+  | DroidRunType.Review
+  | DroidRunType.SecurityReview
+  | DroidRunType.SecurityScan;
 
 export function setDroidRunType(runType: DroidRunType): void {
   core.exportVariable("DROID_EXEC_RUN_TYPE", runType);
@@ -31,12 +35,13 @@ export function parseDroidRunType(
     : undefined;
 }
 
-export function prValidationSourceForRunType(
+export function getPrValidationRunType(
   runType: DroidRunType | undefined,
-): PrValidationSource | undefined {
+): PrValidationRunType | undefined {
   return runType === DroidRunType.Review ||
-    runType === DroidRunType.SecurityReview
-    ? "review"
+    runType === DroidRunType.SecurityReview ||
+    runType === DroidRunType.SecurityScan
+    ? runType
     : undefined;
 }
 

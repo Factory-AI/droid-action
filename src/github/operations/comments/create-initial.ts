@@ -17,10 +17,7 @@ import {
   type ParsedGitHubContext,
 } from "../../context";
 import type { Octokit } from "@octokit/rest";
-import {
-  prValidationSourceForRunType,
-  type DroidRunType,
-} from "../../../run-type";
+import { getPrValidationRunType, type DroidRunType } from "../../../run-type";
 
 const DROID_APP_BOT_ID = 209825114;
 
@@ -37,7 +34,7 @@ export async function createInitialComment(
     jobRunLink,
     "",
     commentType,
-    prValidationSourceForRunType(runType),
+    getPrValidationRunType(runType),
   );
 
   try {

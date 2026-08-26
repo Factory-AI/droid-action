@@ -7,7 +7,7 @@ import { GITHUB_API_URL } from "../github/api/config";
 import { Octokit } from "@octokit/rest";
 import { updateDroidComment } from "../github/operations/comments/update-droid-comment";
 import { prepareDroidCommentBody } from "../github/operations/comments/common";
-import { parseDroidRunType, prValidationSourceForRunType } from "../run-type";
+import { getPrValidationRunType, parseDroidRunType } from "../run-type";
 
 // Get repository information from environment variables
 const REPO_OWNER = process.env.REPO_OWNER;
@@ -59,7 +59,7 @@ server.tool(
       const runType = parseDroidRunType(process.env.DROID_EXEC_RUN_TYPE);
       let sanitizedBody = prepareDroidCommentBody(
         body,
-        prValidationSourceForRunType(runType),
+        getPrValidationRunType(runType),
       );
 
       // CI Steward keeps its lifetime run budget in a marker on this comment.
