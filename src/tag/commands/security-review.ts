@@ -151,15 +151,23 @@ export async function prepareSecurityReviewMode({
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
   droidArgParts.push('--tag "code-review"');
 
-  const { model: securityModel, fallbackNote } = await applyModelPolicyFallback(
+  const {
+    model: securityModel,
+    reasoningEffort,
+    fallbackNote,
+  } = await applyModelPolicyFallback(
     {
       model:
         process.env.SECURITY_MODEL?.trim() || process.env.REVIEW_MODEL?.trim(),
+      reasoningEffort: process.env.REASONING_EFFORT?.trim(),
     },
     { flowLabel: "security review", modelInputName: "security_model" },
   );
   if (securityModel) {
     droidArgParts.push(`--model "${securityModel}"`);
+  }
+  if (reasoningEffort) {
+    droidArgParts.push(`--reasoning-effort "${reasoningEffort}"`);
   }
   if (fallbackNote) {
     core.setOutput("model_fallback_note", fallbackNote);
