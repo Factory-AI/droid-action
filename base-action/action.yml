@@ -29,6 +29,10 @@ inputs:
     description: "Additional arguments to pass directly to Droid CLI (e.g., '--auto', '--enabled-tools read,edit')"
     required: false
     default: ""
+  model_policy_fallback:
+    description: "Behavior when model arguments are blocked or invalid: 'organization-default' retries without them; 'fail' preserves the error."
+    required: false
+    default: "organization-default"
 
   # Authentication settings
   factory_api_key:
@@ -119,6 +123,7 @@ runs:
         INPUT_SETTINGS: ${{ inputs.settings }}
         INPUT_DROID_ARGS: ${{ inputs.droid_args }}
         INPUT_REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+        INPUT_MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
         INPUT_PATH_TO_DROID_EXECUTABLE: ${{ inputs.path_to_droid_executable }}
         INPUT_PATH_TO_BUN_EXECUTABLE: ${{ inputs.path_to_bun_executable }}
         INPUT_SHOW_FULL_OUTPUT: ${{ inputs.show_full_output }}

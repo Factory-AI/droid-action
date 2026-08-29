@@ -8,6 +8,8 @@ import {
   condenseInvalidModelError,
   isInvalidModelError,
   isModelPolicyError,
+  parseModelPolicyFallbackMode,
+  shouldStripModelArgs,
   stripModelArgs,
 } from "./utils/model-policy-error";
 
@@ -89,6 +91,7 @@ export type DroidOptions = {
   systemPrompt?: string;
   appendSystemPrompt?: string;
   showFullOutput?: string;
+  modelPolicyFallback?: string;
 };
 
 type PreparedConfig = {
@@ -133,6 +136,9 @@ export function prepareRunConfig(
 }
 
 export async function runDroid(promptPath: string, options: DroidOptions) {
+  const modelPolicyFallback = parseModelPolicyFallbackMode(
+    options.modelPolicyFallback,
+  );
   // If MCP tools config is provided, register servers via `droid mcp add` before running exec
   if (options.mcpTools && options.mcpTools.trim()) {
     try {
@@ -392,11 +398,15 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
             isModelPolicyError(resultEvent.result);
           const invalidModel = isInvalidModelError(getStderrTail());
           if (
-            !modelArgsStripped &&
-            (policyBlocked || invalidModel) &&
-            currentDroidArgs.some(
-              (arg) => arg === "--model" || arg.startsWith("--model="),
-            )
+            shouldStripModelArgs({
+              mode: modelPolicyFallback,
+              modelArgsStripped,
+              policyBlocked,
+              invalidModel,
+              hasModelArg: currentDroidArgs.some(
+                (arg) => arg === "--model" || arg.startsWith("--model="),
+              ),
+            })
           ) {
             modelArgsStripped = true;
             currentDroidArgs = stripModelArgs(currentDroidArgs);

@@ -34,6 +34,7 @@ export function collectActionInputsPresence(): void {
     security_notify_team: "",
     security_scan_schedule: "false",
     security_scan_days: "7",
+    model_policy_fallback: "organization-default",
   };
 
   const allInputsJson = process.env.ALL_INPUTS;

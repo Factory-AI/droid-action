@@ -16,6 +16,10 @@ inputs:
     description: "Model to use for security review"
     required: false
     default: ""
+  model_policy_fallback:
+    description: "Behavior when the requested security model is blocked or invalid: 'organization-default' retries with the org default; 'fail' preserves the error."
+    required: false
+    default: "organization-default"
   security_severity_threshold:
     description: "Minimum severity to report"
     required: false
@@ -120,8 +124,10 @@ runs:
         bun run ${{ github.action_path }}/../src/entrypoints/generate-review-prompt.ts
       env:
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
         SECURITY_MODEL: ${{ inputs.security_model }}
+        MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
         SECURITY_SEVERITY_THRESHOLD: ${{ inputs.security_severity_threshold }}
         SECURITY_BLOCK_ON_CRITICAL: ${{ inputs.security_block_on_critical }}
         SECURITY_BLOCK_ON_HIGH: ${{ inputs.security_block_on_high }}
@@ -142,6 +148,7 @@ runs:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
         DROID_OUTPUT_FILE: ${{ inputs.output_file }}
+        INPUT_MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
 
     - name: Prepare Validator
       id: prepare_validator
@@ -150,11 +157,13 @@ runs:
         bun run ${{ github.action_path }}/../src/entrypoints/prepare-validator.ts
       env:
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
         REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
         REVIEW_DEPTH: ${{ inputs.review_depth }}
         REVIEW_MODEL: ${{ inputs.review_model }}
         REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+        MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
         INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}
         DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
 
@@ -169,6 +178,7 @@ runs:
         INPUT_MCP_TOOLS: ${{ steps.prepare_validator.outputs.mcp_tools }}
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+        INPUT_MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
 
     - name: Update tracking comment
       if: always() && inputs.tracking_comment_id

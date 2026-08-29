@@ -24,6 +24,10 @@ inputs:
     description: "Override reasoning effort for review. If empty, determined by review_depth (shallow=default, deep=high)."
     required: false
     default: ""
+  model_policy_fallback:
+    description: "Behavior when the requested review model is blocked or invalid: 'organization-default' retries with the org default; 'fail' preserves the error."
+    required: false
+    default: "organization-default"
   output_file:
     description: "Path to write review results JSON"
     required: false
@@ -92,6 +96,7 @@ runs:
         REVIEW_TYPE: "code"
         REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
         REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+        MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
         INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}
         DROID_OUTPUT_FILE: ${{ inputs.output_file }}
 
@@ -116,6 +121,7 @@ runs:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
         DROID_OUTPUT_FILE: ${{ inputs.output_file }}
+        INPUT_MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
 
     - name: Prepare Validator
       id: prepare_validator
@@ -130,6 +136,7 @@ runs:
         REVIEW_DEPTH: ${{ inputs.review_depth }}
         REVIEW_MODEL: ${{ inputs.review_model }}
         REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+        MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
         INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}
         DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
 
@@ -144,6 +151,7 @@ runs:
         INPUT_MCP_TOOLS: ${{ steps.prepare_validator.outputs.mcp_tools }}
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+        INPUT_MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
 
     - name: Update tracking comment
       if: always() && inputs.tracking_comment_id

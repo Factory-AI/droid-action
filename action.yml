@@ -103,6 +103,10 @@ inputs:
     description: "Override reasoning effort for review flows (passed to Droid Exec as --reasoning-effort). If empty, determined by review_depth (shallow=default, deep=high)."
     required: false
     default: ""
+  model_policy_fallback:
+    description: "Behavior when the requested model is blocked or invalid: 'organization-default' retries without model arguments; 'fail' preserves the error and never falls back."
+    required: false
+    default: "organization-default"
   include_suggestions:
     description: "Include code suggestion blocks in review comments when the fix is high-confidence. Set to 'false' to disable suggestions."
     required: false
@@ -239,6 +243,7 @@ runs:
         REVIEW_DEPTH: ${{ inputs.review_depth }}
         REVIEW_MODEL: ${{ inputs.review_model }}
         REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+        MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
         REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
         REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
         FILL_MODEL: ${{ inputs.fill_model }}
@@ -327,6 +332,7 @@ runs:
         INPUT_PATH_TO_DROID_EXECUTABLE: ${{ inputs.path_to_droid_executable }}
         INPUT_PATH_TO_BUN_EXECUTABLE: ${{ inputs.path_to_bun_executable }}
         INPUT_SHOW_FULL_OUTPUT: ${{ inputs.show_full_output }}
+        INPUT_MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
 
         # Model configuration
         GITHUB_TOKEN: ${{ steps.prepare.outputs.GITHUB_TOKEN }}
@@ -362,6 +368,7 @@ runs:
         REVIEW_DEPTH: ${{ inputs.review_depth }}
         REVIEW_MODEL: ${{ inputs.review_model }}
         REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+        MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
         INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}
 
     - name: Run Droid Exec (validator)
@@ -383,6 +390,7 @@ runs:
         INPUT_PATH_TO_DROID_EXECUTABLE: ${{ inputs.path_to_droid_executable }}
         INPUT_PATH_TO_BUN_EXECUTABLE: ${{ inputs.path_to_bun_executable }}
         INPUT_SHOW_FULL_OUTPUT: ${{ inputs.show_full_output }}
+        INPUT_MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
 
         # Model configuration
         GITHUB_TOKEN: ${{ steps.prepare.outputs.GITHUB_TOKEN }}
