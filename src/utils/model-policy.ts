@@ -134,16 +134,30 @@ export type PolicyCheckedModelConfig = {
   fallbackNote?: string;
 };
 
+type ModelPolicyFallbackMode = "organization-default" | "fail";
+
+function parseModelPolicyFallbackMode(): ModelPolicyFallbackMode {
+  const mode =
+    process.env.MODEL_POLICY_FALLBACK?.trim() || "organization-default";
+  if (mode === "organization-default" || mode === "fail") {
+    return mode;
+  }
+  throw new Error(
+    "model_policy_fallback must be one of: organization-default, fail",
+  );
+}
+
 /**
  * Pre-flight check of a resolved model against the org's model policy.
- * When the model is disallowed, drops the model (and reasoning effort) so
- * `droid exec` falls back to the organization's default model, and returns
- * a note describing the fallback for surfacing in the tracking comment.
+ * When the model is disallowed, either rejects the run in fail-closed mode
+ * or drops the model (and reasoning effort) so `droid exec` falls back to the
+ * organization's default model.
  */
 export async function applyModelPolicyFallback(
   config: { model?: string; reasoningEffort?: string },
   options: { flowLabel: string; modelInputName: string },
 ): Promise<PolicyCheckedModelConfig> {
+  const fallbackMode = parseModelPolicyFallbackMode();
   const { model, reasoningEffort } = config;
   const factoryApiKey = process.env.FACTORY_API_KEY;
 
@@ -154,6 +168,11 @@ export async function applyModelPolicyFallback(
   const policy = await fetchModelPolicy(factoryApiKey);
   if (isModelAllowedByPolicy(model, policy)) {
     return { model, reasoningEffort };
+  }
+  if (fallbackMode === "fail") {
+    throw new Error(
+      `The ${options.flowLabel} model "${model}" is not allowed by the organization's model policy`,
+    );
   }
 
   const fallbackNote =

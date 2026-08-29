@@ -8,6 +8,7 @@ import {
 
 const originalFetch = globalThis.fetch;
 const originalApiKey = process.env.FACTORY_API_KEY;
+const originalModelPolicyFallback = process.env.MODEL_POLICY_FALLBACK;
 
 function mockFetch(handler: () => Promise<Response> | Response) {
   globalThis.fetch = Object.assign(async () => handler(), {
@@ -28,6 +29,11 @@ afterEach(() => {
     delete process.env.FACTORY_API_KEY;
   } else {
     process.env.FACTORY_API_KEY = originalApiKey;
+  }
+  if (originalModelPolicyFallback === undefined) {
+    delete process.env.MODEL_POLICY_FALLBACK;
+  } else {
+    process.env.MODEL_POLICY_FALLBACK = originalModelPolicyFallback;
   }
 });
 
@@ -163,6 +169,40 @@ describe("applyModelPolicyFallback", () => {
     expect(result.reasoningEffort).toBeUndefined();
     expect(result.fallbackNote).toContain("`gpt-5.2`");
     expect(result.fallbackNote).toContain("`review_model`");
+  });
+
+  it("fails closed when strict model policy rejects the model", async () => {
+    process.env.FACTORY_API_KEY = "fk-test";
+    process.env.MODEL_POLICY_FALLBACK = "fail";
+    mockFetch(() =>
+      managedSettingsResponse({ allowedModelIds: ["claude-opus-5"] }),
+    );
+
+    await expect(
+      applyModelPolicyFallback(
+        { model: "gpt-5.2", reasoningEffort: "high" },
+        options,
+      ),
+    ).rejects.toThrow(
+      `code review model "gpt-5.2" is not allowed by the organization's model policy`,
+    );
+  });
+
+  it("rejects an invalid fallback mode before checking model policy", async () => {
+    process.env.FACTORY_API_KEY = "fk-test";
+    process.env.MODEL_POLICY_FALLBACK = "best-effort";
+    let fetchCalled = false;
+    mockFetch(() => {
+      fetchCalled = true;
+      return managedSettingsResponse({ allowedModelIds: ["gpt-5.2"] });
+    });
+
+    await expect(
+      applyModelPolicyFallback({ model: "gpt-5.2" }, options),
+    ).rejects.toThrow(
+      "model_policy_fallback must be one of: organization-default, fail",
+    );
+    expect(fetchCalled).toBe(false);
   });
 
   it("keeps the model when the policy lookup fails", async () => {

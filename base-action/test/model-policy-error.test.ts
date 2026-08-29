@@ -3,8 +3,32 @@ import {
   condenseInvalidModelError,
   isInvalidModelError,
   isModelPolicyError,
+  parseModelPolicyFallbackMode,
+  shouldRetryModelFailure,
+  shouldStripModelArgs,
   stripModelArgs,
 } from "../src/utils/model-policy-error";
+
+describe("parseModelPolicyFallbackMode", () => {
+  it("defaults to the organization default fallback", () => {
+    expect(parseModelPolicyFallbackMode(undefined)).toBe(
+      "organization-default",
+    );
+    expect(parseModelPolicyFallbackMode("")).toBe("organization-default");
+    expect(parseModelPolicyFallbackMode("   ")).toBe("organization-default");
+  });
+
+  it("accepts fail-closed mode", () => {
+    expect(parseModelPolicyFallbackMode("fail")).toBe("fail");
+    expect(parseModelPolicyFallbackMode(" fail ")).toBe("fail");
+  });
+
+  it("rejects unsupported modes", () => {
+    expect(() => parseModelPolicyFallbackMode("best-effort")).toThrow(
+      "model_policy_fallback must be one of: organization-default, fail",
+    );
+  });
+});
 
 describe("isModelPolicyError", () => {
   it("matches the model policy 403 message", () => {
@@ -116,5 +140,109 @@ describe("stripModelArgs", () => {
   it("returns args unchanged when no model flags are present", () => {
     const args = ["exec", "--output-format", "stream-json", "-f", "p.txt"];
     expect(stripModelArgs(args)).toEqual(args);
+  });
+});
+
+describe("shouldStripModelArgs", () => {
+  const fallbackCandidate = {
+    modelArgsStripped: false,
+    policyBlocked: false,
+    invalidModel: false,
+    hasModelArg: true,
+  };
+
+  it("uses the organization default for policy and invalid-model failures by default", () => {
+    expect(
+      shouldStripModelArgs({
+        ...fallbackCandidate,
+        mode: "organization-default",
+        policyBlocked: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldStripModelArgs({
+        ...fallbackCandidate,
+        mode: "organization-default",
+        invalidModel: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("preserves model arguments in fail-closed mode", () => {
+    expect(
+      shouldStripModelArgs({
+        ...fallbackCandidate,
+        mode: "fail",
+        policyBlocked: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldStripModelArgs({
+        ...fallbackCandidate,
+        mode: "fail",
+        invalidModel: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not retry without model arguments when fallback is inapplicable", () => {
+    expect(
+      shouldStripModelArgs({
+        ...fallbackCandidate,
+        mode: "organization-default",
+      }),
+    ).toBe(false);
+    expect(
+      shouldStripModelArgs({
+        ...fallbackCandidate,
+        mode: "organization-default",
+        policyBlocked: true,
+        hasModelArg: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldStripModelArgs({
+        ...fallbackCandidate,
+        mode: "organization-default",
+        policyBlocked: true,
+        modelArgsStripped: true,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("shouldRetryModelFailure", () => {
+  it("stops deterministic model failures in fail-closed mode", () => {
+    expect(
+      shouldRetryModelFailure({
+        mode: "fail",
+        policyBlocked: true,
+        invalidModel: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRetryModelFailure({
+        mode: "fail",
+        policyBlocked: false,
+        invalidModel: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("retains transient retries and organization-default fallback", () => {
+    expect(
+      shouldRetryModelFailure({
+        mode: "fail",
+        policyBlocked: false,
+        invalidModel: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRetryModelFailure({
+        mode: "organization-default",
+        policyBlocked: true,
+        invalidModel: false,
+      }),
+    ).toBe(true);
   });
 });

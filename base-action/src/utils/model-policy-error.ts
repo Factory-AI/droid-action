@@ -9,6 +9,25 @@ const MODEL_POLICY_ERROR_PATTERNS = [
   /requires explicit organization opt-in/i,
 ];
 
+export const MODEL_POLICY_FALLBACK_MODES = [
+  "organization-default",
+  "fail",
+] as const;
+export type ModelPolicyFallbackMode =
+  (typeof MODEL_POLICY_FALLBACK_MODES)[number];
+
+export function parseModelPolicyFallbackMode(
+  value: string | undefined,
+): ModelPolicyFallbackMode {
+  const mode = value?.trim() || "organization-default";
+  if (!MODEL_POLICY_FALLBACK_MODES.includes(mode as ModelPolicyFallbackMode)) {
+    throw new Error(
+      `model_policy_fallback must be one of: ${MODEL_POLICY_FALLBACK_MODES.join(", ")}`,
+    );
+  }
+  return mode as ModelPolicyFallbackMode;
+}
+
 export function isModelPolicyError(text: string | undefined | null): boolean {
   if (!text) {
     return false;
@@ -74,4 +93,37 @@ export function stripModelArgs(args: string[]): string[] {
   }
 
   return stripped;
+}
+
+export function shouldStripModelArgs({
+  mode,
+  modelArgsStripped,
+  policyBlocked,
+  invalidModel,
+  hasModelArg,
+}: {
+  mode: ModelPolicyFallbackMode;
+  modelArgsStripped: boolean;
+  policyBlocked: boolean;
+  invalidModel: boolean;
+  hasModelArg: boolean;
+}): boolean {
+  return (
+    mode === "organization-default" &&
+    !modelArgsStripped &&
+    (policyBlocked || invalidModel) &&
+    hasModelArg
+  );
+}
+
+export function shouldRetryModelFailure({
+  mode,
+  policyBlocked,
+  invalidModel,
+}: {
+  mode: ModelPolicyFallbackMode;
+  policyBlocked: boolean;
+  invalidModel: boolean;
+}): boolean {
+  return mode !== "fail" || (!policyBlocked && !invalidModel);
 }

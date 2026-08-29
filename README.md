@@ -343,13 +343,14 @@ To leave comments and approvals on your PRs, Droid needs a GitHub token. There a
 
 ### Review Configuration
 
-| Input              | Default | Purpose                                                                                              |
-| ------------------ | ------- | ---------------------------------------------------------------------------------------------------- |
-| `automatic_review` | `false` | Automatically run code review on PRs without requiring `@droid review`.                              |
-| `review_depth`     | `deep`  | Review depth preset: `shallow` (fast) or `deep` (thorough). See [Review Depth](#review-depth) below. |
-| `review_model`     | `""`    | Override the model for code review. When empty, determined by `review_depth`.                        |
-| `reasoning_effort` | `""`    | Override reasoning effort for review. When empty, determined by `review_depth`.                      |
-| `fill_model`       | `""`    | Override the model used for PR description fill.                                                     |
+| Input                   | Default                | Purpose                                                                                                               |
+| ----------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `automatic_review`      | `false`                | Automatically run code review on PRs without requiring `@droid review`.                                               |
+| `review_depth`          | `deep`                 | Review depth preset: `shallow` (fast) or `deep` (thorough). See [Review Depth](#review-depth) below.                  |
+| `review_model`          | `""`                   | Override the model for code review. When empty, determined by `review_depth`.                                         |
+| `reasoning_effort`      | `""`                   | Override reasoning effort for review. When empty, determined by `review_depth`.                                       |
+| `model_policy_fallback` | `organization-default` | Set to `fail` to stop when a requested model is blocked or invalid instead of retrying with the organization default. |
+| `fill_model`            | `""`                   | Override the model used for PR description fill.                                                                      |
 
 ### Review Depth
 

@@ -69,4 +69,21 @@ describe("retryWithBackoff", () => {
       | undefined;
     expect(firstCall?.[1]).toBe(5);
   });
+
+  it("stops immediately when the failure is not retryable", async () => {
+    let attempts = 0;
+
+    await expect(
+      retryWithBackoff(
+        async () => {
+          attempts += 1;
+          throw new Error("invalid model");
+        },
+        { maxAttempts: 3, shouldRetry: () => false },
+      ),
+    ).rejects.toThrow("invalid model");
+
+    expect(attempts).toBe(1);
+    expect(timeoutSpy).not.toHaveBeenCalled();
+  });
 });

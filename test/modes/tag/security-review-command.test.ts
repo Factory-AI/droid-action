@@ -33,6 +33,7 @@ describe("prepareSecurityReviewMode", () => {
   const originalArgs = process.env.DROID_ARGS;
   const originalReviewModel = process.env.REVIEW_MODEL;
   const originalSecurityModel = process.env.SECURITY_MODEL;
+  const originalReasoningEffort = process.env.REASONING_EFFORT;
   let fetchPRSpy: ReturnType<typeof spyOn>;
   let computeArtifactsSpy: ReturnType<typeof spyOn>;
   let promptSpy: ReturnType<typeof spyOn>;
@@ -45,6 +46,7 @@ describe("prepareSecurityReviewMode", () => {
     process.env.DROID_ARGS = "";
     delete process.env.REVIEW_MODEL;
     delete process.env.SECURITY_MODEL;
+    delete process.env.REASONING_EFFORT;
 
     fetchPRSpy = spyOn(prFetcher, "fetchPRBranchData").mockResolvedValue({
       baseRefName: MOCK_PR_DATA.baseRefName,
@@ -100,6 +102,11 @@ describe("prepareSecurityReviewMode", () => {
       process.env.SECURITY_MODEL = originalSecurityModel;
     } else {
       delete process.env.SECURITY_MODEL;
+    }
+    if (originalReasoningEffort !== undefined) {
+      process.env.REASONING_EFFORT = originalReasoningEffort;
+    } else {
+      delete process.env.REASONING_EFFORT;
     }
   });
 
@@ -232,7 +239,7 @@ describe("prepareSecurityReviewMode", () => {
     );
   });
 
-  it("does not add --model flag when REVIEW_MODEL is empty", async () => {
+  it("uses deep review defaults when REVIEW_MODEL is empty", async () => {
     process.env.REVIEW_MODEL = "";
 
     const context = createMockContext({
@@ -259,7 +266,8 @@ describe("prepareSecurityReviewMode", () => {
     const droidArgsCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "droid_args",
     ) as [string, string] | undefined;
-    expect(droidArgsCall?.[1]).not.toContain("--model");
+    expect(droidArgsCall?.[1]).toContain('--model "gpt-5.2"');
+    expect(droidArgsCall?.[1]).toContain('--reasoning-effort "high"');
   });
 
   it("outputs install_security_skills flag", async () => {
@@ -320,6 +328,36 @@ describe("prepareSecurityReviewMode", () => {
     ) as [string, string] | undefined;
     expect(droidArgsCall?.[1]).toContain('--model "gpt-5.1-codex"');
     expect(droidArgsCall?.[1]).not.toContain("claude-sonnet");
+  });
+
+  it("passes reasoning effort to the security candidate review", async () => {
+    process.env.SECURITY_MODEL = "gpt-5.4";
+    process.env.REASONING_EFFORT = "high";
+
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: {
+        comment: {
+          id: 107,
+          body: "@droid security-review",
+        },
+      } as any,
+      entityNumber: 30,
+    });
+
+    await prepareSecurityReviewMode({
+      context,
+      octokit: { rest: {}, graphql: () => {} } as any,
+      githubToken: "token",
+      trackingCommentId: 560,
+    });
+
+    const droidArgsCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "droid_args",
+    ) as [string, string] | undefined;
+    expect(droidArgsCall?.[1]).toContain('--model "gpt-5.4"');
+    expect(droidArgsCall?.[1]).toContain('--reasoning-effort "high"');
   });
 
   it("falls back to REVIEW_MODEL when SECURITY_MODEL is not set", async () => {
