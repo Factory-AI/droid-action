@@ -3,6 +3,7 @@ export type RetryOptions = {
   initialDelayMs?: number;
   maxDelayMs?: number;
   backoffFactor?: number;
+  shouldRetry?: (error: Error) => boolean;
 };
 
 /**
@@ -22,6 +23,7 @@ export async function retryWithBackoff<T>(
     initialDelayMs = 5000,
     maxDelayMs = 20000,
     backoffFactor = 2,
+    shouldRetry = () => true,
   } = options;
 
   let delayMs = initialDelayMs;
@@ -34,6 +36,11 @@ export async function retryWithBackoff<T>(
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       console.error(`Attempt ${attempt} failed:`, lastError.message);
+
+      if (!shouldRetry(lastError)) {
+        console.log("Failure is not retryable; stopping.");
+        throw lastError;
+      }
 
       if (attempt < maxAttempts) {
         console.log(`Retrying in ${delayMs / 1000} seconds...`);

@@ -6,6 +6,7 @@ import { parse } from "yaml";
 type ActionStep = {
   name?: string;
   env?: Record<string, string>;
+  with?: Record<string, string>;
 };
 
 type ActionDefinition = {
@@ -77,5 +78,25 @@ describe("model policy fallback action wiring", () => {
     expect(
       getStep(action, "Run Droid Exec Action").env?.INPUT_MODEL_POLICY_FALLBACK,
     ).toBe("${{ inputs.model_policy_fallback }}");
+  });
+
+  it("selects the security model for security validators", () => {
+    const mainAction = readAction("action.yml");
+    const securityAction = readAction("security/action.yml");
+
+    expect(getStep(mainAction, "Prepare validator").env?.REVIEW_MODEL).toBe(
+      "${{ steps.prepare.outputs.run_security_review == 'true' && inputs.security_model || inputs.review_model }}",
+    );
+    expect(getStep(securityAction, "Prepare Validator").env?.REVIEW_MODEL).toBe(
+      "${{ inputs.security_model || inputs.review_model }}",
+    );
+  });
+
+  it("uses a unique debug artifact name for each action invocation", () => {
+    const action = readAction("action.yml");
+
+    expect(getStep(action, "Upload debug artifacts").with?.name).toBe(
+      "droid-review-debug-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index || 0 }}-${{ github.action }}",
+    );
   });
 });

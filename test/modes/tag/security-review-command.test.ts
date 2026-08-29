@@ -239,7 +239,7 @@ describe("prepareSecurityReviewMode", () => {
     );
   });
 
-  it("does not add --model flag when REVIEW_MODEL is empty", async () => {
+  it("uses deep review defaults when REVIEW_MODEL is empty", async () => {
     process.env.REVIEW_MODEL = "";
 
     const context = createMockContext({
@@ -266,7 +266,8 @@ describe("prepareSecurityReviewMode", () => {
     const droidArgsCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "droid_args",
     ) as [string, string] | undefined;
-    expect(droidArgsCall?.[1]).not.toContain("--model");
+    expect(droidArgsCall?.[1]).toContain('--model "gpt-5.2"');
+    expect(droidArgsCall?.[1]).toContain('--reasoning-effort "high"');
   });
 
   it("outputs install_security_skills flag", async () => {

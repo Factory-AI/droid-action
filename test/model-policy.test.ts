@@ -188,6 +188,23 @@ describe("applyModelPolicyFallback", () => {
     );
   });
 
+  it("rejects an invalid fallback mode before checking model policy", async () => {
+    process.env.FACTORY_API_KEY = "fk-test";
+    process.env.MODEL_POLICY_FALLBACK = "best-effort";
+    let fetchCalled = false;
+    mockFetch(() => {
+      fetchCalled = true;
+      return managedSettingsResponse({ allowedModelIds: ["gpt-5.2"] });
+    });
+
+    await expect(
+      applyModelPolicyFallback({ model: "gpt-5.2" }, options),
+    ).rejects.toThrow(
+      "model_policy_fallback must be one of: organization-default, fail",
+    );
+    expect(fetchCalled).toBe(false);
+  });
+
   it("keeps the model when the policy lookup fails", async () => {
     process.env.FACTORY_API_KEY = "fk-test";
     mockFetch(() => {

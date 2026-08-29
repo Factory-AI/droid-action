@@ -366,7 +366,7 @@ runs:
         REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
         DROID_COMMENT_ID: ${{ steps.prepare.outputs.droid_comment_id }}
         REVIEW_DEPTH: ${{ inputs.review_depth }}
-        REVIEW_MODEL: ${{ inputs.review_model }}
+        REVIEW_MODEL: ${{ steps.prepare.outputs.run_security_review == 'true' && inputs.security_model || inputs.review_model }}
         REASONING_EFFORT: ${{ inputs.reasoning_effort }}
         MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
         INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}
@@ -436,7 +436,7 @@ runs:
       if: always() && steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true'
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
-        name: droid-review-debug-${{ github.run_id }}
+        name: droid-review-debug-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index || 0 }}-${{ github.action }}
         path: |
           ${{ runner.temp }}/.factory/**
           ${{ runner.temp }}/droid-prompts/**

@@ -115,3 +115,15 @@ export function shouldStripModelArgs({
     hasModelArg
   );
 }
+
+export function shouldRetryModelFailure({
+  mode,
+  policyBlocked,
+  invalidModel,
+}: {
+  mode: ModelPolicyFallbackMode;
+  policyBlocked: boolean;
+  invalidModel: boolean;
+}): boolean {
+  return mode !== "fail" || (!policyBlocked && !invalidModel);
+}

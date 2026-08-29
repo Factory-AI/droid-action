@@ -134,11 +134,14 @@ export type PolicyCheckedModelConfig = {
   fallbackNote?: string;
 };
 
-function shouldFailClosed(): boolean {
+type ModelPolicyFallbackMode = "organization-default" | "fail";
+
+function parseModelPolicyFallbackMode(): ModelPolicyFallbackMode {
   const mode =
     process.env.MODEL_POLICY_FALLBACK?.trim() || "organization-default";
-  if (mode === "organization-default") return false;
-  if (mode === "fail") return true;
+  if (mode === "organization-default" || mode === "fail") {
+    return mode;
+  }
   throw new Error(
     "model_policy_fallback must be one of: organization-default, fail",
   );
@@ -154,6 +157,7 @@ export async function applyModelPolicyFallback(
   config: { model?: string; reasoningEffort?: string },
   options: { flowLabel: string; modelInputName: string },
 ): Promise<PolicyCheckedModelConfig> {
+  const fallbackMode = parseModelPolicyFallbackMode();
   const { model, reasoningEffort } = config;
   const factoryApiKey = process.env.FACTORY_API_KEY;
 
@@ -165,7 +169,7 @@ export async function applyModelPolicyFallback(
   if (isModelAllowedByPolicy(model, policy)) {
     return { model, reasoningEffort };
   }
-  if (shouldFailClosed()) {
+  if (fallbackMode === "fail") {
     throw new Error(
       `The ${options.flowLabel} model "${model}" is not allowed by the organization's model policy`,
     );

@@ -4,6 +4,7 @@ import {
   isInvalidModelError,
   isModelPolicyError,
   parseModelPolicyFallbackMode,
+  shouldRetryModelFailure,
   shouldStripModelArgs,
   stripModelArgs,
 } from "../src/utils/model-policy-error";
@@ -207,5 +208,41 @@ describe("shouldStripModelArgs", () => {
         modelArgsStripped: true,
       }),
     ).toBe(false);
+  });
+});
+
+describe("shouldRetryModelFailure", () => {
+  it("stops deterministic model failures in fail-closed mode", () => {
+    expect(
+      shouldRetryModelFailure({
+        mode: "fail",
+        policyBlocked: true,
+        invalidModel: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRetryModelFailure({
+        mode: "fail",
+        policyBlocked: false,
+        invalidModel: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("retains transient retries and organization-default fallback", () => {
+    expect(
+      shouldRetryModelFailure({
+        mode: "fail",
+        policyBlocked: false,
+        invalidModel: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRetryModelFailure({
+        mode: "organization-default",
+        policyBlocked: true,
+        invalidModel: false,
+      }),
+    ).toBe(true);
   });
 });
