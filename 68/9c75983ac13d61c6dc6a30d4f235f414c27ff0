@@ -1,0 +1,23 @@
+src/tag/commands/security-review.ts
+  08cb23b42afc8ce7 15,155-163,165,167-170,177-178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "689c75983ac13d61c6dc6a30d4f235f414c27ff0",
+  "prompts": {
+    "08cb23b42afc8ce7": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "c4776593-a880-4713-9475-6962f69754f4",
+        "model": "auto"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 20,
+      "total_deletions": 7,
+      "accepted_lines": 19,
+      "overriden_lines": 1
+    }
+  }
+}
