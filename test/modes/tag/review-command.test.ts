@@ -385,8 +385,8 @@ describe("prepareReviewMode", () => {
     const droidArgsCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "droid_args",
     ) as [string, string] | undefined;
-    // When REVIEW_MODEL is empty the deep depth preset kicks in (gpt-5.2, high reasoning).
-    expect(droidArgsCall?.[1]).toContain('--model "gpt-5.2"');
+    // When REVIEW_MODEL is empty the deep depth preset kicks in (gpt-5.6-sol, high reasoning).
+    expect(droidArgsCall?.[1]).toContain('--model "gpt-5.6-sol"');
     expect(droidArgsCall?.[1]).toContain('--reasoning-effort "high"');
   });
 

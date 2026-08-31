@@ -12,6 +12,7 @@ import { generateSecurityCandidatesPrompt } from "../../create-prompt/templates/
 import type { Octokits } from "../../github/api/client";
 import type { PrepareResult } from "../../prepare/types";
 import { applyModelPolicyFallback } from "../../utils/model-policy";
+import { resolveReviewConfig } from "../../utils/review-depth";
 
 type SecurityReviewCommandOptions = {
   context: GitHubContext;
@@ -151,15 +152,30 @@ export async function prepareSecurityReviewMode({
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
   droidArgParts.push('--tag "code-review"');
 
-  const { model: securityModel, fallbackNote } = await applyModelPolicyFallback(
+  const securityModelOverride = process.env.SECURITY_MODEL?.trim();
+  const reviewConfig = resolveReviewConfig({
+    reviewModel: process.env.REVIEW_MODEL?.trim(),
+    reasoningEffort: process.env.REASONING_EFFORT?.trim(),
+    reviewDepth: process.env.REVIEW_DEPTH?.trim(),
+  });
+  const {
+    model: securityModel,
+    reasoningEffort,
+    fallbackNote,
+  } = await applyModelPolicyFallback(
     {
-      model:
-        process.env.SECURITY_MODEL?.trim() || process.env.REVIEW_MODEL?.trim(),
+      model: securityModelOverride || reviewConfig.model,
+      reasoningEffort: securityModelOverride
+        ? undefined
+        : reviewConfig.reasoningEffort,
     },
     { flowLabel: "security review", modelInputName: "security_model" },
   );
   if (securityModel) {
     droidArgParts.push(`--model "${securityModel}"`);
+  }
+  if (reasoningEffort) {
+    droidArgParts.push(`--reasoning-effort "${reasoningEffort}"`);
   }
   if (fallbackNote) {
     core.setOutput("model_fallback_note", fallbackNote);
