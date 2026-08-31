@@ -4,12 +4,12 @@ export enum ReviewDepth {
 }
 
 const SHALLOW_DEFAULTS = {
-  model: "kimi-k2.6",
+  model: "glm-5.2",
   reasoningEffort: undefined as string | undefined,
 };
 
 const DEEP_DEFAULTS = {
-  model: "gpt-5.2",
+  model: "gpt-5.6-sol",
   reasoningEffort: "high" as string | undefined,
 };
 

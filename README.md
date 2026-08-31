@@ -355,10 +355,10 @@ To leave comments and approvals on your PRs, Droid needs a GitHub token. There a
 
 The `review_depth` input controls which model and reasoning effort are used for code reviews. Two presets are available:
 
-| Depth       | Model       | Reasoning Effort | Best For                                                |
-| ----------- | ----------- | ---------------- | ------------------------------------------------------- |
-| **deep**    | `gpt-5.2`   | `high`           | Thorough reviews catching subtle bugs and design issues |
-| **shallow** | `kimi-k2.6` | default          | Fast, cost-effective reviews for straightforward PRs    |
+| Depth       | Model         | Reasoning Effort | Best For                                                |
+| ----------- | ------------- | ---------------- | ------------------------------------------------------- |
+| **deep**    | `gpt-5.6-sol` | `high`           | Thorough reviews catching subtle bugs and design issues |
+| **shallow** | `glm-5.2`     | default          | Fast, cost-effective reviews for straightforward PRs    |
 
 **Examples:**
 
@@ -387,14 +387,16 @@ The `review_depth` input controls which model and reasoning effort are used for 
 
 > **Tip:** Setting `review_model` or `reasoning_effort` explicitly always takes priority over the depth preset. You can mix and match -- for example, use `review_depth: shallow` but override just `reasoning_effort: high` to get the shallow model with higher reasoning.
 
-The default models (`gpt-5.2` for `deep`, `kimi-k2.6` for `shallow`) are managed by Factory and may change over time. To pin a specific model regardless of the depth preset, set `review_model` to any model ID supported by `droid exec --model`. A few common choices:
+The default models (`gpt-5.6-sol` for `deep`, `glm-5.2` for `shallow`) are managed by Factory and may change over time. To pin a specific model regardless of the depth preset, set `review_model` to any model ID supported by `droid exec --model`. A few common choices:
 
 - `claude-opus-4-7`
 - `claude-sonnet-4-6`
 - `claude-haiku-4-5`
+- `gpt-5.6-sol`
 - `gpt-5.5`
 - `gpt-5.5-pro`
 - `gpt-5.3-codex`
+- `glm-5.2`
 - `kimi-k2.6`
 
 See the [CLI reference](https://docs.factory.ai/reference/cli-reference#available-models) for the canonical, up-to-date list.
