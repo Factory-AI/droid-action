@@ -1,0 +1,37 @@
+src/tag/commands/security-review.ts
+  08cb23b42afc8ce7 19,159-167,169,171-174,181-182
+  78e2b4603449f7ff 112-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "d91156e5aaf49047db5caf1279bab64bdcdd19d0",
+  "prompts": {
+    "08cb23b42afc8ce7": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "c4776593-a880-4713-9475-6962f69754f4",
+        "model": "auto"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 20,
+      "total_deletions": 7,
+      "accepted_lines": 83,
+      "overriden_lines": 1
+    },
+    "78e2b4603449f7ff": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "e8f7e191-7267-414a-89cb-2d8d1880e5be",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1399,
+      "overriden_lines": 0
+    }
+  }
+}
