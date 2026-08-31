@@ -1,0 +1,23 @@
+src/github/operations/comments/common.ts
+  50fcb6948d4b8282 4,7-8,35-37,41-42,45-47,49-50,54,59,62-63,85-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "4d5f154bdd6ead74c2cc79e64fdfc9f1638aab38",
+  "prompts": {
+    "50fcb6948d4b8282": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "f1775c06-cf38-490d-9450-331abe0aeefe",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Andrew Seo",
+      "messages": [],
+      "total_additions": 28,
+      "total_deletions": 13,
+      "accepted_lines": 20,
+      "overriden_lines": 1
+    }
+  }
+}
