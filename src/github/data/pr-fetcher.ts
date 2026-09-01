@@ -11,6 +11,8 @@ export type PRBranchData = {
   headRefOid: string;
   title: string;
   body: string;
+  isCrossRepository: boolean;
+  headRepositoryNameWithOwner: string | null;
 };
 
 type PullRequestQueryResponse = {
@@ -56,6 +58,9 @@ export async function fetchPRBranchData({
       headRefOid: pullRequest.headRefOid,
       title: pullRequest.title,
       body: pullRequest.body ?? "",
+      isCrossRepository: pullRequest.isCrossRepository,
+      headRepositoryNameWithOwner:
+        pullRequest.headRepository?.nameWithOwner ?? null,
     };
   } catch (error) {
     console.error(`Failed to fetch PR branch data:`, error);

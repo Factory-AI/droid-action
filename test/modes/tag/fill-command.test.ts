@@ -42,6 +42,8 @@ describe("prepareFillMode", () => {
       headRefOid: MOCK_PR_DATA.headRefOid,
       title: "Test PR",
       body: "Test description",
+      isCrossRepository: false,
+      headRepositoryNameWithOwner: null,
     });
 
     promptSpy = spyOn(promptModule, "createPrompt").mockResolvedValue();

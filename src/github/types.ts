@@ -57,6 +57,10 @@ export type GitHubPullRequest = {
   baseRefName: string;
   headRefName: string;
   headRefOid: string;
+  isCrossRepository: boolean;
+  headRepository?: {
+    nameWithOwner: string;
+  } | null;
   createdAt: string;
   additions: number;
   deletions: number;

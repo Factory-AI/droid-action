@@ -1,0 +1,24 @@
+# Variant: CI/CD variables that are not named FACTORY_API_KEY / GITLAB_TOKEN
+#
+# Drop at `factory/droid-review.yml` (replacing the default example) when
+# your project already stores these credentials under different names.
+#
+# Mapping only works when the two names DIFFER. Never write
+# `GITLAB_TOKEN: $GITLAB_TOKEN`: GitLab treats a variable that references
+# itself as a circular reference, leaves it unexpanded, and the job
+# receives the literal string `$GITLAB_TOKEN`. Variables that already have
+# the expected names need no `variables:` block at all — every job
+# inherits them.
+
+include:
+  - project: "factory-components/droid-action"
+    ref: main
+    file: "/templates/droid-review.yml"
+    inputs:
+      automatic_review: "true"
+      review_depth: "deep"
+
+droid-review:
+  variables:
+    FACTORY_API_KEY: $FACTORY_AI_KEY_SHARED
+    GITLAB_TOKEN: $DROID_REVIEW_BOT_TOKEN

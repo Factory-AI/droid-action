@@ -61,6 +61,7 @@ async function run() {
     console.log(
       `Checking out PR #${context.entityNumber} branch for diff computation...`,
     );
+    let checkoutStrategy = "branch";
     try {
       await retryWithBackoff(
         async () => {
@@ -68,14 +69,35 @@ async function run() {
             encoding: "utf8",
             stdio: "pipe",
           });
-          execSync(`gh pr checkout ${context.entityNumber}`, {
-            encoding: "utf8",
-            stdio: "pipe",
-            env: { ...process.env, GH_TOKEN: githubToken },
-          });
-          console.log(
-            `Successfully checked out PR branch: ${execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf8" }).trim()}`,
-          );
+
+          // For fork PRs, gh pr checkout fails when the token is scoped only to the base repo
+          // Fall back to fetching refs/pull/N/head and checking out the specific SHA
+          if (prData.isCrossRepository) {
+            console.log(
+              `PR #${context.entityNumber} is from fork (${prData.headRepositoryNameWithOwner}), using refs/pull checkout`,
+            );
+            execSync(
+              `git fetch origin pull/${context.entityNumber}/head:refs/remotes/pr/${context.entityNumber}`,
+              { encoding: "utf8", stdio: "pipe" },
+            );
+            execSync(`git checkout --detach ${prData.headRefOid}`, {
+              encoding: "utf8",
+              stdio: "pipe",
+            });
+            checkoutStrategy = "fork-refs-pull";
+            console.log(
+              `Successfully checked out fork PR at SHA ${prData.headRefOid}`,
+            );
+          } else {
+            execSync(`gh pr checkout ${context.entityNumber}`, {
+              encoding: "utf8",
+              stdio: "pipe",
+              env: { ...process.env, GH_TOKEN: githubToken },
+            });
+            console.log(
+              `Successfully checked out PR branch: ${execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf8" }).trim()}`,
+            );
+          }
         },
         { maxAttempts: 3, initialDelayMs: 3000, maxDelayMs: 15000 },
       );
@@ -84,6 +106,13 @@ async function run() {
       throw new Error(
         `Failed to checkout PR #${context.entityNumber} branch for review`,
       );
+    }
+
+    // Output telemetry for fork detection and checkout strategy
+    core.setOutput("is_fork_pr", prData.isCrossRepository.toString());
+    core.setOutput("checkout_strategy", checkoutStrategy);
+    if (prData.isCrossRepository && prData.headRepositoryNameWithOwner) {
+      core.setOutput("fork_repository", prData.headRepositoryNameWithOwner);
     }
 
     const reviewArtifacts = await computeReviewArtifacts({

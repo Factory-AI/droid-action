@@ -1,0 +1,27 @@
+# Variant: only review the parts of a monorepo that matter
+#
+# Drop at `factory/droid-review.yml`. Overriding `rules:` replaces the
+# component's own rule, so the `merge_request_event` condition has to be
+# repeated here — without it the job would try to run on branch pipelines,
+# where there is no MR to review and prepare exits as a no-op.
+#
+# `stage:` must name a stage that exists in your `.gitlab-ci.yml`
+# `stages:` list. `review` below is an example; the component defaults to
+# `test`.
+
+include:
+  - project: "factory-components/droid-action"
+    ref: main
+    file: "/templates/droid-review.yml"
+    inputs:
+      automatic_review: "true"
+      review_depth: "deep"
+      stage: "review"
+
+droid-review:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "services/api/**/*"
+        - "services/worker/**/*"
+        - "packages/shared/**/*"
