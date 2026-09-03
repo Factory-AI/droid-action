@@ -29,7 +29,11 @@ export async function prepareReviewValidatorMode({
   if (!isEntityContext(context) || !context.isPR) {
     throw new Error("review validator mode requires pull request context");
   }
-  assertDroidRunType(runType, DroidRunType.Review);
+  assertDroidRunType(runType, [
+    DroidRunType.Default,
+    DroidRunType.Review,
+    DroidRunType.SecurityReview,
+  ]);
 
   const prData = await fetchPRBranchData({
     octokits: octokit,

@@ -4,6 +4,7 @@ import {
   DroidRunType,
   getPrValidationRunType,
   parseDroidRunType,
+  parsePrValidationRunType,
   resolveTagRunType,
 } from "../src/run-type";
 
@@ -58,5 +59,16 @@ describe("DroidRunType", () => {
     );
     expect(getPrValidationRunType(DroidRunType.Fill)).toBeUndefined();
     expect(getPrValidationRunType(DroidRunType.CiSteward)).toBeUndefined();
+  });
+
+  it("parses and narrows PR validation run types", () => {
+    expect(parsePrValidationRunType(DroidRunType.Review)).toBe(
+      DroidRunType.Review,
+    );
+    expect(parsePrValidationRunType(DroidRunType.SecurityReview)).toBe(
+      DroidRunType.SecurityReview,
+    );
+    expect(parsePrValidationRunType(DroidRunType.Fill)).toBeUndefined();
+    expect(parsePrValidationRunType("unknown")).toBeUndefined();
   });
 });

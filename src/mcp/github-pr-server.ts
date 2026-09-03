@@ -5,6 +5,11 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { Octokit } from "@octokit/rest";
 import { GITHUB_API_URL } from "../github/api/config";
+import { prepareDroidCommentBody } from "../github/operations/comments/common";
+import {
+  parsePrValidationRunType,
+  type PrValidationRunType,
+} from "../run-type";
 
 const PLACEHOLDER_REGEX = /@droid\s+fill(?:\s+description)?/gi;
 const PLACEHOLDER_LINE_REGEX =
@@ -197,6 +202,7 @@ export async function submitReviewWithComments({
   prNumber,
   body,
   comments,
+  runType,
   octokit,
 }: {
   owner: string;
@@ -204,15 +210,25 @@ export async function submitReviewWithComments({
   prNumber: number;
   body?: string;
   comments?: ReviewComment[];
+  runType?: PrValidationRunType;
   octokit: OctokitLike;
 }): Promise<number | undefined> {
+  const preparedComments = runType
+    ? comments?.map((comment) => ({
+        ...comment,
+        body: prepareDroidCommentBody(comment.body, runType, "inline-comment"),
+      }))
+    : comments;
+
   const response = await octokit.rest.pulls.createReview({
     owner,
     repo,
     pull_number: prNumber,
     event: "COMMENT",
     ...(body ? { body } : {}),
-    ...(comments && comments.length > 0 ? { comments } : {}),
+    ...(preparedComments && preparedComments.length > 0
+      ? { comments: preparedComments }
+      : {}),
   });
 
   return response.data.id;
@@ -661,12 +677,16 @@ export function createGitHubPRServer({
     },
     async ({ pr_number, body, comments }) => {
       try {
+        const runType = parsePrValidationRunType(
+          process.env.DROID_EXEC_RUN_TYPE,
+        );
         const reviewId = await submitReviewWithComments({
           owner,
           repo,
           prNumber: pr_number,
           body,
           comments,
+          runType,
           octokit,
         });
 

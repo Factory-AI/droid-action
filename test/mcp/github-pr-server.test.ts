@@ -8,6 +8,7 @@ import {
   resolveReviewThread,
   type OctokitLike,
 } from "../../src/mcp/github-pr-server";
+import { DroidRunType } from "../../src/run-type";
 
 function createOctokitStub() {
   const calls = {
@@ -167,6 +168,35 @@ describe("github-pr-server helpers", () => {
       comments: [{ path: "file.ts", position: 3, body: "issue" }],
     });
     expect(reviewId).toBe(9001);
+  });
+
+  it("adds the run type marker to batched inline comments", async () => {
+    const { client, calls } = createOctokitStub();
+
+    await submitReviewWithComments({
+      owner: "o",
+      repo: "r",
+      prNumber: 7,
+      comments: [
+        {
+          path: "file.ts",
+          position: 3,
+          body: "[P1] [security] issue",
+        },
+      ],
+      runType: DroidRunType.SecurityReview,
+      octokit: client,
+    });
+
+    expect(calls.createReview[0][0].comments).toEqual([
+      {
+        path: "file.ts",
+        position: 3,
+        body:
+          "[P1] [security] issue\n\n" +
+          "<!-- factory-pr-inline-comment: run-type=droid-security-review -->",
+      },
+    ]);
   });
 
   it("deletes issue and review comments", async () => {

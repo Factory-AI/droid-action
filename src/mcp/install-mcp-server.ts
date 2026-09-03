@@ -5,6 +5,7 @@ import { GITHUB_API_URL, GITHUB_SERVER_URL } from "../github/api/config";
 import type { GitHubContext } from "../github/context";
 import { isEntityContext } from "../github/context";
 import type { DroidRunType } from "../run-type";
+import { parsePrCommentKind } from "../github/operations/comments/common";
 import { Octokit } from "@octokit/rest";
 
 type PrepareConfigParams = {
@@ -98,6 +99,7 @@ export async function prepareMcpTools(
         : undefined) ||
       stewardPrNumber ||
       "";
+    const prCommentKind = parsePrCommentKind(process.env.DROID_PR_COMMENT_KIND);
 
     const baseMcpTools: { mcpServers: Record<string, unknown> } = {
       mcpServers: {},
@@ -112,6 +114,7 @@ export async function prepareMcpTools(
         REPO_NAME: repo,
         ...(droidCommentId && { DROID_COMMENT_ID: droidCommentId }),
         ...(runType && { DROID_EXEC_RUN_TYPE: runType }),
+        ...(prCommentKind && { DROID_PR_COMMENT_KIND: prCommentKind }),
         ...(stewardPrNumber && { STEWARD_PR_NUMBER: stewardPrNumber }),
         ...(process.env.STEWARD_RUN_ID && {
           STEWARD_RUN_ID: process.env.STEWARD_RUN_ID,
@@ -137,6 +140,7 @@ export async function prepareMcpTools(
           REPO_OWNER: owner,
           REPO_NAME: repo,
           PR_NUMBER: pullRequestNumber,
+          ...(runType && { DROID_EXEC_RUN_TYPE: runType }),
           GITHUB_API_URL: GITHUB_API_URL,
         },
       };
@@ -183,6 +187,7 @@ export async function prepareMcpTools(
           REPO_OWNER: owner,
           REPO_NAME: repo,
           PR_NUMBER: context.entityNumber?.toString() || "",
+          ...(runType && { DROID_EXEC_RUN_TYPE: runType }),
         },
       };
     }

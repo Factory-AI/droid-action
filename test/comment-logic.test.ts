@@ -3,7 +3,7 @@ import {
   updateCommentBody,
   type CommentUpdateInput,
 } from "../src/github/operations/comment-logic";
-import { createPrValidationMarker } from "../src/github/operations/comments/common";
+import { createPrCommentMarker } from "../src/github/operations/comments/common";
 import { DroidRunType } from "../src/run-type";
 
 describe("updateCommentBody", () => {
@@ -70,7 +70,10 @@ describe("updateCommentBody", () => {
     });
 
     it("preserves the hidden PR validation marker in the final summary", () => {
-      const marker = createPrValidationMarker(DroidRunType.Review);
+      const marker = createPrCommentMarker(
+        "issue-comment",
+        DroidRunType.Review,
+      );
       const input = {
         ...baseInput,
         currentBody: `Droid is reviewing code…\n\n${marker}`,
