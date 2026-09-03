@@ -1,10 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import {
-  appendPrValidationMarker,
+  appendPrCommentMarker,
   createBranchLink,
   createCommentBody,
   createJobRunLink,
-  createPrValidationMarker,
+  createPrCommentMarker,
+  parsePrCommentKind,
   prepareDroidCommentBody,
 } from "../../src/github/operations/comments/common";
 import { GITHUB_SERVER_URL } from "../../src/github/api/config";
@@ -49,26 +50,34 @@ describe("comments common helpers", () => {
 
   it("adds the run type marker to PR validation tracking comments", () => {
     const jobLink = createJobRunLink("factory", "droid", "run-102");
-    const defaultMarker = createPrValidationMarker(DroidRunType.Default);
-    const reviewMarker = createPrValidationMarker(DroidRunType.Review);
-    const securityReviewMarker = createPrValidationMarker(
+    const defaultMarker = createPrCommentMarker(
+      "issue-comment",
+      DroidRunType.Default,
+    );
+    const reviewMarker = createPrCommentMarker(
+      "issue-comment",
+      DroidRunType.Review,
+    );
+    const securityReviewMarker = createPrCommentMarker(
+      "issue-comment",
       DroidRunType.SecurityReview,
     );
-    const securityScanMarker = createPrValidationMarker(
+    const securityScanMarker = createPrCommentMarker(
+      "issue-comment",
       DroidRunType.SecurityScan,
     );
 
     expect(defaultMarker).toBe(
-      "<!-- factory-pr-validation: run-type=droid-default -->",
+      "<!-- factory-pr-issue-comment: run-type=droid-default -->",
     );
     expect(reviewMarker).toBe(
-      "<!-- factory-pr-validation: run-type=droid-review -->",
+      "<!-- factory-pr-issue-comment: run-type=droid-review -->",
     );
     expect(securityReviewMarker).toBe(
-      "<!-- factory-pr-validation: run-type=droid-security-review -->",
+      "<!-- factory-pr-issue-comment: run-type=droid-security-review -->",
     );
     expect(securityScanMarker).toBe(
-      "<!-- factory-pr-validation: run-type=droid-security-scan -->",
+      "<!-- factory-pr-issue-comment: run-type=droid-security-scan -->",
     );
     expect(
       createCommentBody(jobLink, "", "default", DroidRunType.Default),
@@ -82,19 +91,46 @@ describe("comments common helpers", () => {
     expect(
       createCommentBody(jobLink, "", "security", DroidRunType.SecurityScan),
     ).toEndWith(securityScanMarker);
-    expect(createCommentBody(jobLink)).not.toContain("factory-pr-validation");
+    expect(createCommentBody(jobLink)).not.toContain("factory-pr-");
   });
 
   it("restores the PR validation marker after sanitizing comment updates", () => {
-    const marker = createPrValidationMarker(DroidRunType.SecurityReview);
+    const marker = createPrCommentMarker(
+      "issue-comment",
+      DroidRunType.SecurityReview,
+    );
     const body = prepareDroidCommentBody(
       `Review complete\n\n${marker}`,
       DroidRunType.SecurityReview,
     );
 
     expect(body).toBe(`Review complete\n\n${marker}`);
-    expect(appendPrValidationMarker(body, DroidRunType.SecurityReview)).toBe(
-      body,
+    expect(
+      appendPrCommentMarker(body, "issue-comment", DroidRunType.SecurityReview),
+    ).toBe(body);
+  });
+
+  it("creates a distinct marker for inline review comments", () => {
+    const marker = createPrCommentMarker(
+      "inline-comment",
+      DroidRunType.SecurityReview,
     );
+
+    expect(marker).toBe(
+      "<!-- factory-pr-inline-comment: run-type=droid-security-review -->",
+    );
+    expect(
+      prepareDroidCommentBody(
+        `[P1] [security] Finding\n\nDetails\n\n${marker}`,
+        DroidRunType.SecurityReview,
+        "inline-comment",
+      ),
+    ).toBe(`[P1] [security] Finding\n\nDetails\n\n${marker}`);
+  });
+
+  it("parses only known PR comment kinds", () => {
+    expect(parsePrCommentKind("issue-comment")).toBe("issue-comment");
+    expect(parsePrCommentKind("inline-comment")).toBe("inline-comment");
+    expect(parsePrCommentKind("review")).toBeUndefined();
   });
 });

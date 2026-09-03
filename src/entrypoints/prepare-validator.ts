@@ -6,7 +6,7 @@ import { setupGitHubToken } from "../github/token";
 import { createOctokit } from "../github/api/client";
 import { parseGitHubContext, isEntityContext } from "../github/context";
 import { prepareReviewValidatorMode } from "../tag/commands/review-validator";
-import { DroidRunType, setDroidRunType } from "../run-type";
+import { DroidRunType, parseDroidRunType, setDroidRunType } from "../run-type";
 
 async function run() {
   try {
@@ -15,7 +15,8 @@ async function run() {
     if (!isEntityContext(context) || !context.isPR) {
       throw new Error("prepare-validator requires a pull request context");
     }
-    const runType = DroidRunType.Review;
+    const runType =
+      parseDroidRunType(process.env.DROID_EXEC_RUN_TYPE) ?? DroidRunType.Review;
     setDroidRunType(runType);
 
     // Validate that Pass 1 produced a valid candidates JSON file.

@@ -2,8 +2,21 @@ import { GITHUB_SERVER_URL } from "../../api/config";
 import { sanitizeContent } from "../../utils/sanitizer";
 import type { PrValidationRunType } from "../../../run-type";
 
-export function createPrValidationMarker(runType: PrValidationRunType): string {
-  return `<!-- factory-pr-validation: run-type=${runType} -->`;
+export type PrCommentKind = "issue-comment" | "inline-comment";
+
+export function parsePrCommentKind(
+  value: string | undefined,
+): PrCommentKind | undefined {
+  return value === "issue-comment" || value === "inline-comment"
+    ? value
+    : undefined;
+}
+
+export function createPrCommentMarker(
+  kind: PrCommentKind,
+  runType: PrValidationRunType,
+): string {
+  return `<!-- factory-pr-${kind}: run-type=${runType} -->`;
 }
 
 export function createJobRunLink(
@@ -26,11 +39,12 @@ export function createBranchLink(
 
 export type CommentType = "default" | "security" | "review_and_security";
 
-export function appendPrValidationMarker(
+export function appendPrCommentMarker(
   content: string,
+  kind: PrCommentKind,
   runType: PrValidationRunType,
 ): string {
-  const marker = createPrValidationMarker(runType);
+  const marker = createPrCommentMarker(kind, runType);
   if (content.includes(marker)) {
     return content;
   }
@@ -41,10 +55,11 @@ export function appendPrValidationMarker(
 export function prepareDroidCommentBody(
   content: string,
   prValidationRunType?: PrValidationRunType,
+  kind: PrCommentKind = "issue-comment",
 ): string {
   const sanitized = sanitizeContent(content);
   return prValidationRunType
-    ? appendPrValidationMarker(sanitized, prValidationRunType)
+    ? appendPrCommentMarker(sanitized, kind, prValidationRunType)
     : sanitized;
 }
 
@@ -53,6 +68,7 @@ export function createCommentBody(
   branchLink: string = "",
   type: CommentType = "default",
   prValidationRunType?: PrValidationRunType,
+  kind: PrCommentKind = "issue-comment",
 ): string {
   let message: string;
   if (type === "review_and_security") {
@@ -68,6 +84,6 @@ export function createCommentBody(
 ${jobRunLink}${branchLink}`;
 
   return prValidationRunType
-    ? appendPrValidationMarker(body, prValidationRunType)
+    ? appendPrCommentMarker(body, kind, prValidationRunType)
     : body;
 }

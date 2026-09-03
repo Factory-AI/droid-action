@@ -51,6 +51,12 @@ export function getPrValidationRunType(
     : undefined;
 }
 
+export function parsePrValidationRunType(
+  value: string | undefined,
+): PrValidationRunType | undefined {
+  return getPrValidationRunType(parseDroidRunType(value));
+}
+
 export function resolveTagRunType({
   automaticReview,
   automaticSecurityReview,
