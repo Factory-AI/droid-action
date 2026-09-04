@@ -1,0 +1,29 @@
+src/github/operations/comments/common.ts
+  81431eddb616b684 5-17,19,42,44,47,58,62,71,87
+src/run-type.ts
+  81431eddb616b684 54-59
+test/github/create-initial-comment.test.ts
+  81431eddb616b684 1-42,44-103
+src/github/operations/comments/create-initial.ts
+  81431eddb616b684 13,22,35-38,42,59,68,76,86,88,95,102,114,119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "7efc4848e5ddab6f8155b3b6ac9b51779aaf1b1c",
+  "prompts": {
+    "81431eddb616b684": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "ad520b59-0005-414d-9777-5d683a378dd8",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Andrew Seo",
+      "messages": [],
+      "total_additions": 151,
+      "total_deletions": 18,
+      "accepted_lines": 145,
+      "overriden_lines": 1
+    }
+  }
+}
