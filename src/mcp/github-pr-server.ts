@@ -5,6 +5,10 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { Octokit } from "@octokit/rest";
 import { GITHUB_API_URL } from "../github/api/config";
+import {
+  createGitHubCommentReview,
+  type GitHubReviewCommentPayload,
+} from "../github/operations/reviews";
 
 const PLACEHOLDER_REGEX = /@droid\s+fill(?:\s+description)?/gi;
 const PLACEHOLDER_LINE_REGEX =
@@ -181,15 +185,194 @@ export async function listReviewAndIssueComments({
   };
 }
 
-type ReviewComment = {
-  path: string;
-  body: string;
-  line?: number;
-  side?: string;
-  start_line?: number;
-  start_side?: string;
-  position?: number;
+export type ReviewComment = GitHubReviewCommentPayload;
+
+/**
+ * Upper bound on `submit_review` calls that reach GitHub in one server
+ * process, successful or not. A failed post is not treated as "submitted"
+ * so a bad line anchor can be corrected and retried, which is why failures
+ * need their own ceiling.
+ */
+export const MAX_SUBMIT_REVIEW_ATTEMPTS = 5;
+
+/** Identity of an inline comment for duplicate detection. */
+export function reviewCommentKey(comment: ReviewComment): string {
+  return JSON.stringify([
+    comment.path,
+    comment.side ?? "RIGHT",
+    comment.line ?? null,
+    comment.body.trim(),
+  ]);
+}
+
+function pluralize(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+export type SubmittedReview = {
+  reviewId: number | undefined;
+  /** Keys (see {@link reviewCommentKey}) of every comment the review carried. */
+  commentKeys: Set<string>;
+  commentCount: number;
 };
+
+export type SubmitReviewGuard = {
+  /** The review this process has already posted, if any. */
+  readonly submitted: SubmittedReview | null;
+  /**
+   * Message to return instead of calling GitHub, or null when the call may
+   * proceed. Throws when the process has run out of attempts.
+   */
+  refusal(input: {
+    prNumber: number;
+    comments?: ReviewComment[];
+  }): string | null;
+  /** Atomically reserves one GitHub submission attempt. */
+  beginAttempt(): void;
+  recordSuccess(input: {
+    reviewId: number | undefined;
+    comments?: ReviewComment[];
+  }): void;
+  recordFailure(): void;
+};
+
+/**
+ * Makes `submit_review` idempotent for the lifetime of the MCP server
+ * process, which is exactly one `droid exec` run. Once one review has been
+ * created every further call is answered from memory with an explicit
+ * "already submitted" result and never reaches GitHub.
+ */
+export function createSubmitReviewGuard({
+  maxAttempts = MAX_SUBMIT_REVIEW_ATTEMPTS,
+}: { maxAttempts?: number } = {}): SubmitReviewGuard {
+  let submitted: SubmittedReview | null = null;
+  let attempts = 0;
+  let inFlight = false;
+
+  return {
+    get submitted() {
+      return submitted;
+    },
+
+    refusal() {
+      if (submitted) {
+        const reviewRef =
+          submitted.reviewId !== undefined
+            ? String(submitted.reviewId)
+            : "unknown";
+        return (
+          `A review with these ${submitted.commentCount} comments was already submitted as review ${reviewRef}. ` +
+          "Do not call submit_review again."
+        );
+      }
+
+      if (inFlight) {
+        return (
+          "A review submission is already in progress. " +
+          "Do not call submit_review again."
+        );
+      }
+
+      if (attempts >= maxAttempts) {
+        throw new Error(
+          `submit_review has been attempted ${pluralize(attempts, "time")} in this run without GitHub accepting the review, which is the maximum. ` +
+            "Refusing to call GitHub again. Do not call submit_review again; report the failure in the tracking comment and finish.",
+        );
+      }
+
+      return null;
+    },
+
+    beginAttempt() {
+      if (inFlight) {
+        throw new Error("A review submission is already in progress");
+      }
+      inFlight = true;
+      attempts += 1;
+    },
+
+    recordSuccess({ reviewId, comments }) {
+      inFlight = false;
+      const commentKeys = new Set<string>();
+      for (const comment of comments ?? []) {
+        commentKeys.add(reviewCommentKey(comment));
+      }
+      submitted = {
+        reviewId,
+        commentKeys,
+        commentCount: comments?.length ?? 0,
+      };
+    },
+
+    recordFailure() {
+      inFlight = false;
+    },
+  };
+}
+
+export type SubmitReviewOutcome = {
+  text: string;
+  /** True when the call was answered from memory or refused without posting. */
+  isError: boolean;
+};
+
+export async function handleSubmitReview({
+  owner,
+  repo,
+  prNumber,
+  body,
+  comments,
+  octokit,
+  guard,
+}: {
+  owner: string;
+  repo: string;
+  prNumber: number;
+  body?: string;
+  comments?: ReviewComment[];
+  octokit: OctokitLike;
+  guard: SubmitReviewGuard;
+}): Promise<SubmitReviewOutcome> {
+  const refusal = guard.refusal({ prNumber, comments });
+  if (refusal) {
+    return { text: refusal, isError: true };
+  }
+
+  const hasBody = Boolean(body?.trim());
+  const hasComments = (comments?.length ?? 0) > 0;
+  if (!hasBody && !hasComments) {
+    return {
+      text:
+        "submit_review was called with no comments and no body, so there is nothing to post. " +
+        "If there are no approved findings, do not call submit_review; update the tracking comment and finish.",
+      isError: true,
+    };
+  }
+
+  let reviewId: number | undefined;
+  guard.beginAttempt();
+  try {
+    reviewId = await submitReviewWithComments({
+      owner,
+      repo,
+      prNumber,
+      body,
+      comments,
+      octokit,
+    });
+  } catch (error) {
+    guard.recordFailure();
+    throw error;
+  }
+  guard.recordSuccess({ reviewId, comments });
+
+  return {
+    text:
+      `Submitted review${reviewId !== undefined ? ` ${reviewId}` : ""} for PR #${prNumber} with ${pluralize(comments?.length ?? 0, "inline comment")}. ` +
+      "The review is posted. Do not call submit_review again.",
+    isError: false,
+  };
+}
 
 export async function submitReviewWithComments({
   owner,
@@ -206,16 +389,14 @@ export async function submitReviewWithComments({
   comments?: ReviewComment[];
   octokit: OctokitLike;
 }): Promise<number | undefined> {
-  const response = await octokit.rest.pulls.createReview({
+  return createGitHubCommentReview({
+    client: octokit,
     owner,
     repo,
-    pull_number: prNumber,
-    event: "COMMENT",
-    ...(body ? { body } : {}),
-    ...(comments && comments.length > 0 ? { comments } : {}),
+    prNumber,
+    body,
+    comments,
   });
-
-  return response.data.id;
 }
 
 export async function deletePullRequestComment({
@@ -442,12 +623,14 @@ export interface ServerDependencies {
   owner: string;
   repo: string;
   octokit: OctokitLike;
+  submitReviewGuard?: SubmitReviewGuard;
 }
 
 export function createGitHubPRServer({
   owner,
   repo,
   octokit,
+  submitReviewGuard = createSubmitReviewGuard(),
 }: ServerDependencies) {
   const server = new McpServer({
     name: "GitHub PR Server",
@@ -614,7 +797,9 @@ export function createGitHubPRServer({
   server.tool(
     "submit_review",
     "Submit a PR review with all inline comments batched into a single review. " +
-      "Use line/side to anchor comments to specific lines in the diff.",
+      "Use line/side to anchor comments to specific lines in the diff. " +
+      "This tool posts exactly one review per run: once a call succeeds, every " +
+      "further call is refused without posting anything.",
     {
       pr_number: z.number().int().describe("PR number to review"),
       body: z.string().describe("Optional summary body").optional(),
@@ -661,22 +846,24 @@ export function createGitHubPRServer({
     },
     async ({ pr_number, body, comments }) => {
       try {
-        const reviewId = await submitReviewWithComments({
+        const outcome = await handleSubmitReview({
           owner,
           repo,
           prNumber: pr_number,
           body,
           comments,
           octokit,
+          guard: submitReviewGuard,
         });
 
         return {
           content: [
             {
               type: "text",
-              text: `Submitted review${reviewId ? ` ${reviewId}` : ""} for PR #${pr_number}`,
+              text: outcome.text,
             },
           ],
+          ...(outcome.isError ? { error: outcome.text, isError: true } : {}),
         };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

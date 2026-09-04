@@ -69,4 +69,25 @@ describe("retryWithBackoff", () => {
       | undefined;
     expect(firstCall?.[1]).toBe(5);
   });
+
+  it("rethrows immediately, without backoff, when shouldRetry returns false", async () => {
+    let attempts = 0;
+
+    await expect(
+      retryWithBackoff(
+        async () => {
+          attempts += 1;
+          throw new Error(attempts === 1 ? "fatal" : "transient");
+        },
+        {
+          maxAttempts: 3,
+          initialDelayMs: 5,
+          shouldRetry: (error) => error.message !== "fatal",
+        },
+      ),
+    ).rejects.toThrow("fatal");
+
+    expect(attempts).toBe(1);
+    expect(timeoutSpy).not.toHaveBeenCalled();
+  });
 });

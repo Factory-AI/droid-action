@@ -1,4 +1,5 @@
 import { GITHUB_SERVER_URL } from "../api/config";
+import type { ReviewPostOutcome } from "../../core/review/tracking/types";
 
 export type ExecutionDetails = {
   cost_usd?: number;
@@ -18,6 +19,7 @@ export type CommentUpdateInput = {
   errorDetails?: string;
   notice?: string;
   securityReviewRan?: boolean;
+  review?: ReviewPostOutcome | null;
 };
 
 const MODEL_POLICY_ERROR_PATTERN =
@@ -102,6 +104,7 @@ export function updateCommentBody(input: CommentUpdateInput): string {
     errorDetails,
     notice,
     securityReviewRan,
+    review,
   } = input;
 
   // Extract content from the original comment body
@@ -256,6 +259,45 @@ export function updateCommentBody(input: CommentUpdateInput): string {
 
   if (securityReviewRan && !bodyContent.includes("security%20review-ran")) {
     bodyContent = `${SECURITY_REVIEW_BADGE}\n\n${bodyContent}`.trim();
+  }
+
+  if (review) {
+    const reviewContent: string[] = [];
+    const summary = review.summaryBody?.trim();
+    if (summary) reviewContent.push(summary);
+
+    const counts: string[] = [];
+    if (typeof review.posted === "number") {
+      counts.push(
+        `${review.posted} inline ${review.posted === 1 ? "comment" : "comments"} posted`,
+      );
+    }
+    if (
+      typeof review.fallbackPosted === "number" &&
+      review.fallbackPosted > 0
+    ) {
+      counts.push(
+        `${review.fallbackPosted} ${
+          review.fallbackPosted === 1 ? "finding" : "findings"
+        } posted in the review body`,
+      );
+    }
+    if (typeof review.failed === "number" && review.failed > 0) {
+      counts.push(
+        `${review.failed} ${review.failed === 1 ? "finding" : "findings"} could not be posted`,
+      );
+    }
+    if (typeof review.skipped === "number" && review.skipped > 0) {
+      counts.push(`${review.skipped} skipped`);
+    }
+    if (counts.length > 0) reviewContent.push(counts.join(" • "));
+
+    if (reviewContent.length > 0) {
+      bodyContent = reviewContent.join("\n\n");
+      if (securityReviewRan && !bodyContent.includes("security%20review-ran")) {
+        bodyContent = `${SECURITY_REVIEW_BADGE}\n\n${bodyContent}`;
+      }
+    }
   }
 
   // Add the cleaned body content

@@ -27,7 +27,7 @@ export const GITLAB_TERMINOLOGY: ReviewTerminology = {
   pathFieldDescription:
     'Relative file path (use the new_path from the diff, e.g., "src/index.ts")',
   lineFieldDescription:
-    "Target line number in the new file (single-line) or end line number (multi-line). Must be ≥ 0. " +
+    "Target line number in the new file (single-line) or end line number (multi-line). Must be a positive integer. " +
     "Must be a line that appears in the MR diff (an added or context line inside a hunk); " +
     "GitLab cannot anchor inline comments to lines outside the diff, so a finding about " +
     "untouched code should anchor to the nearest related changed line instead.",

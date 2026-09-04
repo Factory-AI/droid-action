@@ -115,6 +115,14 @@ inputs:
     description: "Path to write review validated JSON (pass 2 of the two-pass review)."
     required: false
     default: "${{ runner.temp }}/droid-prompts/review_validated.json"
+  review_candidates_max_turns:
+    description: "Maximum agent turns for review candidate generation (pass 1). Empty disables the cap."
+    required: false
+    default: "100"
+  review_validator_max_turns:
+    description: "Maximum agent turns for review validation (pass 2). Empty disables the cap."
+    required: false
+    default: "40"
   fill_model:
     description: "Override the model used for PR description fill (e.g., 'claude-sonnet-4-5-20250929', 'gpt-5.1-codex'). Only applies to fill flows."
     required: false
@@ -327,6 +335,7 @@ runs:
         INPUT_PATH_TO_DROID_EXECUTABLE: ${{ inputs.path_to_droid_executable }}
         INPUT_PATH_TO_BUN_EXECUTABLE: ${{ inputs.path_to_bun_executable }}
         INPUT_SHOW_FULL_OUTPUT: ${{ inputs.show_full_output }}
+        INPUT_MAX_TURNS: ${{ steps.prepare.outputs.run_code_review == 'true' && inputs.review_candidates_max_turns || '' }}
 
         # Model configuration
         GITHUB_TOKEN: ${{ steps.prepare.outputs.GITHUB_TOKEN }}
@@ -383,12 +392,25 @@ runs:
         INPUT_PATH_TO_DROID_EXECUTABLE: ${{ inputs.path_to_droid_executable }}
         INPUT_PATH_TO_BUN_EXECUTABLE: ${{ inputs.path_to_bun_executable }}
         INPUT_SHOW_FULL_OUTPUT: ${{ inputs.show_full_output }}
+        INPUT_MAX_TURNS: ${{ inputs.review_validator_max_turns }}
 
         # Model configuration
         GITHUB_TOKEN: ${{ steps.prepare.outputs.GITHUB_TOKEN }}
         NODE_VERSION: ${{ env.NODE_VERSION }}
         DETAILED_PERMISSION_MESSAGES: "1"
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+
+    - name: Post review
+      id: post_review
+      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true' && steps.prepare.outputs.run_code_review == 'true' && steps.prepare_validator.outputs.validator_should_run != 'false' && steps.droid_validator.outputs.conclusion == 'success'
+      shell: bash
+      run: |
+        bun run ${GITHUB_ACTION_PATH}/src/entrypoints/github-post-review.ts
+      env:
+        GITHUB_TOKEN: ${{ steps.prepare.outputs.github_token }}
+        REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
+        REVIEW_DIFF_PATH: ${{ runner.temp }}/droid-prompts/pr.diff
+        REVIEW_POST_RESULTS_PATH: ${{ runner.temp }}/droid-prompts/review_post_results.json
 
     - name: Update comment with job link
       if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true' && steps.prepare.outputs.droid_comment_id && github.event_name != 'workflow_run' && always()
@@ -404,12 +426,14 @@ runs:
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         TRIGGER_COMMENT_ID: ${{ github.event.comment.id }}
         IS_PR: ${{ github.event.issue.pull_request != null || github.event_name == 'pull_request_target' || github.event_name == 'pull_request_review_comment' }}
-        DROID_SUCCESS: ${{ (steps.prepare.outputs.run_code_review == 'true' && ((steps.prepare_validator.outputs.validator_should_run == 'false' && steps.droid.outputs.conclusion == 'success') || (steps.prepare_validator.outputs.validator_should_run != 'false' && steps.droid_validator.outputs.conclusion == 'success'))) || (steps.prepare.outputs.run_code_review != 'true' && steps.droid.outputs.conclusion == 'success') }}
+        DROID_SUCCESS: ${{ (steps.prepare.outputs.run_code_review == 'true' && ((steps.prepare_validator.outputs.validator_should_run == 'false' && steps.droid.outputs.conclusion == 'success') || (steps.prepare_validator.outputs.validator_should_run != 'false' && steps.droid.outputs.conclusion == 'success' && steps.droid_validator.outputs.conclusion == 'success' && steps.post_review.outputs.conclusion == 'success'))) || (steps.prepare.outputs.run_code_review != 'true' && steps.droid.outputs.conclusion == 'success') }}
         TRIGGER_USERNAME: ${{ github.event.comment.user.login || github.event.issue.user.login || github.event.pull_request.user.login || github.event.sender.login || github.triggering_actor || github.actor || '' }}
         PREPARE_SUCCESS: ${{ steps.prepare.outcome == 'success' }}
         PREPARE_ERROR: ${{ steps.prepare.outputs.prepare_error || '' }}
         DROID_ERROR_MESSAGE: ${{ steps.droid.outputs.error_message || '' }}
         DROID_VALIDATOR_ERROR_MESSAGE: ${{ steps.droid_validator.outputs.error_message || '' }}
+        DROID_POST_ERROR_MESSAGE: ${{ steps.post_review.outputs.error_message || '' }}
+        REVIEW_POST_RESULTS_PATH: ${{ runner.temp }}/droid-prompts/review_post_results.json
         MODEL_FALLBACK_NOTE: ${{ steps.prepare.outputs.model_fallback_note || steps.prepare_validator.outputs.model_fallback_note || steps.droid.outputs.model_fallback_note || steps.droid_validator.outputs.model_fallback_note || '' }}
         USE_STICKY_COMMENT: ${{ inputs.use_sticky_comment }}
         TRACK_PROGRESS: ${{ inputs.track_progress }}

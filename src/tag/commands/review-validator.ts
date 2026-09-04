@@ -5,24 +5,22 @@ import type { Octokits } from "../../github/api/client";
 import { fetchPRBranchData } from "../../github/data/pr-fetcher";
 import { createPrompt } from "../../create-prompt";
 import type { ReviewArtifacts } from "../../create-prompt/types";
-import { prepareMcpTools } from "../../mcp/install-mcp-server";
-import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
+import {
+  normalizeDroidArgs,
+  stripToolSelectionArgs,
+} from "../../utils/parse-tools";
 import type { PrepareResult } from "../../prepare/types";
 import { generateReviewValidatorPrompt } from "../../create-prompt/templates/review-validator-prompt";
 import { resolveReviewConfig } from "../../utils/review-depth";
 import { applyModelPolicyFallback } from "../../utils/model-policy";
 
-export async function prepareReviewValidatorMode({
-  context,
-  octokit,
-  githubToken,
-  trackingCommentId,
-}: {
+export async function prepareReviewValidatorMode(options: {
   context: GitHubContext;
   octokit: Octokits;
   githubToken: string;
   trackingCommentId: number;
 }): Promise<PrepareResult> {
+  const { context, octokit, trackingCommentId } = options;
   if (!isEntityContext(context) || !context.isPR) {
     throw new Error("review validator mode requires pull request context");
   }
@@ -66,11 +64,12 @@ export async function prepareReviewValidatorMode({
   core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-review");
 
   const rawUserArgs = process.env.DROID_ARGS || "";
-  const normalizedUserArgs = normalizeDroidArgs(rawUserArgs);
-  const userAllowedMCPTools = parseAllowedTools(normalizedUserArgs).filter(
-    (tool) => tool.startsWith("github_") && tool.includes("___"),
+  const normalizedUserArgs = stripToolSelectionArgs(
+    normalizeDroidArgs(rawUserArgs),
   );
 
+  // Pass 2 only writes review_validated.json. It receives no GitHub mutation
+  // tools; github-post-review.ts performs the sole API write afterwards.
   const baseTools = [
     "Read",
     "Grep",
@@ -80,24 +79,11 @@ export async function prepareReviewValidatorMode({
     "ApplyPatch",
     "Create",
     "Edit",
-    "github_comment___update_droid_comment",
+    "Skill",
   ];
 
-  const validatorTools = ["github_pr___submit_review"];
-
-  const allowedTools = Array.from(
-    new Set([...baseTools, ...validatorTools, ...userAllowedMCPTools]),
-  );
-
-  const mcpTools = await prepareMcpTools({
-    githubToken,
-    owner: context.repository.owner,
-    repo: context.repository.repo,
-    droidCommentId: trackingCommentId.toString(),
-    allowedTools,
-    mode: "tag",
-    context,
-  });
+  const allowedTools = Array.from(new Set(baseTools));
+  const mcpTools = JSON.stringify({ mcpServers: {} });
 
   const droidArgParts: string[] = [];
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);

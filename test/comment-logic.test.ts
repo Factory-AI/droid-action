@@ -14,6 +14,46 @@ describe("updateCommentBody", () => {
     triggerUsername: undefined,
   };
 
+  it("renders the deterministic review summary and posting counts", () => {
+    const result = updateCommentBody({
+      ...baseInput,
+      currentBody: "Droid is reviewing code…",
+      triggerUsername: "reviewer",
+      review: {
+        posted: 3,
+        fallbackPosted: 1,
+        failed: 1,
+        skipped: 2,
+        summaryBody: "Three issues should be fixed before merge.",
+      },
+    });
+
+    expect(result).toContain("Three issues should be fixed before merge.");
+    expect(result).toContain("3 inline comments posted");
+    expect(result).toContain("1 finding posted in the review body");
+    expect(result).toContain("1 finding could not be posted");
+    expect(result).toContain("2 skipped");
+    expect(result).not.toContain("Droid is reviewing code");
+  });
+
+  it("replaces stale model-written content when post results are present", () => {
+    const result = updateCommentBody({
+      ...baseInput,
+      currentBody: "An outdated model-written summary.",
+      review: {
+        posted: 0,
+        fallbackPosted: 0,
+        failed: 0,
+        skipped: 0,
+        summaryBody: "LGTM — no issues found.",
+      },
+    });
+
+    expect(result).toContain("LGTM — no issues found.");
+    expect(result).toContain("0 inline comments posted");
+    expect(result).not.toContain("outdated model-written summary");
+  });
+
   describe("working message replacement", () => {
     it("includes success message header with duration", () => {
       const input = {

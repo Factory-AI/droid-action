@@ -382,6 +382,32 @@ describe("parseValidatedReview", () => {
       /missing `results` array/,
     );
   });
+
+  it("skips approved comments with fractional lines or unknown sides", () => {
+    const parsed = parseValidatedReview(
+      validated([
+        {
+          status: "approved",
+          comment: { path: "fraction.ts", body: "bad", line: 3.5 },
+        },
+        {
+          status: "approved",
+          comment: {
+            path: "side.ts",
+            body: "bad",
+            line: 4,
+            side: "MIDDLE",
+          },
+        },
+      ]),
+    );
+
+    expect(parsed.approved).toHaveLength(0);
+    expect(parsed.skipped.map((skip) => skip.reason)).toEqual([
+      "no usable line anchor (side=RIGHT)",
+      "approved comment has an invalid `side`",
+    ]);
+  });
 });
 
 describe("gitlab-post-review entrypoint", () => {
