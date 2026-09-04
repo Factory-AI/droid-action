@@ -47,8 +47,7 @@ export interface ReviewTerminology {
   mutationToolForbiddance: string;
 
   // The fields below only apply to `postingMode: "tool"` (the agent posts
-  // its own findings through MCP). Platforms that post from CI instead
-  // (see `postingMode: "file"`) leave them undefined.
+  // its own findings through MCP). File-posting adapters leave them undefined.
 
   /** MCP tool name for posting a batched review (Pass 2) */
   submitReviewToolName?: string;

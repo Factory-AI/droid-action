@@ -88,7 +88,7 @@ Write output to \`${reviewCandidatesPath}\` using this exact schema:
 - **comments**: Array of comment objects
   - \`path\`: Relative file path
   - \`body\`: Comment text starting with priority tag [P0|P1|P2|P3] and \`[security]\` tag, then title, then 1 paragraph explanation
-  - \`line\`: Target line number (single-line) or end line number (multi-line). Must be >= 0.
+  - \`line\`: Target line number (single-line) or end line number (multi-line). Must be a positive integer.
   - \`startLine\`: \`null\` for single-line comments, or start line number for multi-line comments
   - \`side\`: "RIGHT" for new/modified code (default), "LEFT" only for removed code
   - \`commit_id\`: "${prHeadSha}"

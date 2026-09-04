@@ -24,28 +24,19 @@ import { setupGitlabToken } from "../gitlab/token";
 import { GitlabClient } from "../gitlab/api/client";
 import { buildTrackingNoteBody } from "../gitlab/operations/tracking-note";
 import { collectExecTelemetry } from "../gitlab/data/exec-telemetry";
-import type { ReviewPostOutcome } from "../core/review/tracking/types";
-import { postResultsFilePath, type PostResults } from "./gitlab-post-review";
+import { readReviewPostOutcome } from "../core/review/tracking/results";
+import { postResultsFilePath } from "./gitlab-post-review";
 import { stateFilePath, type PrepareState } from "./gitlab-prepare";
 
-async function readPostResults(): Promise<ReviewPostOutcome | null> {
+async function readPostResults() {
   const filePath = postResultsFilePath();
-  try {
-    const raw = await fs.readFile(filePath, "utf8");
-    const results = JSON.parse(raw) as PostResults;
-    return {
-      posted: results.posted ?? null,
-      fallbackPosted: results.fallbackPosted ?? null,
-      failed: results.failed ?? null,
-      skipped: results.skipped ?? null,
-      summaryBody: results.summaryBody ?? null,
-    };
-  } catch {
+  const results = await readReviewPostOutcome(filePath);
+  if (!results) {
     // Absent whenever posting did not get that far (skipped review, failed
     // pass). The note still renders, just without review counts.
     console.log(`No post-results file at ${filePath}; omitting review counts.`);
-    return null;
   }
+  return results;
 }
 
 async function readState(): Promise<PrepareState | null> {

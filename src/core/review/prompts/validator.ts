@@ -5,12 +5,10 @@
  * each one, and writes a refined JSON to disk. What happens next depends
  * on `postingMode`:
  *
- *   - "tool" (GitHub): the agent posts the approved findings itself as a
- *     single batched call to the platform's submit-review MCP tool. Pass 2
- *     is the only place that tool is exposed (via `--enabled-tools`).
- *   - "file" (GitLab): the validated JSON *is* the deliverable, and a CI
- *     step posts it through the platform API. The agent holds no
- *     MR-mutation tools at all.
+ *   - "tool": the agent posts approved findings through an MCP tool.
+ *   - "file" (GitHub and GitLab): the validated JSON is the deliverable,
+ *     and a deterministic CI step posts it through the platform API. The
+ *     agent holds no PR/MR mutation tools.
  *
  * Both `src/create-prompt/templates/review-validator-prompt.ts` (GitHub)
  * and `src/gitlab/prompts/validator.ts` (GitLab) delegate to this builder
@@ -49,6 +47,8 @@ After writing \`${validatedPath}\`, post comments ONLY for \`status === "approve
 
 * Collect all approved comments and submit them as a **single batched review** via \`${submitReviewToolName}\`, passing them in the \`comments\` array parameter${t.submitReviewExtraArg ?? ""}.
 * Do **NOT** post comments individually — batch them all into one \`submit_review\` call.
+* Call \`submit_review\` **exactly once**. Once it returns a success message the review is posted; do NOT call it again to "confirm", retry, or re-post the same findings. If it reports that the review was already submitted, the review is complete — move on to the tracking comment and finish.
+* If there are no approved comments, do NOT call \`submit_review\` at all.
 * Do **NOT** include a \`body\` parameter in \`submit_review\`${t.submitReviewBodyExclusionTrailer ?? ""}.
 * Use \`${updateTrackingToolName}\` to update the ${t.trackingCommentName ?? "tracking comment"} with the review summary.
 * Do **NOT** post the summary as a separate ${t.summaryEntityName ?? "comment"}${t.summaryPostingExtraExclusion ?? ""}.
@@ -77,7 +77,7 @@ through the ${t.platformName} API, then updates the ${t.trackingCommentName ?? "
   every approved comment keeps its \`path\`, \`side\`, and \`line\` (\`side: "RIGHT"\`
   anchors to the new file line, \`side: "LEFT"\` anchors to the old file line).
 * A line anchor that is not part of the diff (neither added, removed, nor context
-  inside a hunk) cannot be posted inline and degrades to a plain ${t.entityNoun} comment —
+  inside a hunk) cannot be posted inline and degrades to a non-inline finding —
   prefer re-anchoring such findings to the nearest related changed line.
 `;
 }

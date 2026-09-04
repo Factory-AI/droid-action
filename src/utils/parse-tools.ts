@@ -46,3 +46,20 @@ export function normalizeDroidArgs(args: string): string {
       .trim()
   );
 }
+
+/**
+ * Removes user-provided tool selection flags from an argument string.
+ *
+ * File-only review validation owns its exact tool allowlist. Keeping a
+ * second `--enabled-tools` flag in custom args could re-enable GitHub
+ * mutation tools after the action deliberately removed them.
+ */
+export function stripToolSelectionArgs(args: string): string {
+  return args
+    .replace(
+      /(?:^|\s)--(?:enabled-tools|disabled-tools)\s+(?:"[^"]*"|'[^']*'|[^\s]+)/g,
+      " ",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+}

@@ -84,6 +84,11 @@ export type DroidOptions = {
   pathToDroidExecutable?: string;
   allowedTools?: string;
   disallowedTools?: string;
+  /**
+   * Upper bound on assistant turns before the run is aborted. Enforced here
+   * by watching the stream-json output, since `droid exec` has no turn limit
+   * of its own. Empty disables the cap.
+   */
   maxTurns?: string;
   mcpTools?: string;
   systemPrompt?: string;
@@ -96,6 +101,64 @@ type PreparedConfig = {
   promptPath: string;
   env: Record<string, string>;
 };
+
+export function parseMaxTurns(value: string | undefined): number | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(
+      `max_turns must be a positive integer, got ${JSON.stringify(value)}`,
+    );
+  }
+  return parsed;
+}
+
+/**
+ * Counts assistant turns in `droid exec --output-format stream-json` output.
+ *
+ * One assistant turn fans out into several events (`reasoning`, `message`,
+ * `tool_call`) that share the assistant message id (`messageId` on
+ * tool_call, `id` on the others), so turns are counted as distinct ids.
+ * Subagents run as separate processes and never appear on this stream, so
+ * the count covers the root session only.
+ */
+export function createTurnCounter() {
+  const seen = new Set<string>();
+  return {
+    get count() {
+      return seen.size;
+    },
+    /** Returns the turn count after observing `event`. */
+    observe(event: unknown): number {
+      if (typeof event !== "object" || event === null) return seen.size;
+      const e = event as Record<string, unknown>;
+      let id: unknown;
+      if (e.type === "tool_call") {
+        id = e.messageId;
+      } else if (
+        (e.type === "message" && e.role === "assistant") ||
+        e.type === "reasoning"
+      ) {
+        id = e.id;
+      }
+      if (typeof id === "string" && id) {
+        seen.add(id);
+      }
+      return seen.size;
+    },
+  };
+}
+
+export class MaxTurnsExceededError extends Error {
+  constructor(public readonly maxTurns: number) {
+    super(
+      `Droid Exec exceeded the maximum of ${maxTurns} turns and was stopped. ` +
+        "This usually means the agent got stuck in a loop.",
+    );
+    this.name = "MaxTurnsExceededError";
+  }
+}
 
 export function prepareRunConfig(
   promptPath: string,
@@ -258,6 +321,11 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
     );
   }
 
+  const maxTurns = parseMaxTurns(options.maxTurns);
+  if (maxTurns !== null) {
+    console.log(`Turn limit: ${maxTurns}`);
+  }
+
   // Run Droid Exec with retry for transient failures. Uses the shared
   // retryWithBackoff so backoff timing lives in one place (3 total attempts,
   // 5s then 10s delays).
@@ -279,6 +347,8 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
 
   const runDroidOnce = (): Promise<number> => {
     stderrTail = "";
+    const turns = createTurnCounter();
+    let turnLimitHit = false;
     const droidProcess = spawn(droidExecutable, currentDroidArgs, {
       stdio: ["ignore", "pipe", "pipe"],
       env: {
@@ -286,6 +356,22 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
         ...config.env,
       },
     });
+
+    const stopForTurnLimit = () => {
+      if (turnLimitHit) return;
+      turnLimitHit = true;
+      console.error(
+        `Droid Exec reached the turn limit (${maxTurns}); stopping the process`,
+      );
+      droidProcess.kill("SIGTERM");
+      // Give the CLI a moment to flush and exit cleanly before forcing it.
+      const forceKill = setTimeout(() => {
+        if (droidProcess.exitCode === null) {
+          droidProcess.kill("SIGKILL");
+        }
+      }, 5000);
+      forceKill.unref();
+    };
 
     droidProcess.stderr.on("data", (data) => {
       const text = data.toString();
@@ -304,58 +390,68 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
 
     // Capture output for parsing execution metrics
     let sessionId: string | undefined;
-    droidProcess.stdout.on("data", (data) => {
-      const text = data.toString();
+    let stdoutBuffer = "";
+    const handleStdoutLine = (line: string): void => {
+      if (line.trim() === "") return;
 
-      // Try to parse as JSON and handle based on verbose setting
-      const lines = text.split("\n");
-      lines.forEach((line: string, index: number) => {
-        if (line.trim() === "") return;
-
-        try {
-          // Check if this line is a JSON object
-          const parsed = JSON.parse(line);
-          if (!sessionId && typeof parsed === "object" && parsed !== null) {
-            const detectedSessionId = parsed.session_id;
-            if (
-              typeof detectedSessionId === "string" &&
-              detectedSessionId.trim()
-            ) {
-              sessionId = detectedSessionId;
-              console.log(`Detected Droid session: ${sessionId}`);
-            }
-          }
+      try {
+        const parsed = JSON.parse(line);
+        if (!sessionId && typeof parsed === "object" && parsed !== null) {
+          const detectedSessionId = parsed.session_id;
           if (
-            typeof parsed === "object" &&
-            parsed !== null &&
-            parsed.type === "result"
+            typeof detectedSessionId === "string" &&
+            detectedSessionId.trim()
           ) {
-            lastResultEvent = {
-              is_error: parsed.is_error === true,
-              result:
-                typeof parsed.result === "string" ? parsed.result : undefined,
-            };
+            sessionId = detectedSessionId;
+            console.log(`Detected Droid session: ${sessionId}`);
           }
-          const sanitizedOutput = sanitizeJsonOutput(parsed, showFullOutput);
-
-          if (sanitizedOutput) {
-            process.stdout.write(sanitizedOutput);
-            if (index < lines.length - 1 || text.endsWith("\n")) {
-              process.stdout.write("\n");
-            }
-          }
-        } catch (e) {
-          // Not a JSON object
-          if (showFullOutput) {
-            // In full output mode, print as is
-            process.stdout.write(line);
-            if (index < lines.length - 1 || text.endsWith("\n")) {
-              process.stdout.write("\n");
-            }
-          }
-          // In non-full-output mode, suppress non-JSON output
         }
-      });
+        if (
+          typeof parsed === "object" &&
+          parsed !== null &&
+          parsed.type === "result"
+        ) {
+          lastResultEvent = {
+            is_error: parsed.is_error === true,
+            result:
+              typeof parsed.result === "string" ? parsed.result : undefined,
+          };
+        }
+        if (
+          maxTurns !== null &&
+          !turnLimitHit &&
+          turns.observe(parsed) > maxTurns
+        ) {
+          stopForTurnLimit();
+        }
+        const sanitizedOutput = sanitizeJsonOutput(parsed, showFullOutput);
+
+        if (sanitizedOutput) {
+          process.stdout.write(`${sanitizedOutput}\n`);
+        }
+      } catch {
+        // Not a JSON object
+        if (showFullOutput) {
+          process.stdout.write(`${line}\n`);
+        }
+        // In non-full-output mode, suppress non-JSON output
+      }
+    };
+
+    droidProcess.stdout.on("data", (data) => {
+      stdoutBuffer += data.toString();
+      const lines = stdoutBuffer.split("\n");
+      stdoutBuffer = lines.pop() ?? "";
+      for (const line of lines) {
+        handleStdoutLine(line);
+      }
+    });
+
+    droidProcess.stdout.on("end", () => {
+      if (stdoutBuffer) {
+        handleStdoutLine(stdoutBuffer);
+        stdoutBuffer = "";
+      }
     });
 
     // Handle stdout errors
@@ -364,8 +460,12 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
     });
 
     // Wait for Droid Exec to finish
-    return new Promise<number>((resolve) => {
+    return new Promise<number>((resolve, reject) => {
       droidProcess.on("close", (code) => {
+        if (turnLimitHit) {
+          reject(new MaxTurnsExceededError(maxTurns!));
+          return;
+        }
         resolve(code || 0);
       });
 
@@ -376,10 +476,21 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
     });
   };
 
+  let turnCapError: MaxTurnsExceededError | null = null;
+  const getTurnCapError = (): MaxTurnsExceededError | null => turnCapError;
+
   try {
     await retryWithBackoff(
       async () => {
-        lastExitCode = await runDroidOnce();
+        try {
+          lastExitCode = await runDroidOnce();
+        } catch (error) {
+          if (error instanceof MaxTurnsExceededError) {
+            turnCapError = error;
+            lastExitCode = 1;
+          }
+          throw error;
+        }
         if (lastExitCode !== 0) {
           console.log(`Droid Exec exited with code ${lastExitCode}`);
           // If the failure was caused by the requested model being rejected
@@ -417,22 +528,33 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
           throw new Error(`Droid Exec exited with code ${lastExitCode}`);
         }
       },
-      { maxAttempts: 3, initialDelayMs: 5000, maxDelayMs: 20000 },
+      {
+        maxAttempts: 3,
+        initialDelayMs: 5000,
+        maxDelayMs: 20000,
+        // A runaway agent is not a transient failure; re-running it would
+        // only repeat the loop.
+        shouldRetry: (error) => !(error instanceof MaxTurnsExceededError),
+      },
     );
     core.setOutput("conclusion", "success");
     return;
   } catch (_) {
-    // All retry attempts exhausted
-    console.error(
-      `Droid Exec failed after 3 total attempts (exit code: ${lastExitCode})`,
-    );
+    const capError = getTurnCapError();
+    if (!capError) {
+      // All retry attempts exhausted
+      console.error(
+        `Droid Exec failed after 3 total attempts (exit code: ${lastExitCode})`,
+      );
+    }
     const finalResultEvent = getLastResultEvent();
     let finalStderrTail = getStderrTail().trim();
     if (isInvalidModelError(finalStderrTail)) {
       finalStderrTail = condenseInvalidModelError(finalStderrTail);
     }
-    const rawErrorMessage =
-      finalResultEvent?.is_error && finalResultEvent.result?.trim()
+    const rawErrorMessage = capError
+      ? capError.message
+      : finalResultEvent?.is_error && finalResultEvent.result?.trim()
         ? finalResultEvent.result.trim()
         : finalStderrTail
           ? `Droid Exec exited with code ${lastExitCode}:\n${finalStderrTail}`

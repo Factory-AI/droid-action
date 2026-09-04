@@ -40,11 +40,19 @@ inputs:
     description: "Include code suggestion blocks in review comments when the fix is high-confidence. Set to 'false' to disable suggestions."
     required: false
     default: "true"
+  candidates_max_turns:
+    description: "Maximum agent turns for the candidate-finding pass (pass 1) before the run is stopped. Empty disables the cap."
+    required: false
+    default: "100"
+  validator_max_turns:
+    description: "Maximum agent turns for the validation pass (pass 2) before the run is stopped. Empty disables the cap."
+    required: false
+    default: "40"
 
 outputs:
   conclusion:
     description: "Review conclusion (success/failure)"
-    value: ${{ steps.review.outputs.conclusion }}
+    value: ${{ steps.post_review.outputs.conclusion || steps.validator.outputs.conclusion || steps.review.outputs.conclusion }}
 
 runs:
   using: "composite"
@@ -113,6 +121,7 @@ runs:
         INPUT_PROMPT_FILE: ${{ runner.temp }}/droid-prompts/droid-prompt.txt
         INPUT_DROID_ARGS: ${{ steps.prompt.outputs.droid_args }}
         INPUT_MCP_TOOLS: ${{ steps.prompt.outputs.mcp_tools }}
+        INPUT_MAX_TURNS: ${{ inputs.candidates_max_turns }}
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
         DROID_OUTPUT_FILE: ${{ inputs.output_file }}
@@ -135,6 +144,7 @@ runs:
 
     - name: Run Validator
       id: validator
+      if: steps.prepare_validator.outputs.validator_should_run != 'false'
       shell: bash
       run: |
         bun run ${{ github.action_path }}/../base-action/src/index.ts
@@ -142,8 +152,21 @@ runs:
         INPUT_PROMPT_FILE: ${{ runner.temp }}/droid-prompts/droid-prompt.txt
         INPUT_DROID_ARGS: ${{ steps.prepare_validator.outputs.droid_args }}
         INPUT_MCP_TOOLS: ${{ steps.prepare_validator.outputs.mcp_tools }}
+        INPUT_MAX_TURNS: ${{ inputs.validator_max_turns }}
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+
+    - name: Post Review
+      id: post_review
+      if: steps.prepare_validator.outputs.validator_should_run != 'false' && steps.validator.outputs.conclusion == 'success'
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../src/entrypoints/github-post-review.ts
+      env:
+        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+        REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
+        REVIEW_DIFF_PATH: ${{ runner.temp }}/droid-prompts/pr.diff
+        REVIEW_POST_RESULTS_PATH: ${{ runner.temp }}/droid-prompts/review_post_results.json
 
     - name: Update tracking comment
       if: always() && inputs.tracking_comment_id
@@ -159,7 +182,9 @@ runs:
         OUTPUT_FILE: ${{ inputs.output_file }}
         TRIGGER_USERNAME: ${{ github.event.pull_request.user.login || github.event.sender.login || github.triggering_actor || github.actor || '' }}
         PREPARE_SUCCESS: "true"
-        DROID_SUCCESS: ${{ steps.validator.outcome == 'success' }}
+        DROID_SUCCESS: ${{ steps.review.outputs.conclusion == 'success' && (steps.prepare_validator.outputs.validator_should_run == 'false' || (steps.validator.outputs.conclusion == 'success' && steps.post_review.outputs.conclusion == 'success')) }}
         DROID_ERROR_MESSAGE: ${{ steps.review.outputs.error_message || '' }}
         DROID_VALIDATOR_ERROR_MESSAGE: ${{ steps.validator.outputs.error_message || '' }}
+        DROID_POST_ERROR_MESSAGE: ${{ steps.post_review.outputs.error_message || '' }}
+        REVIEW_POST_RESULTS_PATH: ${{ runner.temp }}/droid-prompts/review_post_results.json
         MODEL_FALLBACK_NOTE: ${{ steps.prompt.outputs.model_fallback_note || steps.prepare_validator.outputs.model_fallback_note || steps.review.outputs.model_fallback_note || steps.validator.outputs.model_fallback_note || '' }}

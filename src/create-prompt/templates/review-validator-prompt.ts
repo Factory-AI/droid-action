@@ -4,7 +4,8 @@
  * Delegates to the platform-agnostic builder in
  * `src/core/review/prompts/validator.ts`, mapping the GitHub
  * `PreparedContext` shape onto the shared `ReviewPromptContext` and
- * supplying `GITHUB_TERMINOLOGY`.
+ * supplying `GITHUB_TERMINOLOGY`. GitHub uses file-only posting: the
+ * validator writes JSON, then a deterministic CI step posts it.
  */
 
 import { generateValidatorPrompt } from "../../core/review/prompts/validator";
@@ -22,6 +23,7 @@ export function generateReviewValidatorPrompt(
 
   return generateValidatorPrompt({
     terminology: GITHUB_TERMINOLOGY,
+    postingMode: "file",
     entityNumber: prNumber,
     repoOrProject: context.repository,
     headRef: context.prBranchData?.headRefName ?? "unknown",

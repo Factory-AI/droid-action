@@ -149,7 +149,7 @@ Notes:
 Each MR pipeline produces:
 
 - **Inline review comments** anchored to the relevant diff lines, posted in a
-  single batched `submit_review` call. Findings are prefixed with priority
+  deterministic CI step after validation. Findings are prefixed with priority
   tags (`P0`, `P1`, `P2`, `P3`) and `[security]` for security findings.
 - **A sticky tracking note** on the MR with pipeline + job links, telemetry
   (`N turns • Xm Ys`), session IDs, and a security badge when
