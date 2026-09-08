@@ -1,0 +1,41 @@
+test/review-posting-wiring.test.ts
+  fc999ed2425dd9ad 33-43,61-68
+src/entrypoints/github-post-review.ts
+  fc999ed2425dd9ad 209,217,227-229,238,241,270,331-335,343
+src/github/operations/reviews.ts
+  fc999ed2425dd9ad 19-26,34,36,42
+security/action.yml
+  fc999ed2425dd9ad 183-184
+test/entrypoints/github-post-review.test.ts
+  fc999ed2425dd9ad 130-155,265,272,274-277,304
+test/gitlab/post-review.test.ts
+  fc999ed2425dd9ad 411-459,461-513
+src/tag/commands/review-validator.ts
+  fc999ed2425dd9ad 72-74
+review/action.yml
+  fc999ed2425dd9ad 157-158
+action.yml
+  fc999ed2425dd9ad 397-400
+src/core/review/validated/parse.ts
+  fc999ed2425dd9ad 30-35,61-69,104-108,151-152,167-170,177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "844b306fc6b76fc5e07c43b657cde51c4f29af5f",
+  "prompts": {
+    "fc999ed2425dd9ad": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "0f691cd9-43df-4679-afed-5d34ded96ec2",
+        "model": "claude-fable-5.1"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 219,
+      "total_deletions": 11,
+      "accepted_lines": 218,
+      "overriden_lines": 1
+    }
+  }
+}
