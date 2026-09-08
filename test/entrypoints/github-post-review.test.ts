@@ -127,6 +127,32 @@ describe("postGitHubReview", () => {
     expect(payload.comments).toHaveLength(1);
     expect(payload.body).toContain("missing.ts:99");
     expect(payload.event).toBe("COMMENT");
+    // Without a validated SHA the poster must not invent one.
+    expect(payload).not.toHaveProperty("commit_id");
+  });
+
+  it("pins the review to the validated head commit", async () => {
+    const createReview = mock(async (_payload: any) => ({
+      data: { id: 124 },
+    }));
+    const client = {
+      rest: { pulls: { createReview } },
+    } as GitHubReviewClient;
+
+    await postGitHubReview({
+      client,
+      owner: "o",
+      repo: "r",
+      prNumber: 7,
+      comments: [comment()],
+      diff: DIFF,
+      commitId: "0123456789abcdef0123456789abcdef01234567",
+    });
+
+    expect(createReview).toHaveBeenCalledTimes(1);
+    expect((createReview.mock.calls[0]![0] as any).commit_id).toBe(
+      "0123456789abcdef0123456789abcdef01234567",
+    );
   });
 
   it("preserves a valid multi-line anchor in the single API call", async () => {
@@ -236,14 +262,19 @@ describe("github-post-review entrypoint", () => {
   });
 
   it("reads validated output and diff, posts once, and writes result counts", async () => {
+    const HEAD_SHA = "0123456789abcdef0123456789abcdef01234567";
     const prompts = path.join(tmpDir, "droid-prompts");
     await fs.writeFile(path.join(prompts, "pr.diff"), DIFF);
     await fs.writeFile(
       path.join(prompts, "review_validated.json"),
       JSON.stringify({
         version: 1,
+        meta: { headSha: HEAD_SHA },
         results: [
-          { status: "approved", comment: comment() },
+          {
+            status: "approved",
+            comment: { ...comment(), commit_id: HEAD_SHA },
+          },
           {
             status: "rejected",
             comment: comment({ body: "[P2] Rejected" }),
@@ -270,6 +301,7 @@ describe("github-post-review entrypoint", () => {
     });
 
     expect(createReview).toHaveBeenCalledTimes(1);
+    expect((createReview.mock.calls[0]![0] as any).commit_id).toBe(HEAD_SHA);
     expect(results).toEqual({
       posted: 1,
       fallbackPosted: 0,

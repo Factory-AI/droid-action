@@ -69,7 +69,9 @@ export async function prepareReviewValidatorMode(options: {
   );
 
   // Pass 2 only writes review_validated.json. It receives no GitHub mutation
-  // tools; github-post-review.ts performs the sole API write afterwards.
+  // tools, and the action steps that run it withhold GITHUB_TOKEN, so a
+  // prompt-injected diff has neither a tool nor a credential to reach GitHub
+  // through `Execute`. github-post-review.ts performs the sole API write.
   const baseTools = [
     "Read",
     "Grep",

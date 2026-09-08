@@ -394,8 +394,10 @@ runs:
         INPUT_SHOW_FULL_OUTPUT: ${{ inputs.show_full_output }}
         INPUT_MAX_TURNS: ${{ inputs.review_validator_max_turns }}
 
-        # Model configuration
-        GITHUB_TOKEN: ${{ steps.prepare.outputs.GITHUB_TOKEN }}
+        # No GITHUB_TOKEN here on purpose: the validator only reads files and
+        # writes review_validated.json, and it keeps `Execute`. Withholding the
+        # token means a prompt injection in the diff has no credential to
+        # reach the GitHub API with; the post_review step below does the write.
         NODE_VERSION: ${{ env.NODE_VERSION }}
         DETAILED_PERMISSION_MESSAGES: "1"
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}

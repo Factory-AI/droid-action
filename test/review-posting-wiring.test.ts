@@ -30,6 +30,17 @@ describe("review safety wiring", () => {
     );
   });
 
+  // The validator keeps `Execute` and reads the untrusted PR diff, so it must
+  // never hold a GitHub credential; only the deterministic post step may.
+  it("withholds GITHUB_TOKEN from the validator process in the main action", () => {
+    const action = loadAction("action.yml");
+
+    expect(stepById(action, "droid_validator").env).not.toHaveProperty(
+      "GITHUB_TOKEN",
+    );
+    expect(stepById(action, "post_review").env.GITHUB_TOKEN).toBeDefined();
+  });
+
   for (const relativePath of ["review/action.yml", "security/action.yml"]) {
     it(`wires both caps and posting in ${relativePath}`, () => {
       const action = loadAction(relativePath);
@@ -46,6 +57,15 @@ describe("review safety wiring", () => {
         "github-post-review.ts",
       );
       expect(action.outputs.conclusion.value).toContain("post_review");
+    });
+
+    it(`withholds GITHUB_TOKEN from the validator process in ${relativePath}`, () => {
+      const action = loadAction(relativePath);
+
+      expect(stepById(action, "validator").env).not.toHaveProperty(
+        "GITHUB_TOKEN",
+      );
+      expect(stepById(action, "post_review").env.GITHUB_TOKEN).toBeDefined();
     });
   }
 

@@ -206,6 +206,7 @@ async function createReview(
   prNumber: number,
   comments: GitHubInlineComment[],
   fallback: FallbackFinding[],
+  commitId: string | null,
 ): Promise<number | undefined> {
   return createGitHubCommentReview({
     client,
@@ -213,6 +214,7 @@ async function createReview(
     repo,
     prNumber,
     comments,
+    commitId,
     ...(fallback.length > 0 ? { body: fallbackReviewBody(fallback) } : {}),
   });
 }
@@ -222,6 +224,9 @@ async function createReview(
  * GitHub's inline limit are included in that same review's body. A failed
  * response is never retried here because an ambiguous network failure may
  * have created the review remotely.
+ *
+ * `commitId` is the head SHA the validator reviewed; passing it keeps the
+ * anchors bound to that commit even if the PR head has moved since.
  */
 export async function postGitHubReview(options: {
   client: GitHubReviewClient;
@@ -230,8 +235,10 @@ export async function postGitHubReview(options: {
   prNumber: number;
   comments: ValidatedReviewComment[];
   diff: string;
+  commitId?: string | null;
 }): Promise<GitHubPostReviewResult> {
   const { client, owner, repo, prNumber, comments, diff } = options;
+  const commitId = options.commitId ?? null;
   const result: GitHubPostReviewResult = {
     reviewId: undefined,
     posted: 0,
@@ -260,6 +267,7 @@ export async function postGitHubReview(options: {
       prNumber,
       prepared.inline,
       fallback.included,
+      commitId,
     );
     result.posted = prepared.inline.length;
     result.fallbackPosted = fallback.included.length;
@@ -320,6 +328,11 @@ export async function run(
       throw new Error("GITHUB_TOKEN is required to post the review");
     }
     const client = options.client ?? createOctokit(token!);
+    if (!parsed.commitId) {
+      core.warning(
+        "review_validated.json names no single head SHA; posting against the PR's current head",
+      );
+    }
     posted = await postGitHubReview({
       client,
       owner: context.repository.owner,
@@ -327,6 +340,7 @@ export async function run(
       prNumber: context.entityNumber,
       comments: parsed.approved,
       diff,
+      commitId: parsed.commitId,
     });
   }
 

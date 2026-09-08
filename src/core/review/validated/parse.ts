@@ -27,6 +27,12 @@ export type ParsedValidatedReview = {
   rejectedCount: number;
   skipped: Array<{ index: number; path: string | null; reason: string }>;
   summaryBody: string | null;
+  /**
+   * The head commit the validator reviewed against, taken from `meta.headSha`
+   * and the approved comments' `commit_id`. Null when the file names no
+   * single SHA; the poster then omits `commit_id` rather than guess one.
+   */
+  commitId: string | null;
 };
 
 export class InvalidValidatedReviewError extends Error {
@@ -50,6 +56,15 @@ function asPositiveInt(value: unknown): number | null {
 
 function asNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+const GIT_SHA = /^[0-9a-f]{7,64}$/i;
+
+/** A model-written SHA is only trusted when it looks like one. */
+function asCommitSha(value: unknown): string | null {
+  return typeof value === "string" && GIT_SHA.test(value.trim())
+    ? value.trim()
+    : null;
 }
 
 /** The line a comment anchors to, on whichever side applies. */
@@ -85,6 +100,11 @@ export function parseValidatedReview(raw: string): ParsedValidatedReview {
   const skipped: ParsedValidatedReview["skipped"] = [];
   let approvedCount = 0;
   let rejectedCount = 0;
+
+  const meta = asRecord(root.meta);
+  const shas = new Set<string>();
+  const metaSha = meta ? asCommitSha(meta.headSha) : null;
+  if (metaSha) shas.add(metaSha.toLowerCase());
 
   results.forEach((entry, index) => {
     const skip = (reason: string, p: string | null = null): void => {
@@ -128,6 +148,8 @@ export function parseValidatedReview(raw: string): ParsedValidatedReview {
     }
 
     const startLine = asPositiveInt(comment.startLine);
+    const commentSha = asCommitSha(comment.commit_id);
+    if (commentSha) shas.add(commentSha.toLowerCase());
 
     approved.push({
       path: filePath,
@@ -142,11 +164,16 @@ export function parseValidatedReview(raw: string): ParsedValidatedReview {
 
   const summary = asRecord(root.reviewSummary);
 
+  // Disagreeing SHAs mean the model anchored comments against more than one
+  // commit; pinning to any of them would misplace the others.
+  const commitId = shas.size === 1 ? [...shas][0]! : null;
+
   return {
     approved,
     approvedCount,
     rejectedCount,
     skipped,
     summaryBody: summary ? asNonEmptyString(summary.body) : null,
+    commitId,
   };
 }

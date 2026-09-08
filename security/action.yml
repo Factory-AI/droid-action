@@ -180,7 +180,8 @@ runs:
         INPUT_MCP_TOOLS: ${{ steps.prepare_validator.outputs.mcp_tools }}
         INPUT_MAX_TURNS: ${{ inputs.validator_max_turns }}
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
-        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+        # No GITHUB_TOKEN: the validator only writes review_validated.json and
+        # keeps `Execute`, so it must not hold a credential. post_review posts.
 
     - name: Post Review
       id: post_review
