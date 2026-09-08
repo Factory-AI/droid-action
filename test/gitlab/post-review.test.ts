@@ -382,6 +382,135 @@ describe("parseValidatedReview", () => {
       /missing `results` array/,
     );
   });
+
+  it("skips approved comments with fractional lines or unknown sides", () => {
+    const parsed = parseValidatedReview(
+      validated([
+        {
+          status: "approved",
+          comment: { path: "fraction.ts", body: "bad", line: 3.5 },
+        },
+        {
+          status: "approved",
+          comment: {
+            path: "side.ts",
+            body: "bad",
+            line: 4,
+            side: "MIDDLE",
+          },
+        },
+      ]),
+    );
+
+    expect(parsed.approved).toHaveLength(0);
+    expect(parsed.skipped.map((skip) => skip.reason)).toEqual([
+      "no usable line anchor (side=RIGHT)",
+      "approved comment has an invalid `side`",
+    ]);
+  });
+
+  describe("commitId", () => {
+    const SHA = "0123456789abcdef0123456789abcdef01234567";
+
+    it("reads the validated head SHA from meta and comments when they agree", () => {
+      const parsed = parseValidatedReview(
+        JSON.stringify({
+          version: 1,
+          meta: { headSha: SHA },
+          results: [
+            {
+              status: "approved",
+              comment: { path: "a.ts", body: "b", line: 3, commit_id: SHA },
+            },
+            {
+              status: "approved",
+              comment: {
+                path: "b.ts",
+                body: "b",
+                line: 4,
+                commit_id: SHA.toUpperCase(),
+              },
+            },
+          ],
+        }),
+      );
+
+      expect(parsed.commitId).toBe(SHA);
+    });
+
+    it("falls back to the comments' commit_id when meta is absent", () => {
+      const parsed = parseValidatedReview(
+        validated([
+          {
+            status: "approved",
+            comment: { path: "a.ts", body: "b", line: 3, commit_id: SHA },
+          },
+        ]),
+      );
+
+      expect(parsed.commitId).toBe(SHA);
+    });
+
+    it("is null when the file names no SHA or names conflicting SHAs", () => {
+      expect(
+        parseValidatedReview(
+          validated([
+            {
+              status: "approved",
+              comment: { path: "a.ts", body: "b", line: 3 },
+            },
+          ]),
+        ).commitId,
+      ).toBeNull();
+
+      expect(
+        parseValidatedReview(
+          JSON.stringify({
+            version: 1,
+            meta: { headSha: SHA },
+            results: [
+              {
+                status: "approved",
+                comment: {
+                  path: "a.ts",
+                  body: "b",
+                  line: 3,
+                  commit_id: "fedcba9876543210fedcba9876543210fedcba98",
+                },
+              },
+            ],
+          }),
+        ).commitId,
+      ).toBeNull();
+    });
+
+    it("ignores values that are not commit SHAs", () => {
+      const parsed = parseValidatedReview(
+        JSON.stringify({
+          version: 1,
+          meta: { headSha: "unknown" },
+          results: [
+            {
+              status: "approved",
+              comment: {
+                path: "a.ts",
+                body: "b",
+                line: 3,
+                commit_id: "<head sha>",
+              },
+            },
+            {
+              // Rejected entries never influence the pinned commit.
+              status: "rejected",
+              candidate: { path: "b.ts", body: "b", line: 4, commit_id: SHA },
+            },
+          ],
+        }),
+      );
+
+      expect(parsed.commitId).toBeNull();
+    });
+  });
 });
 
 describe("gitlab-post-review entrypoint", () => {

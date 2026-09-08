@@ -4,12 +4,12 @@
  * Posting step for the GitLab CI/CD Component: turns the
  * `review_validated.json` written by Pass 2 into inline MR discussions.
  *
- * `parseValidatedReview` is the trust boundary — the file comes from a
- * model, so only entries explicitly marked `"approved"` with a usable line
- * anchor can post. A hard failure (no state, no validated file, unusable
- * JSON, API refusing every call) exits non-zero so the tracking note
- * reports failure; a single comment that will not anchor is recorded and
- * the step still succeeds.
+ * `parseValidatedReview` (shared in `src/core/review/validated/parse.ts`)
+ * is the trust boundary — the file comes from a model, so only entries
+ * explicitly marked `"approved"` with a usable line anchor can post. A hard
+ * failure (no state, no validated file, unusable JSON, API refusing every
+ * call) exits non-zero so the tracking note reports failure; a single
+ * comment that will not anchor is recorded and the step still succeeds.
  *
  * Inputs (env): GITLAB_TOKEN, DROID_STATE_FILE, REVIEW_VALIDATED_PATH,
  * REVIEW_POST_RESULTS_PATH, CI_API_V4_URL.
@@ -22,34 +22,33 @@ import { setupGitlabToken } from "../gitlab/token";
 import { GitlabClient } from "../gitlab/api/client";
 import type { GitlabMrDiff, GitlabPosition } from "../gitlab/types";
 import {
+  buildFileLineIndex,
+  type FileLineIndex,
+} from "../core/review/validated/diff";
+import {
+  InvalidValidatedReviewError,
+  parseValidatedReview,
+  validatedAnchorLine,
+  type ParsedValidatedReview,
+  type ValidatedReviewComment,
+} from "../core/review/validated/parse";
+import type { ReviewPostResults } from "../core/review/tracking/types";
+import {
   promptsDir,
   stateFilePath,
   validatedFilePath,
   type PrepareState,
 } from "./gitlab-prepare";
 
-export type ReviewComment = {
-  path: string;
-  body: string;
-  line: number | null;
-  /** Start of a multi-line anchor; null when the comment is single-line. */
-  startLine: number | null;
-  side: "LEFT" | "RIGHT";
-  old_path: string | null;
-  old_line: number | null;
+export type ReviewComment = ValidatedReviewComment;
+export {
+  InvalidValidatedReviewError,
+  parseValidatedReview,
+  type ParsedValidatedReview,
 };
+export type { FileLineIndex };
 
-export type PostResults = {
-  posted: number;
-  /** Approved comments that could not anchor inline and went out as notes. */
-  fallbackPosted: number;
-  approved: number;
-  rejected: number;
-  failed: number;
-  skipped: number;
-  summaryBody: string | null;
-  failures: Array<{ path: string; line: number | null; error: string }>;
-};
+export type PostResults = ReviewPostResults;
 
 /** Written here, read by gitlab-update-comment-link. */
 export function postResultsFilePath(): string {
@@ -59,140 +58,7 @@ export function postResultsFilePath(): string {
   );
 }
 
-// --- review_validated.json -------------------------------------------------
-
-export type ParsedValidatedReview = {
-  approved: ReviewComment[];
-  approvedCount: number;
-  rejectedCount: number;
-  skipped: Array<{ index: number; path: string | null; reason: string }>;
-  summaryBody: string | null;
-};
-
-export class InvalidValidatedReviewError extends Error {
-  constructor(message: string) {
-    super(`Invalid validated review file: ${message}`);
-    this.name = "InvalidValidatedReviewError";
-  }
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function asPositiveInt(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? Math.trunc(value)
-    : null;
-}
-
-function asNonEmptyString(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0 ? value : null;
-}
-
-export function parseValidatedReview(raw: string): ParsedValidatedReview {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (error) {
-    throw new InvalidValidatedReviewError(
-      `not valid JSON (${error instanceof Error ? error.message : String(error)})`,
-    );
-  }
-
-  const root = asRecord(parsed);
-  if (!root) {
-    throw new InvalidValidatedReviewError("top level is not an object");
-  }
-
-  const results = root.results;
-  if (!Array.isArray(results)) {
-    throw new InvalidValidatedReviewError("missing `results` array");
-  }
-
-  const approved: ReviewComment[] = [];
-  const skipped: ParsedValidatedReview["skipped"] = [];
-  let approvedCount = 0;
-  let rejectedCount = 0;
-
-  results.forEach((entry, index) => {
-    const skip = (reason: string, p: string | null = null): void => {
-      skipped.push({ index, path: p, reason });
-    };
-
-    const record = asRecord(entry);
-    if (!record) return skip("entry is not an object");
-
-    if (record.status !== "approved") {
-      // Anything not explicitly approved never reaches the MR; an unknown
-      // status counts the same as rejected.
-      rejectedCount += 1;
-      return;
-    }
-    approvedCount += 1;
-
-    const comment = asRecord(record.comment);
-    if (!comment) return skip("approved entry has no `comment` object");
-
-    const filePath = asNonEmptyString(comment.path);
-    const body = asNonEmptyString(comment.body);
-    if (!filePath || !body) {
-      return skip("approved comment is missing `path` or `body`", filePath);
-    }
-
-    const side = comment.side === "LEFT" ? "LEFT" : "RIGHT";
-    const line = asPositiveInt(comment.line);
-    const oldLine = asPositiveInt(comment.old_line);
-    const anchor = side === "LEFT" ? (oldLine ?? line) : line;
-    if (anchor === null) {
-      return skip(`no usable line anchor (side=${side})`, filePath);
-    }
-
-    const startLine = asPositiveInt(comment.startLine);
-
-    approved.push({
-      path: filePath,
-      body,
-      line,
-      startLine: startLine !== null && startLine < anchor ? startLine : null,
-      side,
-      old_path: asNonEmptyString(comment.old_path),
-      old_line: oldLine,
-    });
-  });
-
-  const summary = asRecord(root.reviewSummary);
-
-  return {
-    approved,
-    approvedCount,
-    rejectedCount,
-    skipped,
-    summaryBody: summary ? asNonEmptyString(summary.body) : null,
-  };
-}
-
 // --- diff index ------------------------------------------------------------
-
-/**
- * Per-file map of which lines a positioned discussion can anchor to.
- *
- * GitLab's rules (Discussions API, "Create a new thread in the merge
- * request diff"): an added line takes `new_line` only, a removed line takes
- * `old_line` only, and an unchanged context line requires BOTH numbers. A
- * line absent from every hunk cannot be anchored at all, no matter the
- * payload.
- */
-export type FileLineIndex = {
-  /** new-file line number -> "added", or the old line it pairs with. */
-  newLines: Map<number, number | "added">;
-  /** old-file line number -> "removed", or the new line it pairs with. */
-  oldLines: Map<number, number | "removed">;
-};
-
-const HUNK_HEADER = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
 
 /** Indexes every hunk line, keyed by both `new_path` and `old_path`. */
 export function buildDiffIndex(
@@ -202,38 +68,7 @@ export function buildDiffIndex(
 
   for (const change of changes) {
     if (typeof change?.diff !== "string") continue;
-    const index: FileLineIndex = { newLines: new Map(), oldLines: new Map() };
-
-    const lines = change.diff.split("\n");
-    if (lines[lines.length - 1] === "") lines.pop();
-
-    let oldN = 0;
-    let newN = 0;
-    let inHunk = false;
-    for (const raw of lines) {
-      const hunk = HUNK_HEADER.exec(raw);
-      if (hunk) {
-        oldN = Number(hunk[1]);
-        newN = Number(hunk[2]);
-        inHunk = true;
-        continue;
-      }
-      if (!inHunk || raw.startsWith("\\")) continue;
-      if (raw.startsWith("+")) {
-        index.newLines.set(newN, "added");
-        newN += 1;
-      } else if (raw.startsWith("-")) {
-        index.oldLines.set(oldN, "removed");
-        oldN += 1;
-      } else {
-        // Context line (" " prefix, or "" when trailing whitespace was
-        // stripped somewhere along the way).
-        index.newLines.set(newN, oldN);
-        index.oldLines.set(oldN, newN);
-        newN += 1;
-        oldN += 1;
-      }
-    }
+    const index = buildFileLineIndex(change.diff);
 
     if (change.new_path) files.set(change.new_path, index);
     if (change.old_path && change.old_path !== change.new_path) {
@@ -255,12 +90,7 @@ export type PostReviewResult = {
   failures: Array<{ path: string; line: number | null; error: string }>;
 };
 
-/** The line the anchor points at, on whichever side applies. */
-function anchorLine(comment: ReviewComment): number | null {
-  return comment.side === "LEFT"
-    ? (comment.old_line ?? comment.line)
-    : comment.line;
-}
+const anchorLine = validatedAnchorLine;
 
 /**
  * GitLab identifies a diff line by `<sha1(path)>_<old line>_<new line>`,
