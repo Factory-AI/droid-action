@@ -70,15 +70,27 @@ describe("generateReviewValidatorPrompt", () => {
     );
   });
 
-  it("instructs to post summary in tracking comment, not in submit_review body", () => {
+  it("makes the validated file the deliverable and forbids model-side posting", () => {
     const context = createBaseContext();
     const prompt = generateReviewValidatorPrompt(context);
 
-    expect(prompt).toContain("github_comment___update_droid_comment");
-    expect(prompt).toContain("Do **NOT** include a `body` parameter");
     expect(prompt).toContain(
-      "Do **NOT** post the summary as a separate comment or as the body of `submit_review`",
+      "Writing `$RUNNER_TEMP/droid-prompts/review_validated.json` is your final action",
     );
+    expect(prompt).toContain("through the GitHub API");
+    expect(prompt).toContain("Do **NOT** attempt to post");
+    expect(prompt).not.toContain("submit_review");
+    expect(prompt).not.toContain("github_comment___update_droid_comment");
+  });
+
+  it("keeps the summary only in the validated file for the CI step", () => {
+    const context = createBaseContext();
+    const prompt = generateReviewValidatorPrompt(context);
+
+    expect(prompt).toContain(
+      "Do **NOT** write a summary anywhere other than the `reviewSummary` field",
+    );
+    expect(prompt).toContain("updates the tracking comment");
   });
 
   it("includes correct PR context", () => {

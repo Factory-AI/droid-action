@@ -3,11 +3,9 @@
  *
  * Both GitHub and GitLab keep a single "sticky" comment per PR/MR that
  * carries the live status of the Droid review pipeline (running →
- * success/failure) plus telemetry. The body-building mechanics differ
- * between platforms today — GitHub updates it from inside the agent via
- * the github-comment-server MCP tool, while GitLab builds the whole body
- * in TypeScript and writes it from CI — so we only share the contract
- * (state machine + telemetry shape) here, not the renderer itself.
+ * success/failure) plus telemetry. Both platforms deterministically render
+ * final review results from the posting-step JSON, while their markdown
+ * layouts and update APIs remain platform-specific.
  */
 
 export type ReviewTrackingState = "running" | "success" | "failure";
@@ -23,13 +21,13 @@ export type ReviewTrackingTelemetry = {
 /**
  * Outcome of the posting step, rendered into the sticky comment/note.
  *
- * Populated on platforms that post from CI (GitLab), where the numbers are
- * known only after the API calls have been made.
+ * Populated on platforms that post from CI, where the numbers are known
+ * only after the API calls have been made.
  */
 export type ReviewPostOutcome = {
   /** Inline comments successfully posted. */
   posted?: number | null;
-  /** Approved comments posted as plain notes (line outside the diff). */
+  /** Approved comments posted through a non-inline platform fallback. */
   fallbackPosted?: number | null;
   /** Approved comments that failed to post (inline discussion + note fallback). */
   failed?: number | null;
@@ -37,6 +35,24 @@ export type ReviewPostOutcome = {
   skipped?: number | null;
   /** The validator's overall assessment. */
   summaryBody?: string | null;
+};
+
+export type ReviewPostFailure = {
+  path: string;
+  line: number | null;
+  error: string;
+};
+
+/** Complete JSON contract written by deterministic platform posting steps. */
+export type ReviewPostResults = {
+  posted: number;
+  fallbackPosted: number;
+  approved: number;
+  rejected: number;
+  failed: number;
+  skipped: number;
+  summaryBody: string | null;
+  failures: ReviewPostFailure[];
 };
 
 export interface ReviewTrackingFields {

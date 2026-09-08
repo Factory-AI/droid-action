@@ -52,6 +52,10 @@ inputs:
     description: "Show full JSON output from Droid Exec. WARNING: This outputs ALL Droid messages including tool execution results which may contain secrets, API keys, or other sensitive information. These logs are publicly visible in GitHub Actions. Only enable for debugging in non-sensitive environments."
     required: false
     default: "false"
+  max_turns:
+    description: "Maximum assistant turns before Droid Exec is stopped. Empty disables the cap."
+    required: false
+    default: ""
 
 outputs:
   conclusion:
@@ -122,6 +126,7 @@ runs:
         INPUT_PATH_TO_DROID_EXECUTABLE: ${{ inputs.path_to_droid_executable }}
         INPUT_PATH_TO_BUN_EXECUTABLE: ${{ inputs.path_to_bun_executable }}
         INPUT_SHOW_FULL_OUTPUT: ${{ inputs.show_full_output }}
+        INPUT_MAX_TURNS: ${{ inputs.max_turns }}
 
         # Provider configuration
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}

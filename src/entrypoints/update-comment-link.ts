@@ -15,6 +15,18 @@ import { GITHUB_SERVER_URL } from "../github/api/config";
 
 import { updateDroidComment } from "../github/operations/comments/update-droid-comment";
 import { fetchDroidComment } from "../github/operations/comments/fetch-droid-comment";
+import { readReviewPostOutcome } from "../core/review/tracking/results";
+
+export async function readReviewPostResults() {
+  const filePath =
+    process.env.REVIEW_POST_RESULTS_PATH ||
+    `${process.env.RUNNER_TEMP || "/tmp"}/droid-prompts/review_post_results.json`;
+  const results = await readReviewPostOutcome(filePath);
+  if (!results) {
+    console.log(`No review post-results file at ${filePath}; omitting counts.`);
+  }
+  return results;
+}
 
 async function run() {
   try {
@@ -115,6 +127,7 @@ async function run() {
       errorDetails = prepareError;
     } else {
       const droidErrorMessage =
+        process.env.DROID_POST_ERROR_MESSAGE?.trim() ||
         process.env.DROID_VALIDATOR_ERROR_MESSAGE?.trim() ||
         process.env.DROID_ERROR_MESSAGE?.trim();
       if (process.env.DROID_SUCCESS === "false" && droidErrorMessage) {
@@ -154,6 +167,8 @@ async function run() {
       }
     }
 
+    const review = await readReviewPostResults();
+
     // Prepare input for updateCommentBody function
     const commentInput: CommentUpdateInput = {
       currentBody,
@@ -167,6 +182,7 @@ async function run() {
       errorDetails,
       notice: process.env.MODEL_FALLBACK_NOTE?.trim() || undefined,
       securityReviewRan: process.env.AUTOMATIC_SECURITY_REVIEW === "true",
+      review,
     };
 
     const updatedBody = updateCommentBody(commentInput);

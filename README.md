@@ -343,13 +343,15 @@ To leave comments and approvals on your PRs, Droid needs a GitHub token. There a
 
 ### Review Configuration
 
-| Input              | Default | Purpose                                                                                              |
-| ------------------ | ------- | ---------------------------------------------------------------------------------------------------- |
-| `automatic_review` | `false` | Automatically run code review on PRs without requiring `@droid review`.                              |
-| `review_depth`     | `deep`  | Review depth preset: `shallow` (fast) or `deep` (thorough). See [Review Depth](#review-depth) below. |
-| `review_model`     | `""`    | Override the model for code review. When empty, determined by `review_depth`.                        |
-| `reasoning_effort` | `""`    | Override reasoning effort for review. When empty, determined by `review_depth`.                      |
-| `fill_model`       | `""`    | Override the model used for PR description fill.                                                     |
+| Input                         | Default | Purpose                                                                                              |
+| ----------------------------- | ------- | ---------------------------------------------------------------------------------------------------- |
+| `automatic_review`            | `false` | Automatically run code review on PRs without requiring `@droid review`.                              |
+| `review_depth`                | `deep`  | Review depth preset: `shallow` (fast) or `deep` (thorough). See [Review Depth](#review-depth) below. |
+| `review_model`                | `""`    | Override the model for code review. When empty, determined by `review_depth`.                        |
+| `reasoning_effort`            | `""`    | Override reasoning effort for review. When empty, determined by `review_depth`.                      |
+| `review_candidates_max_turns` | `100`   | Stop candidate generation after this many assistant turns.                                           |
+| `review_validator_max_turns`  | `40`    | Stop validation after this many assistant turns.                                                     |
+| `fill_model`                  | `""`    | Override the model used for PR description fill.                                                     |
 
 ### Review Depth
 
