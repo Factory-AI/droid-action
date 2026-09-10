@@ -9,7 +9,10 @@ import { appendFileSync } from "fs";
 import {
   createJobRunLink,
   createCommentBody,
+  prepareDroidTrackingCommentBody,
+  readPrCommentRunType,
   type CommentType,
+  type PrCommentKind,
 } from "./common";
 import {
   isPullRequestReviewCommentEvent,
@@ -17,6 +20,8 @@ import {
   type ParsedGitHubContext,
 } from "../../context";
 import type { Octokit } from "@octokit/rest";
+import { getPrValidationRunType, type DroidRunType } from "../../../run-type";
+import * as core from "@actions/core";
 
 const DROID_APP_BOT_ID = 209825114;
 
@@ -24,14 +29,19 @@ export async function createInitialComment(
   octokit: Octokit,
   context: ParsedGitHubContext,
   commentType: CommentType = "default",
+  runType?: DroidRunType | null,
 ) {
   const { owner, repo } = context.repository;
 
   const jobRunLink = createJobRunLink(owner, repo, context.runId);
-  const initialBody = createCommentBody(jobRunLink, "", commentType);
+  const prValidationRunType = getPrValidationRunType(runType);
+  const createInitialBody = (kind: PrCommentKind) =>
+    createCommentBody(jobRunLink, "", commentType, prValidationRunType, kind);
+  let issueCommentBody = createInitialBody("issue-comment");
 
   try {
     let response;
+    let createdCommentKind: PrCommentKind = "issue-comment";
 
     if (
       context.inputs.useStickyComment &&
@@ -48,16 +58,21 @@ export async function createInitialComment(
         const botNameMatch =
           comment.user?.type === "Bot" &&
           comment.user?.login.toLowerCase().includes("droid");
-        const bodyMatch = comment.body === initialBody;
+        const bodyMatch = comment.body === issueCommentBody;
 
         return idMatch || botNameMatch || bodyMatch;
       });
       if (existingComment) {
+        issueCommentBody = prepareDroidTrackingCommentBody(
+          issueCommentBody,
+          existingComment.body ?? "",
+          readPrCommentRunType(issueCommentBody, "issue-comment"),
+        );
         response = await octokit.rest.issues.updateComment({
           owner,
           repo,
           comment_id: existingComment.id,
-          body: initialBody,
+          body: issueCommentBody,
         });
       } else {
         // Create new comment if no existing one found
@@ -65,7 +80,7 @@ export async function createInitialComment(
           owner,
           repo,
           issue_number: context.entityNumber,
-          body: initialBody,
+          body: issueCommentBody,
         });
       }
     } else if (isPullRequestReviewCommentEvent(context)) {
@@ -75,21 +90,23 @@ export async function createInitialComment(
         repo,
         pull_number: context.entityNumber,
         comment_id: context.payload.comment.id,
-        body: initialBody,
+        body: createInitialBody("inline-comment"),
       });
+      createdCommentKind = "inline-comment";
     } else {
       // For all other cases (issues, issue comments, or missing comment_id)
       response = await octokit.rest.issues.createComment({
         owner,
         repo,
         issue_number: context.entityNumber,
-        body: initialBody,
+        body: issueCommentBody,
       });
     }
 
     // Output the comment ID for downstream steps using GITHUB_OUTPUT
     const githubOutput = process.env.GITHUB_OUTPUT!;
     appendFileSync(githubOutput, `droid_comment_id=${response.data.id}\n`);
+    core.exportVariable("DROID_PR_COMMENT_KIND", createdCommentKind);
     console.log(`✅ Created initial comment with ID: ${response.data.id}`);
     return response.data;
   } catch (error) {
@@ -101,11 +118,12 @@ export async function createInitialComment(
         owner,
         repo,
         issue_number: context.entityNumber,
-        body: initialBody,
+        body: issueCommentBody,
       });
 
       const githubOutput = process.env.GITHUB_OUTPUT!;
       appendFileSync(githubOutput, `droid_comment_id=${response.data.id}\n`);
+      core.exportVariable("DROID_PR_COMMENT_KIND", "issue-comment");
       console.log(`✅ Created fallback comment with ID: ${response.data.id}`);
       return response.data;
     } catch (fallbackError) {

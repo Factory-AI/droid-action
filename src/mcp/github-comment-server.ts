@@ -3,10 +3,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { GITHUB_API_URL } from "../github/api/config";
-import { Octokit } from "@octokit/rest";
+import { createOctokit } from "../github/api/client";
 import { updateDroidComment } from "../github/operations/comments/update-droid-comment";
-import { sanitizeContent } from "../github/utils/sanitizer";
+import { updateDroidTrackingComment } from "../github/operations/comments/update-tracking-comment";
+import {
+  parsePrCommentKind,
+  prepareDroidCommentBody,
+} from "../github/operations/comments/common";
+import { DroidRunType, parsePrValidationRunType } from "../run-type";
 
 // Get repository information from environment variables
 const REPO_OWNER = process.env.REPO_OWNER;
@@ -47,15 +51,18 @@ server.tool(
       const repo = REPO_NAME;
       const commentId = parseInt(droidCommentId, 10);
 
-      const octokit = new Octokit({
-        auth: githubToken,
-        baseUrl: GITHUB_API_URL,
-      });
+      const octokit = createOctokit(githubToken);
 
       const isPullRequestReviewComment =
         eventName === "pull_request_review_comment";
 
-      let sanitizedBody = sanitizeContent(body);
+      const runType = parsePrValidationRunType(process.env.DROID_EXEC_RUN_TYPE);
+      const commentKind =
+        parsePrCommentKind(process.env.DROID_PR_COMMENT_KIND) ??
+        (isPullRequestReviewComment ? "inline-comment" : "issue-comment");
+      const isSteward =
+        process.env.DROID_EXEC_RUN_TYPE === DroidRunType.CiSteward;
+      let sanitizedBody = isSteward ? prepareDroidCommentBody(body) : body;
 
       // CI Steward keeps its lifetime run budget in a marker on this comment.
       // Droid replaces the whole body, so carry the marker forward or every
@@ -76,13 +83,16 @@ server.tool(
         sanitizedBody = `${sanitizedBody}\n\n<!-- ci-steward:run=${stewardRunId} count=${stewardRunCount} sha=${stewardRunSha} -->`;
       }
 
-      const result = await updateDroidComment(octokit, {
+      const params = {
         owner,
         repo,
         commentId,
         body: sanitizedBody,
-        isPullRequestReviewComment,
-      });
+        isPullRequestReviewComment: commentKind === "inline-comment",
+      };
+      const result = isSteward
+        ? await updateDroidComment(octokit.rest, params)
+        : await updateDroidTrackingComment(octokit, { ...params, runType });
 
       return {
         content: [

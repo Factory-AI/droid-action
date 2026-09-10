@@ -32,6 +32,10 @@ import {
   type GitHubReviewCommentPayload,
   type GitHubReviewCreateClient,
 } from "../github/operations/reviews";
+import {
+  parsePrValidationRunType,
+  type PrValidationRunType,
+} from "../run-type";
 
 export const MAX_GITHUB_REVIEW_COMMENTS = 30;
 export const MAX_GITHUB_REVIEW_BODY_BYTES = 60 * 1024;
@@ -207,6 +211,7 @@ async function createReview(
   comments: GitHubInlineComment[],
   fallback: FallbackFinding[],
   commitId: string | null,
+  runType?: PrValidationRunType,
 ): Promise<number | undefined> {
   return createGitHubCommentReview({
     client,
@@ -215,6 +220,7 @@ async function createReview(
     prNumber,
     comments,
     commitId,
+    runType,
     ...(fallback.length > 0 ? { body: fallbackReviewBody(fallback) } : {}),
   });
 }
@@ -236,6 +242,7 @@ export async function postGitHubReview(options: {
   comments: ValidatedReviewComment[];
   diff: string;
   commitId?: string | null;
+  runType?: PrValidationRunType;
 }): Promise<GitHubPostReviewResult> {
   const { client, owner, repo, prNumber, comments, diff } = options;
   const commitId = options.commitId ?? null;
@@ -268,6 +275,7 @@ export async function postGitHubReview(options: {
       prepared.inline,
       fallback.included,
       commitId,
+      options.runType,
     );
     result.posted = prepared.inline.length;
     result.fallbackPosted = fallback.included.length;
@@ -341,6 +349,7 @@ export async function run(
       comments: parsed.approved,
       diff,
       commitId: parsed.commitId,
+      runType: parsePrValidationRunType(process.env.DROID_EXEC_RUN_TYPE),
     });
   }
 

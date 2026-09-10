@@ -9,6 +9,10 @@ import {
   createGitHubCommentReview,
   type GitHubReviewCommentPayload,
 } from "../github/operations/reviews";
+import {
+  parsePrValidationRunType,
+  type PrValidationRunType,
+} from "../run-type";
 
 const PLACEHOLDER_REGEX = /@droid\s+fill(?:\s+description)?/gi;
 const PLACEHOLDER_LINE_REGEX =
@@ -322,6 +326,7 @@ export async function handleSubmitReview({
   prNumber,
   body,
   comments,
+  runType,
   octokit,
   guard,
 }: {
@@ -330,6 +335,7 @@ export async function handleSubmitReview({
   prNumber: number;
   body?: string;
   comments?: ReviewComment[];
+  runType?: PrValidationRunType;
   octokit: OctokitLike;
   guard: SubmitReviewGuard;
 }): Promise<SubmitReviewOutcome> {
@@ -358,6 +364,7 @@ export async function handleSubmitReview({
       prNumber,
       body,
       comments,
+      runType,
       octokit,
     });
   } catch (error) {
@@ -380,6 +387,7 @@ export async function submitReviewWithComments({
   prNumber,
   body,
   comments,
+  runType,
   octokit,
 }: {
   owner: string;
@@ -387,6 +395,7 @@ export async function submitReviewWithComments({
   prNumber: number;
   body?: string;
   comments?: ReviewComment[];
+  runType?: PrValidationRunType;
   octokit: OctokitLike;
 }): Promise<number | undefined> {
   return createGitHubCommentReview({
@@ -396,6 +405,7 @@ export async function submitReviewWithComments({
     prNumber,
     body,
     comments,
+    runType,
   });
 }
 
@@ -846,12 +856,16 @@ export function createGitHubPRServer({
     },
     async ({ pr_number, body, comments }) => {
       try {
+        const runType = parsePrValidationRunType(
+          process.env.DROID_EXEC_RUN_TYPE,
+        );
         const outcome = await handleSubmitReview({
           owner,
           repo,
           prNumber: pr_number,
           body,
           comments,
+          runType,
           octokit,
           guard: submitReviewGuard,
         });
