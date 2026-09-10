@@ -1,0 +1,27 @@
+src/github/operations/comments/common.ts
+  81431eddb616b684 3-6,11-50,61,89,101,110-122,146-152
+src/github/operations/comment-logic.ts
+  81431eddb616b684 3-8,29-30,314-325
+test/comment-logic.test.ts
+  81431eddb616b684 7-8,22-38,40-62,64-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "9ffc2aacd4044b6aad3f088c3e91a46aaa612606",
+  "prompts": {
+    "81431eddb616b684": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "ad520b59-0005-414d-9777-5d683a378dd8",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Andrew Seo",
+      "messages": [],
+      "total_additions": 177,
+      "total_deletions": 20,
+      "accepted_lines": 164,
+      "overriden_lines": 2
+    }
+  }
+}
