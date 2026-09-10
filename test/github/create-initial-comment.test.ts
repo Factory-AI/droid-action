@@ -13,7 +13,14 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { createInitialComment } from "../../src/github/operations/comments/create-initial";
 import { DroidRunType } from "../../src/run-type";
-import { mockPullRequestReviewCommentContext } from "../mockContext";
+import {
+  createMockContext,
+  mockPullRequestReviewCommentContext,
+} from "../mockContext";
+import {
+  COMBINED_REVIEW_COMMENT_RUN_TYPE,
+  createPrCommentMarker,
+} from "../../src/github/operations/comments/common";
 
 describe("createInitialComment", () => {
   const originalGitHubOutput = process.env.GITHUB_OUTPUT;
@@ -98,6 +105,76 @@ describe("createInitialComment", () => {
     expect(core.exportVariable).toHaveBeenCalledWith(
       "DROID_PR_COMMENT_KIND",
       "issue-comment",
+    );
+  });
+
+  it.each([
+    [DroidRunType.Review, DroidRunType.SecurityReview],
+    [DroidRunType.SecurityReview, DroidRunType.Review],
+    [COMBINED_REVIEW_COMMENT_RUN_TYPE, DroidRunType.SecurityReview],
+    [COMBINED_REVIEW_COMMENT_RUN_TYPE, DroidRunType.Review],
+  ] as const)(
+    "preserves both reviews when sticky %s is reused by %s",
+    async (previous, current) => {
+      const updateComment = mock(async (_params: unknown) => ({
+        data: { id: 123 },
+      }));
+      const createComment = mock(async () => ({ data: { id: 456 } }));
+      const octokit = {
+        rest: {
+          issues: {
+            listComments: async () => ({
+              data: [
+                {
+                  id: 123,
+                  user: { id: 209825114 },
+                  body: createPrCommentMarker("issue-comment", previous),
+                },
+              ],
+            }),
+            updateComment,
+            createComment,
+          },
+        },
+      };
+      await createInitialComment(
+        octokit as any,
+        createMockContext({
+          eventName: "pull_request",
+          isPR: true,
+          inputs: { useStickyComment: true },
+        }),
+        current === DroidRunType.SecurityReview ? "security" : "default",
+        current,
+      );
+      expect(updateComment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          comment_id: 123,
+          body: expect.stringContaining(
+            "<!-- factory-pr-issue-comment: run-type=droid-review-and-security -->",
+          ),
+        }),
+      );
+      expect(createComment).not.toHaveBeenCalled();
+    },
+  );
+
+  it("creates a combined marker before either review updates the comment", async () => {
+    const createComment = mock(async (_params: unknown) => ({
+      data: { id: 123 },
+    }));
+    await createInitialComment(
+      { rest: { issues: { createComment } } } as any,
+      createMockContext({ eventName: "pull_request", isPR: true }),
+      "review_and_security",
+      DroidRunType.Review,
+    );
+    expect(createComment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.stringContaining(
+          "<!-- factory-pr-issue-comment: run-type=droid-review-and-security -->",
+        ),
+      }),
     );
   });
 });

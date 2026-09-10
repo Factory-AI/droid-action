@@ -9,6 +9,8 @@ import { appendFileSync } from "fs";
 import {
   createJobRunLink,
   createCommentBody,
+  prepareDroidTrackingCommentBody,
+  readPrCommentRunType,
   type CommentType,
   type PrCommentKind,
 } from "./common";
@@ -35,7 +37,7 @@ export async function createInitialComment(
   const prValidationRunType = getPrValidationRunType(runType);
   const createInitialBody = (kind: PrCommentKind) =>
     createCommentBody(jobRunLink, "", commentType, prValidationRunType, kind);
-  const issueCommentBody = createInitialBody("issue-comment");
+  let issueCommentBody = createInitialBody("issue-comment");
 
   try {
     let response;
@@ -61,6 +63,11 @@ export async function createInitialComment(
         return idMatch || botNameMatch || bodyMatch;
       });
       if (existingComment) {
+        issueCommentBody = prepareDroidTrackingCommentBody(
+          issueCommentBody,
+          existingComment.body ?? "",
+          readPrCommentRunType(issueCommentBody, "issue-comment"),
+        );
         response = await octokit.rest.issues.updateComment({
           owner,
           repo,
