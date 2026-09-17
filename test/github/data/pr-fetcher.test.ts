@@ -62,13 +62,16 @@ const REPOSITORY = { owner: "Factory-AI", repo: "factory-mono" };
 
 describe("pr-fetcher", () => {
   let consoleErrorSpy: ReturnType<typeof spyOn>;
+  let consoleLogSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
     consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
+    consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
   });
 
   afterEach(() => {
     consoleErrorSpy.mockRestore();
+    consoleLogSpy.mockRestore();
   });
 
   describe("fetchPRBranchData", () => {
