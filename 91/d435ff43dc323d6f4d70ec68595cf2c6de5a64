@@ -1,0 +1,45 @@
+src/entrypoints/gitlab-prepare.ts
+  f24044f39663d340 295-309,316-317
+src/utils/review-session-tag.ts
+  f24044f39663d340 1-103
+test/modes/tag/security-review-command.test.ts
+  f24044f39663d340 174-188
+test/modes/tag/review-command.test.ts
+  f24044f39663d340 12
+test/modes/tag/review-validator-command.test.ts
+  f24044f39663d340 7,61-71
+test/utils/session-tag-helpers.ts
+  f24044f39663d340 1-16
+test/utils/review-session-tag.test.ts
+  f24044f39663d340 1-153
+src/tag/commands/review.ts
+  f24044f39663d340 172-174
+src/tag/commands/review-validator.ts
+  f24044f39663d340 17,103-105
+src/tag/commands/security-review.ts
+  f24044f39663d340 17,158-160
+src/entrypoints/generate-review-prompt.ts
+  f24044f39663d340 22,185-187
+templates/droid-review.yml
+  f24044f39663d340 191-193,209,212-216,219,239,242-244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "91d435ff43dc323d6f4d70ec68595cf2c6de5a64",
+  "prompts": {
+    "f24044f39663d340": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "8906cd66-9cea-4cb8-8477-26fa077fca74",
+        "model": "claude-fable-5.1"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 353,
+      "total_deletions": 19,
+      "accepted_lines": 346,
+      "overriden_lines": 0
+    }
+  }
+}
