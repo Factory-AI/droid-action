@@ -14,6 +14,7 @@ import type { PrepareResult } from "../../prepare/types";
 import { applyModelPolicyFallback } from "../../utils/model-policy";
 import { resolveReviewConfig } from "../../utils/review-depth";
 import { assertDroidRunType, DroidRunType } from "../../run-type";
+import { githubReviewSessionTagArg } from "../../utils/review-session-tag";
 
 type SecurityReviewCommandOptions = {
   context: GitHubContext;
@@ -154,7 +155,9 @@ export async function prepareSecurityReviewMode({
 
   const droidArgParts: string[] = [];
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
-  droidArgParts.push('--tag "code-review"');
+  droidArgParts.push(
+    githubReviewSessionTagArg({ pass: "candidates", runType, context }),
+  );
 
   const securityModelOverride = process.env.SECURITY_MODEL?.trim();
   const reviewConfig = resolveReviewConfig({

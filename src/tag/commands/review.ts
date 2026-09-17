@@ -15,6 +15,7 @@ import { resolveReviewConfig } from "../../utils/review-depth";
 import { applyModelPolicyFallback } from "../../utils/model-policy";
 import { retryWithBackoff } from "../../utils/retry";
 import { assertDroidRunType, DroidRunType } from "../../run-type";
+import { githubReviewSessionTagArg } from "../../utils/review-session-tag";
 
 type ReviewCommandOptions = {
   context: GitHubContext;
@@ -168,7 +169,9 @@ export async function prepareReviewMode({
 
   const droidArgParts: string[] = [];
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
-  droidArgParts.push('--tag "code-review"');
+  droidArgParts.push(
+    githubReviewSessionTagArg({ pass: "candidates", runType, context }),
+  );
 
   const { model, reasoningEffort, fallbackNote } =
     await applyModelPolicyFallback(
