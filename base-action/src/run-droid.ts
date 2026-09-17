@@ -10,6 +10,10 @@ import {
   isModelPolicyError,
   stripModelArgs,
 } from "./utils/model-policy-error";
+import {
+  describeUsageLimitError,
+  isUsageLimitError,
+} from "./utils/usage-limit-error";
 
 const execAsync = promisify(exec);
 
@@ -157,6 +161,18 @@ export class MaxTurnsExceededError extends Error {
         "This usually means the agent got stuck in a loop.",
     );
     this.name = "MaxTurnsExceededError";
+  }
+}
+
+/**
+ * The organization's usage limit (or a BYOK provider's balance) is exhausted.
+ * Limits reset on a 5-hour/weekly/monthly schedule, so re-running within
+ * seconds cannot succeed; each retry only opens another failed session.
+ */
+export class UsageLimitError extends Error {
+  constructor(detail: string) {
+    super(`Droid could not run because a usage limit was reached: ${detail}`);
+    this.name = "UsageLimitError";
   }
 }
 
@@ -339,14 +355,21 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
   // a bounded tail of stderr as an error-message fallback.
   const STDERR_TAIL_LIMIT = 1500;
   let stderrTail = "";
+  // In stream-json mode a fatal agent-loop error (402 usage limit, 403 model
+  // policy, provider outage) is reported as
+  // `{type:"error",source:"agent_loop",message}` before the process exits
+  // non-zero; there is no result event carrying it.
+  let lastAgentLoopError: string | null = null;
   // Indirection defeats TS control-flow narrowing: the variables are only
   // assigned inside stream handler closures, so direct reads after the
   // retry loop would otherwise be narrowed to their initial values.
   const getLastResultEvent = (): ResultEvent | null => lastResultEvent;
   const getStderrTail = (): string => stderrTail;
+  const getLastAgentLoopError = (): string | null => lastAgentLoopError;
 
   const runDroidOnce = (): Promise<number> => {
     stderrTail = "";
+    lastAgentLoopError = null;
     const turns = createTurnCounter();
     let turnLimitHit = false;
     const droidProcess = spawn(droidExecutable, currentDroidArgs, {
@@ -418,6 +441,16 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
           };
         }
         if (
+          typeof parsed === "object" &&
+          parsed !== null &&
+          parsed.type === "error" &&
+          parsed.source === "agent_loop" &&
+          typeof parsed.message === "string" &&
+          parsed.message.trim()
+        ) {
+          lastAgentLoopError = parsed.message;
+        }
+        if (
           maxTurns !== null &&
           !turnLimitHit &&
           turns.observe(parsed) > maxTurns
@@ -478,6 +511,8 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
 
   let turnCapError: MaxTurnsExceededError | null = null;
   const getTurnCapError = (): MaxTurnsExceededError | null => turnCapError;
+  let usageLimitError: UsageLimitError | null = null;
+  const getUsageLimitError = (): UsageLimitError | null => usageLimitError;
 
   try {
     await retryWithBackoff(
@@ -493,14 +528,22 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
         }
         if (lastExitCode !== 0) {
           console.log(`Droid Exec exited with code ${lastExitCode}`);
+          const agentLoopError = getLastAgentLoopError();
+          if (isUsageLimitError(agentLoopError)) {
+            usageLimitError = new UsageLimitError(
+              describeUsageLimitError(agentLoopError!),
+            );
+            throw usageLimitError;
+          }
           // If the failure was caused by the requested model being rejected
           // (blocked by the org's model policy, or not a recognized model
           // id), retry without --model so droid exec falls back to the
           // organization's default model.
           const resultEvent = getLastResultEvent();
           const policyBlocked =
-            resultEvent?.is_error === true &&
-            isModelPolicyError(resultEvent.result);
+            (resultEvent?.is_error === true &&
+              isModelPolicyError(resultEvent.result)) ||
+            isModelPolicyError(agentLoopError);
           const invalidModel = isInvalidModelError(getStderrTail());
           if (
             !modelArgsStripped &&
@@ -533,32 +576,43 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
         initialDelayMs: 5000,
         maxDelayMs: 20000,
         // A runaway agent is not a transient failure; re-running it would
-        // only repeat the loop.
-        shouldRetry: (error) => !(error instanceof MaxTurnsExceededError),
+        // only repeat the loop. A usage limit will not reset within the
+        // backoff window either.
+        shouldRetry: (error) =>
+          !(
+            error instanceof MaxTurnsExceededError ||
+            error instanceof UsageLimitError
+          ),
       },
     );
     core.setOutput("conclusion", "success");
     return;
   } catch (_) {
     const capError = getTurnCapError();
-    if (!capError) {
+    const limitError = getUsageLimitError();
+    if (!capError && !limitError) {
       // All retry attempts exhausted
       console.error(
         `Droid Exec failed after 3 total attempts (exit code: ${lastExitCode})`,
       );
     }
     const finalResultEvent = getLastResultEvent();
+    const finalAgentLoopError = getLastAgentLoopError()?.trim();
     let finalStderrTail = getStderrTail().trim();
     if (isInvalidModelError(finalStderrTail)) {
       finalStderrTail = condenseInvalidModelError(finalStderrTail);
     }
     const rawErrorMessage = capError
       ? capError.message
-      : finalResultEvent?.is_error && finalResultEvent.result?.trim()
-        ? finalResultEvent.result.trim()
-        : finalStderrTail
-          ? `Droid Exec exited with code ${lastExitCode}:\n${finalStderrTail}`
-          : `Droid Exec exited with code ${lastExitCode}`;
+      : limitError
+        ? limitError.message
+        : finalResultEvent?.is_error && finalResultEvent.result?.trim()
+          ? finalResultEvent.result.trim()
+          : finalAgentLoopError
+            ? finalAgentLoopError
+            : finalStderrTail
+              ? `Droid Exec exited with code ${lastExitCode}:\n${finalStderrTail}`
+              : `Droid Exec exited with code ${lastExitCode}`;
     const errorMessage =
       rawErrorMessage.length > 2000
         ? `${rawErrorMessage.slice(0, 2000)}…`
