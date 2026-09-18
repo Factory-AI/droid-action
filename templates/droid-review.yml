@@ -213,7 +213,7 @@ droid-review:
       # rather than through the word-split DROID_ARGS string. Falls back to
       # the bare tag name when the shim came from an older gitlab-prepare.
       SESSION_TAG="${DROID_SESSION_TAG_CANDIDATES:-code-review}"
-      echo "Running Pass 1 (candidates): droid $DROID_ARGS --tag $SESSION_TAG"
+      echo "Running Pass 1 (candidates): droid $DROID_ARGS --tag '$SESSION_TAG'"
       # The pass reads files and writes JSON; it never needs the GitLab token,
       # so keep it out of the environment the model's Execute tool inherits.
       if ! env -u GITLAB_TOKEN -u OVERRIDE_GITLAB_TOKEN droid $DROID_ARGS --tag "$SESSION_TAG" 2>&1 | tee "$PASS1_LOG"; then
@@ -240,7 +240,7 @@ droid-review:
       if [ -n "$RESOLVED_MODEL" ]; then DROID_ARGS="$DROID_ARGS --model $RESOLVED_MODEL"; fi
       if [ -n "$RESOLVED_REASONING_EFFORT" ]; then DROID_ARGS="$DROID_ARGS --reasoning-effort $RESOLVED_REASONING_EFFORT"; fi
       SESSION_TAG="${DROID_SESSION_TAG_VALIDATOR:-code-review}"
-      echo "Running Pass 2 (validator): droid $DROID_ARGS --tag $SESSION_TAG"
+      echo "Running Pass 2 (validator): droid $DROID_ARGS --tag '$SESSION_TAG'"
       if ! env -u GITLAB_TOKEN -u OVERRIDE_GITLAB_TOKEN droid $DROID_ARGS --tag "$SESSION_TAG" 2>&1 | tee "$PASS2_LOG"; then
         export DROID_SUCCESS=false
         echo "droid exec pass 2 (validator) failed" > /tmp/droid-error.txt

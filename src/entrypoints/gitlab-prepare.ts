@@ -295,6 +295,9 @@ async function run(): Promise<void> {
   // The template passes these to `droid exec --tag` verbatim; the shim's
   // single quotes are stripped when it is sourced, so the value is raw JSON.
   // Both passes run inside this one job, so the job id is the run id.
+  // GitLab has no separate security pipeline: `automatic_security_review`
+  // folds security findings into these same two passes, so the review type
+  // is always "code" here (unlike GitHub, which runs a distinct pass).
   const sessionTagJson = (pass: ReviewPass): string =>
     JSON.stringify(
       buildReviewSessionTag({
