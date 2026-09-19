@@ -16,6 +16,8 @@ import * as reviewArtifacts from "../../../src/github/data/review-artifacts";
 import * as promptModule from "../../../src/create-prompt";
 import * as mcpInstaller from "../../../src/mcp/install-mcp-server";
 import * as comments from "../../../src/github/operations/comments/create-initial";
+import { DroidRunType } from "../../../src/run-type";
+import { parseSessionTagFromDroidArgs } from "../../utils/session-tag-helpers";
 
 const MOCK_PR_DATA = {
   baseRefName: "main",
@@ -147,6 +149,7 @@ describe("prepareSecurityReviewMode", () => {
     expect(promptSpy).toHaveBeenCalled();
     expect(mcpSpy).toHaveBeenCalledWith(
       expect.objectContaining({
+        runType: DroidRunType.SecurityReview,
         allowedTools: expect.arrayContaining([
           "Execute",
           "Task",
@@ -169,10 +172,20 @@ describe("prepareSecurityReviewMode", () => {
     expect(result.branchInfo.currentBranch).toBe("feature/security-review");
     expect(result.branchInfo.droidBranch).toBeUndefined();
 
-    expect(exportVariableSpy).toHaveBeenCalledWith(
-      "DROID_EXEC_RUN_TYPE",
-      "droid-security-review",
-    );
+    const droidArgsCall = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "droid_args",
+    ) as [string, string] | undefined;
+    expect(parseSessionTagFromDroidArgs(droidArgsCall?.[1] ?? "")).toEqual({
+      name: "code-review",
+      metadata: expect.objectContaining({
+        pass: "candidates",
+        reviewType: "security",
+        platform: "github",
+        repo: "test-owner/test-repo",
+        pr: "24",
+        runId: "1234567890",
+      }),
+    });
   });
 
   it("creates tracking comment when not provided", async () => {
@@ -196,7 +209,12 @@ describe("prepareSecurityReviewMode", () => {
       githubToken: "token",
     });
 
-    expect(createInitialSpy).toHaveBeenCalled();
+    expect(createInitialSpy).toHaveBeenCalledWith(
+      octokit.rest,
+      context,
+      "security",
+      DroidRunType.SecurityReview,
+    );
     expect(result.commentId).toBe(777);
   });
 

@@ -1,3 +1,6 @@
+import { prepareDroidCommentBody } from "./comments/common";
+import type { PrValidationRunType } from "../../run-type";
+
 export type GitHubReviewCommentPayload = {
   path: string;
   body: string;
@@ -32,8 +35,16 @@ export async function createGitHubCommentReview(options: {
   body?: string;
   comments?: GitHubReviewCommentPayload[];
   commitId?: string | null;
+  runType?: PrValidationRunType;
 }): Promise<number | undefined> {
-  const { client, owner, repo, prNumber, body, comments, commitId } = options;
+  const { client, owner, repo, prNumber, body, comments, commitId, runType } =
+    options;
+  const preparedComments = runType
+    ? comments?.map((comment) => ({
+        ...comment,
+        body: prepareDroidCommentBody(comment.body, runType, "inline-comment"),
+      }))
+    : comments;
   const response = await client.rest.pulls.createReview({
     owner,
     repo,
@@ -41,7 +52,9 @@ export async function createGitHubCommentReview(options: {
     event: "COMMENT",
     ...(commitId ? { commit_id: commitId } : {}),
     ...(body ? { body } : {}),
-    ...(comments && comments.length > 0 ? { comments } : {}),
+    ...(preparedComments && preparedComments.length > 0
+      ? { comments: preparedComments }
+      : {}),
   });
   return response.data.id;
 }

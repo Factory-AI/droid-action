@@ -14,6 +14,7 @@ import {
 import { buildUnifiedDiffIndex } from "../../src/core/review/validated/diff";
 import type { ValidatedReviewComment } from "../../src/core/review/validated/parse";
 import { createMockContext } from "../mockContext";
+import { DroidRunType } from "../../src/run-type";
 
 const DIFF = `diff --git a/src/x.ts b/src/x.ts
 --- a/src/x.ts
@@ -152,6 +153,29 @@ describe("postGitHubReview", () => {
     expect(createReview).toHaveBeenCalledTimes(1);
     expect((createReview.mock.calls[0]![0] as any).commit_id).toBe(
       "0123456789abcdef0123456789abcdef01234567",
+    );
+  });
+
+  it("tags inline comments with the review run type", async () => {
+    const createReview = mock(async (_payload: any) => ({
+      data: { id: 125 },
+    }));
+    const client = {
+      rest: { pulls: { createReview } },
+    } as GitHubReviewClient;
+
+    await postGitHubReview({
+      client,
+      owner: "o",
+      repo: "r",
+      prNumber: 7,
+      comments: [comment({ body: "[P1] [security] Finding" })],
+      diff: DIFF,
+      runType: DroidRunType.SecurityReview,
+    });
+
+    expect((createReview.mock.calls[0]![0] as any).comments[0].body).toEndWith(
+      "<!-- factory-pr-inline-comment: run-type=droid-security-review -->",
     );
   });
 

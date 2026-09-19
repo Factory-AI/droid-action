@@ -4,6 +4,7 @@ import * as promptModule from "../../../src/create-prompt";
 import * as prFetcher from "../../../src/github/data/pr-fetcher";
 import { prepareReviewValidatorMode } from "../../../src/tag/commands/review-validator";
 import { createMockContext } from "../../mockContext";
+import { parseSessionTagFromDroidArgs } from "../../utils/session-tag-helpers";
 
 describe("prepareReviewValidatorMode", () => {
   const savedArgs = process.env.DROID_ARGS;
@@ -57,6 +58,17 @@ describe("prepareReviewValidatorMode", () => {
     expect(args).toContain("--verbose");
     expect(args).not.toContain("github_pr___submit_review");
     expect(args).not.toContain("github_comment___update_droid_comment");
+    expect(parseSessionTagFromDroidArgs(args)).toEqual({
+      name: "code-review",
+      metadata: expect.objectContaining({
+        pass: "validator",
+        reviewType: "code",
+        platform: "github",
+        repo: "test-owner/test-repo",
+        pr: "24",
+        runId: "1234567890",
+      }),
+    });
     expect(setOutputSpy).toHaveBeenCalledWith("mcp_tools", '{"mcpServers":{}}');
     expect(result.mcpTools).toBe('{"mcpServers":{}}');
 

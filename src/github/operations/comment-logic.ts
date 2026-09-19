@@ -1,5 +1,11 @@
 import { GITHUB_SERVER_URL } from "../api/config";
 import type { ReviewPostOutcome } from "../../core/review/tracking/types";
+import {
+  prepareDroidTrackingCommentBody,
+  readPrCommentRunType,
+  type PrCommentKind,
+  type PrCommentRunType,
+} from "./comments/common";
 
 export type ExecutionDetails = {
   cost_usd?: number;
@@ -20,6 +26,8 @@ export type CommentUpdateInput = {
   notice?: string;
   securityReviewRan?: boolean;
   review?: ReviewPostOutcome | null;
+  prCommentRunType?: PrCommentRunType;
+  prCommentKind?: PrCommentKind;
 };
 
 const MODEL_POLICY_ERROR_PATTERN =
@@ -303,5 +311,16 @@ export function updateCommentBody(input: CommentUpdateInput): string {
   // Add the cleaned body content
   newBody += bodyContent;
 
-  return newBody.trim();
+  if (
+    !input.prCommentRunType &&
+    !readPrCommentRunType(originalBody, input.prCommentKind ?? "issue-comment")
+  ) {
+    return newBody.trim();
+  }
+  return prepareDroidTrackingCommentBody(
+    newBody.trim(),
+    originalBody,
+    input.prCommentRunType,
+    input.prCommentKind,
+  );
 }

@@ -8,6 +8,8 @@ import * as mcpInstaller from "../../../src/mcp/install-mcp-server";
 import * as comments from "../../../src/github/operations/comments/create-initial";
 import * as childProcess from "child_process";
 import * as fsPromises from "fs/promises";
+import { DroidRunType } from "../../../src/run-type";
+import { parseSessionTagFromDroidArgs } from "../../utils/session-tag-helpers";
 
 const MOCK_PR_DATA = {
   title: "PR for review",
@@ -156,6 +158,7 @@ describe("prepareReviewMode", () => {
     expect(promptSpy).toHaveBeenCalled();
     expect(mcpSpy).toHaveBeenCalledWith(
       expect.objectContaining({
+        runType: DroidRunType.Review,
         allowedTools: expect.arrayContaining([
           "Execute",
           "github_comment___update_droid_comment",
@@ -183,10 +186,17 @@ describe("prepareReviewMode", () => {
       "github_inline_comment___create_inline_comment",
     );
     expect(droidArgsCall?.[1]).not.toContain("github_pr___submit_review");
-    expect(exportVariableSpy).toHaveBeenCalledWith(
-      "DROID_EXEC_RUN_TYPE",
-      "droid-review",
-    );
+    expect(parseSessionTagFromDroidArgs(droidArgsCall?.[1] ?? "")).toEqual({
+      name: "code-review",
+      metadata: expect.objectContaining({
+        pass: "candidates",
+        reviewType: "code",
+        platform: "github",
+        repo: "test-owner/test-repo",
+        pr: "24",
+        runId: "1234567890",
+      }),
+    });
   });
 
   it("creates tracking comment when not provided", async () => {
@@ -243,7 +253,12 @@ describe("prepareReviewMode", () => {
       githubToken: "token",
     });
 
-    expect(createInitialSpy).toHaveBeenCalled();
+    expect(createInitialSpy).toHaveBeenCalledWith(
+      octokit.rest,
+      context,
+      "default",
+      DroidRunType.Review,
+    );
     expect(result.commentId).toBe(777);
   });
 

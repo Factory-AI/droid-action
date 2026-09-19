@@ -13,12 +13,15 @@ import type { Octokits } from "../../github/api/client";
 import type { PrepareResult } from "../../prepare/types";
 import { applyModelPolicyFallback } from "../../utils/model-policy";
 import { resolveReviewConfig } from "../../utils/review-depth";
+import { assertDroidRunType, DroidRunType } from "../../run-type";
+import { githubReviewSessionTagArg } from "../../utils/review-session-tag";
 
 type SecurityReviewCommandOptions = {
   context: GitHubContext;
   octokit: Octokits;
   githubToken: string;
   trackingCommentId?: number;
+  runType?: DroidRunType | null;
 };
 
 export async function prepareSecurityReviewMode({
@@ -26,6 +29,7 @@ export async function prepareSecurityReviewMode({
   octokit,
   githubToken,
   trackingCommentId,
+  runType = DroidRunType.SecurityReview,
 }: SecurityReviewCommandOptions): Promise<PrepareResult> {
   if (!isEntityContext(context)) {
     throw new Error("Security review command requires an entity event context");
@@ -36,9 +40,11 @@ export async function prepareSecurityReviewMode({
       "Security review command is only supported on pull requests",
     );
   }
+  assertDroidRunType(runType, DroidRunType.SecurityReview);
 
   const commentId =
-    trackingCommentId ?? (await createInitialComment(octokit.rest, context)).id;
+    trackingCommentId ??
+    (await createInitialComment(octokit.rest, context, "security", runType)).id;
 
   const prData = await fetchPRBranchData({
     octokits: octokit,
@@ -99,8 +105,6 @@ export async function prepareSecurityReviewMode({
     generatePrompt: generateSecurityCandidatesPrompt,
     reviewArtifacts,
   });
-  core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-security-review");
-
   core.setOutput("install_security_skills", "true");
 
   const rawUserArgs = process.env.DROID_ARGS || "";
@@ -143,6 +147,7 @@ export async function prepareSecurityReviewMode({
     owner: context.repository.owner,
     repo: context.repository.repo,
     droidCommentId: commentId.toString(),
+    runType,
     allowedTools,
     mode: "tag",
     context,
@@ -150,7 +155,9 @@ export async function prepareSecurityReviewMode({
 
   const droidArgParts: string[] = [];
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
-  droidArgParts.push('--tag "code-review"');
+  droidArgParts.push(
+    githubReviewSessionTagArg({ pass: "candidates", runType, context }),
+  );
 
   const securityModelOverride = process.env.SECURITY_MODEL?.trim();
   const reviewConfig = resolveReviewConfig({

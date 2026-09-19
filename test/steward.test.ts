@@ -10,6 +10,7 @@ import {
   workflowsPassedOnCommit,
 } from "../src/steward/gate";
 import { prepareMcpTools } from "../src/mcp/install-mcp-server";
+import { DroidRunType } from "../src/run-type";
 import {
   STEWARD_ALLOWED_TOOLS,
   buildActionConfig,
@@ -112,6 +113,7 @@ describe("CI Steward MCP wiring", () => {
         owner: "owner",
         repo: "repo",
         droidCommentId: "1",
+        runType: DroidRunType.CiSteward,
         allowedTools: STEWARD_ALLOWED_TOOLS,
         mode: "tag",
         context: {
@@ -151,6 +153,7 @@ describe("CI Steward MCP wiring", () => {
         owner: "owner",
         repo: "repo",
         droidCommentId: "1",
+        runType: DroidRunType.CiSteward,
         allowedTools: STEWARD_ALLOWED_TOOLS,
         mode: "tag",
         context: {
@@ -177,6 +180,7 @@ describe("CI Steward MCP wiring", () => {
         owner: "owner",
         repo: "repo",
         droidCommentId: "1",
+        runType: DroidRunType.CiSteward,
         allowedTools: STEWARD_ALLOWED_TOOLS,
         mode: "tag",
         context: {

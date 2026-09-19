@@ -132,7 +132,7 @@ inputs:
     required: false
     default: ""
   path_to_droid_executable:
-    description: "Optional path to a custom Droid CLI executable. If provided, skips automatic installation and uses this executable instead. WARNING: Using an older version may cause problems if the action begins taking advantage of new Droid Exec features. This input is typically not needed unless you're debugging something specific or have unique needs in your environment."
+    description: "Optional path to a custom Droid CLI executable. If provided, skips automatic installation and uses this executable instead. WARNING: Using an older version may cause problems if the action begins taking advantage of new Droid Exec features. Review runs pass a JSON `--tag` (supported since the June 2026 CLI); an older CLI stores the JSON as a literal tag name and the session is not classified as a code review. This input is typically not needed unless you're debugging something specific or have unique needs in your environment."
     required: false
     default: ""
   path_to_bun_executable:

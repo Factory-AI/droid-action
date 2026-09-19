@@ -13,6 +13,7 @@ import type { PrepareResult } from "../prepare/types";
 import type { Octokits } from "../github/api/client";
 import { isAutomationContext } from "../github/context";
 import { prepareStewardMode } from "../steward";
+import { DroidRunType, resolveTagRunType, setDroidRunType } from "../run-type";
 
 const DROID_APP_BOT_ID = 209825114;
 const SECURITY_REVIEW_MARKER = "## Security Review Summary";
@@ -81,7 +82,9 @@ export async function prepareTagExecution({
   githubToken,
 }: PrepareTagOptions): Promise<PrepareResult> {
   if (isAutomationContext(context)) {
-    return prepareStewardMode(context, octokit, githubToken);
+    const runType = DroidRunType.CiSteward;
+    setDroidRunType(runType);
+    return prepareStewardMode(context, octokit, githubToken, runType);
   }
   if (!isEntityContext(context)) {
     throw new Error("Tag execution requires entity context");
@@ -100,13 +103,46 @@ export async function prepareTagExecution({
   }
 
   const commandContext = extractCommandFromContext(context);
+  const runType = resolveTagRunType({
+    automaticReview: context.inputs.automaticReview,
+    automaticSecurityReview: context.inputs.automaticSecurityReview,
+    command: commandContext?.command ?? null,
+  });
+  if (runType) {
+    setDroidRunType(runType);
+  }
+
+  let runAutomaticSecurityReview = context.inputs.automaticSecurityReview;
+  if (runAutomaticSecurityReview) {
+    const hasExisting = await hasExistingSecurityReview(octokit, context);
+    if (hasExisting) {
+      console.log(
+        "Security review already exists on this PR, skipping security",
+      );
+      runAutomaticSecurityReview = false;
+
+      if (!context.inputs.automaticReview) {
+        core.setOutput("run_code_review", "false");
+        core.setOutput("run_security_review", "false");
+        return {
+          skipped: true,
+          reason: "security_review_exists",
+          branchInfo: {
+            baseBranch: "",
+            currentBranch: "",
+          },
+          mcpTools: "",
+        };
+      }
+    }
+  }
 
   // Determine comment type based on what's being run
   const isDualReview =
-    context.inputs.automaticReview && context.inputs.automaticSecurityReview;
+    context.inputs.automaticReview && runAutomaticSecurityReview;
   const isSecurityOnly =
-    !isDualReview &&
-    (context.inputs.automaticSecurityReview ||
+    !context.inputs.automaticReview &&
+    (runAutomaticSecurityReview ||
       commandContext?.command === "security" ||
       commandContext?.command === "security-full");
 
@@ -120,6 +156,7 @@ export async function prepareTagExecution({
     octokit.rest,
     context,
     commentType,
+    runType,
   );
   const commentId = commentData.id;
 
@@ -128,25 +165,17 @@ export async function prepareTagExecution({
     context.inputs.automaticReview &&
     context.inputs.automaticSecurityReview
   ) {
-    let runSecurityReview = true;
-
-    // Check if security review already exists on this PR (run once behavior)
-    const hasExisting = await hasExistingSecurityReview(octokit, context);
-    if (hasExisting) {
-      console.log(
-        "Security review already exists on this PR, skipping security",
-      );
-      runSecurityReview = false;
-    }
-
-    if (runSecurityReview) {
+    if (runAutomaticSecurityReview) {
       // Signal to the code review prompt to spawn a security-reviewer subagent
       core.exportVariable("SECURITY_REVIEW_ENABLED", "true");
       core.setOutput("install_security_skills", "true");
     }
 
     core.setOutput("run_code_review", "true");
-    core.setOutput("run_security_review", runSecurityReview.toString());
+    core.setOutput(
+      "run_security_review",
+      runAutomaticSecurityReview.toString(),
+    );
 
     // Prepare the code review (security review runs as a subagent within pass 1)
     return prepareReviewMode({
@@ -154,6 +183,7 @@ export async function prepareTagExecution({
       octokit,
       githubToken,
       trackingCommentId: commentId,
+      runType,
     });
   }
 
@@ -165,27 +195,11 @@ export async function prepareTagExecution({
       octokit,
       githubToken,
       trackingCommentId: commentId,
+      runType,
     });
   }
 
   if (context.inputs.automaticSecurityReview) {
-    // Check if security review already exists on this PR (run once behavior)
-    const hasExisting = await hasExistingSecurityReview(octokit, context);
-    if (hasExisting) {
-      console.log("Security review already exists on this PR, skipping");
-      core.setOutput("run_code_review", "false");
-      core.setOutput("run_security_review", "false");
-      return {
-        skipped: true,
-        reason: "security_review_exists",
-        branchInfo: {
-          baseBranch: "",
-          currentBranch: "",
-        },
-        mcpTools: "",
-      };
-    }
-
     // Standalone security review uses the two-pass pipeline (candidates + validator)
     core.setOutput("run_code_review", "true");
     core.setOutput("run_security_review", "true");
@@ -194,6 +208,7 @@ export async function prepareTagExecution({
       octokit,
       githubToken,
       trackingCommentId: commentId,
+      runType,
     });
   }
 
@@ -203,6 +218,7 @@ export async function prepareTagExecution({
       octokit,
       githubToken,
       trackingCommentId: commentId,
+      runType,
     });
   }
 
@@ -215,6 +231,7 @@ export async function prepareTagExecution({
       octokit,
       githubToken,
       trackingCommentId: commentId,
+      runType,
     });
   }
 
@@ -224,6 +241,7 @@ export async function prepareTagExecution({
       octokit,
       githubToken,
       scanScope: { type: "full" },
+      runType,
     });
   }
 
@@ -240,6 +258,7 @@ export async function prepareTagExecution({
       octokit,
       githubToken,
       trackingCommentId: commentId,
+      runType,
     });
   }
 

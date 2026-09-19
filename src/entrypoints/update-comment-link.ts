@@ -16,6 +16,7 @@ import { GITHUB_SERVER_URL } from "../github/api/config";
 import { updateDroidComment } from "../github/operations/comments/update-droid-comment";
 import { fetchDroidComment } from "../github/operations/comments/fetch-droid-comment";
 import { readReviewPostOutcome } from "../core/review/tracking/results";
+import { parsePrValidationRunType } from "../run-type";
 
 export async function readReviewPostResults() {
   const filePath =
@@ -183,6 +184,10 @@ async function run() {
       notice: process.env.MODEL_FALLBACK_NOTE?.trim() || undefined,
       securityReviewRan: process.env.AUTOMATIC_SECURITY_REVIEW === "true",
       review,
+      prCommentRunType: parsePrValidationRunType(
+        process.env.DROID_EXEC_RUN_TYPE,
+      ),
+      prCommentKind: isPRReviewComment ? "inline-comment" : "issue-comment",
     };
 
     const updatedBody = updateCommentBody(commentInput);

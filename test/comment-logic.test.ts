@@ -3,6 +3,11 @@ import {
   updateCommentBody,
   type CommentUpdateInput,
 } from "../src/github/operations/comment-logic";
+import {
+  COMBINED_REVIEW_COMMENT_RUN_TYPE,
+  createPrCommentMarker,
+} from "../src/github/operations/comments/common";
+import { DroidRunType } from "../src/run-type";
 
 describe("updateCommentBody", () => {
   const baseInput = {
@@ -14,6 +19,81 @@ describe("updateCommentBody", () => {
     triggerUsername: undefined,
   };
 
+  it.each([
+    DroidRunType.Review,
+    DroidRunType.SecurityReview,
+    COMBINED_REVIEW_COMMENT_RUN_TYPE,
+  ] as const)(
+    "preserves the %s marker through deterministic summaries",
+    (runType) => {
+      const marker = createPrCommentMarker("issue-comment", runType);
+      const result = updateCommentBody({
+        ...baseInput,
+        currentBody: `Droid is working…\n\n${marker}`,
+        review: { summaryBody: "Final review summary", posted: 2 },
+      });
+      expect(result).toContain("Final review summary");
+      expect(result).toContain("2 inline comments posted");
+      expect(result).toEndWith(marker);
+      expect(result.match(/<!-- factory-pr-issue-comment:/g)).toHaveLength(1);
+    },
+  );
+
+  it("keeps the combined marker when either review finalizes the shared comment", () => {
+    const marker = createPrCommentMarker(
+      "issue-comment",
+      COMBINED_REVIEW_COMMENT_RUN_TYPE,
+    );
+    let currentBody = marker;
+    for (const runType of [
+      DroidRunType.SecurityReview,
+      DroidRunType.Review,
+    ] as const) {
+      currentBody = updateCommentBody({
+        ...baseInput,
+        currentBody,
+        prCommentRunType: runType,
+        review: {
+          posted: 0,
+          summaryBody: `Summary\n\n${createPrCommentMarker("issue-comment", runType)}`,
+        },
+      });
+      expect(currentBody).toEndWith(marker);
+      expect(currentBody.match(/<!-- factory-pr-issue-comment:/g)).toHaveLength(
+        1,
+      );
+    }
+  });
+
+  it("restores the marker from trusted run metadata if the old body has none", () => {
+    const result = updateCommentBody({
+      ...baseInput,
+      prCommentRunType: DroidRunType.SecurityReview,
+      review: { summaryBody: "Security summary", posted: 0 },
+    });
+    expect(result).toEndWith(
+      createPrCommentMarker("issue-comment", DroidRunType.SecurityReview),
+    );
+  });
+
+  it("preserves inline tracking markers through failures and final summaries", () => {
+    const marker = createPrCommentMarker(
+      "inline-comment",
+      COMBINED_REVIEW_COMMENT_RUN_TYPE,
+    );
+    const result = updateCommentBody({
+      ...baseInput,
+      currentBody: marker,
+      prCommentKind: "inline-comment",
+      prCommentRunType: DroidRunType.SecurityReview,
+      actionFailed: true,
+      errorDetails: "Posting failed",
+      review: { summaryBody: "Partial results", failed: 1 },
+    });
+    expect(result).toContain("Posting failed");
+    expect(result).toEndWith(marker);
+    expect(result).not.toContain("factory-pr-issue-comment");
+  });
   it("renders the deterministic review summary and posting counts", () => {
     const result = updateCommentBody({
       ...baseInput,
@@ -105,6 +185,20 @@ describe("updateCommentBody", () => {
 
       const result = updateCommentBody(input);
       expect(result).not.toContain("running a security check");
+    });
+
+    it("preserves the hidden PR validation marker in the final summary", () => {
+      const marker = createPrCommentMarker(
+        "issue-comment",
+        DroidRunType.Review,
+      );
+      const input = {
+        ...baseInput,
+        currentBody: `Droid is reviewing code…\n\n${marker}`,
+      };
+
+      const result = updateCommentBody(input);
+      expect(result).toContain(marker);
     });
 
     it("includes error details when provided", () => {

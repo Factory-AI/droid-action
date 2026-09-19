@@ -188,8 +188,9 @@ droid-review:
       fi
     - |
       # Source the resolved env shim from gitlab-prepare to expose
-      # RESOLVED_MODEL / RESOLVED_REASONING_EFFORT for the droid exec calls,
-      # plus DROID_MR_IID / DROID_TRACKING_NOTE_ID for any extra steps a
+      # RESOLVED_MODEL / RESOLVED_REASONING_EFFORT and the per-pass
+      # DROID_SESSION_TAG_* JSON for the droid exec calls, plus
+      # DROID_MR_IID / DROID_TRACKING_NOTE_ID for any extra steps a
       # consuming project bolts onto this job.
       # Resolve the same path gitlab-prepare wrote it to, so overriding
       # DROID_PROMPT_FILE or DROID_RESOLVED_ENV_FILE keeps working.
@@ -205,13 +206,17 @@ droid-review:
       set -o pipefail
       PASS1_TOOLS="Read,Grep,Glob,LS,Execute,Edit,Create,ApplyPatch,Task,Skill,FetchUrl"
       PASS1_LOG="/tmp/droid-prompts/pass1-output.jsonl"
-      DROID_ARGS="exec -f $DROID_PROMPT_FILE --enabled-tools $PASS1_TOOLS --output-format stream-json --skip-permissions-unsafe --tag code-review"
+      DROID_ARGS="exec -f $DROID_PROMPT_FILE --enabled-tools $PASS1_TOOLS --output-format stream-json --skip-permissions-unsafe"
       if [ -n "$RESOLVED_MODEL" ]; then DROID_ARGS="$DROID_ARGS --model $RESOLVED_MODEL"; fi
       if [ -n "$RESOLVED_REASONING_EFFORT" ]; then DROID_ARGS="$DROID_ARGS --reasoning-effort $RESOLVED_REASONING_EFFORT"; fi
-      echo "Running Pass 1 (candidates): droid $DROID_ARGS"
+      # The session tag is JSON, so it is passed as its own quoted argument
+      # rather than through the word-split DROID_ARGS string. Falls back to
+      # the bare tag name when the shim came from an older gitlab-prepare.
+      SESSION_TAG="${DROID_SESSION_TAG_CANDIDATES:-code-review}"
+      echo "Running Pass 1 (candidates): droid $DROID_ARGS --tag '$SESSION_TAG'"
       # The pass reads files and writes JSON; it never needs the GitLab token,
       # so keep it out of the environment the model's Execute tool inherits.
-      if ! env -u GITLAB_TOKEN -u OVERRIDE_GITLAB_TOKEN droid $DROID_ARGS 2>&1 | tee "$PASS1_LOG"; then
+      if ! env -u GITLAB_TOKEN -u OVERRIDE_GITLAB_TOKEN droid $DROID_ARGS --tag "$SESSION_TAG" 2>&1 | tee "$PASS1_LOG"; then
         export DROID_SUCCESS=false
         echo "droid exec pass 1 (candidates) failed" > /tmp/droid-error.txt
         exit 1
@@ -231,11 +236,12 @@ droid-review:
       set -o pipefail
       PASS2_TOOLS="Read,Grep,Glob,LS,Execute,Edit,Create,ApplyPatch,Skill"
       PASS2_LOG="/tmp/droid-prompts/pass2-output.jsonl"
-      DROID_ARGS="exec -f $DROID_PROMPT_FILE --enabled-tools $PASS2_TOOLS --output-format stream-json --skip-permissions-unsafe --tag code-review"
+      DROID_ARGS="exec -f $DROID_PROMPT_FILE --enabled-tools $PASS2_TOOLS --output-format stream-json --skip-permissions-unsafe"
       if [ -n "$RESOLVED_MODEL" ]; then DROID_ARGS="$DROID_ARGS --model $RESOLVED_MODEL"; fi
       if [ -n "$RESOLVED_REASONING_EFFORT" ]; then DROID_ARGS="$DROID_ARGS --reasoning-effort $RESOLVED_REASONING_EFFORT"; fi
-      echo "Running Pass 2 (validator): droid $DROID_ARGS"
-      if ! env -u GITLAB_TOKEN -u OVERRIDE_GITLAB_TOKEN droid $DROID_ARGS 2>&1 | tee "$PASS2_LOG"; then
+      SESSION_TAG="${DROID_SESSION_TAG_VALIDATOR:-code-review}"
+      echo "Running Pass 2 (validator): droid $DROID_ARGS --tag '$SESSION_TAG'"
+      if ! env -u GITLAB_TOKEN -u OVERRIDE_GITLAB_TOKEN droid $DROID_ARGS --tag "$SESSION_TAG" 2>&1 | tee "$PASS2_LOG"; then
         export DROID_SUCCESS=false
         echo "droid exec pass 2 (validator) failed" > /tmp/droid-error.txt
         exit 1

@@ -13,17 +13,30 @@ import type { PrepareResult } from "../../prepare/types";
 import { generateReviewValidatorPrompt } from "../../create-prompt/templates/review-validator-prompt";
 import { resolveReviewConfig } from "../../utils/review-depth";
 import { applyModelPolicyFallback } from "../../utils/model-policy";
+import { assertDroidRunType, DroidRunType } from "../../run-type";
+import { githubReviewSessionTagArg } from "../../utils/review-session-tag";
 
 export async function prepareReviewValidatorMode(options: {
   context: GitHubContext;
   octokit: Octokits;
   githubToken: string;
   trackingCommentId: number;
+  runType?: DroidRunType;
 }): Promise<PrepareResult> {
-  const { context, octokit, trackingCommentId } = options;
+  const {
+    context,
+    octokit,
+    trackingCommentId,
+    runType = DroidRunType.Review,
+  } = options;
   if (!isEntityContext(context) || !context.isPR) {
     throw new Error("review validator mode requires pull request context");
   }
+  assertDroidRunType(runType, [
+    DroidRunType.Default,
+    DroidRunType.Review,
+    DroidRunType.SecurityReview,
+  ]);
 
   const prData = await fetchPRBranchData({
     octokits: octokit,
@@ -61,8 +74,6 @@ export async function prepareReviewValidatorMode(options: {
     includeSuggestions,
   });
 
-  core.exportVariable("DROID_EXEC_RUN_TYPE", "droid-review");
-
   const rawUserArgs = process.env.DROID_ARGS || "";
   const normalizedUserArgs = stripToolSelectionArgs(
     normalizeDroidArgs(rawUserArgs),
@@ -89,7 +100,9 @@ export async function prepareReviewValidatorMode(options: {
 
   const droidArgParts: string[] = [];
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
-  droidArgParts.push('--tag "code-review"');
+  droidArgParts.push(
+    githubReviewSessionTagArg({ pass: "validator", runType, context }),
+  );
 
   const { model, reasoningEffort, fallbackNote } =
     await applyModelPolicyFallback(

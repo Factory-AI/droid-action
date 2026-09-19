@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import {
+  afterAll,
   afterEach,
   beforeAll,
   beforeEach,
@@ -9,11 +10,17 @@ import {
   mock,
   test,
 } from "bun:test";
+import * as childProcess from "child_process";
 import { EventEmitter } from "node:events";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { DroidOptions } from "../src/run-droid";
+
+// mock.module below rewrites the live `child_process` bindings for the rest
+// of the bun process, including this namespace import, so copy the real
+// implementation out first and hand it back once this file is done.
+const realChildProcess = { ...childProcess };
 
 const originalRunnerTemp = process.env.RUNNER_TEMP;
 
@@ -107,6 +114,10 @@ beforeAll(async () => {
   )) as RunDroidModule;
   prepareRunConfig = module.prepareRunConfig;
   runDroid = module.runDroid;
+});
+
+afterAll(() => {
+  mock.module("child_process", () => realChildProcess);
 });
 
 async function createPromptFile(): Promise<string> {
