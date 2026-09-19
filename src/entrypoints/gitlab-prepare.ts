@@ -41,6 +41,10 @@ import { generateGitlabReviewCandidatesPrompt } from "../gitlab/prompts/candidat
 import type { GitlabReviewPromptContext } from "../gitlab/prompts/types";
 import { resolveReviewConfig } from "../utils/review-depth";
 import { applyModelPolicyFallback } from "../utils/model-policy";
+import {
+  buildReviewSessionTag,
+  type ReviewPass,
+} from "../utils/review-session-tag";
 import { setupDroidSettings } from "../../base-action/src/setup-droid-settings";
 
 export type PrepareState = {
@@ -288,12 +292,32 @@ async function run(): Promise<void> {
     console.warn(resolved.fallbackNote);
   }
 
+  // The template passes these to `droid exec --tag` verbatim; the shim's
+  // single quotes are stripped when it is sourced, so the value is raw JSON.
+  // Both passes run inside this one job, so the job id is the run id.
+  // GitLab has no separate security pipeline: `automatic_security_review`
+  // folds security findings into these same two passes, so the review type
+  // is always "code" here (unlike GitHub, which runs a distinct pass).
+  const sessionTagJson = (pass: ReviewPass): string =>
+    JSON.stringify(
+      buildReviewSessionTag({
+        pass,
+        reviewType: "code",
+        platform: "gitlab",
+        repo: context.project.pathWithNamespace,
+        pr: mrIid,
+        runId: context.jobId,
+      }),
+    );
+
   await writeResolvedEnvShim(
     resolved.model ?? null,
     resolved.reasoningEffort ?? null,
     {
       DROID_MR_IID: String(mrIid),
       DROID_TRACKING_NOTE_ID: String(trackingNoteId),
+      DROID_SESSION_TAG_CANDIDATES: sessionTagJson("candidates"),
+      DROID_SESSION_TAG_VALIDATOR: sessionTagJson("validator"),
     },
   );
 

@@ -14,6 +14,7 @@ import { generateReviewValidatorPrompt } from "../../create-prompt/templates/rev
 import { resolveReviewConfig } from "../../utils/review-depth";
 import { applyModelPolicyFallback } from "../../utils/model-policy";
 import { assertDroidRunType, DroidRunType } from "../../run-type";
+import { githubReviewSessionTagArg } from "../../utils/review-session-tag";
 
 export async function prepareReviewValidatorMode(options: {
   context: GitHubContext;
@@ -99,7 +100,9 @@ export async function prepareReviewValidatorMode(options: {
 
   const droidArgParts: string[] = [];
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
-  droidArgParts.push('--tag "code-review"');
+  droidArgParts.push(
+    githubReviewSessionTagArg({ pass: "validator", runType, context }),
+  );
 
   const { model, reasoningEffort, fallbackNote } =
     await applyModelPolicyFallback(

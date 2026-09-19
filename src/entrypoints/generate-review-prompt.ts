@@ -19,6 +19,7 @@ import { resolveReviewConfig } from "../utils/review-depth";
 import { applyModelPolicyFallback } from "../utils/model-policy";
 import { retryWithBackoff } from "../utils/retry";
 import { DroidRunType, setDroidRunType } from "../run-type";
+import { githubReviewSessionTagArg } from "../utils/review-session-tag";
 
 async function run() {
   try {
@@ -181,7 +182,9 @@ async function run() {
 
     const droidArgParts: string[] = [];
     droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
-    droidArgParts.push('--tag "code-review"');
+    droidArgParts.push(
+      githubReviewSessionTagArg({ pass: "candidates", runType, context }),
+    );
 
     const rawModel =
       reviewType === "security"
