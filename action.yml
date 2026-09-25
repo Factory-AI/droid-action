@@ -64,7 +64,7 @@ inputs:
     required: false
     default: "false"
   security_model:
-    description: "Override the model used for security review (e.g., 'claude-sonnet-4-5-20250929', 'gpt-5.1-codex'). Only applies to security review flows."
+    description: "Advanced. Leave empty to use the review_depth preset (recommended). Falls back to review_model. If set, use a provider tier alias such as 'anthropic-latest-balanced'. Only applies to security review flows."
     required: false
     default: ""
   security_severity_threshold:
@@ -92,15 +92,15 @@ inputs:
     required: false
     default: "7"
   review_depth:
-    description: "Review depth preset: 'shallow' (fast, uses the oss-latest-balanced model alias) or 'deep' (thorough, uses the openai-latest-balanced model alias with high reasoning). Defaults to deep. Factory keeps each alias pointed at its recommended model. Setting review_model or reasoning_effort explicitly overrides the preset values."
+    description: "Review depth preset: 'deep' (thorough, default) or 'shallow' (fast, lower cost). Factory keeps each preset on its recommended model, so this is the only model setting most workflows need."
     required: false
     default: "deep"
   review_model:
-    description: "Override the model used for code review. Accepts an exact model ID (e.g., 'gpt-5.6-sol') or a model tier alias that Factory keeps current (e.g., 'anthropic-latest-balanced'). If empty, the model is determined by review_depth."
+    description: "Advanced. Leave empty to use the review_depth preset (recommended). If set, use a provider tier alias such as 'anthropic-latest-balanced'; overrides the preset model."
     required: false
     default: ""
   reasoning_effort:
-    description: "Override reasoning effort for review flows (passed to Droid Exec as --reasoning-effort). If empty, determined by review_depth (shallow=default, deep=high)."
+    description: "Advanced. Leave empty to use the review_depth preset (recommended). Overrides the preset reasoning effort for review flows."
     required: false
     default: ""
   include_suggestions:
@@ -124,7 +124,7 @@ inputs:
     required: false
     default: "40"
   fill_model:
-    description: "Override the model used for PR description fill (e.g., 'claude-sonnet-4-5-20250929', 'gpt-5.1-codex'). Only applies to fill flows."
+    description: "Advanced. Leave empty to use the default model (recommended). If set, use a provider tier alias such as 'anthropic-latest-balanced'. Only applies to fill flows."
     required: false
     default: ""
   experimental_allowed_domains:

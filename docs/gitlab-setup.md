@@ -81,9 +81,7 @@ the `droid-review` job. Expect ~5-10 minutes for a typical change.
 | ---------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `automatic_review`           | `"true"`                 | Run code review automatically on every MR pipeline.                                                                                                                                                                                                   |
 | `automatic_security_review`  | `"false"`                | Run a parallel security-focused subagent on every MR pipeline. Findings are prefixed `[security]` and posted alongside code-review comments.                                                                                                          |
-| `review_depth`               | `"deep"`                 | `"deep"` (thorough) or `"shallow"` (fast).                                                                                                                                                                                                            |
-| `review_model`               | `""`                     | Override the model. Empty = use depth preset.                                                                                                                                                                                                         |
-| `reasoning_effort`           | `""`                     | Override reasoning effort. Empty = use depth preset.                                                                                                                                                                                                  |
+| `review_depth`               | `"deep"`                 | `"deep"` (thorough) or `"shallow"` (fast). Factory keeps each preset on its recommended model, so this is the only model setting most projects need.                                                                                                  |
 | `include_suggestions`        | `"true"`                 | Include code suggestion blocks in review comments when the fix is high-confidence.                                                                                                                                                                    |
 | `security_block_on_critical` | `"true"`                 | Block merge on CRITICAL security findings. (Mirrors GitHub action; surface-level parity.)                                                                                                                                                             |
 | `security_block_on_high`     | `"false"`                | Block merge on HIGH security findings. (Mirrors GitHub action; surface-level parity.)                                                                                                                                                                 |
@@ -159,3 +157,18 @@ Each MR pipeline produces:
 - **A custom droid library** copied from
   `$DROID_ACTION_DIR/.factory/droids` into `~/.factory/droids` on the
   runner, so subagents like `security-reviewer` are reachable.
+
+## Advanced: Model overrides
+
+<details>
+<summary>Only needed if your organization requires a specific model provider</summary>
+
+Most projects should use `review_depth` and leave these inputs empty. The
+component also accepts `review_model` and `reasoning_effort`, which take
+priority over the depth preset. If you set `review_model`, use a provider
+tier alias (for example `anthropic-latest-balanced`) so reviews keep picking
+up new models. See
+[Advanced: Model Overrides](../README.md#advanced-model-overrides) for the
+full list and how model policy applies.
+
+</details>

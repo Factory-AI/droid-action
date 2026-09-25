@@ -347,22 +347,17 @@ To leave comments and approvals on your PRs, Droid needs a GitHub token. There a
 | ----------------------------- | ------- | ---------------------------------------------------------------------------------------------------- |
 | `automatic_review`            | `false` | Automatically run code review on PRs without requiring `@droid review`.                              |
 | `review_depth`                | `deep`  | Review depth preset: `shallow` (fast) or `deep` (thorough). See [Review Depth](#review-depth) below. |
-| `review_model`                | `""`    | Override the model for code review. When empty, determined by `review_depth`.                        |
-| `reasoning_effort`            | `""`    | Override reasoning effort for review. When empty, determined by `review_depth`.                      |
 | `review_candidates_max_turns` | `100`   | Stop candidate generation after this many assistant turns.                                           |
 | `review_validator_max_turns`  | `40`    | Stop validation after this many assistant turns.                                                     |
-| `fill_model`                  | `""`    | Override the model used for PR description fill.                                                     |
 
 ### Review Depth
 
-The `review_depth` input controls which model and reasoning effort are used for code reviews. Two presets are available:
+`review_depth` is the only setting you need to choose how reviews run. Each preset picks the model and reasoning effort for you, and Factory keeps it on its recommended model as new models ship. You get upgrades without editing your workflow or updating `droid-action`.
 
-| Depth       | Model                                            | Reasoning Effort | Best For                                                |
-| ----------- | ------------------------------------------------ | ---------------- | ------------------------------------------------------- |
-| **deep**    | `openai-latest-balanced` (currently GPT-5.6 Sol) | `high`           | Thorough reviews catching subtle bugs and design issues |
-| **shallow** | `oss-latest-balanced` (currently GLM-5.3)        | default          | Fast, cost-effective reviews for straightforward PRs    |
-
-**Examples:**
+| Depth              | Best For                                                              |
+| ------------------ | --------------------------------------------------------------------- |
+| **deep** (default) | Thorough reviews that catch subtle bugs and design issues             |
+| **shallow**        | Fast, lower-cost reviews for straightforward PRs or high-volume repos |
 
 ```yaml
 # Deep review (default - no extra config needed)
@@ -377,56 +372,15 @@ The `review_depth` input controls which model and reasoning effort are used for 
     factory_api_key: ${{ secrets.FACTORY_API_KEY }}
     automatic_review: true
     review_depth: shallow
-
-# Fully custom model (overrides depth preset entirely)
-- uses: Factory-AI/droid-action@main
-  with:
-    factory_api_key: ${{ secrets.FACTORY_API_KEY }}
-    automatic_review: true
-    review_model: claude-sonnet-4-6
-    reasoning_effort: high
-
-# Pick a provider and tier, and let Factory keep the model current
-- uses: Factory-AI/droid-action@main
-  with:
-    factory_api_key: ${{ secrets.FACTORY_API_KEY }}
-    automatic_review: true
-    review_model: anthropic-latest-balanced
 ```
 
-> **Tip:** Setting `review_model` or `reasoning_effort` explicitly always takes priority over the depth preset. You can mix and match -- for example, use `review_depth: shallow` but override just `reasoning_effort: high` to get the shallow model with higher reasoning.
-
-#### Model tier aliases
-
-The depth presets use model tier aliases. A tier alias names a provider family and a tier instead of a specific model, and Factory points it at its recommended model for that tier. When a newer model ships in the same tier, your reviews move to it automatically, with no workflow change and no new `droid-action` release. Factory keeps each alias within the same price tier, but the cost per review can still change when the model behind it changes.
-
-| Alias                                              | Tier                           |
-| -------------------------------------------------- | ------------------------------ |
-| `openai-latest-premium` / `-balanced` / `-fast`    | OpenAI models                  |
-| `anthropic-latest-premium` / `-balanced` / `-fast` | Anthropic models               |
-| `oss-latest-premium` / `-balanced` / `-fast`       | Open-weight models (GLM, Kimi) |
-
-Your organization's model policy is checked against the model the alias currently points to. If that model is not allowed, Droid falls back to your organization's default model and notes it in the tracking comment.
-
-To pin an exact model instead, set `review_model` to any model ID supported by `droid exec --model`. Pinned models do not upgrade on their own. A few common choices:
-
-- `claude-opus-5`
-- `claude-sonnet-5`
-- `claude-haiku-4-5`
-- `gpt-6-astra`
-- `gpt-5.6-sol`
-- `gpt-5.6-terra`
-- `glm-5.3`
-- `kimi-k3`
-
-See the [CLI reference](https://docs.factory.ai/reference/cli-reference#available-models) for the canonical, up-to-date list.
+We recommend using one of these presets rather than choosing a model yourself. If your workflow sets `review_model`, `security_model`, or `reasoning_effort` from an earlier setup, remove them so reviews follow the preset and stay current.
 
 ### Security Configuration
 
 | Input                         | Default  | Purpose                                                                                                           |
 | ----------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------- |
 | `automatic_security_review`   | `false`  | Automatically run security review on PRs without requiring `@droid security`.                                     |
-| `security_model`              | `""`     | Override the model used for security review. Falls back to `review_model` if not set.                             |
 | `security_severity_threshold` | `medium` | Minimum severity to report (`critical`, `high`, `medium`, `low`). Findings below this threshold are filtered out. |
 | `security_block_on_critical`  | `true`   | Submit `REQUEST_CHANGES` review when critical severity findings are detected.                                     |
 | `security_block_on_high`      | `false`  | Submit `REQUEST_CHANGES` review when high severity findings are detected.                                         |
@@ -458,6 +412,42 @@ The security review uses specialized Factory skills installed from the public `F
 - **security-review** – Comprehensive security review and patch generation
 
 These skills are automatically installed when running security reviews.
+
+## Advanced: Model Overrides
+
+<details>
+<summary>Only needed if your organization requires a specific model provider</summary>
+
+Most teams should use [`review_depth`](#review-depth) and leave these inputs empty. Overrides take priority over the depth preset.
+
+| Input              | Applies to                                                |
+| ------------------ | --------------------------------------------------------- |
+| `review_model`     | Code review                                               |
+| `security_model`   | Security review (falls back to `review_model` when empty) |
+| `fill_model`       | PR description fill                                       |
+| `reasoning_effort` | Code and security review (`deep` uses `high`)             |
+
+If you set a model, use a provider tier alias. Factory keeps each alias on its recommended model for that provider and tier, so your reviews still pick up new models automatically. An alias stays in the same price tier when its model changes.
+
+| Provider           | Aliases                                                                          |
+| ------------------ | -------------------------------------------------------------------------------- |
+| OpenAI             | `openai-latest-premium`, `openai-latest-balanced`, `openai-latest-fast`          |
+| Anthropic          | `anthropic-latest-premium`, `anthropic-latest-balanced`, `anthropic-latest-fast` |
+| Open-weight models | `oss-latest-premium`, `oss-latest-balanced`, `oss-latest-fast`                   |
+
+```yaml
+- uses: Factory-AI/droid-action@main
+  with:
+    factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+    automatic_review: true
+    review_model: anthropic-latest-balanced
+```
+
+Your organization's model policy is checked against the model an alias currently resolves to. If that model is not allowed, Droid falls back to your organization's default model and says so in the tracking comment.
+
+Exact model IDs are also accepted, but they never upgrade on their own, so reviews stay on that model until you edit the workflow. We do not recommend them.
+
+</details>
 
 ## Troubleshooting & Support
 
