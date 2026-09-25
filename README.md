@@ -374,6 +374,8 @@ To leave comments and approvals on your PRs, Droid needs a GitHub token. There a
     review_depth: shallow
 ```
 
+`deep` is what the Factory team uses on its own repositories. When you pick `deep`, you get the model Factory has hand-picked for code review: a strong, balanced model run with high reasoning effort, updated as better models ship.
+
 We recommend using one of these presets rather than choosing a model yourself. If your workflow sets `review_model`, `security_model`, or `reasoning_effort` from an earlier setup, remove them so reviews follow the preset and stay current.
 
 ### Security Configuration
@@ -440,7 +442,7 @@ If you set a model, use a provider tier alias. Factory keeps each alias on its r
   with:
     factory_api_key: ${{ secrets.FACTORY_API_KEY }}
     automatic_review: true
-    review_model: anthropic-latest-balanced
+    review_model: openai-latest-premium # or anthropic-latest-balanced
 ```
 
 Your organization's model policy is checked against the model an alias currently resolves to. If that model is not allowed, Droid falls back to your organization's default model and says so in the tracking comment.
