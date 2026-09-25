@@ -4,14 +4,14 @@ import { resolveReviewConfig } from "../../src/utils/review-depth";
 describe("resolveReviewConfig (used by gitlab-prepare)", () => {
   it("uses deep preset by default", () => {
     expect(resolveReviewConfig()).toEqual({
-      model: "gpt-5.6-sol",
+      model: "openai-latest-balanced",
       reasoningEffort: "high",
     });
   });
 
   it("returns shallow preset for review_depth=shallow", () => {
     expect(resolveReviewConfig({ reviewDepth: "shallow" })).toEqual({
-      model: "glm-5.2",
+      model: "oss-latest-balanced",
       reasoningEffort: undefined,
     });
   });
@@ -30,7 +30,7 @@ describe("resolveReviewConfig (used by gitlab-prepare)", () => {
       reasoningEffort: "medium",
     });
     expect(out.reasoningEffort).toBe("medium");
-    expect(out.model).toBe("gpt-5.6-sol");
+    expect(out.model).toBe("openai-latest-balanced");
   });
 
   it("both explicit overrides win simultaneously", () => {
@@ -47,6 +47,6 @@ describe("resolveReviewConfig (used by gitlab-prepare)", () => {
 
   it("unknown reviewDepth falls back to shallow preset", () => {
     const out = resolveReviewConfig({ reviewDepth: "neutron-star" });
-    expect(out.model).toBe("glm-5.2");
+    expect(out.model).toBe("oss-latest-balanced");
   });
 });

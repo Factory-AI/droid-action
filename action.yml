@@ -92,11 +92,11 @@ inputs:
     required: false
     default: "7"
   review_depth:
-    description: "Review depth preset: 'shallow' (fast, uses glm-5.2) or 'deep' (thorough, uses gpt-5.6-sol with high reasoning). Defaults to deep. Setting review_model or reasoning_effort explicitly overrides the preset values."
+    description: "Review depth preset: 'shallow' (fast, uses the oss-latest-balanced model alias) or 'deep' (thorough, uses the openai-latest-balanced model alias with high reasoning). Defaults to deep. Factory keeps each alias pointed at its recommended model. Setting review_model or reasoning_effort explicitly overrides the preset values."
     required: false
     default: "deep"
   review_model:
-    description: "Override the model used for code review (e.g., 'claude-sonnet-4-5-20250929', 'gpt-5.1-codex'). If empty, the model is determined by review_depth."
+    description: "Override the model used for code review. Accepts an exact model ID (e.g., 'gpt-5.6-sol') or a model tier alias that Factory keeps current (e.g., 'anthropic-latest-balanced'). If empty, the model is determined by review_depth."
     required: false
     default: ""
   reasoning_effort:

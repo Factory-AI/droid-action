@@ -13,11 +13,11 @@ inputs:
     description: "ID of the tracking comment to update"
     required: true
   review_depth:
-    description: "Review depth preset: 'shallow' (fast, uses glm-5.2) or 'deep' (thorough, uses gpt-5.6-sol with high reasoning). Defaults to deep. Setting review_model or reasoning_effort explicitly overrides the preset values."
+    description: "Review depth preset: 'shallow' (fast, uses the oss-latest-balanced model alias) or 'deep' (thorough, uses the openai-latest-balanced model alias with high reasoning). Defaults to deep. Factory keeps each alias pointed at its recommended model. Setting review_model or reasoning_effort explicitly overrides the preset values."
     required: false
     default: "deep"
   review_model:
-    description: "Override the model used for review. If empty, determined by review_depth."
+    description: "Override the model used for review. Accepts an exact model ID or a model tier alias that Factory keeps current (e.g., 'anthropic-latest-balanced'). If empty, determined by review_depth."
     required: false
     default: ""
   reasoning_effort:

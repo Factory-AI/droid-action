@@ -543,7 +543,8 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
           const policyBlocked =
             (resultEvent?.is_error === true &&
               isModelPolicyError(resultEvent.result)) ||
-            isModelPolicyError(agentLoopError);
+            isModelPolicyError(agentLoopError) ||
+            isModelPolicyError(getStderrTail());
           const invalidModel = isInvalidModelError(getStderrTail());
           if (
             !modelArgsStripped &&
