@@ -52,6 +52,72 @@ export function condenseInvalidModelError(text: string): string {
   return condensed || text;
 }
 
+const MODEL_OVERRIDES_DOCS_URL =
+  "https://github.com/Factory-AI/droid-action#advanced-model-overrides";
+
+/**
+ * Matches Factory model tier aliases such as `openai-latest-balanced`.
+ * The review presets default to these, so an unrecognized alias usually
+ * means the installed CLI predates alias support rather than a bad input.
+ */
+export function isModelTierAlias(modelId: string): boolean {
+  return /^[a-z0-9]+-latest-(premium|balanced|fast)$/.test(modelId);
+}
+
+/** Return the value of the last `--model` flag in an argv array. */
+export function getModelArg(args: string[]): string | undefined {
+  let model: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--model") {
+      model = args[i + 1];
+    } else if (arg.startsWith("--model=")) {
+      model = arg.slice("--model=".length);
+    }
+  }
+  return model?.replace(/^["']|["']$/g, "") || undefined;
+}
+
+/**
+ * Build the tracking-comment note shown after droid exec rejected the
+ * requested model and the run was retried with the org's default model.
+ */
+export function describeModelFallback(options: {
+  policyBlocked: boolean;
+  model: string | undefined;
+}): string {
+  const { policyBlocked, model } = options;
+  const modelLabel = model ? `model \`${model}\`` : "requested model";
+
+  if (policyBlocked) {
+    return (
+      `The ${modelLabel} is not allowed by your organization's model policy, ` +
+      "so Droid retried with your organization's default model. Remove the " +
+      "model input (e.g. `review_model`) to use the recommended default, or " +
+      `set it to a [model tier alias](${MODEL_OVERRIDES_DOCS_URL}) approved ` +
+      "by your organization."
+    );
+  }
+
+  if (model && isModelTierAlias(model)) {
+    return (
+      `The installed Droid CLI does not support the model tier alias \`${model}\` ` +
+      "yet, so Droid retried with your organization's default model. No " +
+      "workflow change is needed; this resolves once the action installs a " +
+      "CLI version with tier alias support. If you set " +
+      "`path_to_droid_executable`, update that CLI."
+    );
+  }
+
+  return (
+    `The ${modelLabel} is not a recognized model id, so Droid retried with ` +
+    "your organization's default model. Set the model input (e.g. " +
+    "`review_model`) to a supported model id or a " +
+    `[model tier alias](${MODEL_OVERRIDES_DOCS_URL}), or remove it to use ` +
+    "the recommended default."
+  );
+}
+
 /**
  * Remove `--model <value>` and `--reasoning-effort <value>` (including
  * `--flag=value` forms) from an argv array so droid exec falls back to the

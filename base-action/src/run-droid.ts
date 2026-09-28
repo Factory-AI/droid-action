@@ -6,6 +6,8 @@ import { parse as parseShellArgs } from "shell-quote";
 import { retryWithBackoff } from "./utils/retry";
 import {
   condenseInvalidModelError,
+  describeModelFallback,
+  getModelArg,
   isInvalidModelError,
   isModelPolicyError,
   stripModelArgs,
@@ -554,20 +556,17 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
             )
           ) {
             modelArgsStripped = true;
+            const rejectedModel = getModelArg(currentDroidArgs);
             currentDroidArgs = stripModelArgs(currentDroidArgs);
             const reason = policyBlocked
               ? "is not allowed by your organization's model policy"
               : "is not a recognized model id";
             console.warn(
-              `The requested model ${reason}; retrying with the organization's default model`,
+              `The requested model${rejectedModel ? ` ${rejectedModel}` : ""} ${reason}; retrying with the organization's default model`,
             );
             core.setOutput(
               "model_fallback_note",
-              `The requested model ${reason}, so Droid retried with your organization's default model. ` +
-                "Remove the model input (e.g. `review_model`) to use the " +
-                "recommended default, or set it to a " +
-                "[model tier alias](https://github.com/Factory-AI/droid-action#advanced-model-overrides) " +
-                "approved by your organization.",
+              describeModelFallback({ policyBlocked, model: rejectedModel }),
             );
           }
           throw new Error(`Droid Exec exited with code ${lastExitCode}`);

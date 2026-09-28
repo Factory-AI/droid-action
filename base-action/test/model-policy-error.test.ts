@@ -1,10 +1,58 @@
 import { describe, expect, it } from "bun:test";
 import {
   condenseInvalidModelError,
+  describeModelFallback,
+  getModelArg,
   isInvalidModelError,
   isModelPolicyError,
   stripModelArgs,
 } from "../src/utils/model-policy-error";
+
+describe("getModelArg", () => {
+  it("reads --model <value> and --model=value forms", () => {
+    expect(getModelArg(["exec", "--model", "gpt-5.2", "-f", "p"])).toBe(
+      "gpt-5.2",
+    );
+    expect(getModelArg(["exec", "--model=openai-latest-balanced"])).toBe(
+      "openai-latest-balanced",
+    );
+  });
+
+  it("returns undefined when no model is set", () => {
+    expect(getModelArg(["exec", "-f", "p"])).toBeUndefined();
+  });
+});
+
+describe("describeModelFallback", () => {
+  it("blames the CLI, not the workflow, for an unrecognized tier alias", () => {
+    const note = describeModelFallback({
+      policyBlocked: false,
+      model: "openai-latest-balanced",
+    });
+    expect(note).toContain("`openai-latest-balanced`");
+    expect(note).toContain("does not support the model tier alias");
+    expect(note).toContain("No workflow change is needed");
+    expect(note).not.toContain("review_model");
+  });
+
+  it("points at the model input for an unrecognized concrete model id", () => {
+    const note = describeModelFallback({
+      policyBlocked: false,
+      model: "gpt-image-1",
+    });
+    expect(note).toContain("The model `gpt-image-1` is not a recognized");
+    expect(note).toContain("`review_model`");
+  });
+
+  it("describes a policy block even for tier aliases", () => {
+    const note = describeModelFallback({
+      policyBlocked: true,
+      model: "openai-latest-premium",
+    });
+    expect(note).toContain("not allowed by your organization's model policy");
+    expect(note).toContain("`review_model`");
+  });
+});
 
 describe("isModelPolicyError", () => {
   it("matches the model policy 403 message", () => {
