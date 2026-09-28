@@ -2,11 +2,14 @@
  * Matches the 403 errors returned by the Factory API when a request uses a
  * model that the organization's model policy does not allow, including the
  * explicit opt-in variant ("This model requires explicit organization
- * opt-in by an admin.").
+ * opt-in by an admin."), and the stderr message droid exec prints when it
+ * rejects a --model value (e.g. a resolved tier alias) against the policy
+ * before starting.
  */
 const MODEL_POLICY_ERROR_PATTERNS = [
   /not available due to your organization['’]s security settings/i,
   /requires explicit organization opt-in/i,
+  /Model blocked by organization policy/i,
 ];
 
 export function isModelPolicyError(text: string | undefined | null): boolean {

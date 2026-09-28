@@ -13,15 +13,15 @@ inputs:
     description: "ID of the tracking comment to update"
     required: true
   review_depth:
-    description: "Review depth preset: 'shallow' (fast, uses glm-5.2) or 'deep' (thorough, uses gpt-5.6-sol with high reasoning). Defaults to deep. Setting review_model or reasoning_effort explicitly overrides the preset values."
+    description: "Review depth preset: 'deep' (thorough, default) or 'shallow' (fast, lower cost). Factory keeps each preset on its recommended model."
     required: false
     default: "deep"
   review_model:
-    description: "Override the model used for review. If empty, determined by review_depth."
+    description: "Advanced. Leave empty to use the review_depth preset (recommended). If set, use a provider tier alias such as 'openai-latest-premium' or 'anthropic-latest-balanced'."
     required: false
     default: ""
   reasoning_effort:
-    description: "Override reasoning effort for review. If empty, determined by review_depth (shallow=default, deep=high)."
+    description: "Advanced. Leave empty to use the review_depth preset (recommended)."
     required: false
     default: ""
   output_file:

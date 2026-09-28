@@ -543,7 +543,8 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
           const policyBlocked =
             (resultEvent?.is_error === true &&
               isModelPolicyError(resultEvent.result)) ||
-            isModelPolicyError(agentLoopError);
+            isModelPolicyError(agentLoopError) ||
+            isModelPolicyError(getStderrTail());
           const invalidModel = isInvalidModelError(getStderrTail());
           if (
             !modelArgsStripped &&
@@ -563,9 +564,10 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
             core.setOutput(
               "model_fallback_note",
               `The requested model ${reason}, so Droid retried with your organization's default model. ` +
-                "Set the model input (e.g. `review_model`) to an " +
-                "[available model](https://docs.factory.ai/models) approved " +
-                "by your organization to control which model is used.",
+                "Remove the model input (e.g. `review_model`) to use the " +
+                "recommended default, or set it to a " +
+                "[model tier alias](https://github.com/Factory-AI/droid-action#advanced-model-overrides) " +
+                "approved by your organization.",
             );
           }
           throw new Error(`Droid Exec exited with code ${lastExitCode}`);

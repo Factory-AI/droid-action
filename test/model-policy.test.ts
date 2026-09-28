@@ -82,6 +82,21 @@ describe("isModelAllowedByPolicy", () => {
     expect(isModelAllowedByPolicy("gpt-5.2", policy)).toBe(false);
   });
 
+  it("defers tier aliases to the CLI, which checks the resolved model", () => {
+    const policy = {
+      allowedModelIds: ["gpt-5.6-sol"],
+      blockedModelIds: ["glm-5.3"],
+    };
+    expect(isModelAllowedByPolicy("openai-latest-balanced", policy)).toBe(true);
+    expect(isModelAllowedByPolicy("oss-latest-fast", policy)).toBe(true);
+  });
+
+  it("still enforces the policy on IDs that only resemble tier aliases", () => {
+    const policy = { allowedModelIds: ["gpt-5.6-sol"] };
+    expect(isModelAllowedByPolicy("openai-latest", policy)).toBe(false);
+    expect(isModelAllowedByPolicy("openai-latest-ultra", policy)).toBe(false);
+  });
+
   it("treats an empty allow list as unrestricted", () => {
     expect(isModelAllowedByPolicy("gpt-5.2", { allowedModelIds: [] })).toBe(
       true,

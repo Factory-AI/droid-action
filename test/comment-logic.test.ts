@@ -675,10 +675,11 @@ describe("updateCommentBody", () => {
       expect(result).toContain(policyError);
       expect(result).toContain("`review_model`");
       expect(result).toContain("approved by your organization");
-      expect(result).toContain("https://docs.factory.ai/models");
+      expect(result).toContain("recommended default");
+      expect(result).toContain("#advanced-model-overrides");
     });
 
-    it("adds a hint with the models docs link for invalid-model errors", () => {
+    it("adds a hint pointing back to the default for invalid-model errors", () => {
       const input: CommentUpdateInput = {
         ...baseInput,
         currentBody: "Droid is working…",
@@ -690,7 +691,8 @@ describe("updateCommentBody", () => {
       const result = updateCommentBody(input);
       expect(result).toContain("not a recognized model id");
       expect(result).toContain("`review_model`");
-      expect(result).toContain("https://docs.factory.ai/models");
+      expect(result).toContain("recommended default");
+      expect(result).toContain("#advanced-model-overrides");
     });
 
     it("does not add the hint for unrelated errors", () => {
