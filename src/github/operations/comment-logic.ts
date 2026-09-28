@@ -1,5 +1,4 @@
 import { GITHUB_SERVER_URL } from "../api/config";
-import { isModelTierAlias } from "../../utils/model-policy";
 import type { ReviewPostOutcome } from "../../core/review/tracking/types";
 import {
   prepareDroidTrackingCommentBody,
@@ -34,7 +33,7 @@ export type CommentUpdateInput = {
 const MODEL_POLICY_ERROR_PATTERN =
   /not available due to your organization['’]s security settings|requires explicit organization opt-in/i;
 
-const INVALID_MODEL_ERROR_PATTERN = /Invalid model:\s*(\S+)?/i;
+const INVALID_MODEL_ERROR_PATTERN = /Invalid model:/i;
 
 const MODEL_OVERRIDES_DOCS_URL =
   "https://github.com/Factory-AI/droid-action#advanced-model-overrides";
@@ -53,13 +52,6 @@ const INVALID_MODEL_HINT =
   "`review_model` input (or `security_model` / `fill_model`) to use the " +
   "recommended default, or set it to a " +
   `[model tier alias](${MODEL_OVERRIDES_DOCS_URL}).`;
-
-const INVALID_TIER_ALIAS_HINT =
-  "> [!TIP]\n" +
-  "> The installed Droid CLI does not support model tier aliases yet. No " +
-  "workflow change is needed; this resolves once the action installs a CLI " +
-  "version with tier alias support. If you set `path_to_droid_executable`, " +
-  "update that CLI.";
 
 export const SECURITY_REVIEW_BADGE =
   "![Security Review](https://img.shields.io/badge/security%20review-ran-blue)";
@@ -251,16 +243,8 @@ export function updateCommentBody(input: CommentUpdateInput): string {
     newBody += `\n\n\`\`\`\n${errorDetails}\n\`\`\``;
     if (MODEL_POLICY_ERROR_PATTERN.test(errorDetails)) {
       newBody += `\n\n${MODEL_POLICY_HINT}`;
-    } else {
-      const invalidModel = errorDetails.match(INVALID_MODEL_ERROR_PATTERN);
-      if (invalidModel) {
-        const model = invalidModel[1]?.replace(/[.,;:]+$/, "");
-        newBody += `\n\n${
-          model && isModelTierAlias(model)
-            ? INVALID_TIER_ALIAS_HINT
-            : INVALID_MODEL_HINT
-        }`;
-      }
+    } else if (INVALID_MODEL_ERROR_PATTERN.test(errorDetails)) {
+      newBody += `\n\n${INVALID_MODEL_HINT}`;
     }
   }
 

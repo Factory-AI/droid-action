@@ -2,9 +2,11 @@ import { describe, expect, it } from "bun:test";
 import {
   condenseInvalidModelError,
   describeModelFallback,
+  getLegacyTierAliasModel,
   getModelArg,
   isInvalidModelError,
   isModelPolicyError,
+  replaceModelArg,
   stripModelArgs,
 } from "../src/utils/model-policy-error";
 
@@ -23,18 +25,48 @@ describe("getModelArg", () => {
   });
 });
 
-describe("describeModelFallback", () => {
-  it("blames the CLI, not the workflow, for an unrecognized tier alias", () => {
-    const note = describeModelFallback({
-      policyBlocked: false,
-      model: "openai-latest-balanced",
-    });
-    expect(note).toContain("`openai-latest-balanced`");
-    expect(note).toContain("does not support the model tier alias");
-    expect(note).toContain("No workflow change is needed");
-    expect(note).not.toContain("review_model");
+describe("getLegacyTierAliasModel", () => {
+  it("maps every tier alias to a concrete model", () => {
+    for (const provider of ["openai", "anthropic", "oss"]) {
+      for (const tier of ["premium", "balanced", "fast"]) {
+        expect(
+          getLegacyTierAliasModel(`${provider}-latest-${tier}`),
+        ).toBeTruthy();
+      }
+    }
+    expect(getLegacyTierAliasModel("openai-latest-balanced")).toBe(
+      "gpt-5.6-sol",
+    );
   });
 
+  it("returns undefined for concrete models and missing values", () => {
+    expect(getLegacyTierAliasModel("gpt-5.2")).toBeUndefined();
+    expect(getLegacyTierAliasModel("toString")).toBeUndefined();
+    expect(getLegacyTierAliasModel(undefined)).toBeUndefined();
+  });
+});
+
+describe("replaceModelArg", () => {
+  it("swaps the model value and keeps reasoning effort", () => {
+    expect(
+      replaceModelArg(
+        [
+          "exec",
+          "--model",
+          "openai-latest-balanced",
+          "--reasoning-effort",
+          "high",
+        ],
+        "gpt-5.6-sol",
+      ),
+    ).toEqual(["exec", "--model", "gpt-5.6-sol", "--reasoning-effort", "high"]);
+    expect(
+      replaceModelArg(["--model=oss-latest-fast"], "glm-5.3-flash"),
+    ).toEqual(["--model=glm-5.3-flash"]);
+  });
+});
+
+describe("describeModelFallback", () => {
   it("points at the model input for an unrecognized concrete model id", () => {
     const note = describeModelFallback({
       policyBlocked: false,

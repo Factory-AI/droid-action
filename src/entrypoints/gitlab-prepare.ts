@@ -23,6 +23,7 @@
  * Pass-2 content before the second `droid exec` invocation.
  */
 
+import { spawnSync } from "child_process";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { parseGitlabContext, isMergeRequestContext } from "../gitlab/context";
@@ -46,6 +47,35 @@ import {
   type ReviewPass,
 } from "../utils/review-session-tag";
 import { setupDroidSettings } from "../../base-action/src/setup-droid-settings";
+import {
+  getLegacyTierAliasModel,
+  isInvalidModelError,
+} from "../../base-action/src/utils/model-policy-error";
+
+/**
+ * The CI template runs `droid exec` directly, so a tier alias that the
+ * installed CLI predates would fail the review outright. Probe it with the
+ * fast `--list-tools` path and swap in the equivalent concrete model.
+ */
+export function downgradeUnsupportedTierAlias(
+  model: string | undefined,
+  probe: (model: string) => string = (m) => {
+    const result = spawnSync("droid", ["exec", "--model", m, "--list-tools"], {
+      encoding: "utf8",
+      timeout: 60_000,
+    });
+    return `${result.stdout ?? ""}${result.stderr ?? ""}`;
+  },
+): string | undefined {
+  const legacyModel = getLegacyTierAliasModel(model);
+  if (!model || !legacyModel || !isInvalidModelError(probe(model))) {
+    return model;
+  }
+  console.log(
+    `The installed Droid CLI does not recognize the tier alias ${model}; using ${legacyModel}`,
+  );
+  return legacyModel;
+}
 
 export type PrepareState = {
   shouldRunReview: boolean;
@@ -310,16 +340,14 @@ async function run(): Promise<void> {
       }),
     );
 
-  await writeResolvedEnvShim(
-    resolved.model ?? null,
-    resolved.reasoningEffort ?? null,
-    {
-      DROID_MR_IID: String(mrIid),
-      DROID_TRACKING_NOTE_ID: String(trackingNoteId),
-      DROID_SESSION_TAG_CANDIDATES: sessionTagJson("candidates"),
-      DROID_SESSION_TAG_VALIDATOR: sessionTagJson("validator"),
-    },
-  );
+  const model = downgradeUnsupportedTierAlias(resolved.model);
+
+  await writeResolvedEnvShim(model ?? null, resolved.reasoningEffort ?? null, {
+    DROID_MR_IID: String(mrIid),
+    DROID_TRACKING_NOTE_ID: String(trackingNoteId),
+    DROID_SESSION_TAG_CANDIDATES: sessionTagJson("candidates"),
+    DROID_SESSION_TAG_VALIDATOR: sessionTagJson("validator"),
+  });
 
   const candidatesPath = candidatesFilePath();
   const validatedPath = validatedFilePath();

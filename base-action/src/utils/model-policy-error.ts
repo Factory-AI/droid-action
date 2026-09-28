@@ -56,12 +56,40 @@ const MODEL_OVERRIDES_DOCS_URL =
   "https://github.com/Factory-AI/droid-action#advanced-model-overrides";
 
 /**
- * Matches Factory model tier aliases such as `openai-latest-balanced`.
- * The review presets default to these, so an unrecognized alias usually
- * means the installed CLI predates alias support rather than a bad input.
+ * Concrete stand-ins for each model tier alias, used when the installed
+ * Droid CLI predates alias support and rejects the alias as an invalid
+ * model. Each entry is a GA model that such CLIs already know and that sits
+ * in the alias's candidate list in the CLI, so the review keeps the same
+ * tier (and supports `--reasoning-effort high`) instead of dropping to the
+ * org default.
  */
-export function isModelTierAlias(modelId: string): boolean {
-  return /^[a-z0-9]+-latest-(premium|balanced|fast)$/.test(modelId);
+const LEGACY_TIER_ALIAS_MODELS: Record<string, string> = {
+  "openai-latest-premium": "gpt-6-astra",
+  "openai-latest-balanced": "gpt-5.6-sol",
+  "openai-latest-fast": "gpt-5.6-luna",
+  "anthropic-latest-premium": "claude-opus-5-5",
+  "anthropic-latest-balanced": "claude-opus-5-5",
+  "anthropic-latest-fast": "claude-haiku-4-5-20251001",
+  "oss-latest-premium": "kimi-k3",
+  "oss-latest-balanced": "glm-5.3",
+  "oss-latest-fast": "glm-5.3-flash",
+};
+
+export function getLegacyTierAliasModel(
+  modelId: string | undefined,
+): string | undefined {
+  return modelId && Object.hasOwn(LEGACY_TIER_ALIAS_MODELS, modelId)
+    ? LEGACY_TIER_ALIAS_MODELS[modelId]
+    : undefined;
+}
+
+/** Replace the value of every `--model` flag, keeping all other args. */
+export function replaceModelArg(args: string[], model: string): string[] {
+  return args.map((arg, i) => {
+    if (args[i - 1] === "--model") return model;
+    if (arg.startsWith("--model=")) return `--model=${model}`;
+    return arg;
+  });
 }
 
 /** Return the value of the last `--model` flag in an argv array. */
@@ -96,16 +124,6 @@ export function describeModelFallback(options: {
       "model input (e.g. `review_model`) to use the recommended default, or " +
       `set it to a [model tier alias](${MODEL_OVERRIDES_DOCS_URL}) approved ` +
       "by your organization."
-    );
-  }
-
-  if (model && isModelTierAlias(model)) {
-    return (
-      `The installed Droid CLI does not support the model tier alias \`${model}\` ` +
-      "yet, so Droid retried with your organization's default model. No " +
-      "workflow change is needed; this resolves once the action installs a " +
-      "CLI version with tier alias support. If you set " +
-      "`path_to_droid_executable`, update that CLI."
     );
   }
 

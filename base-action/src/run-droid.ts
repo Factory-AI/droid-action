@@ -7,9 +7,11 @@ import { retryWithBackoff } from "./utils/retry";
 import {
   condenseInvalidModelError,
   describeModelFallback,
+  getLegacyTierAliasModel,
   getModelArg,
   isInvalidModelError,
   isModelPolicyError,
+  replaceModelArg,
   stripModelArgs,
 } from "./utils/model-policy-error";
 import {
@@ -521,6 +523,22 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
       async () => {
         try {
           lastExitCode = await runDroidOnce();
+          // A CLI that predates tier aliases rejects them before doing any
+          // work; rerun right away with the equivalent concrete model so the
+          // review keeps its tier and the user sees no fallback note.
+          const requestedModel = getModelArg(currentDroidArgs);
+          const legacyModel = getLegacyTierAliasModel(requestedModel);
+          if (
+            lastExitCode !== 0 &&
+            legacyModel &&
+            isInvalidModelError(getStderrTail())
+          ) {
+            console.log(
+              `The installed Droid CLI does not recognize the tier alias ${requestedModel}; using ${legacyModel}`,
+            );
+            currentDroidArgs = replaceModelArg(currentDroidArgs, legacyModel);
+            lastExitCode = await runDroidOnce();
+          }
         } catch (error) {
           if (error instanceof MaxTurnsExceededError) {
             turnCapError = error;

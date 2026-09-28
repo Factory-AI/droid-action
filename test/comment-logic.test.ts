@@ -695,21 +695,6 @@ describe("updateCommentBody", () => {
       expect(result).toContain("#advanced-model-overrides");
     });
 
-    it("attributes an unrecognized tier alias to the CLI version", () => {
-      const input: CommentUpdateInput = {
-        ...baseInput,
-        currentBody: "Droid is working…",
-        actionFailed: true,
-        errorDetails:
-          "Droid Exec exited with code 1:\nInvalid model: openai-latest-balanced",
-      };
-
-      const result = updateCommentBody(input);
-      expect(result).toContain("does not support model tier aliases");
-      expect(result).toContain("No workflow change is needed");
-      expect(result).not.toContain("`review_model`");
-    });
-
     it("does not add the hint for unrelated errors", () => {
       const input: CommentUpdateInput = {
         ...baseInput,
