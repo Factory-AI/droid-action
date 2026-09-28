@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { downgradeUnsupportedTierAlias } from "../../src/entrypoints/gitlab-prepare";
+import {
+  downgradeUnsupportedTierAlias,
+  withoutGitlabTokens,
+} from "../../src/entrypoints/gitlab-prepare";
 import { resolveReviewConfig } from "../../src/utils/review-depth";
 
 describe("resolveReviewConfig (used by gitlab-prepare)", () => {
@@ -77,5 +80,21 @@ describe("downgradeUnsupportedTierAlias", () => {
     };
     expect(downgradeUnsupportedTierAlias("gpt-5.2", probe)).toBe("gpt-5.2");
     expect(downgradeUnsupportedTierAlias(undefined, probe)).toBeUndefined();
+  });
+});
+
+describe("withoutGitlabTokens", () => {
+  it("drops GitLab credentials and keeps everything else", () => {
+    const env = {
+      GITLAB_TOKEN: "glpat-secret",
+      OVERRIDE_GITLAB_TOKEN: "glpat-override",
+      FACTORY_API_KEY: "fk-key",
+      PATH: "/usr/bin",
+    };
+    expect(withoutGitlabTokens(env)).toEqual({
+      FACTORY_API_KEY: "fk-key",
+      PATH: "/usr/bin",
+    });
+    expect(env.GITLAB_TOKEN).toBe("glpat-secret");
   });
 });

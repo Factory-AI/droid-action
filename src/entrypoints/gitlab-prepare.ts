@@ -53,6 +53,20 @@ import {
 } from "../../base-action/src/utils/model-policy-error";
 
 /**
+ * `droid exec` runs in the untrusted MR checkout and starts project MCP
+ * servers, so it must never see GitLab credentials. Mirrors the
+ * `env -u GITLAB_TOKEN -u OVERRIDE_GITLAB_TOKEN` passes in the CI template.
+ */
+export function withoutGitlabTokens(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const {
+    GITLAB_TOKEN: _token,
+    OVERRIDE_GITLAB_TOKEN: _overrideToken,
+    ...rest
+  } = env;
+  return rest;
+}
+
+/**
  * The CI template runs `droid exec` directly, so a tier alias that the
  * installed CLI predates would fail the review outright. Probe it with the
  * fast `--list-tools` path and swap in the equivalent concrete model.
@@ -63,6 +77,7 @@ export function downgradeUnsupportedTierAlias(
     const result = spawnSync("droid", ["exec", "--model", m, "--list-tools"], {
       encoding: "utf8",
       timeout: 60_000,
+      env: withoutGitlabTokens(process.env),
     });
     return `${result.stdout ?? ""}${result.stderr ?? ""}`;
   },
