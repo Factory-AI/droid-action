@@ -291,7 +291,7 @@ describe("prepareSecurityReviewMode", () => {
     const droidArgsCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "droid_args",
     ) as [string, string] | undefined;
-    expect(droidArgsCall?.[1]).toContain('--model "openai-latest-balanced"');
+    expect(droidArgsCall?.[1]).toContain('--model "gpt-5.6-sol"');
     expect(droidArgsCall?.[1]).toContain('--reasoning-effort "high"');
   });
 

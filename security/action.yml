@@ -13,7 +13,7 @@ inputs:
     description: "ID of the tracking comment to update"
     required: true
   security_model:
-    description: "Advanced. Leave empty to use the review_depth preset (recommended). If set, use a provider tier alias such as 'openai-latest-premium' or 'anthropic-latest-balanced'."
+    description: "Model to use for security review"
     required: false
     default: ""
   security_severity_threshold:
@@ -45,11 +45,11 @@ inputs:
     required: false
     default: "deep"
   review_model:
-    description: "Advanced. Leave empty to use the review_depth preset (recommended)."
+    description: "Override the model used for the validator."
     required: false
     default: ""
   reasoning_effort:
-    description: "Advanced. Leave empty to use the review_depth preset (recommended)."
+    description: "Override reasoning effort for the validator."
     required: false
     default: ""
   include_suggestions:

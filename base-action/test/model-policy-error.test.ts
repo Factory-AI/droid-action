@@ -31,14 +31,6 @@ describe("isModelPolicyError", () => {
     ).toBe(true);
   });
 
-  it("matches the droid exec pre-flight policy rejection on stderr", () => {
-    expect(
-      isModelPolicyError(
-        "Model blocked by organization policy: \n\nRun 'droid settings' to see available models.",
-      ),
-    ).toBe(true);
-  });
-
   it("does not match unrelated errors", () => {
     expect(isModelPolicyError("429 Too Many Requests")).toBe(false);
     expect(isModelPolicyError(undefined)).toBe(false);
