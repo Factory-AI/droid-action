@@ -1,17 +1,21 @@
 import { describe, expect, it } from "bun:test";
+import {
+  downgradeUnsupportedTierAlias,
+  withoutGitlabTokens,
+} from "../../src/entrypoints/gitlab-prepare";
 import { resolveReviewConfig } from "../../src/utils/review-depth";
 
 describe("resolveReviewConfig (used by gitlab-prepare)", () => {
   it("uses deep preset by default", () => {
     expect(resolveReviewConfig()).toEqual({
-      model: "gpt-5.6-sol",
+      model: "openai-latest-balanced",
       reasoningEffort: "high",
     });
   });
 
   it("returns shallow preset for review_depth=shallow", () => {
     expect(resolveReviewConfig({ reviewDepth: "shallow" })).toEqual({
-      model: "glm-5.2",
+      model: "oss-latest-balanced",
       reasoningEffort: undefined,
     });
   });
@@ -30,7 +34,7 @@ describe("resolveReviewConfig (used by gitlab-prepare)", () => {
       reasoningEffort: "medium",
     });
     expect(out.reasoningEffort).toBe("medium");
-    expect(out.model).toBe("gpt-5.6-sol");
+    expect(out.model).toBe("openai-latest-balanced");
   });
 
   it("both explicit overrides win simultaneously", () => {
@@ -47,6 +51,50 @@ describe("resolveReviewConfig (used by gitlab-prepare)", () => {
 
   it("unknown reviewDepth falls back to shallow preset", () => {
     const out = resolveReviewConfig({ reviewDepth: "neutron-star" });
-    expect(out.model).toBe("glm-5.2");
+    expect(out.model).toBe("oss-latest-balanced");
+  });
+});
+
+describe("downgradeUnsupportedTierAlias", () => {
+  it("swaps an alias the installed CLI rejects for its concrete model", () => {
+    expect(
+      downgradeUnsupportedTierAlias(
+        "openai-latest-balanced",
+        () => "Invalid model: openai-latest-balanced\n",
+      ),
+    ).toBe("gpt-5.6-sol");
+  });
+
+  it("keeps an alias the installed CLI accepts", () => {
+    expect(
+      downgradeUnsupportedTierAlias(
+        "openai-latest-balanced",
+        () => "Available tools for GPT-6 Sol\n",
+      ),
+    ).toBe("openai-latest-balanced");
+  });
+
+  it("does not probe concrete models or an empty model", () => {
+    const probe = () => {
+      throw new Error("should not probe");
+    };
+    expect(downgradeUnsupportedTierAlias("gpt-5.2", probe)).toBe("gpt-5.2");
+    expect(downgradeUnsupportedTierAlias(undefined, probe)).toBeUndefined();
+  });
+});
+
+describe("withoutGitlabTokens", () => {
+  it("drops GitLab credentials and keeps everything else", () => {
+    const env = {
+      GITLAB_TOKEN: "glpat-secret",
+      OVERRIDE_GITLAB_TOKEN: "glpat-override",
+      FACTORY_API_KEY: "fk-key",
+      PATH: "/usr/bin",
+    };
+    expect(withoutGitlabTokens(env)).toEqual({
+      FACTORY_API_KEY: "fk-key",
+      PATH: "/usr/bin",
+    });
+    expect(env.GITLAB_TOKEN).toBe("glpat-secret");
   });
 });

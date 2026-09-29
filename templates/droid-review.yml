@@ -36,13 +36,18 @@ spec:
       description: "Run code review automatically on every MR event."
       default: "true"
     review_depth:
-      description: "Review depth preset: `shallow` (fast) or `deep` (thorough)."
+      description: |
+        Review depth preset: `shallow` (fast) or `deep` (thorough). Factory
+        keeps each preset on its recommended model, so this is the only
+        model setting most projects need.
       default: "deep"
     review_model:
-      description: "Override the model used for code review. Empty = use depth preset."
+      description: |
+        Advanced. Leave empty to use the `review_depth` preset (recommended).
+        If set, use a provider tier alias such as `openai-latest-premium` or `anthropic-latest-balanced`.
       default: ""
     reasoning_effort:
-      description: "Override reasoning effort. Empty = use depth preset."
+      description: "Advanced. Leave empty to use the `review_depth` preset (recommended)."
       default: ""
     include_suggestions:
       description: |

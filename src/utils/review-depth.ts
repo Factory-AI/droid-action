@@ -3,13 +3,15 @@ export enum ReviewDepth {
   Deep = "deep",
 }
 
+// Tier aliases are resolved by the Droid CLI (installed fresh on every run),
+// so presets follow Factory's current recommendation without a new release.
 const SHALLOW_DEFAULTS = {
-  model: "glm-5.2",
+  model: "oss-latest-balanced",
   reasoningEffort: undefined as string | undefined,
 };
 
 const DEEP_DEFAULTS = {
-  model: "gpt-5.6-sol",
+  model: "openai-latest-balanced",
   reasoningEffort: "high" as string | undefined,
 };
 

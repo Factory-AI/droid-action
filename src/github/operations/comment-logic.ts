@@ -35,18 +35,23 @@ const MODEL_POLICY_ERROR_PATTERN =
 
 const INVALID_MODEL_ERROR_PATTERN = /Invalid model:/i;
 
+const MODEL_OVERRIDES_DOCS_URL =
+  "https://github.com/Factory-AI/droid-action#advanced-model-overrides";
+
 const MODEL_POLICY_HINT =
   "> [!TIP]\n" +
   "> The selected model is not allowed by your organization's model policy. " +
-  "Set the `review_model` input (or `security_model` / `fill_model`) to an " +
-  "[available model](https://docs.factory.ai/models) approved by your " +
+  "Remove the `review_model` input (or `security_model` / `fill_model`) to " +
+  "use the recommended default, or set it to a " +
+  `[model tier alias](${MODEL_OVERRIDES_DOCS_URL}) approved by your ` +
   "organization.";
 
 const INVALID_MODEL_HINT =
   "> [!TIP]\n" +
-  "> The selected model is not a recognized model id. Set the " +
-  "`review_model` input (or `security_model` / `fill_model`) to an " +
-  "[available model](https://docs.factory.ai/models).";
+  "> The selected model is not a recognized model id. Remove the " +
+  "`review_model` input (or `security_model` / `fill_model`) to use the " +
+  "recommended default, or set it to a " +
+  `[model tier alias](${MODEL_OVERRIDES_DOCS_URL}).`;
 
 export const SECURITY_REVIEW_BADGE =
   "![Security Review](https://img.shields.io/badge/security%20review-ran-blue)";

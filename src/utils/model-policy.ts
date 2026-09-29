@@ -105,6 +105,15 @@ export async function fetchModelPolicy(
 }
 
 /**
+ * Matches Factory model tier aliases such as `openai-latest-balanced`. The
+ * Droid CLI resolves them to a concrete model and enforces the org policy on
+ * that model, which this action cannot know in advance.
+ */
+export function isModelTierAlias(modelId: string): boolean {
+  return /^[a-z0-9]+-latest-(premium|balanced|fast)$/.test(modelId);
+}
+
+/**
  * Conservative client-side mirror of the server-side model policy check.
  * Only returns false when the policy definitively disallows the model;
  * any ambiguity resolves to allowed (the server remains the enforcer).
@@ -113,7 +122,7 @@ export function isModelAllowedByPolicy(
   modelId: string,
   policy: ModelPolicy | null | undefined,
 ): boolean {
-  if (!policy) {
+  if (!policy || isModelTierAlias(modelId)) {
     return true;
   }
   if (policy.blockedModelIds?.includes(modelId)) {
@@ -159,8 +168,9 @@ export async function applyModelPolicyFallback(
   const fallbackNote =
     `The ${options.flowLabel} model \`${model}\` is not allowed by your ` +
     `organization's model policy, so Droid used your organization's default ` +
-    `model instead. Set the \`${options.modelInputName}\` input to an ` +
-    `approved model to control which model is used.`;
+    `model instead. Remove the \`${options.modelInputName}\` input to use ` +
+    `the recommended default, or set it to a model tier alias approved ` +
+    `by your organization.`;
 
   core.warning(
     `Model "${model}" is not allowed by the organization's model policy; ` +
