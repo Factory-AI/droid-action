@@ -319,12 +319,19 @@ async function run(): Promise<void> {
     `Artifacts written:\n  ${artifacts.diffPath}\n  ${artifacts.commentsPath}\n  ${artifacts.descriptionPath}`,
   );
 
+  // Swap an unsupported alias before the policy pre-flight: the pre-flight
+  // passes every alias, so only the concrete stand-in can be checked, and
+  // the template has no runtime retry to catch a blocked model.
+  const reviewConfig = resolveReviewConfig({
+    reviewModel: context.inputs.reviewModel,
+    reasoningEffort: context.inputs.reasoningEffort,
+    reviewDepth: context.inputs.reviewDepth,
+  });
   const resolved = await applyModelPolicyFallback(
-    resolveReviewConfig({
-      reviewModel: context.inputs.reviewModel,
-      reasoningEffort: context.inputs.reasoningEffort,
-      reviewDepth: context.inputs.reviewDepth,
-    }),
+    {
+      ...reviewConfig,
+      model: downgradeUnsupportedTierAlias(reviewConfig.model),
+    },
     { flowLabel: "code review", modelInputName: "review_model" },
   );
   console.log(
@@ -355,14 +362,16 @@ async function run(): Promise<void> {
       }),
     );
 
-  const model = downgradeUnsupportedTierAlias(resolved.model);
-
-  await writeResolvedEnvShim(model ?? null, resolved.reasoningEffort ?? null, {
-    DROID_MR_IID: String(mrIid),
-    DROID_TRACKING_NOTE_ID: String(trackingNoteId),
-    DROID_SESSION_TAG_CANDIDATES: sessionTagJson("candidates"),
-    DROID_SESSION_TAG_VALIDATOR: sessionTagJson("validator"),
-  });
+  await writeResolvedEnvShim(
+    resolved.model ?? null,
+    resolved.reasoningEffort ?? null,
+    {
+      DROID_MR_IID: String(mrIid),
+      DROID_TRACKING_NOTE_ID: String(trackingNoteId),
+      DROID_SESSION_TAG_CANDIDATES: sessionTagJson("candidates"),
+      DROID_SESSION_TAG_VALIDATOR: sessionTagJson("validator"),
+    },
+  );
 
   const candidatesPath = candidatesFilePath();
   const validatedPath = validatedFilePath();

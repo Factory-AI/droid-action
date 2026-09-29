@@ -351,6 +351,7 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
   // 5s then 10s delays).
   let lastExitCode = 1;
   let currentDroidArgs = config.droidArgs;
+  const requestedModel = getModelArg(config.droidArgs);
   let modelArgsStripped = false;
   type ResultEvent = { is_error?: boolean; result?: string };
   let lastResultEvent: ResultEvent | null = null;
@@ -526,15 +527,15 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
           // A CLI that predates tier aliases rejects them before doing any
           // work; rerun right away with the equivalent concrete model so the
           // review keeps its tier and the user sees no fallback note.
-          const requestedModel = getModelArg(currentDroidArgs);
-          const legacyModel = getLegacyTierAliasModel(requestedModel);
+          const currentModel = getModelArg(currentDroidArgs);
+          const legacyModel = getLegacyTierAliasModel(currentModel);
           if (
             lastExitCode !== 0 &&
             legacyModel &&
             isInvalidModelError(getStderrTail())
           ) {
             console.log(
-              `The installed Droid CLI does not recognize the tier alias ${requestedModel}; using ${legacyModel}`,
+              `The installed Droid CLI does not recognize the tier alias ${currentModel}; using ${legacyModel}`,
             );
             currentDroidArgs = replaceModelArg(currentDroidArgs, legacyModel);
             lastExitCode = await runDroidOnce();
@@ -574,17 +575,17 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
             )
           ) {
             modelArgsStripped = true;
-            const rejectedModel = getModelArg(currentDroidArgs);
             currentDroidArgs = stripModelArgs(currentDroidArgs);
             const reason = policyBlocked
               ? "is not allowed by your organization's model policy"
               : "is not a recognized model id";
             console.warn(
-              `The requested model${rejectedModel ? ` ${rejectedModel}` : ""} ${reason}; retrying with the organization's default model`,
+              `The requested model${requestedModel ? ` ${requestedModel}` : ""} ${reason}; retrying with the organization's default model`,
             );
             core.setOutput(
               "model_fallback_note",
-              describeModelFallback({ policyBlocked, model: rejectedModel }),
+              // Name what the workflow asked for, not a tier-alias stand-in.
+              describeModelFallback({ policyBlocked, model: requestedModel }),
             );
           }
           throw new Error(`Droid Exec exited with code ${lastExitCode}`);
