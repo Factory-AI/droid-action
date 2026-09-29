@@ -408,9 +408,9 @@ describe("prepareReviewMode", () => {
     const droidArgsCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "droid_args",
     ) as [string, string] | undefined;
-    // When REVIEW_MODEL is empty the deep depth preset kicks in (openai-latest-balanced, high reasoning).
+    // When REVIEW_MODEL is empty the deep depth preset kicks in (openai-latest-balanced, medium reasoning).
     expect(droidArgsCall?.[1]).toContain('--model "openai-latest-balanced"');
-    expect(droidArgsCall?.[1]).toContain('--reasoning-effort "high"');
+    expect(droidArgsCall?.[1]).toContain('--reasoning-effort "medium"');
   });
 
   it("stores PR description as an artifact file", async () => {
