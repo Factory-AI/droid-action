@@ -201,7 +201,7 @@ describe("prepareReviewMode", () => {
         platform: "github",
         repo: "test-owner/test-repo",
         pr: "24",
-        concurrentSecurityReview: "false",
+        securityReview: "false",
         runId: "1234567890",
       }),
     });

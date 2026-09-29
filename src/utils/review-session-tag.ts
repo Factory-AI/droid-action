@@ -13,6 +13,11 @@ export type ReviewPass = "candidates" | "validator";
 export type ReviewType = "code" | "security";
 export type ReviewPlatform = "github" | "gitlab";
 
+/**
+ * Every value is a string: `droid exec` validates `--tag` metadata as a
+ * string-to-string record and refuses to start on anything else, booleans
+ * included.
+ */
 export type ReviewSessionTagMetadata = {
   pass: ReviewPass;
   reviewType: ReviewType;
@@ -23,12 +28,12 @@ export type ReviewSessionTagMetadata = {
   pr: string;
   /**
    * Code reviews only, on both passes: "true" when the candidates pass
-   * spawns a concurrent `security-reviewer` subagent. That subagent's
-   * session carries only the CLI's `subagent` tag, so this is the run-level
-   * record that part of the review's spend is security work. Absent when
-   * `reviewType` is "security".
+   * spawns the `security-reviewer` subagent. That subagent's session carries
+   * only the CLI's `subagent` tag, so this is the run-level record that part
+   * of the review's spend is security work. Absent when `reviewType` is
+   * "security".
    */
-  concurrentSecurityReview?: "true" | "false";
+  securityReview?: "true" | "false";
   /** `GITHUB_RUN_ID` / `CI_JOB_ID`; shared by both passes of one run. */
   runId?: string;
   /** `GITHUB_RUN_ATTEMPT`; re-runs of the same run id get distinct sessions. */
@@ -46,7 +51,7 @@ export type ReviewSessionTagInput = {
   platform: ReviewPlatform;
   repo: string;
   pr: number | string;
-  concurrentSecurityReview: boolean;
+  securityReview: boolean;
   runId?: string | null;
   runAttempt?: string | null;
 };
@@ -68,9 +73,7 @@ export function buildReviewSessionTag(
     pr: String(input.pr),
   };
   if (input.reviewType === "code") {
-    metadata.concurrentSecurityReview = input.concurrentSecurityReview
-      ? "true"
-      : "false";
+    metadata.securityReview = input.securityReview ? "true" : "false";
   }
   if (input.runId) {
     metadata.runId = input.runId;
@@ -92,7 +95,7 @@ export function formatReviewSessionTagArg(tag: ReviewSessionTag): string {
 
 /**
  * The `--tag` fragment for a GitHub Actions review pass. The run attempt and
- * the concurrent security flag are not part of the parsed context, so they
+ * the security review flag are not part of the parsed context, so they
  * are read from the runner environment. SECURITY_REVIEW_ENABLED is the same
  * variable the prompt templates read, and it reaches the validator step
  * through GITHUB_ENV, so both passes of a run agree with the prompt.
@@ -113,7 +116,7 @@ export function githubReviewSessionTagArg(input: {
       platform: "github",
       repo: `${input.context.repository.owner}/${input.context.repository.repo}`,
       pr: input.context.entityNumber,
-      concurrentSecurityReview: process.env.SECURITY_REVIEW_ENABLED === "true",
+      securityReview: process.env.SECURITY_REVIEW_ENABLED === "true",
       runId: input.context.runId,
       runAttempt: process.env.GITHUB_RUN_ATTEMPT,
     }),

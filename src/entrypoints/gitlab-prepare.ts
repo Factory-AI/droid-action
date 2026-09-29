@@ -350,7 +350,7 @@ async function run(): Promise<void> {
   // GitLab has no separate security pipeline: `automatic_security_review`
   // folds security findings into these same two passes, so the review type
   // is always "code" here (unlike GitHub, which runs a distinct pass) and the
-  // concurrent flag records whether the security-reviewer subagent runs.
+  // securityReview flag records whether the security-reviewer subagent runs.
   const sessionTagJson = (pass: ReviewPass): string =>
     JSON.stringify(
       buildReviewSessionTag({
@@ -359,7 +359,7 @@ async function run(): Promise<void> {
         platform: "gitlab",
         repo: context.project.pathWithNamespace,
         pr: mrIid,
-        concurrentSecurityReview: securityReviewEnabled,
+        securityReview: securityReviewEnabled,
         runId: context.jobId,
       }),
     );

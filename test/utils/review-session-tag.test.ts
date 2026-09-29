@@ -17,7 +17,7 @@ describe("buildReviewSessionTag", () => {
       platform: "github",
       repo: "acme/widgets",
       pr: 42,
-      concurrentSecurityReview: false,
+      securityReview: false,
       runId: "987",
       runAttempt: "2",
     });
@@ -30,28 +30,28 @@ describe("buildReviewSessionTag", () => {
         platform: "github",
         repo: "acme/widgets",
         pr: "42",
-        concurrentSecurityReview: "false",
+        securityReview: "false",
         runId: "987",
         runAttempt: "2",
       },
     });
   });
 
-  it("records the concurrent security flag on code reviews only", () => {
+  it("records the security review flag on code reviews only", () => {
     const input = {
       pass: "candidates",
       platform: "github",
       repo: "acme/widgets",
       pr: 42,
-      concurrentSecurityReview: true,
+      securityReview: true,
     } as const;
 
     expect(
       buildReviewSessionTag({ ...input, reviewType: "code" }).metadata
-        .concurrentSecurityReview,
+        .securityReview,
     ).toBe("true");
     expect(
-      "concurrentSecurityReview" in
+      "securityReview" in
         buildReviewSessionTag({ ...input, reviewType: "security" }).metadata,
     ).toBe(false);
   });
@@ -63,7 +63,7 @@ describe("buildReviewSessionTag", () => {
       platform: "gitlab",
       repo: "group/sub/project",
       pr: 7,
-      concurrentSecurityReview: false,
+      securityReview: false,
       runId: null,
       runAttempt: undefined,
     });
@@ -100,7 +100,7 @@ describe("formatReviewSessionTagArg", () => {
       platform: "github",
       repo: "acme/widgets",
       pr: 42,
-      concurrentSecurityReview: true,
+      securityReview: true,
       runId: "987",
     });
 
@@ -127,7 +127,7 @@ describe("formatReviewSessionTagArg", () => {
       platform: "gitlab",
       repo: "group/it's-a-repo",
       pr: 1,
-      concurrentSecurityReview: false,
+      securityReview: false,
     });
 
     const parsed = parseShellArgs(formatReviewSessionTagArg(tag));
@@ -187,7 +187,7 @@ describe("githubReviewSessionTagArg", () => {
     });
   });
 
-  it("reads the concurrent security flag from SECURITY_REVIEW_ENABLED", () => {
+  it("reads the security review flag from SECURITY_REVIEW_ENABLED", () => {
     const args = {
       pass: "candidates",
       runType: DroidRunType.Review,
@@ -196,13 +196,13 @@ describe("githubReviewSessionTagArg", () => {
 
     expect(metadataOf(githubReviewSessionTagArg(args))).toMatchObject({
       reviewType: "code",
-      concurrentSecurityReview: "false",
+      securityReview: "false",
     });
 
     process.env.SECURITY_REVIEW_ENABLED = "true";
     expect(metadataOf(githubReviewSessionTagArg(args))).toMatchObject({
       reviewType: "code",
-      concurrentSecurityReview: "true",
+      securityReview: "true",
     });
   });
 });

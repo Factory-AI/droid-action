@@ -73,7 +73,7 @@ describe("prepareReviewValidatorMode", () => {
         platform: "github",
         repo: "test-owner/test-repo",
         pr: "24",
-        concurrentSecurityReview: "true",
+        securityReview: "true",
         runId: "1234567890",
       }),
     });

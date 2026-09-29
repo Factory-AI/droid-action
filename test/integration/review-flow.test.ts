@@ -478,7 +478,7 @@ describe("review command integration", () => {
       metadata: expect.objectContaining({
         pass: "candidates",
         reviewType: "code",
-        concurrentSecurityReview: "false",
+        securityReview: "false",
       }),
     });
   });
@@ -516,7 +516,7 @@ describe("review command integration", () => {
       metadata: expect.objectContaining({
         pass: "candidates",
         reviewType: "code",
-        concurrentSecurityReview: "true",
+        securityReview: "true",
       }),
     });
   });
