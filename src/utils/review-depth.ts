@@ -12,7 +12,7 @@ const SHALLOW_DEFAULTS = {
 
 const DEEP_DEFAULTS = {
   model: "openai-latest-balanced",
-  reasoningEffort: "high" as string | undefined,
+  reasoningEffort: "medium" as string | undefined,
 };
 
 export const REVIEW_DEPTH_PRESETS: Record<

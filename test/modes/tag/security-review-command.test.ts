@@ -292,7 +292,7 @@ describe("prepareSecurityReviewMode", () => {
       (call: unknown[]) => call[0] === "droid_args",
     ) as [string, string] | undefined;
     expect(droidArgsCall?.[1]).toContain('--model "openai-latest-balanced"');
-    expect(droidArgsCall?.[1]).toContain('--reasoning-effort "high"');
+    expect(droidArgsCall?.[1]).toContain('--reasoning-effort "medium"');
   });
 
   it("outputs install_security_skills flag", async () => {

@@ -376,7 +376,7 @@ To leave comments and approvals on your PRs, Droid needs a GitHub token. There a
     review_depth: shallow
 ```
 
-`deep` is what the Factory team uses on its own repositories. When you pick `deep`, you get the model Factory has hand-picked for code review: a strong, balanced model run with high reasoning effort, updated as better models ship.
+`deep` is what the Factory team uses on its own repositories. When you pick `deep`, you get the model Factory has hand-picked for code review: a strong, balanced model run with medium reasoning effort, updated as better models ship.
 
 We recommend using one of these presets rather than choosing a model yourself. If your workflow sets `review_model`, `security_model`, or `reasoning_effort` from an earlier setup, remove them so reviews follow the preset and stay current.
 
@@ -429,7 +429,7 @@ Most teams should use [`review_depth`](#review-depth) and leave these inputs emp
 | `review_model`     | Code review                                               |
 | `security_model`   | Security review (falls back to `review_model` when empty) |
 | `fill_model`       | PR description fill                                       |
-| `reasoning_effort` | Code and security review (`deep` uses `high`)             |
+| `reasoning_effort` | Code and security review (`deep` uses `medium`)           |
 
 If you set a model, use a provider tier alias. Factory keeps each alias on its recommended model for that provider and tier, so your reviews still pick up new models automatically. An alias stays in the same price tier when its model changes.
 
