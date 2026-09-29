@@ -1,10 +1,90 @@
 import { describe, expect, it } from "bun:test";
 import {
   condenseInvalidModelError,
+  describeModelFallback,
+  getLegacyTierAliasModel,
+  getModelArg,
   isInvalidModelError,
   isModelPolicyError,
+  replaceModelArg,
   stripModelArgs,
 } from "../src/utils/model-policy-error";
+
+describe("getModelArg", () => {
+  it("reads --model <value> and --model=value forms", () => {
+    expect(getModelArg(["exec", "--model", "gpt-5.2", "-f", "p"])).toBe(
+      "gpt-5.2",
+    );
+    expect(getModelArg(["exec", "--model=openai-latest-balanced"])).toBe(
+      "openai-latest-balanced",
+    );
+  });
+
+  it("returns undefined when no model is set", () => {
+    expect(getModelArg(["exec", "-f", "p"])).toBeUndefined();
+  });
+});
+
+describe("getLegacyTierAliasModel", () => {
+  it("maps every tier alias to a concrete model", () => {
+    for (const provider of ["openai", "anthropic", "oss"]) {
+      for (const tier of ["premium", "balanced", "fast"]) {
+        expect(
+          getLegacyTierAliasModel(`${provider}-latest-${tier}`),
+        ).toBeTruthy();
+      }
+    }
+    expect(getLegacyTierAliasModel("openai-latest-balanced")).toBe(
+      "gpt-5.6-sol",
+    );
+  });
+
+  it("returns undefined for concrete models and missing values", () => {
+    expect(getLegacyTierAliasModel("gpt-5.2")).toBeUndefined();
+    expect(getLegacyTierAliasModel("toString")).toBeUndefined();
+    expect(getLegacyTierAliasModel(undefined)).toBeUndefined();
+  });
+});
+
+describe("replaceModelArg", () => {
+  it("swaps the model value and keeps reasoning effort", () => {
+    expect(
+      replaceModelArg(
+        [
+          "exec",
+          "--model",
+          "openai-latest-balanced",
+          "--reasoning-effort",
+          "high",
+        ],
+        "gpt-5.6-sol",
+      ),
+    ).toEqual(["exec", "--model", "gpt-5.6-sol", "--reasoning-effort", "high"]);
+    expect(
+      replaceModelArg(["--model=oss-latest-fast"], "glm-5.3-flash"),
+    ).toEqual(["--model=glm-5.3-flash"]);
+  });
+});
+
+describe("describeModelFallback", () => {
+  it("points at the model input for an unrecognized concrete model id", () => {
+    const note = describeModelFallback({
+      policyBlocked: false,
+      model: "gpt-image-1",
+    });
+    expect(note).toContain("The model `gpt-image-1` is not a recognized");
+    expect(note).toContain("`review_model`");
+  });
+
+  it("describes a policy block even for tier aliases", () => {
+    const note = describeModelFallback({
+      policyBlocked: true,
+      model: "openai-latest-premium",
+    });
+    expect(note).toContain("not allowed by your organization's model policy");
+    expect(note).toContain("`review_model`");
+  });
+});
 
 describe("isModelPolicyError", () => {
   it("matches the model policy 403 message", () => {

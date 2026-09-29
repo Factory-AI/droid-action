@@ -6,8 +6,12 @@ import { parse as parseShellArgs } from "shell-quote";
 import { retryWithBackoff } from "./utils/retry";
 import {
   condenseInvalidModelError,
+  describeModelFallback,
+  getLegacyTierAliasModel,
+  getModelArg,
   isInvalidModelError,
   isModelPolicyError,
+  replaceModelArg,
   stripModelArgs,
 } from "./utils/model-policy-error";
 import {
@@ -347,6 +351,7 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
   // 5s then 10s delays).
   let lastExitCode = 1;
   let currentDroidArgs = config.droidArgs;
+  const requestedModel = getModelArg(config.droidArgs);
   let modelArgsStripped = false;
   type ResultEvent = { is_error?: boolean; result?: string };
   let lastResultEvent: ResultEvent | null = null;
@@ -519,6 +524,22 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
       async () => {
         try {
           lastExitCode = await runDroidOnce();
+          // A CLI that predates tier aliases rejects them before doing any
+          // work; rerun right away with the equivalent concrete model so the
+          // review keeps its tier and the user sees no fallback note.
+          const currentModel = getModelArg(currentDroidArgs);
+          const legacyModel = getLegacyTierAliasModel(currentModel);
+          if (
+            lastExitCode !== 0 &&
+            legacyModel &&
+            isInvalidModelError(getStderrTail())
+          ) {
+            console.log(
+              `The installed Droid CLI does not recognize the tier alias ${currentModel}; using ${legacyModel}`,
+            );
+            currentDroidArgs = replaceModelArg(currentDroidArgs, legacyModel);
+            lastExitCode = await runDroidOnce();
+          }
         } catch (error) {
           if (error instanceof MaxTurnsExceededError) {
             turnCapError = error;
@@ -559,15 +580,12 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
               ? "is not allowed by your organization's model policy"
               : "is not a recognized model id";
             console.warn(
-              `The requested model ${reason}; retrying with the organization's default model`,
+              `The requested model${requestedModel ? ` ${requestedModel}` : ""} ${reason}; retrying with the organization's default model`,
             );
             core.setOutput(
               "model_fallback_note",
-              `The requested model ${reason}, so Droid retried with your organization's default model. ` +
-                "Remove the model input (e.g. `review_model`) to use the " +
-                "recommended default, or set it to a " +
-                "[model tier alias](https://github.com/Factory-AI/droid-action#advanced-model-overrides) " +
-                "approved by your organization.",
+              // Name what the workflow asked for, not a tier-alias stand-in.
+              describeModelFallback({ policyBlocked, model: requestedModel }),
             );
           }
           throw new Error(`Droid Exec exited with code ${lastExitCode}`);

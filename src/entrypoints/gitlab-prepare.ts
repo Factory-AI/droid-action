@@ -23,6 +23,7 @@
  * Pass-2 content before the second `droid exec` invocation.
  */
 
+import { spawnSync } from "child_process";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { parseGitlabContext, isMergeRequestContext } from "../gitlab/context";
@@ -46,6 +47,50 @@ import {
   type ReviewPass,
 } from "../utils/review-session-tag";
 import { setupDroidSettings } from "../../base-action/src/setup-droid-settings";
+import {
+  getLegacyTierAliasModel,
+  isInvalidModelError,
+} from "../../base-action/src/utils/model-policy-error";
+
+/**
+ * `droid exec` runs in the untrusted MR checkout and starts project MCP
+ * servers, so it must never see GitLab credentials. Mirrors the
+ * `env -u GITLAB_TOKEN -u OVERRIDE_GITLAB_TOKEN` passes in the CI template.
+ */
+export function withoutGitlabTokens(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const {
+    GITLAB_TOKEN: _token,
+    OVERRIDE_GITLAB_TOKEN: _overrideToken,
+    ...rest
+  } = env;
+  return rest;
+}
+
+/**
+ * The CI template runs `droid exec` directly, so a tier alias that the
+ * installed CLI predates would fail the review outright. Probe it with the
+ * fast `--list-tools` path and swap in the equivalent concrete model.
+ */
+export function downgradeUnsupportedTierAlias(
+  model: string | undefined,
+  probe: (model: string) => string = (m) => {
+    const result = spawnSync("droid", ["exec", "--model", m, "--list-tools"], {
+      encoding: "utf8",
+      timeout: 60_000,
+      env: withoutGitlabTokens(process.env),
+    });
+    return `${result.stdout ?? ""}${result.stderr ?? ""}`;
+  },
+): string | undefined {
+  const legacyModel = getLegacyTierAliasModel(model);
+  if (!model || !legacyModel || !isInvalidModelError(probe(model))) {
+    return model;
+  }
+  console.log(
+    `The installed Droid CLI does not recognize the tier alias ${model}; using ${legacyModel}`,
+  );
+  return legacyModel;
+}
 
 export type PrepareState = {
   shouldRunReview: boolean;
@@ -274,12 +319,19 @@ async function run(): Promise<void> {
     `Artifacts written:\n  ${artifacts.diffPath}\n  ${artifacts.commentsPath}\n  ${artifacts.descriptionPath}`,
   );
 
+  // Swap an unsupported alias before the policy pre-flight: the pre-flight
+  // passes every alias, so only the concrete stand-in can be checked, and
+  // the template has no runtime retry to catch a blocked model.
+  const reviewConfig = resolveReviewConfig({
+    reviewModel: context.inputs.reviewModel,
+    reasoningEffort: context.inputs.reasoningEffort,
+    reviewDepth: context.inputs.reviewDepth,
+  });
   const resolved = await applyModelPolicyFallback(
-    resolveReviewConfig({
-      reviewModel: context.inputs.reviewModel,
-      reasoningEffort: context.inputs.reasoningEffort,
-      reviewDepth: context.inputs.reviewDepth,
-    }),
+    {
+      ...reviewConfig,
+      model: downgradeUnsupportedTierAlias(reviewConfig.model),
+    },
     { flowLabel: "code review", modelInputName: "review_model" },
   );
   console.log(
