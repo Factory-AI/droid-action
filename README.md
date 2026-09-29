@@ -216,9 +216,11 @@ jobs:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
           automatic_security_review: true
+          allowed_bots: factory-droid
 ```
 
 Set `automatic_review: true` to run code reviews automatically on non-draft PRs. Set `automatic_security_review: true` to additionally run a STRIDE-based security review concurrently on every non-draft PR.
+The example allows PRs opened by `factory-droid[bot]` to be reviewed. Other bots remain blocked unless you add them to `allowed_bots`.
 
 ## Using the Commands
 
