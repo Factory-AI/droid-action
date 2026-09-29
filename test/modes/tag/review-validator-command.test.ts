@@ -10,10 +10,14 @@ describe("prepareReviewValidatorMode", () => {
   const savedArgs = process.env.DROID_ARGS;
   const savedFactoryKey = process.env.FACTORY_API_KEY;
   const savedRunnerTemp = process.env.RUNNER_TEMP;
+  const savedSecurityReviewEnabled = process.env.SECURITY_REVIEW_ENABLED;
 
   beforeEach(() => {
     process.env.RUNNER_TEMP = "/tmp/test-runner";
     delete process.env.FACTORY_API_KEY;
+    // The prepare step exports this through GITHUB_ENV when the dual review
+    // spawns a security-reviewer; the validator's tag must agree with it.
+    process.env.SECURITY_REVIEW_ENABLED = "true";
   });
 
   afterEach(() => {
@@ -23,6 +27,9 @@ describe("prepareReviewValidatorMode", () => {
     else process.env.FACTORY_API_KEY = savedFactoryKey;
     if (savedRunnerTemp === undefined) delete process.env.RUNNER_TEMP;
     else process.env.RUNNER_TEMP = savedRunnerTemp;
+    if (savedSecurityReviewEnabled === undefined)
+      delete process.env.SECURITY_REVIEW_ENABLED;
+    else process.env.SECURITY_REVIEW_ENABLED = savedSecurityReviewEnabled;
   });
 
   it("exposes only file-writing tools and strips custom tool flags", async () => {
@@ -66,6 +73,7 @@ describe("prepareReviewValidatorMode", () => {
         platform: "github",
         repo: "test-owner/test-repo",
         pr: "24",
+        concurrentSecurityReview: "true",
         runId: "1234567890",
       }),
     });

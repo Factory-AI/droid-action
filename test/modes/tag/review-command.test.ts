@@ -32,6 +32,7 @@ describe("prepareReviewMode", () => {
   const originalArgs = process.env.DROID_ARGS;
   const originalReviewModel = process.env.REVIEW_MODEL;
   const originalRunnerTemp = process.env.RUNNER_TEMP;
+  const originalSecurityReviewEnabled = process.env.SECURITY_REVIEW_ENABLED;
   let graphqlSpy: ReturnType<typeof spyOn>;
   let promptSpy: ReturnType<typeof spyOn>;
   let mcpSpy: ReturnType<typeof spyOn>;
@@ -45,6 +46,7 @@ describe("prepareReviewMode", () => {
   beforeEach(() => {
     process.env.DROID_ARGS = "";
     delete process.env.REVIEW_MODEL;
+    delete process.env.SECURITY_REVIEW_ENABLED;
     process.env.RUNNER_TEMP = "/tmp/test-runner";
 
     promptSpy = spyOn(promptModule, "createPrompt").mockResolvedValue();
@@ -96,6 +98,11 @@ describe("prepareReviewMode", () => {
       process.env.RUNNER_TEMP = originalRunnerTemp;
     } else {
       delete process.env.RUNNER_TEMP;
+    }
+    if (originalSecurityReviewEnabled !== undefined) {
+      process.env.SECURITY_REVIEW_ENABLED = originalSecurityReviewEnabled;
+    } else {
+      delete process.env.SECURITY_REVIEW_ENABLED;
     }
   });
 
@@ -194,6 +201,7 @@ describe("prepareReviewMode", () => {
         platform: "github",
         repo: "test-owner/test-repo",
         pr: "24",
+        concurrentSecurityReview: "false",
         runId: "1234567890",
       }),
     });

@@ -12,10 +12,12 @@ import * as reviewArtifactsModule from "../../src/github/data/review-artifacts";
 import * as core from "@actions/core";
 import * as childProcess from "node:child_process";
 import { DroidRunType } from "../../src/run-type";
+import { parseSessionTagFromDroidArgs } from "../utils/session-tag-helpers";
 
 describe("review command integration", () => {
   const originalRunnerTemp = process.env.RUNNER_TEMP;
   const originalDroidArgs = process.env.DROID_ARGS;
+  const originalSecurityReviewEnabled = process.env.SECURITY_REVIEW_ENABLED;
   let tmpDir: string;
   let graphqlSpy: ReturnType<typeof spyOn>;
   let createCommentSpy: ReturnType<typeof spyOn>;
@@ -95,6 +97,7 @@ describe("review command integration", () => {
     tmpDir = await mkdtemp(path.join(os.tmpdir(), "review-int-"));
     process.env.RUNNER_TEMP = tmpDir;
     process.env.DROID_ARGS = "";
+    delete process.env.SECURITY_REVIEW_ENABLED;
 
     createCommentSpy = spyOn(
       createInitial,
@@ -152,7 +155,20 @@ describe("review command integration", () => {
     } else {
       delete process.env.DROID_ARGS;
     }
+
+    if (originalSecurityReviewEnabled !== undefined) {
+      process.env.SECURITY_REVIEW_ENABLED = originalSecurityReviewEnabled;
+    } else {
+      delete process.env.SECURITY_REVIEW_ENABLED;
+    }
   });
+
+  function candidatesSessionTag(): unknown {
+    const droidArgs = setOutputSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "droid_args",
+    )?.[1] as string | undefined;
+    return parseSessionTagFromDroidArgs(droidArgs ?? "");
+  }
 
   it("prepares review flow end-to-end", async () => {
     const context = createMockContext({
@@ -457,9 +473,22 @@ describe("review command integration", () => {
       "SECURITY_REVIEW_ENABLED",
       "true",
     );
+    expect(candidatesSessionTag()).toEqual({
+      name: "code-review",
+      metadata: expect.objectContaining({
+        pass: "candidates",
+        reviewType: "code",
+        concurrentSecurityReview: "false",
+      }),
+    });
   });
 
   it("creates a combined comment when both automatic reviews will run", async () => {
+    // The real exportVariable also sets process.env for the current step,
+    // which is how the candidates prompt and tag see the flag.
+    exportVarSpy.mockImplementation((name: string, value: unknown) => {
+      process.env[name] = String(value);
+    });
     const context = createAutomaticReviewContext(true);
     const octokit = createAutomaticReviewOctokit(false);
 
@@ -482,5 +511,13 @@ describe("review command integration", () => {
       "SECURITY_REVIEW_ENABLED",
       "true",
     );
+    expect(candidatesSessionTag()).toEqual({
+      name: "code-review",
+      metadata: expect.objectContaining({
+        pass: "candidates",
+        reviewType: "code",
+        concurrentSecurityReview: "true",
+      }),
+    });
   });
 });
