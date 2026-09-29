@@ -220,8 +220,8 @@ jobs:
 ```
 
 Set `automatic_review: true` to run code reviews automatically on non-draft PRs. Set `automatic_security_review: true` to additionally run a STRIDE-based security review concurrently on every non-draft PR.
-The example allows PRs opened by `factory-droid[bot]` to be reviewed. Other bots remain blocked unless you add them to `allowed_bots`.
 The example allows reviews triggered by `factory-droid[bot]`. `allowed_bots` checks the event actor, not the PR author, so PRs opened by other bots can also be reviewed when a human triggers the workflow.
+
 ## Using the Commands
 
 ### `@droid fill`
