@@ -9,7 +9,7 @@ describe("resolveReviewConfig (used by gitlab-prepare)", () => {
   it("uses deep preset by default", () => {
     expect(resolveReviewConfig()).toEqual({
       model: "openai-latest-balanced",
-      reasoningEffort: "high",
+      reasoningEffort: "medium",
     });
   });
 
@@ -31,9 +31,9 @@ describe("resolveReviewConfig (used by gitlab-prepare)", () => {
   it("explicit reasoningEffort beats depth preset", () => {
     const out = resolveReviewConfig({
       reviewDepth: "deep",
-      reasoningEffort: "medium",
+      reasoningEffort: "high",
     });
-    expect(out.reasoningEffort).toBe("medium");
+    expect(out.reasoningEffort).toBe("high");
     expect(out.model).toBe("openai-latest-balanced");
   });
 
