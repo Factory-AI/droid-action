@@ -191,9 +191,9 @@ describe("updateDroidComment", () => {
     });
   });
 
-  test("should propagate error when PR review comment update fails with non-404 error", async () => {
+  test("should retry and propagate error when PR review comment update fails with transient error", async () => {
     const mockError = new Error("Internal Server Error") as any;
-    mockError.status = 500;
+    mockError.status = 500; // 500 is transient and retryable
 
     // @ts-expect-error Mock implementation doesn't match full type signature
     mockOctokit.rest.pulls.updateReviewComment = jest
@@ -212,6 +212,8 @@ describe("updateDroidComment", () => {
       mockError,
     );
 
+    // Should have been called 3 times (retries)
+    expect(mockOctokit.rest.pulls.updateReviewComment).toHaveBeenCalledTimes(3);
     expect(mockOctokit.rest.pulls.updateReviewComment).toHaveBeenCalledWith({
       owner: "testowner",
       repo: "testrepo",
@@ -219,12 +221,13 @@ describe("updateDroidComment", () => {
       body: "This will fail",
     });
 
-    // Ensure fallback wasn't attempted
+    // Ensure fallback wasn't attempted (500 is retryable, not a 404)
     expect(mockOctokit.rest.issues.updateComment).not.toHaveBeenCalled();
-  });
+  }, 15000); // Increase timeout to allow for retries (3 attempts with delays)
 
   test("should propagate error when issue comment update fails", async () => {
-    const mockError = new Error("Forbidden");
+    const mockError = new Error("Forbidden") as any;
+    mockError.status = 403; // Forbidden is not retryable
 
     // @ts-expect-error Mock implementation doesn't match full type signature
     mockOctokit.rest.issues.updateComment = jest

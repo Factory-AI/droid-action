@@ -22,6 +22,7 @@ import {
 import type { Octokit } from "@octokit/rest";
 import { getPrValidationRunType, type DroidRunType } from "../../../run-type";
 import * as core from "@actions/core";
+import { retryWithBackoff, isGitHubTransientError } from "../../../utils/retry";
 
 const DROID_APP_BOT_ID = 209825114;
 
@@ -48,11 +49,20 @@ export async function createInitialComment(
       context.isPR &&
       isPullRequestEvent(context)
     ) {
-      const comments = await octokit.rest.issues.listComments({
-        owner,
-        repo,
-        issue_number: context.entityNumber,
-      });
+      const comments = await retryWithBackoff(
+        () =>
+          octokit.rest.issues.listComments({
+            owner,
+            repo,
+            issue_number: context.entityNumber,
+          }),
+        {
+          maxAttempts: 3,
+          initialDelayMs: 3000,
+          maxDelayMs: 15000,
+          shouldRetry: isGitHubTransientError,
+        },
+      );
       const existingComment = comments.data.find((comment) => {
         const idMatch = comment.user?.id === DROID_APP_BOT_ID;
         const botNameMatch =
@@ -68,39 +78,75 @@ export async function createInitialComment(
           existingComment.body ?? "",
           readPrCommentRunType(issueCommentBody, "issue-comment"),
         );
-        response = await octokit.rest.issues.updateComment({
-          owner,
-          repo,
-          comment_id: existingComment.id,
-          body: issueCommentBody,
-        });
+        response = await retryWithBackoff(
+          () =>
+            octokit.rest.issues.updateComment({
+              owner,
+              repo,
+              comment_id: existingComment.id,
+              body: issueCommentBody,
+            }),
+          {
+            maxAttempts: 3,
+            initialDelayMs: 3000,
+            maxDelayMs: 15000,
+            shouldRetry: isGitHubTransientError,
+          },
+        );
       } else {
         // Create new comment if no existing one found
-        response = await octokit.rest.issues.createComment({
-          owner,
-          repo,
-          issue_number: context.entityNumber,
-          body: issueCommentBody,
-        });
+        response = await retryWithBackoff(
+          () =>
+            octokit.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: context.entityNumber,
+              body: issueCommentBody,
+            }),
+          {
+            maxAttempts: 3,
+            initialDelayMs: 3000,
+            maxDelayMs: 15000,
+            shouldRetry: isGitHubTransientError,
+          },
+        );
       }
     } else if (isPullRequestReviewCommentEvent(context)) {
       // Only use createReplyForReviewComment if it's a PR review comment AND we have a comment_id
-      response = await octokit.rest.pulls.createReplyForReviewComment({
-        owner,
-        repo,
-        pull_number: context.entityNumber,
-        comment_id: context.payload.comment.id,
-        body: createInitialBody("inline-comment"),
-      });
+      response = await retryWithBackoff(
+        () =>
+          octokit.rest.pulls.createReplyForReviewComment({
+            owner,
+            repo,
+            pull_number: context.entityNumber,
+            comment_id: context.payload.comment.id,
+            body: createInitialBody("inline-comment"),
+          }),
+        {
+          maxAttempts: 3,
+          initialDelayMs: 3000,
+          maxDelayMs: 15000,
+          shouldRetry: isGitHubTransientError,
+        },
+      );
       createdCommentKind = "inline-comment";
     } else {
       // For all other cases (issues, issue comments, or missing comment_id)
-      response = await octokit.rest.issues.createComment({
-        owner,
-        repo,
-        issue_number: context.entityNumber,
-        body: issueCommentBody,
-      });
+      response = await retryWithBackoff(
+        () =>
+          octokit.rest.issues.createComment({
+            owner,
+            repo,
+            issue_number: context.entityNumber,
+            body: issueCommentBody,
+          }),
+        {
+          maxAttempts: 3,
+          initialDelayMs: 3000,
+          maxDelayMs: 15000,
+          shouldRetry: isGitHubTransientError,
+        },
+      );
     }
 
     // Output the comment ID for downstream steps using GITHUB_OUTPUT
@@ -114,12 +160,21 @@ export async function createInitialComment(
 
     // Always fall back to regular issue comment if anything fails
     try {
-      const response = await octokit.rest.issues.createComment({
-        owner,
-        repo,
-        issue_number: context.entityNumber,
-        body: issueCommentBody,
-      });
+      const response = await retryWithBackoff(
+        () =>
+          octokit.rest.issues.createComment({
+            owner,
+            repo,
+            issue_number: context.entityNumber,
+            body: issueCommentBody,
+          }),
+        {
+          maxAttempts: 3,
+          initialDelayMs: 3000,
+          maxDelayMs: 15000,
+          shouldRetry: isGitHubTransientError,
+        },
+      );
 
       const githubOutput = process.env.GITHUB_OUTPUT!;
       appendFileSync(githubOutput, `droid_comment_id=${response.data.id}\n`);

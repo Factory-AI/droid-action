@@ -11,6 +11,33 @@ export type RetryOptions = {
   shouldRetry?: (error: Error) => boolean;
 };
 
+/**
+ * Determines if a GitHub API error is transient and worth retrying.
+ * Retries server errors and rate limits, but not client errors or permanent failures.
+ */
+export function isGitHubTransientError(error: Error): boolean {
+  const statusCode = (error as any).status;
+
+  // No status code means network error or timeout - retry these
+  if (!statusCode) {
+    return true;
+  }
+
+  // Retry rate limits (429) and server errors (5xx)
+  if (statusCode === 429 || (statusCode >= 500 && statusCode < 600)) {
+    return true;
+  }
+
+  // Don't retry client errors (4xx) - these are permanent
+  // 401 Unauthorized, 403 Forbidden, 404 Not Found, etc.
+  if (statusCode >= 400 && statusCode < 500) {
+    return false;
+  }
+
+  // Default: retry unknown errors
+  return true;
+}
+
 export async function retryWithBackoff<T>(
   operation: () => Promise<T>,
   options: RetryOptions = {},
