@@ -2,7 +2,8 @@ import { execSync } from "child_process";
 import { writeFile, mkdir } from "fs/promises";
 import type { Octokits } from "../api/client";
 import type { ReviewArtifacts } from "../../create-prompt/types";
-import { retryWithBackoff } from "../../utils/retry";
+import { retryWithBackoff, isGitHubTransientError } from "../../utils/retry";
+import { isHighVolumeOrg } from "../../utils/org-volume-check";
 
 const DIFF_MAX_BUFFER = 50 * 1024 * 1024; // 50MB buffer for large diffs
 
@@ -99,19 +100,41 @@ export async function fetchAndStoreComments(
   const promptsDir = `${tempDir}/droid-prompts`;
   await mkdir(promptsDir, { recursive: true });
 
+  // High-volume orgs get more retry attempts for GitHub API calls
+  const isHighVolume = await isHighVolumeOrg(octokit, owner);
+  const retryAttempts = isHighVolume ? 5 : 3;
+
   const [issueComments, reviewComments] = await Promise.all([
-    octokit.rest.issues.listComments({
-      owner,
-      repo,
-      issue_number: prNumber,
-      per_page: 100,
-    }),
-    octokit.rest.pulls.listReviewComments({
-      owner,
-      repo,
-      pull_number: prNumber,
-      per_page: 100,
-    }),
+    retryWithBackoff(
+      () =>
+        octokit.rest.issues.listComments({
+          owner,
+          repo,
+          issue_number: prNumber,
+          per_page: 100,
+        }),
+      {
+        maxAttempts: retryAttempts,
+        initialDelayMs: 3000,
+        maxDelayMs: 15000,
+        shouldRetry: isGitHubTransientError,
+      },
+    ),
+    retryWithBackoff(
+      () =>
+        octokit.rest.pulls.listReviewComments({
+          owner,
+          repo,
+          pull_number: prNumber,
+          per_page: 100,
+        }),
+      {
+        maxAttempts: retryAttempts,
+        initialDelayMs: 3000,
+        maxDelayMs: 15000,
+        shouldRetry: isGitHubTransientError,
+      },
+    ),
   ]);
 
   const comments = {

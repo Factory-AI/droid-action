@@ -80,7 +80,9 @@ describe("createInitialComment", () => {
       rest: {
         pulls: {
           createReplyForReviewComment: async () => {
-            throw new Error("reply failed");
+            const error = new Error("reply failed") as any;
+            error.status = 403; // Forbidden - not retryable
+            throw error;
           },
         },
         issues: {

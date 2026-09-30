@@ -551,8 +551,12 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
           console.log(`Droid Exec exited with code ${lastExitCode}`);
           const agentLoopError = getLastAgentLoopError();
           if (isUsageLimitError(agentLoopError)) {
-            usageLimitError = new UsageLimitError(
-              describeUsageLimitError(agentLoopError!),
+            const limitDetail = describeUsageLimitError(agentLoopError!);
+            usageLimitError = new UsageLimitError(limitDetail);
+            // Add telemetry to distinguish usage limit failures from transient failures
+            core.setOutput("failure_reason", "usage_limit");
+            core.notice(
+              `Code review failed due to usage limit: ${limitDetail}`,
             );
             throw usageLimitError;
           }

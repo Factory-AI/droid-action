@@ -1,4 +1,5 @@
 import type { Octokits } from "../../api/client";
+import { retryWithBackoff, isGitHubTransientError } from "../../../utils/retry";
 
 export interface FetchDroidCommentParams {
   owner: string;
@@ -33,11 +34,20 @@ export async function fetchDroidComment(
   if (isPullRequestReviewCommentEvent) {
     try {
       console.log(`Fetching PR review comment ${commentId}`);
-      const { data: prComment } = await octokit.rest.pulls.getReviewComment({
-        owner,
-        repo,
-        comment_id: commentId,
-      });
+      const { data: prComment } = await retryWithBackoff(
+        () =>
+          octokit.rest.pulls.getReviewComment({
+            owner,
+            repo,
+            comment_id: commentId,
+          }),
+        {
+          maxAttempts: 3,
+          initialDelayMs: 3000,
+          maxDelayMs: 15000,
+          shouldRetry: isGitHubTransientError,
+        },
+      );
       comment = { body: prComment.body ?? null };
       isPRReviewComment = true;
       console.log("Successfully fetched as PR review comment");
@@ -51,11 +61,20 @@ export async function fetchDroidComment(
   if (!comment) {
     try {
       console.log(`Fetching issue comment ${commentId}`);
-      const { data: issueComment } = await octokit.rest.issues.getComment({
-        owner,
-        repo,
-        comment_id: commentId,
-      });
+      const { data: issueComment } = await retryWithBackoff(
+        () =>
+          octokit.rest.issues.getComment({
+            owner,
+            repo,
+            comment_id: commentId,
+          }),
+        {
+          maxAttempts: 3,
+          initialDelayMs: 3000,
+          maxDelayMs: 15000,
+          shouldRetry: isGitHubTransientError,
+        },
+      );
       comment = { body: issueComment.body ?? null };
       isPRReviewComment = false;
       console.log("Successfully fetched as issue comment");
@@ -64,11 +83,18 @@ export async function fetchDroidComment(
       if (!isPullRequestReviewCommentEvent) {
         console.log("Issue comment fetch failed, trying PR review comment API");
         try {
-          const { data: prComment } = await octokit.rest.pulls.getReviewComment(
+          const { data: prComment } = await retryWithBackoff(
+            () =>
+              octokit.rest.pulls.getReviewComment({
+                owner,
+                repo,
+                comment_id: commentId,
+              }),
             {
-              owner,
-              repo,
-              comment_id: commentId,
+              maxAttempts: 3,
+              initialDelayMs: 3000,
+              maxDelayMs: 15000,
+              shouldRetry: isGitHubTransientError,
             },
           );
           comment = { body: prComment.body ?? null };
