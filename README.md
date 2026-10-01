@@ -404,7 +404,9 @@ Additional checks for this codebase:
 - Prisma query performance issues
 ```
 
-These guidelines are automatically loaded and injected into all review prompts (code review, security review, and validation passes). No workflow changes needed.
+These guidelines are automatically loaded whenever the `review` skill runs, which covers both the code review candidate-generation and validation passes. No workflow changes needed.
+
+Security review reads a separate skill, `.factory/skills/security-review-guidelines/SKILL.md`, and does not pick up `review-guidelines`. Its rules take priority over the built-in STRIDE/OWASP methodology when they conflict, but cannot relax the skill's safety invariants (no uploading or transmitting findings, no writes outside the local audit directory, no destructive commands). Add a rule to both skills if it should apply to both reviews.
 
 ## Security Skills
 
