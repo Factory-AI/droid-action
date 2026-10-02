@@ -20,10 +20,7 @@ export async function setupDroidSettings(
     const existingSettings = await $`cat ${settingsPath}`.quiet().text();
     if (existingSettings.trim()) {
       settings = JSON.parse(existingSettings);
-      console.log(
-        `Found existing settings:`,
-        JSON.stringify(settings, null, 2),
-      );
+      console.log(`Found existing settings file`);
     } else {
       console.log(`Settings file exists but is empty`);
     }
