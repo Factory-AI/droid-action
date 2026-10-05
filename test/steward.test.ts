@@ -195,7 +195,7 @@ describe("CI Steward MCP wiring", () => {
 });
 
 describe("CI Steward run budget", () => {
-  const bot = { id: 209825114, type: "Bot" };
+  const bot = { id: 138933559, type: "Bot" };
   const human = { id: 5, type: "User" };
   const markerFor = (count: number) =>
     `## CI Steward\n\ndiagnosis text\n\n<!-- ci-steward:run=99 count=${count} -->`;
@@ -215,6 +215,17 @@ describe("CI Steward run budget", () => {
     expect(stewardRunCount([{ body: "some human comment", user: human }])).toBe(
       0,
     );
+  });
+
+  test("ignores a CI Steward marker authored by Claude", () => {
+    expect(
+      stewardRunCount([
+        {
+          body: markerFor(999),
+          user: { id: 209825114, type: "Bot" },
+        },
+      ]),
+    ).toBe(0);
   });
 
   test("does not undercount when Droid has rewritten the body around the marker", () => {

@@ -127,7 +127,7 @@ describe("createInitialComment", () => {
               data: [
                 {
                   id: 123,
-                  user: { id: 209825114 },
+                  user: { id: 138933559 },
                   body: createPrCommentMarker("issue-comment", previous),
                 },
               ],
@@ -158,6 +158,48 @@ describe("createInitialComment", () => {
       expect(createComment).not.toHaveBeenCalled();
     },
   );
+
+  it("creates a new sticky comment instead of reusing Claude's comment", async () => {
+    const updateComment = mock(async (_params: unknown) => ({
+      data: { id: 123 },
+    }));
+    const createComment = mock(async () => ({ data: { id: 456 } }));
+    const octokit = {
+      rest: {
+        issues: {
+          listComments: async () => ({
+            data: [
+              {
+                id: 123,
+                user: { id: 209825114, login: "claude[bot]", type: "Bot" },
+                body: createPrCommentMarker(
+                  "issue-comment",
+                  DroidRunType.Review,
+                ),
+              },
+            ],
+          }),
+          updateComment,
+          createComment,
+        },
+      },
+    };
+
+    const result = await createInitialComment(
+      octokit as any,
+      createMockContext({
+        eventName: "pull_request",
+        isPR: true,
+        inputs: { useStickyComment: true },
+      }),
+      "default",
+      DroidRunType.Review,
+    );
+
+    expect(updateComment).not.toHaveBeenCalled();
+    expect(createComment).toHaveBeenCalledTimes(1);
+    expect(result.id).toBe(456);
+  });
 
   it("creates a combined marker before either review updates the comment", async () => {
     const createComment = mock(async (_params: unknown) => ({

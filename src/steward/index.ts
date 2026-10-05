@@ -23,10 +23,10 @@ import {
 import { checksInScope, describeChecks } from "./scope";
 import type { FailedCheck } from "./scope";
 import type { PrepareResult } from "../prepare/types";
+import { DROID_APP_BOT_ID } from "../github/bot-identity";
 
 export const STEWARD_RUN_MARKER_PREFIX = "<!-- ci-steward:run=";
 const STEWARD_BUDGET_MARKER = "<!-- ci-steward:budget-exhausted -->";
-const DROID_APP_BOT_ID = 209825114;
 
 // Every namespaced entry here must be backed by an MCP server that
 // prepareMcpTools actually installs for a workflow_run context, or the CLI
@@ -55,11 +55,10 @@ export type StewardComment = {
   user?: { id?: number; type?: string } | null;
 };
 
-// A pull request author commenting from a normal account is type "User", so
-// requiring a bot author removes the ability to plant or reset the budget
-// from outside the app.
+// Only the Factory Droid App owns CI Steward history. Other bot accounts can
+// comment on the same pull request, so the generic Bot type is not sufficient.
 export function isDroidAuthored(comment: StewardComment): boolean {
-  return comment.user?.id === DROID_APP_BOT_ID || comment.user?.type === "Bot";
+  return comment.user?.id === DROID_APP_BOT_ID;
 }
 
 export function findTrackingComment<T extends StewardComment>(
