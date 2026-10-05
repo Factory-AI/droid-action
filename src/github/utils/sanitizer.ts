@@ -75,9 +75,11 @@ export function redactGitHubTokens(content: string): string {
     "[REDACTED_GITHUB_TOKEN]",
   );
 
-  // GitHub installation tokens: ghs_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX (40 chars)
+  // GitHub App installation tokens: ghs_ followed by 36+ chars. The newer
+  // stateless format is ~520 chars and can include '.', '-' and '_', so the
+  // length must stay open-ended (pattern recommended by GitHub).
   content = content.replace(
-    /\bghs_[A-Za-z0-9]{36}\b/g,
+    /\bghs_[A-Za-z0-9._-]{36,}/g,
     "[REDACTED_GITHUB_TOKEN]",
   );
 
