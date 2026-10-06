@@ -67,9 +67,22 @@ async function exchangeForAppToken(oidcToken: string): Promise<string> {
     // Handle GitHub App not installed error with helpful message
     if (errorCode === "app_not_installed") {
       const repo = repository || "this repository";
+      // Extract owner from repository string (format: "owner/repo")
+      const [owner] = (repository || "").split("/");
+      // Build repo-specific installation URL when owner is available
+      const installUrl = owner
+        ? `https://github.com/apps/factory-ai/installations/new/permissions?target_id=${owner}`
+        : "https://github.com/apps/factory-ai";
+
       console.error(
-        `The Factory GitHub App is not installed for ${repo}. ` +
-          `Please install it at: https://github.com/apps/factory-ai`,
+        `The Factory GitHub App is not installed for ${repo}.\n` +
+          `\n` +
+          `To fix this:\n` +
+          `1. Install the app now: ${installUrl}\n` +
+          `2. Select the repositories you want to enable code review for\n` +
+          `3. Re-run this workflow\n` +
+          `\n` +
+          `Or contact your organization owner to install it for all repositories.`,
       );
       throw new Error(errorMessage);
     }
