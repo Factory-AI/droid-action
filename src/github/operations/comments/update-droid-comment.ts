@@ -1,4 +1,5 @@
 import { Octokit } from "@octokit/rest";
+import { retryWithBackoff, isGitHubTransientError } from "../../../utils/retry";
 
 export type UpdateDroidCommentParams = {
   owner: string;
@@ -33,30 +34,57 @@ export async function updateDroidComment(
   try {
     if (isPullRequestReviewComment) {
       // Try PR review comment API first
-      response = await octokit.rest.pulls.updateReviewComment({
-        owner,
-        repo,
-        comment_id: commentId,
-        body,
-      });
+      response = await retryWithBackoff(
+        () =>
+          octokit.rest.pulls.updateReviewComment({
+            owner,
+            repo,
+            comment_id: commentId,
+            body,
+          }),
+        {
+          maxAttempts: 3,
+          initialDelayMs: 3000,
+          maxDelayMs: 15000,
+          shouldRetry: isGitHubTransientError,
+        },
+      );
     } else {
       // Use issue comment API (works for both issues and PR general comments)
-      response = await octokit.rest.issues.updateComment({
-        owner,
-        repo,
-        comment_id: commentId,
-        body,
-      });
+      response = await retryWithBackoff(
+        () =>
+          octokit.rest.issues.updateComment({
+            owner,
+            repo,
+            comment_id: commentId,
+            body,
+          }),
+        {
+          maxAttempts: 3,
+          initialDelayMs: 3000,
+          maxDelayMs: 15000,
+          shouldRetry: isGitHubTransientError,
+        },
+      );
     }
   } catch (error: any) {
     // If PR review comment update fails with 404, fall back to issue comment API
     if (isPullRequestReviewComment && error.status === 404) {
-      response = await octokit.rest.issues.updateComment({
-        owner,
-        repo,
-        comment_id: commentId,
-        body,
-      });
+      response = await retryWithBackoff(
+        () =>
+          octokit.rest.issues.updateComment({
+            owner,
+            repo,
+            comment_id: commentId,
+            body,
+          }),
+        {
+          maxAttempts: 3,
+          initialDelayMs: 3000,
+          maxDelayMs: 15000,
+          shouldRetry: isGitHubTransientError,
+        },
+      );
     } else {
       throw error;
     }

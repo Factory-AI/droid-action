@@ -145,7 +145,9 @@ describe("updateDroidTrackingComment", () => {
   it("does not write if the existing tracking comment cannot be read", async () => {
     const write = mock(async () => ({ data: { id: 123 } }));
     const fail = async () => {
-      throw new Error("Read failed");
+      const error = new Error("Read failed") as any;
+      error.status = 403; // Forbidden - not retryable
+      throw error;
     };
     const client = {
       rest: {

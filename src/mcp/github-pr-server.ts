@@ -13,6 +13,7 @@ import {
   parsePrValidationRunType,
   type PrValidationRunType,
 } from "../run-type";
+import { retryWithBackoff } from "../utils/retry";
 
 const PLACEHOLDER_REGEX = /@droid\s+fill(?:\s+description)?/gi;
 const PLACEHOLDER_LINE_REGEX =
@@ -462,8 +463,12 @@ export async function minimizeComment({
     throw new Error("Octokit GraphQL client is not available");
   }
 
-  await octokit.graphql(
-    `mutation MinimizeComment($subjectId: ID!, $classifier: ReportedContentClassifiers!) {
+  const graphqlClient = octokit.graphql;
+
+  await retryWithBackoff(
+    () =>
+      graphqlClient(
+        `mutation MinimizeComment($subjectId: ID!, $classifier: ReportedContentClassifiers!) {
       minimizeComment(input: { subjectId: $subjectId, classifier: $classifier }) {
         minimizedComment {
           isMinimized
@@ -471,9 +476,15 @@ export async function minimizeComment({
         }
       }
     }`,
+        {
+          subjectId: nodeId,
+          classifier,
+        },
+      ),
     {
-      subjectId: nodeId,
-      classifier,
+      maxAttempts: 3,
+      initialDelayMs: 3000,
+      maxDelayMs: 15000,
     },
   );
 }
@@ -531,6 +542,8 @@ export async function resolveReviewThread({
     throw new Error("Octokit GraphQL client is not available");
   }
 
+  const graphqlClient = octokit.graphql;
+
   let targetThreadId = threadNodeId;
   const previewHeaders = {
     accept: "application/vnd.github.comfort-fade-preview+json",
@@ -567,8 +580,10 @@ export async function resolveReviewThread({
       );
     }
 
-    const threadLookupQuery = await octokit.graphql(
-      `query GetReviewThread($owner: String!, $repo: String!, $prNumber: Int!) {
+    const threadLookupQuery = await retryWithBackoff(
+      () =>
+        graphqlClient(
+          `query GetReviewThread($owner: String!, $repo: String!, $prNumber: Int!) {
         repository(owner: $owner, name: $repo) {
           pullRequest(number: $prNumber) {
             reviewThreads(first: 100) {
@@ -584,11 +599,17 @@ export async function resolveReviewThread({
           }
         }
       }`,
+          {
+            owner,
+            repo,
+            prNumber,
+            headers: previewHeaders,
+          },
+        ),
       {
-        owner,
-        repo,
-        prNumber,
-        headers: previewHeaders,
+        maxAttempts: 3,
+        initialDelayMs: 3000,
+        maxDelayMs: 15000,
       },
     );
 
@@ -613,8 +634,10 @@ export async function resolveReviewThread({
     }
   }
 
-  await octokit.graphql(
-    `mutation ResolveReviewThread($threadId: ID!) {
+  await retryWithBackoff(
+    () =>
+      graphqlClient(
+        `mutation ResolveReviewThread($threadId: ID!) {
       resolveReviewThread(input: { threadId: $threadId }) {
         thread {
           id
@@ -622,9 +645,15 @@ export async function resolveReviewThread({
         }
       }
     }`,
+        {
+          threadId: targetThreadId,
+          headers: previewHeaders,
+        },
+      ),
     {
-      threadId: targetThreadId,
-      headers: previewHeaders,
+      maxAttempts: 3,
+      initialDelayMs: 3000,
+      maxDelayMs: 15000,
     },
   );
 }

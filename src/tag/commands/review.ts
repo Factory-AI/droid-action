@@ -14,6 +14,7 @@ import type { PrepareResult } from "../../prepare/types";
 import { resolveReviewConfig } from "../../utils/review-depth";
 import { applyModelPolicyFallback } from "../../utils/model-policy";
 import { retryWithBackoff } from "../../utils/retry";
+import { isHighVolumeOrg } from "../../utils/org-volume-check";
 import { assertDroidRunType, DroidRunType } from "../../run-type";
 import { githubReviewSessionTagArg } from "../../utils/review-session-tag";
 
@@ -66,6 +67,16 @@ export async function prepareReviewMode({
   console.log(
     `Checking out PR #${context.entityNumber} branch for diff computation...`,
   );
+
+  // High-volume orgs get more retry attempts to handle rate limits better
+  const isHighVolume = await isHighVolumeOrg(octokit, context.repository.owner);
+  const retryAttempts = isHighVolume ? 5 : 3;
+  if (isHighVolume) {
+    console.log(
+      `High-volume organization detected (${context.repository.owner}): using ${retryAttempts} retry attempts`,
+    );
+  }
+
   try {
     await retryWithBackoff(
       async () => {
@@ -80,7 +91,7 @@ export async function prepareReviewMode({
         }).trim();
         console.log(`Successfully checked out PR branch: ${branchName}`);
       },
-      { maxAttempts: 3, initialDelayMs: 3000, maxDelayMs: 15000 },
+      { maxAttempts: retryAttempts, initialDelayMs: 3000, maxDelayMs: 15000 },
     );
   } catch (e) {
     console.error(`Failed to checkout PR branch after retries: ${e}`);

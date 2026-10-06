@@ -8,6 +8,40 @@ import { parseGitHubContext, isEntityContext } from "../github/context";
 import { prepareReviewValidatorMode } from "../tag/commands/review-validator";
 import { DroidRunType, parseDroidRunType, setDroidRunType } from "../run-type";
 
+function classifyPass1Failure(
+  error: unknown,
+  content: string | undefined,
+): string {
+  const message = error instanceof Error ? error.message : String(error);
+
+  // File was never created
+  if (message.includes("ENOENT") || message.includes("no such file")) {
+    return "file_missing";
+  }
+
+  // JSON parsing failed
+  if (message.includes("JSON") || error instanceof SyntaxError) {
+    // Check if content suggests a Task tool failure
+    if (
+      content &&
+      (content.includes("Error spawning") ||
+        content.includes("Task tool failed") ||
+        content.includes("Failed to spawn") ||
+        content.includes("subagent"))
+    ) {
+      return "task_tool_failure";
+    }
+    return "json_parse_error";
+  }
+
+  // Missing expected structure
+  if (message.includes("comments")) {
+    return "invalid_structure";
+  }
+
+  return "unknown_failure";
+}
+
 async function run() {
   try {
     const context = parseGitHubContext();
@@ -40,15 +74,41 @@ async function run() {
         );
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
+        let content: string | undefined;
+        try {
+          content = await readFile(candidatesPath, "utf8");
+        } catch {
+          // File doesn't exist or can't be read
+        }
+        const failureReason = classifyPass1Failure(e, content);
+
         console.error(
           `Pass 1 candidates JSON is invalid or missing: ${message}`,
         );
         console.error(
           "Skipping Pass 2 (validator) to avoid a full pipeline failure",
         );
+
+        // Add structured failure reasons for better diagnostics
+        core.setOutput("pass1_failure_reason", failureReason);
         core.setOutput("validator_should_run", "false");
+
+        if (failureReason === "task_tool_failure") {
+          core.error(
+            "Task tool failed to spawn subagents - this may indicate transient capacity issues or network failures",
+          );
+        } else if (failureReason === "json_parse_error") {
+          core.error(
+            "Subagent returned malformed JSON - this may indicate a crashed subagent or incomplete output",
+          );
+        } else if (failureReason === "file_missing") {
+          core.error(
+            "Pass 1 candidates file was not created - this indicates Pass 1 did not complete",
+          );
+        }
+
         core.notice(
-          "Pass 1 candidates validation failed - skipping validator pass",
+          `Pass 1 candidates validation failed (${failureReason}) - skipping validator pass`,
         );
         return;
       }
