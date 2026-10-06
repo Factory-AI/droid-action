@@ -3,7 +3,7 @@ import { parse as parseShellArgs } from "shell-quote";
 import { DroidRunType } from "../../src/run-type";
 import {
   buildReviewSessionTag,
-  formatReviewSessionTagArg,
+  formatSessionTagArg,
   githubReviewSessionTagArg,
   REVIEW_SESSION_TAG_NAME,
   reviewTypeForRunType,
@@ -27,6 +27,7 @@ describe("buildReviewSessionTag", () => {
       metadata: {
         pass: "candidates",
         reviewType: "code",
+        product: "code_review",
         platform: "github",
         repo: "acme/widgets",
         pr: "42",
@@ -71,6 +72,7 @@ describe("buildReviewSessionTag", () => {
     expect(tag.metadata).toEqual({
       pass: "validator",
       reviewType: "security",
+      product: "security_review",
       platform: "gitlab",
       repo: "group/sub/project",
       pr: "7",
@@ -92,7 +94,7 @@ describe("reviewTypeForRunType", () => {
   });
 });
 
-describe("formatReviewSessionTagArg", () => {
+describe("formatSessionTagArg", () => {
   it("round-trips through the shell parser as a single --tag value", () => {
     const tag = buildReviewSessionTag({
       pass: "candidates",
@@ -104,7 +106,7 @@ describe("formatReviewSessionTagArg", () => {
       runId: "987",
     });
 
-    const fragment = formatReviewSessionTagArg(tag);
+    const fragment = formatSessionTagArg(tag);
     const parsed = parseShellArgs(
       `--enabled-tools "Read,Grep" ${fragment} --model "gpt-5"`,
     );
@@ -130,7 +132,7 @@ describe("formatReviewSessionTagArg", () => {
       securityReview: false,
     });
 
-    const parsed = parseShellArgs(formatReviewSessionTagArg(tag));
+    const parsed = parseShellArgs(formatSessionTagArg(tag));
     expect(parsed).toHaveLength(2);
     expect(JSON.parse(parsed[1] as string)).toEqual(tag);
   });
@@ -178,6 +180,7 @@ describe("githubReviewSessionTagArg", () => {
       metadata: {
         pass: "validator",
         reviewType: "security",
+        product: "security_review",
         platform: "github",
         repo: "test-owner/test-repo",
         pr: "24",

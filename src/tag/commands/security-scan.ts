@@ -10,6 +10,7 @@ import type { Octokits } from "../../github/api/client";
 import type { PrepareResult } from "../../prepare/types";
 import { applyModelPolicyFallback } from "../../utils/model-policy";
 import { assertDroidRunType, DroidRunType } from "../../run-type";
+import { formatSessionTagArg } from "../../utils/review-session-tag";
 
 export type ScanScope = { type: "full" } | { type: "scheduled"; days: number };
 
@@ -89,6 +90,12 @@ export async function prepareSecurityScanMode({
 
   const droidArgParts: string[] = [];
   droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
+  droidArgParts.push(
+    formatSessionTagArg({
+      name: "security-scan",
+      metadata: { product: "security_review" },
+    }),
+  );
 
   // Add model override if specified (prefer SECURITY_MODEL, fallback to REVIEW_MODEL)
   const { model: securityModel, fallbackNote } = await applyModelPolicyFallback(
