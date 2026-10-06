@@ -17,6 +17,7 @@ describe("buildReviewSessionTag", () => {
       platform: "github",
       repo: "acme/widgets",
       pr: 42,
+      securityReview: false,
       runId: "987",
       runAttempt: "2",
     });
@@ -29,10 +30,30 @@ describe("buildReviewSessionTag", () => {
         platform: "github",
         repo: "acme/widgets",
         pr: "42",
+        securityReview: "false",
         runId: "987",
         runAttempt: "2",
       },
     });
+  });
+
+  it("records the security review flag on code reviews only", () => {
+    const input = {
+      pass: "candidates",
+      platform: "github",
+      repo: "acme/widgets",
+      pr: 42,
+      securityReview: true,
+    } as const;
+
+    expect(
+      buildReviewSessionTag({ ...input, reviewType: "code" }).metadata
+        .securityReview,
+    ).toBe("true");
+    expect(
+      "securityReview" in
+        buildReviewSessionTag({ ...input, reviewType: "security" }).metadata,
+    ).toBe(false);
   });
 
   it("omits run id and attempt when they are unavailable", () => {
@@ -42,6 +63,7 @@ describe("buildReviewSessionTag", () => {
       platform: "gitlab",
       repo: "group/sub/project",
       pr: 7,
+      securityReview: false,
       runId: null,
       runAttempt: undefined,
     });
@@ -78,6 +100,7 @@ describe("formatReviewSessionTagArg", () => {
       platform: "github",
       repo: "acme/widgets",
       pr: 42,
+      securityReview: true,
       runId: "987",
     });
 
@@ -104,6 +127,7 @@ describe("formatReviewSessionTagArg", () => {
       platform: "gitlab",
       repo: "group/it's-a-repo",
       pr: 1,
+      securityReview: false,
     });
 
     const parsed = parseShellArgs(formatReviewSessionTagArg(tag));
@@ -114,25 +138,37 @@ describe("formatReviewSessionTagArg", () => {
 
 describe("githubReviewSessionTagArg", () => {
   const savedAttempt = process.env.GITHUB_RUN_ATTEMPT;
+  const savedSecurityReviewEnabled = process.env.SECURITY_REVIEW_ENABLED;
+  const context = {
+    runId: "1234567890",
+    repository: { owner: "test-owner", repo: "test-repo" },
+    entityNumber: 24,
+  };
 
   beforeEach(() => {
     process.env.GITHUB_RUN_ATTEMPT = "3";
+    delete process.env.SECURITY_REVIEW_ENABLED;
   });
 
   afterEach(() => {
     if (savedAttempt === undefined) delete process.env.GITHUB_RUN_ATTEMPT;
     else process.env.GITHUB_RUN_ATTEMPT = savedAttempt;
+    if (savedSecurityReviewEnabled === undefined)
+      delete process.env.SECURITY_REVIEW_ENABLED;
+    else process.env.SECURITY_REVIEW_ENABLED = savedSecurityReviewEnabled;
   });
+
+  function metadataOf(fragment: string): unknown {
+    const parsed = parseShellArgs(fragment);
+    expect(parsed[0]).toBe("--tag");
+    return (JSON.parse(parsed[1] as string) as { metadata: unknown }).metadata;
+  }
 
   it("derives repo, PR, run id and attempt from the GitHub context", () => {
     const fragment = githubReviewSessionTagArg({
       pass: "validator",
       runType: DroidRunType.SecurityReview,
-      context: {
-        runId: "1234567890",
-        repository: { owner: "test-owner", repo: "test-repo" },
-        entityNumber: 24,
-      },
+      context,
     });
 
     const parsed = parseShellArgs(fragment);
@@ -148,6 +184,25 @@ describe("githubReviewSessionTagArg", () => {
         runId: "1234567890",
         runAttempt: "3",
       },
+    });
+  });
+
+  it("reads the security review flag from SECURITY_REVIEW_ENABLED", () => {
+    const args = {
+      pass: "candidates",
+      runType: DroidRunType.Review,
+      context,
+    } as const;
+
+    expect(metadataOf(githubReviewSessionTagArg(args))).toMatchObject({
+      reviewType: "code",
+      securityReview: "false",
+    });
+
+    process.env.SECURITY_REVIEW_ENABLED = "true";
+    expect(metadataOf(githubReviewSessionTagArg(args))).toMatchObject({
+      reviewType: "code",
+      securityReview: "true",
     });
   });
 });

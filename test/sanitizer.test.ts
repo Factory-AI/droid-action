@@ -268,6 +268,23 @@ describe("redactGitHubTokens", () => {
     );
   });
 
+  it("should fully redact long stateless installation tokens (ghs_)", () => {
+    const body = "aB3.-_xY9".repeat(60).slice(0, 516);
+    const token = `ghs_${body}`;
+    expect(token.length).toBe(520);
+    expect(redactGitHubTokens(`Install token: ${token} done`)).toBe(
+      "Install token: [REDACTED_GITHUB_TOKEN] done",
+    );
+    expect(redactGitHubTokens(`GH_TOKEN=${token}\nnext`)).toBe(
+      "GH_TOKEN=[REDACTED_GITHUB_TOKEN]\nnext",
+    );
+  });
+
+  it("should not redact short ghs_ strings", () => {
+    const content = "not a token: ghs_short.value";
+    expect(redactGitHubTokens(content)).toBe(content);
+  });
+
   it("should redact refresh tokens (ghr_)", () => {
     const token = "ghr_1B4a2e77838347a253e56d7b5253e7d11667";
     expect(redactGitHubTokens(`Refresh: ${token}`)).toBe(
