@@ -435,19 +435,23 @@ Most teams should use [`review_depth`](#review-depth) and leave these inputs emp
 
 If you set a model, use a provider tier alias. Factory keeps each alias on its recommended model for that provider and tier, so your reviews still pick up new models automatically. An alias stays in the same price tier when its model changes.
 
-| Provider           | Aliases                                                                          |
-| ------------------ | -------------------------------------------------------------------------------- |
-| OpenAI             | `openai-latest-premium`, `openai-latest-balanced`, `openai-latest-fast`          |
-| Anthropic          | `anthropic-latest-premium`, `anthropic-latest-balanced`, `anthropic-latest-fast` |
-| Open-weight models | `oss-latest-premium`, `oss-latest-balanced`, `oss-latest-fast`                   |
+| Provider           | Aliases, largest first                                                                                        |
+| ------------------ | ------------------------------------------------------------------------------------------------------------- |
+| OpenAI             | `openai-latest-frontier`, `openai-latest-balanced`, `openai-latest-medium`, `openai-latest-small`             |
+| Anthropic          | `anthropic-latest-frontier`, `anthropic-latest-balanced`, `anthropic-latest-medium`, `anthropic-latest-small` |
+| Open-weight models | `oss-latest-premium`, `oss-latest-balanced`, `oss-latest-fast`                                                |
+
+The earlier `openai-latest-premium`, `openai-latest-fast`, `anthropic-latest-premium` and `anthropic-latest-fast` names still work and match the frontier and small tiers.
 
 ```yaml
 - uses: Factory-AI/droid-action@main
   with:
     factory_api_key: ${{ secrets.FACTORY_API_KEY }}
     automatic_review: true
-    review_model: openai-latest-premium # or anthropic-latest-balanced
+    review_model: openai-latest-frontier # or anthropic-latest-balanced
 ```
+
+To stay on one model line instead of a tier, use a version wildcard such as `claude-opus-*` or `gpt-*-sol`. It picks the newest released model in that line that your organization allows.
 
 Your organization's model policy is checked against the model an alias currently resolves to. If that model is not allowed, Droid falls back to your organization's default model and says so in the tracking comment.
 

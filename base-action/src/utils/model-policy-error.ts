@@ -64,11 +64,17 @@ const MODEL_OVERRIDES_DOCS_URL =
  * org default.
  */
 const LEGACY_TIER_ALIAS_MODELS: Record<string, string> = {
+  "openai-latest-frontier": "gpt-6-astra",
   "openai-latest-premium": "gpt-6-astra",
   "openai-latest-balanced": "gpt-5.6-sol",
+  "openai-latest-medium": "gpt-5.6-terra",
+  "openai-latest-small": "gpt-5.6-luna",
   "openai-latest-fast": "gpt-5.6-luna",
+  "anthropic-latest-frontier": "claude-opus-5-5",
   "anthropic-latest-premium": "claude-opus-5-5",
   "anthropic-latest-balanced": "claude-opus-5-5",
+  "anthropic-latest-medium": "claude-sonnet-5",
+  "anthropic-latest-small": "claude-haiku-4-5-20251001",
   "anthropic-latest-fast": "claude-haiku-4-5-20251001",
   "oss-latest-premium": "kimi-k3",
   "oss-latest-balanced": "glm-5.3",
