@@ -89,6 +89,17 @@ describe("isModelAllowedByPolicy", () => {
     };
     expect(isModelAllowedByPolicy("openai-latest-balanced", policy)).toBe(true);
     expect(isModelAllowedByPolicy("oss-latest-fast", policy)).toBe(true);
+    for (const tier of ["frontier", "medium", "small"]) {
+      expect(isModelAllowedByPolicy(`anthropic-latest-${tier}`, policy)).toBe(
+        true,
+      );
+    }
+  });
+
+  it("defers version wildcards to the CLI, which checks the resolved model", () => {
+    const policy = { allowedModelIds: ["gpt-5.6-sol"] };
+    expect(isModelAllowedByPolicy("claude-opus-*", policy)).toBe(true);
+    expect(isModelAllowedByPolicy("gpt-*-sol", policy)).toBe(true);
   });
 
   it("still enforces the policy on IDs that only resemble tier aliases", () => {

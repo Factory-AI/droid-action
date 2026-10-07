@@ -166,7 +166,7 @@ Each MR pipeline produces:
 Most projects should use `review_depth` and leave these inputs empty. The
 component also accepts `review_model` and `reasoning_effort`, which take
 priority over the depth preset. If you set `review_model`, use a provider
-tier alias (for example `openai-latest-premium` or `anthropic-latest-balanced`) so reviews keep picking
+tier alias (for example `openai-latest-frontier` or `anthropic-latest-balanced`) so reviews keep picking
 up new models. See
 [Advanced: Model Overrides](../README.md#advanced-model-overrides) for the
 full list and how model policy applies.

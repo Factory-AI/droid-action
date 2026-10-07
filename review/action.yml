@@ -17,7 +17,7 @@ inputs:
     required: false
     default: "deep"
   review_model:
-    description: "Advanced. Leave empty to use the review_depth preset (recommended). If set, use a provider tier alias such as 'openai-latest-premium' or 'anthropic-latest-balanced'."
+    description: "Advanced. Leave empty to use the review_depth preset (recommended). If set, use a provider tier alias such as 'openai-latest-frontier' or 'anthropic-latest-balanced'."
     required: false
     default: ""
   reasoning_effort:
