@@ -1,0 +1,101 @@
+name: "Droid Review Guidelines"
+description: "Learn review guidelines from the review comments authors acted on, and open or update a pull request with them"
+
+inputs:
+  factory_api_key:
+    description: "Factory API key"
+    required: true
+  github_token:
+    description: "GitHub token (optional - will use OIDC if not provided). Needs to read pull requests and review comments, push a branch, and open pull requests."
+    required: false
+    default: ""
+  include_bot_comments:
+    description: "Learn from review comments written by bots (such as Droid's own reviews) as well as by people. Set to 'false' to learn from people's comments only."
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Bun
+      uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+      with:
+        bun-version: 1.2.11
+
+    - name: Install Dependencies
+      shell: bash
+      run: |
+        cd ${{ github.action_path }}/..
+        bun install
+
+    - name: Install Droid CLI
+      shell: bash
+      run: |
+        curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        "$HOME/.local/bin/droid" --version
+
+    # Reads only the builtin skill, so it runs before any token exists.
+    - name: Write the mining scripts
+      shell: bash
+      run: |
+        mkdir -p "$RUNNER_TEMP/review-guidelines"
+        droid exec --auto low --only-tools Create "/learn-review-guidelines --write-scripts $RUNNER_TEMP/review-guidelines"
+      env:
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+
+    - name: Get GitHub token for mining
+      id: mining_token
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../src/entrypoints/get-token.ts
+      env:
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+
+    # get-token.ts exits cleanly without a token when this version of the
+    # workflow is not the one on the default branch; every later step keys on
+    # the token so such a run stops here instead of failing.
+    - name: Configure git
+      if: steps.mining_token.outputs.github_token != ''
+      shell: bash
+      run: bash ${{ github.action_path }}/configure-git.sh
+
+    - name: Mine review comments
+      id: mine
+      if: steps.mining_token.outputs.github_token != ''
+      shell: bash
+      run: bash ${{ github.action_path }}/mine.sh
+      env:
+        GH_TOKEN: ${{ steps.mining_token.outputs.github_token }}
+        INCLUDE_BOT_COMMENTS: ${{ inputs.include_bot_comments }}
+
+    # Reads untrusted review comments, so it gets no GitHub token and no OIDC
+    # request credentials, and runs with file tools only.
+    - name: Distill review guidelines
+      id: distill
+      if: steps.mining_token.outputs.github_token != ''
+      shell: bash
+      run: bash ${{ github.action_path }}/distill.sh
+      env:
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+
+    # A fresh token: an installation token lasts an hour, and mining plus
+    # distilling can take most of that.
+    - name: Get GitHub token for publishing
+      id: publish_token
+      if: steps.mining_token.outputs.github_token != ''
+      shell: bash
+      run: |
+        bun run ${{ github.action_path }}/../src/entrypoints/get-token.ts
+      env:
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+
+    - name: Open the guidelines PR
+      id: publish
+      if: steps.publish_token.outputs.github_token != ''
+      shell: bash
+      run: bash ${{ github.action_path }}/publish.sh
+      env:
+        GH_TOKEN: ${{ steps.publish_token.outputs.github_token }}
+        # Only to check that the published files do not contain it.
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}

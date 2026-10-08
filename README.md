@@ -406,6 +406,46 @@ Additional checks for this codebase:
 
 These guidelines are automatically loaded whenever the `review` skill runs, which covers both the code review candidate-generation and validation passes. No workflow changes needed.
 
+### Learning guidelines from past reviews
+
+The `review-guidelines` action writes this file for you. On each run it collects the review comments that authors acted on since the last run, turns them into guidelines, and opens a pull request with the changes (or updates the open one). Nothing reaches the repository until you merge that pull request.
+
+```yaml
+name: Learn review guidelines
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+jobs:
+  learn-review-guidelines:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # Writes go through the Factory GitHub App token; `id-token: write` lets
+    # the job request the OIDC token it exchanges for one.
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: droid-review-guidelines
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: Factory-AI/droid-action/review-guidelines@main
+        with:
+          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+```
+
+| Input                  | Default | Description                                                                         |
+| ---------------------- | ------- | ----------------------------------------------------------------------------------- |
+| `include_bot_comments` | `true`  | Learn from bots' review comments too. Set to `false` to use people's comments only. |
+| `github_token`         | `""`    | Optional. Without it, the action exchanges the job's OIDC token for an App token.   |
+
+The step that writes guidelines reads untrusted comment text, so it runs with file tools only and without a GitHub token. A separate step commits only the guidelines files and refuses to publish output that contains a credential.
+
 Security review reads a separate skill, `.factory/skills/security-review-guidelines/SKILL.md`, and does not pick up `review-guidelines`. Its rules take priority over the built-in STRIDE/OWASP methodology when they conflict, but cannot relax the skill's safety invariants (no uploading or transmitting findings, no writes outside the local audit directory, no destructive commands). Add a rule to both skills if it should apply to both reviews.
 
 ## Security Skills
