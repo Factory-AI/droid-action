@@ -1,12 +1,12 @@
 name: "Droid Review Guidelines"
-description: "Learn review guidelines from the review comments authors acted on, and open or update a pull request with them"
+description: "Learn review guidelines from the review comments authors acted on. Pair with review-guidelines/publish in a later job, which opens the pull request."
 
 inputs:
   factory_api_key:
     description: "Factory API key"
     required: true
   github_token:
-    description: "GitHub token (optional - will use OIDC if not provided). Needs to read pull requests and review comments, push a branch, and open pull requests."
+    description: "GitHub token (optional - will use OIDC if not provided). Needs to read pull requests and their review comments."
     required: false
     default: ""
   include_bot_comments:
@@ -44,58 +44,36 @@ runs:
       env:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
 
-    - name: Get GitHub token for mining
-      id: mining_token
-      shell: bash
-      run: |
-        bun run ${{ github.action_path }}/../src/entrypoints/get-token.ts
-      env:
-        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
-
-    # get-token.ts exits cleanly without a token when this version of the
-    # workflow is not the one on the default branch; every later step keys on
-    # the token so such a run stops here instead of failing.
-    - name: Configure git
-      if: steps.mining_token.outputs.github_token != ''
-      shell: bash
-      run: bash ${{ github.action_path }}/configure-git.sh
-
+    # Gets its own token and deletes it before the step ends, so the distill
+    # step cannot find it.
     - name: Mine review comments
       id: mine
-      if: steps.mining_token.outputs.github_token != ''
       shell: bash
       run: bash ${{ github.action_path }}/mine.sh
       env:
-        GH_TOKEN: ${{ steps.mining_token.outputs.github_token }}
+        ACTION_ROOT: ${{ github.action_path }}/..
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
         INCLUDE_BOT_COMMENTS: ${{ inputs.include_bot_comments }}
 
-    # Reads untrusted review comments, so it gets no GitHub token and no OIDC
-    # request credentials, and runs with file tools only.
+    # Reads untrusted review comments, so it runs with file tools only and
+    # without the OIDC request credentials. It can still edit any file in this
+    # job, which is why publishing happens in a separate job.
     - name: Distill review guidelines
       id: distill
-      if: steps.mining_token.outputs.github_token != ''
       shell: bash
       run: bash ${{ github.action_path }}/distill.sh
       env:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
 
-    # A fresh token: an installation token lasts an hour, and mining plus
-    # distilling can take most of that.
-    - name: Get GitHub token for publishing
-      id: publish_token
-      if: steps.mining_token.outputs.github_token != ''
+    - name: Stage the guidelines
+      id: stage
       shell: bash
-      run: |
-        bun run ${{ github.action_path }}/../src/entrypoints/get-token.ts
-      env:
-        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+      run: bash ${{ github.action_path }}/stage.sh
 
-    - name: Open the guidelines PR
-      id: publish
-      if: steps.publish_token.outputs.github_token != ''
-      shell: bash
-      run: bash ${{ github.action_path }}/publish.sh
-      env:
-        GH_TOKEN: ${{ steps.publish_token.outputs.github_token }}
-        # Only to check that the published files do not contain it.
-        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+    - name: Upload the guidelines
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      with:
+        name: review-guidelines
+        path: ${{ runner.temp }}/review-guidelines-result
+        retention-days: 1
+        if-no-files-found: error
