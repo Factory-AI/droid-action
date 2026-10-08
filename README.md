@@ -406,7 +406,62 @@ Additional checks for this codebase:
 
 These guidelines are automatically loaded whenever the `review` skill runs, which covers both the code review candidate-generation and validation passes. No workflow changes needed.
 
-Security review reads a separate skill, `.factory/skills/security-review-guidelines/SKILL.md`, and does not pick up `review-guidelines`. Its rules take priority over the built-in STRIDE/OWASP methodology when they conflict, but cannot relax the skill's safety invariants (no uploading or transmitting findings, no writes outside the local audit directory, no destructive commands). Add a rule to both skills if it should apply to both reviews.
+### Learning guidelines from past reviews
+
+The `review-guidelines` actions write this file for you. On each run, the first job collects the review comments that authors acted on since the last run and turns them into guidelines. A second job opens a pull request with the changes (or updates the open one). Nothing reaches the repository until you merge that pull request.
+
+```yaml
+name: Learn review guidelines
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+jobs:
+  learn-review-guidelines:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # `id-token: write` lets the job request the OIDC token it exchanges for
+    # a Factory GitHub App token.
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: droid-review-guidelines
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: Factory-AI/droid-action/review-guidelines@main
+        with:
+          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+
+  publish-review-guidelines:
+    needs: learn-review-guidelines
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: Factory-AI/droid-action/review-guidelines/publish@main
+        with:
+          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+```
+
+| Input                  | Action                      | Default | Description                                                                                      |
+| ---------------------- | --------------------------- | ------- | ------------------------------------------------------------------------------------------------ |
+| `include_bot_comments` | `review-guidelines`         | `true`  | Learn from bots' review comments too. Set to `false` to use people's comments only.              |
+| `github_token`         | both                        | `""`    | Optional. Without it, each action exchanges the job's OIDC token for a Factory GitHub App token. |
+| `factory_api_key`      | `review-guidelines/publish` | `""`    | Optional. Only used to check that the published files do not contain it.                         |
+
+The step that writes guidelines reads untrusted comment text. It runs with file tools only and no GitHub token, and because it could still change any file in its job, publishing happens in the second job on a fresh runner. That job accepts only the guidelines files and the PR description, refuses anything else, and refuses output that contains a credential.
 
 ## Security Skills
 

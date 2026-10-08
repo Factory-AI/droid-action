@@ -1,0 +1,79 @@
+name: "Droid Review Guidelines"
+description: "Learn review guidelines from the review comments authors acted on. Pair with review-guidelines/publish in a later job, which opens the pull request."
+
+inputs:
+  factory_api_key:
+    description: "Factory API key"
+    required: true
+  github_token:
+    description: "GitHub token (optional - will use OIDC if not provided). Needs to read pull requests and their review comments."
+    required: false
+    default: ""
+  include_bot_comments:
+    description: "Learn from review comments written by bots (such as Droid's own reviews) as well as by people. Set to 'false' to learn from people's comments only."
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Bun
+      uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+      with:
+        bun-version: 1.2.11
+
+    - name: Install Dependencies
+      shell: bash
+      run: |
+        cd ${{ github.action_path }}/..
+        bun install
+
+    - name: Install Droid CLI
+      shell: bash
+      run: |
+        curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        "$HOME/.local/bin/droid" --version
+
+    # Reads only the builtin skill, so it runs before any token exists.
+    - name: Write the mining scripts
+      shell: bash
+      run: |
+        mkdir -p "$RUNNER_TEMP/review-guidelines"
+        droid exec --auto low --only-tools Create "/learn-review-guidelines --write-scripts $RUNNER_TEMP/review-guidelines"
+      env:
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+
+    # Gets its own token and deletes it before the step ends, so the distill
+    # step cannot find it.
+    - name: Mine review comments
+      id: mine
+      shell: bash
+      run: bash ${{ github.action_path }}/mine.sh
+      env:
+        ACTION_ROOT: ${{ github.action_path }}/..
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+        INCLUDE_BOT_COMMENTS: ${{ inputs.include_bot_comments }}
+
+    # Reads untrusted review comments, so it runs with file tools only and
+    # without the OIDC request credentials. It can still edit any file in this
+    # job, which is why publishing happens in a separate job.
+    - name: Distill review guidelines
+      id: distill
+      shell: bash
+      run: bash ${{ github.action_path }}/distill.sh
+      env:
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+
+    - name: Stage the guidelines
+      id: stage
+      shell: bash
+      run: bash ${{ github.action_path }}/stage.sh
+
+    - name: Upload the guidelines
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      with:
+        name: review-guidelines
+        path: ${{ runner.temp }}/review-guidelines-result
+        retention-days: 1
+        if-no-files-found: error
