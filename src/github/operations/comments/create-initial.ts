@@ -22,8 +22,7 @@ import {
 import type { Octokit } from "@octokit/rest";
 import { getPrValidationRunType, type DroidRunType } from "../../../run-type";
 import * as core from "@actions/core";
-
-const DROID_APP_BOT_ID = 209825114;
+import { DROID_APP_BOT_ID } from "../../bot-identity";
 
 export async function createInitialComment(
   octokit: Octokit,
