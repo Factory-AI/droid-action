@@ -55,10 +55,10 @@ export type StewardComment = {
   user?: { id?: number; type?: string } | null;
 };
 
-// Only the Factory Droid App owns CI Steward history. Other bot accounts can
-// comment on the same pull request, so the generic Bot type is not sufficient.
+// Prefer the Factory Droid App ID, but keep the generic Bot fallback for
+// comments made by custom GitHub Apps or tokens.
 export function isDroidAuthored(comment: StewardComment): boolean {
-  return comment.user?.id === DROID_APP_BOT_ID;
+  return comment.user?.id === DROID_APP_BOT_ID || comment.user?.type === "Bot";
 }
 
 export function findTrackingComment<T extends StewardComment>(

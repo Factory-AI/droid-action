@@ -217,15 +217,15 @@ describe("CI Steward run budget", () => {
     );
   });
 
-  test("ignores a CI Steward marker authored by Claude", () => {
+  test("supports CI Steward history from a custom GitHub App bot", () => {
     expect(
       stewardRunCount([
         {
-          body: markerFor(999),
-          user: { id: 209825114, type: "Bot" },
+          body: markerFor(3),
+          user: { id: 42, type: "Bot" },
         },
       ]),
-    ).toBe(0);
+    ).toBe(3);
   });
 
   test("does not undercount when Droid has rewritten the body around the marker", () => {
