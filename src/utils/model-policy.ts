@@ -1,4 +1,5 @@
 import * as core from "@actions/core";
+import { parseModelFallbackMode } from "../../base-action/src/utils/model-policy-error";
 
 /**
  * Subset of the Factory org model policy returned by
@@ -145,14 +146,14 @@ export type PolicyCheckedModelConfig = {
 
 /**
  * Pre-flight check of a resolved model against the org's model policy.
- * When the model is disallowed, drops the model (and reasoning effort) so
- * `droid exec` falls back to the organization's default model, and returns
- * a note describing the fallback for surfacing in the tracking comment.
+ * Rejects a disallowed model in fail mode. Otherwise drops model and reasoning
+ * effort so `droid exec` uses the organization's default, returning a note.
  */
 export async function applyModelPolicyFallback(
   config: { model?: string; reasoningEffort?: string },
   options: { flowLabel: string; modelInputName: string },
 ): Promise<PolicyCheckedModelConfig> {
+  const fallbackMode = parseModelFallbackMode(process.env.MODEL_FALLBACK);
   const { model, reasoningEffort } = config;
   const factoryApiKey = process.env.FACTORY_API_KEY;
 
@@ -163,6 +164,11 @@ export async function applyModelPolicyFallback(
   const policy = await fetchModelPolicy(factoryApiKey);
   if (isModelAllowedByPolicy(model, policy)) {
     return { model, reasoningEffort };
+  }
+  if (fallbackMode === "fail") {
+    throw new Error(
+      `The ${options.flowLabel} model "${model}" is not allowed by the organization's model policy`,
+    );
   }
 
   const fallbackNote =

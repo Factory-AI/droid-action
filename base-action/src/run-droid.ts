@@ -11,6 +11,7 @@ import {
   getModelArg,
   isInvalidModelError,
   isModelPolicyError,
+  parseModelFallbackMode,
   replaceModelArg,
   stripModelArgs,
 } from "./utils/model-policy-error";
@@ -20,6 +21,8 @@ import {
 } from "./utils/usage-limit-error";
 
 const execAsync = promisify(exec);
+
+class NonRetryableModelError extends Error {}
 
 /** Redact inline `--env KEY=value` secrets before logging a command string. */
 function redactEnvSecrets(text: string): string {
@@ -102,6 +105,7 @@ export type DroidOptions = {
   systemPrompt?: string;
   appendSystemPrompt?: string;
   showFullOutput?: string;
+  modelFallback?: string;
 };
 
 type PreparedConfig = {
@@ -216,6 +220,7 @@ export function prepareRunConfig(
 }
 
 export async function runDroid(promptPath: string, options: DroidOptions) {
+  const modelFallback = parseModelFallbackMode(options.modelFallback);
   // If MCP tools config is provided, register servers via `droid mcp add` before running exec
   if (options.mcpTools && options.mcpTools.trim()) {
     try {
@@ -530,6 +535,7 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
           const currentModel = getModelArg(currentDroidArgs);
           const legacyModel = getLegacyTierAliasModel(currentModel);
           if (
+            modelFallback !== "fail" &&
             lastExitCode !== 0 &&
             legacyModel &&
             isInvalidModelError(getStderrTail())
@@ -567,6 +573,11 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
             isModelPolicyError(agentLoopError) ||
             isModelPolicyError(getStderrTail());
           const invalidModel = isInvalidModelError(getStderrTail());
+          if (modelFallback === "fail" && (policyBlocked || invalidModel)) {
+            throw new NonRetryableModelError(
+              `Droid Exec exited with code ${lastExitCode}`,
+            );
+          }
           if (
             !modelArgsStripped &&
             (policyBlocked || invalidModel) &&
@@ -601,7 +612,8 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
         shouldRetry: (error) =>
           !(
             error instanceof MaxTurnsExceededError ||
-            error instanceof UsageLimitError
+            error instanceof UsageLimitError ||
+            error instanceof NonRetryableModelError
           ),
       },
     );
@@ -610,12 +622,6 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
   } catch (_) {
     const capError = getTurnCapError();
     const limitError = getUsageLimitError();
-    if (!capError && !limitError) {
-      // All retry attempts exhausted
-      console.error(
-        `Droid Exec failed after 3 total attempts (exit code: ${lastExitCode})`,
-      );
-    }
     const finalResultEvent = getLastResultEvent();
     const finalAgentLoopError = getLastAgentLoopError()?.trim();
     let finalStderrTail = getStderrTail().trim();

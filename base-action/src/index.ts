@@ -31,6 +31,7 @@ async function run() {
       appendSystemPrompt: process.env.INPUT_APPEND_SYSTEM_PROMPT,
       pathToDroidExecutable: process.env.INPUT_PATH_TO_DROID_EXECUTABLE,
       showFullOutput: process.env.INPUT_SHOW_FULL_OUTPUT,
+      modelFallback: process.env.INPUT_MODEL_FALLBACK,
     });
   } catch (error) {
     core.setFailed(`Action failed with error: ${error}`);
