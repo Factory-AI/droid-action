@@ -24,6 +24,10 @@ inputs:
     description: "Advanced. Leave empty to use the review_depth preset (recommended)."
     required: false
     default: ""
+  model_policy_fallback:
+    description: "Behavior when a model is blocked or invalid: 'organization-default' allows fallback; 'fail' stops without substituting a model."
+    required: false
+    default: "organization-default"
   output_file:
     description: "Path to write review results JSON"
     required: false
@@ -92,6 +96,7 @@ runs:
       run: |
         bun run ${{ github.action_path }}/../src/entrypoints/generate-review-prompt.ts
       env:
+        MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
@@ -118,6 +123,7 @@ runs:
       run: |
         bun run ${{ github.action_path }}/../base-action/src/index.ts
       env:
+        INPUT_MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
         INPUT_PROMPT_FILE: ${{ runner.temp }}/droid-prompts/droid-prompt.txt
         INPUT_DROID_ARGS: ${{ steps.prompt.outputs.droid_args }}
         INPUT_MCP_TOOLS: ${{ steps.prompt.outputs.mcp_tools }}
@@ -132,6 +138,7 @@ runs:
       run: |
         bun run ${{ github.action_path }}/../src/entrypoints/prepare-validator.ts
       env:
+        MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
@@ -149,6 +156,7 @@ runs:
       run: |
         bun run ${{ github.action_path }}/../base-action/src/index.ts
       env:
+        INPUT_MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
         INPUT_PROMPT_FILE: ${{ runner.temp }}/droid-prompts/droid-prompt.txt
         INPUT_DROID_ARGS: ${{ steps.prepare_validator.outputs.droid_args }}
         INPUT_MCP_TOOLS: ${{ steps.prepare_validator.outputs.mcp_tools }}

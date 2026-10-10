@@ -451,6 +451,8 @@ If you set a model, use a provider tier alias. Factory keeps each alias on its r
 
 Your organization's model policy is checked against the model an alias currently resolves to. If that model is not allowed, Droid falls back to your organization's default model and says so in the tracking comment.
 
+Set `model_policy_fallback: fail` to stop instead when a requested model is blocked or invalid. This applies to both review passes and also disables concrete-model compatibility fallback for older CLIs that reject tier aliases. Transient errors still retry. The default, `organization-default`, preserves existing fallback behavior. The same input is available on the main, review, security, and base actions.
+
 Exact model IDs are also accepted, but they never upgrade on their own, so reviews stay on that model until you edit the workflow. We do not recommend them.
 
 </details>

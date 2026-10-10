@@ -12,6 +12,16 @@ const MODEL_POLICY_ERROR_PATTERNS = [
   /Model blocked by organization policy/i,
 ];
 
+export function parseModelPolicyFallbackMode(
+  value: string | undefined,
+): "organization-default" | "fail" {
+  const mode = value?.trim() || "organization-default";
+  if (mode === "organization-default" || mode === "fail") return mode;
+  throw new Error(
+    "model_policy_fallback must be one of: organization-default, fail",
+  );
+}
+
 export function isModelPolicyError(text: string | undefined | null): boolean {
   if (!text) {
     return false;

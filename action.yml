@@ -103,6 +103,10 @@ inputs:
     description: "Advanced. Leave empty to use the review_depth preset (recommended). Overrides the preset reasoning effort for review flows."
     required: false
     default: ""
+  model_policy_fallback:
+    description: "Behavior when a model is blocked or invalid: 'organization-default' allows fallback; 'fail' stops without substituting a model."
+    required: false
+    default: "organization-default"
   include_suggestions:
     description: "Include code suggestion blocks in review comments when the fix is high-confidence. Set to 'false' to disable suggestions."
     required: false
@@ -215,6 +219,7 @@ runs:
       run: |
         bun run ${GITHUB_ACTION_PATH}/src/entrypoints/prepare.ts
       env:
+        MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         TRIGGER_PHRASE: ${{ inputs.trigger_phrase }}
         ASSIGNEE_TRIGGER: ${{ inputs.assignee_trigger }}
@@ -325,6 +330,7 @@ runs:
         # Run the base-action
         bun run ${GITHUB_ACTION_PATH}/base-action/src/index.ts
       env:
+        INPUT_MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
         # Base-action inputs
         INPUT_PROMPT_FILE: ${{ runner.temp }}/droid-prompts/droid-prompt.txt
         INPUT_SETTINGS: ${{ inputs.settings }}
@@ -363,6 +369,7 @@ runs:
       run: |
         bun run ${GITHUB_ACTION_PATH}/src/entrypoints/prepare-validator.ts
       env:
+        MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
         GITHUB_TOKEN: ${{ steps.prepare.outputs.github_token }}
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
@@ -382,6 +389,7 @@ runs:
         # Run the base-action
         bun run ${GITHUB_ACTION_PATH}/base-action/src/index.ts
       env:
+        INPUT_MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
         # Base-action inputs
         INPUT_PROMPT_FILE: ${{ runner.temp }}/droid-prompts/droid-prompt.txt
         INPUT_SETTINGS: ${{ inputs.settings }}

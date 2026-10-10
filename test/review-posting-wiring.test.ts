@@ -11,6 +11,39 @@ const stepById = (action: any, id: string): any =>
   action.runs.steps.find((step: any) => step.id === id);
 
 describe("review safety wiring", () => {
+  it.each([
+    ["action.yml", "prepare", "droid", "prepare_validator", "droid_validator"],
+    ["review/action.yml", "prompt", "review", "prepare_validator", "validator"],
+    [
+      "security/action.yml",
+      "prompt",
+      "review",
+      "prepare_validator",
+      "validator",
+    ],
+  ])(
+    "forwards model policy fallback through both passes of %s",
+    (path, prepare, run, validatorPrepare, validatorRun) => {
+      const action = loadAction(path);
+      expect(action.inputs.model_policy_fallback.default).toBe(
+        "organization-default",
+      );
+      for (const id of [prepare, validatorPrepare]) {
+        expect(stepById(action, id).env.MODEL_POLICY_FALLBACK).toBe(
+          "${{ inputs.model_policy_fallback }}",
+        );
+      }
+      for (const id of [run, validatorRun]) {
+        expect(stepById(action, id).env.INPUT_MODEL_POLICY_FALLBACK).toBe(
+          "${{ inputs.model_policy_fallback }}",
+        );
+      }
+      expect(stepById(action, validatorPrepare).env.REVIEW_MODEL).toBe(
+        "${{ inputs.review_model }}",
+      );
+    },
+  );
+
   it("wires candidate/validator caps and deterministic posting in the main action", () => {
     const action = loadAction("action.yml");
 
@@ -75,6 +108,12 @@ describe("review safety wiring", () => {
     expect(action.inputs.max_turns).toBeDefined();
     expect(stepById(action, "run_droid").env.INPUT_MAX_TURNS).toContain(
       "max_turns",
+    );
+    expect(action.inputs.model_policy_fallback.default).toBe(
+      "organization-default",
+    );
+    expect(stepById(action, "run_droid").env.INPUT_MODEL_POLICY_FALLBACK).toBe(
+      "${{ inputs.model_policy_fallback }}",
     );
   });
 });

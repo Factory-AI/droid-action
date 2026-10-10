@@ -13,6 +13,22 @@ import { runDroid } from "../src/run-droid";
  */
 const PRE_ALIAS_DROID = `#!/usr/bin/env bash
 echo "$*" >> "$DROID_FAKE_INVOCATIONS"
+case "$DROID_FAKE_ERROR" in
+  result)
+    echo '{"type":"result","is_error":true,"result":"This model requires explicit organization opt-in by an admin."}'
+    exit 1 ;;
+  agent_loop)
+    echo '{"type":"error","source":"agent_loop","message":"This model requires explicit organization opt-in by an admin."}'
+    exit 1 ;;
+  invalid)
+    echo 'Invalid model: unsupported-model' >&2
+    exit 1 ;;
+  transient)
+    if [ "$(wc -l < "$DROID_FAKE_INVOCATIONS")" -eq 1 ]; then
+      echo '503 Service Unavailable' >&2
+      exit 1
+    fi ;;
+esac
 case "$*" in
   *-latest-*)
     echo "Invalid model: $(echo "$*" | grep -oE '[a-z0-9]+-latest-[a-z]+')" >&2
@@ -33,9 +49,11 @@ describe("runDroid with a CLI that predates tier aliases", () => {
   let invocationsPath: string;
   let outputs: Record<string, string>;
   let setOutputSpy: ReturnType<typeof spyOn>;
+  let exitSpy: ReturnType<typeof spyOn> | undefined;
   const originalEnv = {
     invocations: process.env.DROID_FAKE_INVOCATIONS,
     blocked: process.env.DROID_FAKE_BLOCKED,
+    error: process.env.DROID_FAKE_ERROR,
   };
 
   const restoreEnv = (name: string, value: string | undefined) => {
@@ -56,6 +74,8 @@ describe("runDroid with a CLI that predates tier aliases", () => {
     await writeFile(promptPath, "review this PR");
     process.env.DROID_FAKE_INVOCATIONS = invocationsPath;
     delete process.env.DROID_FAKE_BLOCKED;
+    delete process.env.DROID_FAKE_ERROR;
+    exitSpy = undefined;
     outputs = {};
     setOutputSpy = spyOn(core, "setOutput").mockImplementation(
       (name: string, value: unknown) => {
@@ -66,8 +86,10 @@ describe("runDroid with a CLI that predates tier aliases", () => {
 
   afterEach(async () => {
     setOutputSpy.mockRestore();
+    exitSpy?.mockRestore();
     restoreEnv("DROID_FAKE_INVOCATIONS", originalEnv.invocations);
     restoreEnv("DROID_FAKE_BLOCKED", originalEnv.blocked);
+    restoreEnv("DROID_FAKE_ERROR", originalEnv.error);
     await rm(dir, { recursive: true, force: true });
   });
 
@@ -107,4 +129,55 @@ describe("runDroid with a CLI that predates tier aliases", () => {
     expect(calls).toHaveLength(3);
     expect(calls[2]).not.toContain("--model");
   }, 20000);
+
+  test.each(["invalid alias", "invalid", "stderr", "result", "agent_loop"])(
+    "fails once without substituting the model for %s",
+    async (source) => {
+      const model =
+        source === "invalid alias" ? "openai-latest-balanced" : "gpt-5.6-sol";
+      if (source === "stderr") process.env.DROID_FAKE_BLOCKED = model;
+      else if (source !== "invalid alias")
+        process.env.DROID_FAKE_ERROR = source;
+      exitSpy = spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit");
+      });
+      const started = Date.now();
+      await expect(
+        runDroid(promptPath, {
+          pathToDroidExecutable: fakeDroid,
+          droidArgs: `--model ${model} --reasoning-effort high`,
+          modelPolicyFallback: "fail",
+        }),
+      ).rejects.toThrow("process.exit");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(outputs.conclusion).toBe("failure");
+      expect(outputs.error_message).toContain(
+        source.startsWith("invalid")
+          ? "Invalid model:"
+          : source === "stderr"
+            ? "Model blocked by organization policy"
+            : "requires explicit organization opt-in",
+      );
+      expect(outputs.model_fallback_note).toBeUndefined();
+      const calls = await invocations();
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toContain(`--model ${model} --reasoning-effort high`);
+      expect(Date.now() - started).toBeLessThan(4000);
+    },
+    20000,
+  );
+
+  test("still retries transient failures in fail mode with unchanged arguments", async () => {
+    process.env.DROID_FAKE_ERROR = "transient";
+    await runDroid(promptPath, {
+      pathToDroidExecutable: fakeDroid,
+      droidArgs: "--model gpt-5.6-sol --reasoning-effort high",
+      modelPolicyFallback: "fail",
+    });
+    expect(outputs.conclusion).toBe("success");
+    expect(outputs.model_fallback_note).toBeUndefined();
+    const calls = await invocations();
+    expect(calls).toHaveLength(2);
+    expect(new Set(calls).size).toBe(1);
+  }, 15000);
 });
