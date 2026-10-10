@@ -11,7 +11,7 @@ import {
   getModelArg,
   isInvalidModelError,
   isModelPolicyError,
-  parseModelPolicyFallbackMode,
+  parseModelFallbackMode,
   replaceModelArg,
   stripModelArgs,
 } from "./utils/model-policy-error";
@@ -105,7 +105,7 @@ export type DroidOptions = {
   systemPrompt?: string;
   appendSystemPrompt?: string;
   showFullOutput?: string;
-  modelPolicyFallback?: string;
+  modelFallback?: string;
 };
 
 type PreparedConfig = {
@@ -220,9 +220,7 @@ export function prepareRunConfig(
 }
 
 export async function runDroid(promptPath: string, options: DroidOptions) {
-  const modelPolicyFallback = parseModelPolicyFallbackMode(
-    options.modelPolicyFallback,
-  );
+  const modelFallback = parseModelFallbackMode(options.modelFallback);
   // If MCP tools config is provided, register servers via `droid mcp add` before running exec
   if (options.mcpTools && options.mcpTools.trim()) {
     try {
@@ -537,7 +535,7 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
           const currentModel = getModelArg(currentDroidArgs);
           const legacyModel = getLegacyTierAliasModel(currentModel);
           if (
-            modelPolicyFallback !== "fail" &&
+            modelFallback !== "fail" &&
             lastExitCode !== 0 &&
             legacyModel &&
             isInvalidModelError(getStderrTail())
@@ -575,10 +573,7 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
             isModelPolicyError(agentLoopError) ||
             isModelPolicyError(getStderrTail());
           const invalidModel = isInvalidModelError(getStderrTail());
-          if (
-            modelPolicyFallback === "fail" &&
-            (policyBlocked || invalidModel)
-          ) {
+          if (modelFallback === "fail" && (policyBlocked || invalidModel)) {
             throw new NonRetryableModelError(
               `Droid Exec exited with code ${lastExitCode}`,
             );

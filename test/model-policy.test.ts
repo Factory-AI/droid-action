@@ -8,7 +8,7 @@ import {
 
 const originalFetch = globalThis.fetch;
 const originalApiKey = process.env.FACTORY_API_KEY;
-const originalFallback = process.env.MODEL_POLICY_FALLBACK;
+const originalFallback = process.env.MODEL_FALLBACK;
 
 function mockFetch(handler: () => Promise<Response> | Response) {
   globalThis.fetch = Object.assign(async () => handler(), {
@@ -30,8 +30,8 @@ afterEach(() => {
   } else {
     process.env.FACTORY_API_KEY = originalApiKey;
   }
-  if (originalFallback === undefined) delete process.env.MODEL_POLICY_FALLBACK;
-  else process.env.MODEL_POLICY_FALLBACK = originalFallback;
+  if (originalFallback === undefined) delete process.env.MODEL_FALLBACK;
+  else process.env.MODEL_FALLBACK = originalFallback;
 });
 
 describe("isModelPolicyError", () => {
@@ -158,7 +158,7 @@ describe("applyModelPolicyFallback", () => {
 
   it("rejects a blocked model in fail mode", async () => {
     process.env.FACTORY_API_KEY = "fk-test";
-    process.env.MODEL_POLICY_FALLBACK = "fail";
+    process.env.MODEL_FALLBACK = "fail";
     mockFetch(() => managedSettingsResponse({ blockedModelIds: ["gpt-5.2"] }));
     await expect(
       applyModelPolicyFallback(
@@ -172,14 +172,14 @@ describe("applyModelPolicyFallback", () => {
     "validates the mode before any policy lookup: %j",
     async (config) => {
       process.env.FACTORY_API_KEY = "fk-test";
-      process.env.MODEL_POLICY_FALLBACK = "typo";
+      process.env.MODEL_FALLBACK = "typo";
       let fetchCalled = false;
       mockFetch(() => {
         fetchCalled = true;
         return managedSettingsResponse({ allowedModelIds: ["gpt-5.2"] });
       });
       await expect(applyModelPolicyFallback(config, options)).rejects.toThrow(
-        "model_policy_fallback must be one of:",
+        "model_fallback must be one of:",
       );
       expect(fetchCalled).toBe(false);
     },
@@ -216,7 +216,7 @@ describe("applyModelPolicyFallback", () => {
     "keeps the model when the policy lookup fails in %s mode",
     async (mode) => {
       process.env.FACTORY_API_KEY = "fk-test";
-      process.env.MODEL_POLICY_FALLBACK = mode;
+      process.env.MODEL_FALLBACK = mode;
       mockFetch(() => {
         throw new Error("connection refused");
       });

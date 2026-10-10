@@ -146,7 +146,7 @@ describe("runDroid with a CLI that predates tier aliases", () => {
         runDroid(promptPath, {
           pathToDroidExecutable: fakeDroid,
           droidArgs: `--model ${model} --reasoning-effort high`,
-          modelPolicyFallback: "fail",
+          modelFallback: "fail",
         }),
       ).rejects.toThrow("process.exit");
       expect(exitSpy).toHaveBeenCalledWith(1);
@@ -172,7 +172,7 @@ describe("runDroid with a CLI that predates tier aliases", () => {
     await runDroid(promptPath, {
       pathToDroidExecutable: fakeDroid,
       droidArgs: "--model gpt-5.6-sol --reasoning-effort high",
-      modelPolicyFallback: "fail",
+      modelFallback: "fail",
     });
     expect(outputs.conclusion).toBe("success");
     expect(outputs.model_fallback_note).toBeUndefined();

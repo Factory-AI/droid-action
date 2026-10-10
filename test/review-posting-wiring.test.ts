@@ -22,20 +22,18 @@ describe("review safety wiring", () => {
       "validator",
     ],
   ])(
-    "forwards model policy fallback through both passes of %s",
+    "forwards model fallback through both passes of %s",
     (path, prepare, run, validatorPrepare, validatorRun) => {
       const action = loadAction(path);
-      expect(action.inputs.model_policy_fallback.default).toBe(
-        "organization-default",
-      );
+      expect(action.inputs.model_fallback.default).toBe("organization-default");
       for (const id of [prepare, validatorPrepare]) {
-        expect(stepById(action, id).env.MODEL_POLICY_FALLBACK).toBe(
-          "${{ inputs.model_policy_fallback }}",
+        expect(stepById(action, id).env.MODEL_FALLBACK).toBe(
+          "${{ inputs.model_fallback }}",
         );
       }
       for (const id of [run, validatorRun]) {
-        expect(stepById(action, id).env.INPUT_MODEL_POLICY_FALLBACK).toBe(
-          "${{ inputs.model_policy_fallback }}",
+        expect(stepById(action, id).env.INPUT_MODEL_FALLBACK).toBe(
+          "${{ inputs.model_fallback }}",
         );
       }
       expect(stepById(action, validatorPrepare).env.REVIEW_MODEL).toBe(
@@ -109,11 +107,9 @@ describe("review safety wiring", () => {
     expect(stepById(action, "run_droid").env.INPUT_MAX_TURNS).toContain(
       "max_turns",
     );
-    expect(action.inputs.model_policy_fallback.default).toBe(
-      "organization-default",
-    );
-    expect(stepById(action, "run_droid").env.INPUT_MODEL_POLICY_FALLBACK).toBe(
-      "${{ inputs.model_policy_fallback }}",
+    expect(action.inputs.model_fallback.default).toBe("organization-default");
+    expect(stepById(action, "run_droid").env.INPUT_MODEL_FALLBACK).toBe(
+      "${{ inputs.model_fallback }}",
     );
   });
 });

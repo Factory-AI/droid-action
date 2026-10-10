@@ -30,7 +30,7 @@ inputs:
     required: false
     default: ""
 
-  model_policy_fallback:
+  model_fallback:
     description: "Behavior when a model is blocked or invalid: 'organization-default' allows fallback; 'fail' stops without substituting a model."
     required: false
     default: "organization-default"
@@ -121,7 +121,7 @@ runs:
         fi
         bun run ${GITHUB_ACTION_PATH}/src/index.ts
       env:
-        INPUT_MODEL_POLICY_FALLBACK: ${{ inputs.model_policy_fallback }}
+        INPUT_MODEL_FALLBACK: ${{ inputs.model_fallback }}
         # Model configuration
         INPUT_PROMPT: ${{ inputs.prompt }}
         INPUT_PROMPT_FILE: ${{ inputs.prompt_file }}

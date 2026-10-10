@@ -1,5 +1,5 @@
 import * as core from "@actions/core";
-import { parseModelPolicyFallbackMode } from "../../base-action/src/utils/model-policy-error";
+import { parseModelFallbackMode } from "../../base-action/src/utils/model-policy-error";
 
 /**
  * Subset of the Factory org model policy returned by
@@ -153,9 +153,7 @@ export async function applyModelPolicyFallback(
   config: { model?: string; reasoningEffort?: string },
   options: { flowLabel: string; modelInputName: string },
 ): Promise<PolicyCheckedModelConfig> {
-  const fallbackMode = parseModelPolicyFallbackMode(
-    process.env.MODEL_POLICY_FALLBACK,
-  );
+  const fallbackMode = parseModelFallbackMode(process.env.MODEL_FALLBACK);
   const { model, reasoningEffort } = config;
   const factoryApiKey = process.env.FACTORY_API_KEY;
 
