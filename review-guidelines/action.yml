@@ -45,13 +45,15 @@ runs:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
 
     # Gets its own token and deletes it before the step ends, so the distill
-    # step cannot find it.
+    # step cannot find it. The miner classifies each comment with `droid exec`,
+    # which needs the Factory API key.
     - name: Mine review comments
       id: mine
       shell: bash
       run: bash ${{ github.action_path }}/mine.sh
       env:
         ACTION_ROOT: ${{ github.action_path }}/..
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
         INCLUDE_BOT_COMMENTS: ${{ inputs.include_bot_comments }}
 

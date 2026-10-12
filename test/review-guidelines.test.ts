@@ -38,6 +38,14 @@ describe("review guidelines action wiring", () => {
     expect(script).toContain("--only-tools Read,Grep,Glob,LS,Create,Edit");
   });
 
+  // mine.py classifies every candidate with `droid exec`; without the key each
+  // call fails, nothing counts as acted on, and the job succeeds with no PR.
+  it("gives the miner the Factory API key", () => {
+    expect(stepById(learn, "mine").env.FACTORY_API_KEY).toBe(
+      "${{ inputs.factory_api_key }}",
+    );
+  });
+
   it("hands the publish job only the staged result", () => {
     const upload = learn.runs.steps.at(-1);
     expect(upload.uses).toStartWith("actions/upload-artifact@");
