@@ -2,6 +2,9 @@ import type { WorkflowRunEvent } from "@octokit/webhooks-types";
 import type { Octokits } from "../github/api/client";
 import type { StewardConfig } from "./config";
 import type { FailedCheck } from "./scope";
+import { createLogger } from "../logger";
+
+const log = createLogger("steward/gate");
 
 export type StewardPullRequest = {
   number: number;
@@ -282,7 +285,7 @@ export async function waitForChecksToFinish(
     );
     if (!active) return;
     if (Date.now() >= deadline) {
-      console.log(
+      log.info(
         `CI Steward stopped waiting for checks on ${headSha} after ${Math.round(maxWaitMs / 60_000)} minutes; some are still pending.`,
       );
       return;

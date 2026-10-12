@@ -13,6 +13,9 @@ import {
   parsePrValidationRunType,
   type PrValidationRunType,
 } from "../run-type";
+import { createLogger } from "../logger";
+
+const log = createLogger("mcp/github-pr-server");
 
 const PLACEHOLDER_REGEX = /@droid\s+fill(?:\s+description)?/gi;
 const PLACEHOLDER_LINE_REGEX =
@@ -1045,14 +1048,14 @@ async function runServer() {
   const token = process.env.GITHUB_TOKEN;
 
   if (!owner || !repo) {
-    console.error(
+    log.error(
       "Error: REPO_OWNER and REPO_NAME environment variables are required",
     );
     process.exit(1);
   }
 
   if (!token) {
-    console.error("Error: GITHUB_TOKEN environment variable is required");
+    log.error("Error: GITHUB_TOKEN environment variable is required");
     process.exit(1);
   }
 
@@ -1073,7 +1076,7 @@ async function runServer() {
 
 if (import.meta.main) {
   runServer().catch((error) => {
-    console.error(error);
+    log.error(error);
     process.exit(1);
   });
 }

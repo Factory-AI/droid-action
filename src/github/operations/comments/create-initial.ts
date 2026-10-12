@@ -22,6 +22,9 @@ import {
 import type { Octokit } from "@octokit/rest";
 import { getPrValidationRunType, type DroidRunType } from "../../../run-type";
 import * as core from "@actions/core";
+import { createLogger } from "../../../logger";
+
+const log = createLogger("github/operations/comments/create-initial");
 
 const DROID_APP_BOT_ID = 209825114;
 
@@ -107,10 +110,10 @@ export async function createInitialComment(
     const githubOutput = process.env.GITHUB_OUTPUT!;
     appendFileSync(githubOutput, `droid_comment_id=${response.data.id}\n`);
     core.exportVariable("DROID_PR_COMMENT_KIND", createdCommentKind);
-    console.log(`✅ Created initial comment with ID: ${response.data.id}`);
+    log.info(`✅ Created initial comment with ID: ${response.data.id}`);
     return response.data;
   } catch (error) {
-    console.error("Error in initial comment:", error);
+    log.error("Error in initial comment:", error);
 
     // Always fall back to regular issue comment if anything fails
     try {
@@ -124,10 +127,10 @@ export async function createInitialComment(
       const githubOutput = process.env.GITHUB_OUTPUT!;
       appendFileSync(githubOutput, `droid_comment_id=${response.data.id}\n`);
       core.exportVariable("DROID_PR_COMMENT_KIND", "issue-comment");
-      console.log(`✅ Created fallback comment with ID: ${response.data.id}`);
+      log.info(`✅ Created fallback comment with ID: ${response.data.id}`);
       return response.data;
     } catch (fallbackError) {
-      console.error("Error creating fallback comment:", fallbackError);
+      log.error("Error creating fallback comment:", fallbackError);
       throw fallbackError;
     }
   }

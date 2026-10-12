@@ -16,6 +16,9 @@ import { applyModelPolicyFallback } from "../../utils/model-policy";
 import { retryWithBackoff } from "../../utils/retry";
 import { assertDroidRunType, DroidRunType } from "../../run-type";
 import { githubReviewSessionTagArg } from "../../utils/review-session-tag";
+import { createLogger } from "../../logger";
+
+const log = createLogger("tag/commands/review");
 
 type ReviewCommandOptions = {
   context: GitHubContext;
@@ -63,7 +66,7 @@ export async function prepareReviewMode({
 
   // Checkout the PR branch before computing diff
   // This ensures HEAD points to the PR head commit, not the merge commit or default branch
-  console.log(
+  log.info(
     `Checking out PR #${context.entityNumber} branch for diff computation...`,
   );
   try {
@@ -78,12 +81,12 @@ export async function prepareReviewMode({
         const branchName = execSync("git rev-parse --abbrev-ref HEAD", {
           encoding: "utf8",
         }).trim();
-        console.log(`Successfully checked out PR branch: ${branchName}`);
+        log.info(`Successfully checked out PR branch: ${branchName}`);
       },
       { maxAttempts: 3, initialDelayMs: 3000, maxDelayMs: 15000 },
     );
   } catch (e) {
-    console.error(`Failed to checkout PR branch after retries: ${e}`);
+    log.error(`Failed to checkout PR branch after retries: ${e}`);
     throw new Error(
       `Failed to checkout PR #${context.entityNumber} branch for review`,
     );

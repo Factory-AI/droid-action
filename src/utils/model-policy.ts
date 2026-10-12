@@ -1,4 +1,7 @@
 import * as core from "@actions/core";
+import { createLogger } from "../logger";
+
+const log = createLogger("utils/model-policy");
 
 /**
  * Subset of the Factory org model policy returned by
@@ -56,7 +59,7 @@ export async function fetchModelPolicy(
     );
 
     if (!response.ok) {
-      console.warn(
+      log.warn(
         `Model policy lookup returned HTTP ${response.status}; proceeding without a policy check`,
       );
       return null;
@@ -97,7 +100,7 @@ export async function fetchModelPolicy(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.warn(
+    log.warn(
       `Model policy lookup failed (${message}); proceeding without a policy check`,
     );
     return null;

@@ -7,6 +7,9 @@ import { createOctokit } from "../github/api/client";
 import { parseGitHubContext, isEntityContext } from "../github/context";
 import { prepareReviewValidatorMode } from "../tag/commands/review-validator";
 import { DroidRunType, parseDroidRunType, setDroidRunType } from "../run-type";
+import { createLogger } from "../logger";
+
+const log = createLogger("entrypoints/prepare-validator");
 
 async function run() {
   try {
@@ -35,15 +38,13 @@ async function run() {
         ) {
           throw new Error("Missing or invalid 'comments' array in candidates");
         }
-        console.log(
+        log.info(
           `Pass 1 candidates validated: ${parsed.comments.length} comments found`,
         );
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
-        console.error(
-          `Pass 1 candidates JSON is invalid or missing: ${message}`,
-        );
-        console.error(
+        log.error(`Pass 1 candidates JSON is invalid or missing: ${message}`);
+        log.error(
           "Skipping Pass 2 (validator) to avoid a full pipeline failure",
         );
         core.setOutput("validator_should_run", "false");

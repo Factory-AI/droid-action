@@ -4,11 +4,14 @@
 
 import type { PrepareOptions, PrepareResult } from "./types";
 import { prepareTagExecution } from "../tag";
+import { createLogger } from "../logger";
+
+const log = createLogger("prepare/index");
 
 export async function prepare(options: PrepareOptions): Promise<PrepareResult> {
   const { context } = options;
 
-  console.log(`Preparing tag execution for event: ${context.eventName}`);
+  log.info(`Preparing tag execution for event: ${context.eventName}`);
 
   return prepareTagExecution(options);
 }

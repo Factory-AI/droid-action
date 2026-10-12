@@ -51,6 +51,9 @@ import {
   getLegacyTierAliasModel,
   isInvalidModelError,
 } from "../../base-action/src/utils/model-policy-error";
+import { createLogger } from "../logger";
+
+const log = createLogger("entrypoints/gitlab-prepare");
 
 /**
  * `droid exec` runs in the untrusted MR checkout and starts project MCP
@@ -86,7 +89,7 @@ export function downgradeUnsupportedTierAlias(
   if (!model || !legacyModel || !isInvalidModelError(probe(model))) {
     return model;
   }
-  console.log(
+  log.info(
     `The installed Droid CLI does not recognize the tier alias ${model}; using ${legacyModel}`,
   );
   return legacyModel;
@@ -191,14 +194,14 @@ async function writeResolvedEnvShim(
     lines.push(`export ${k}=${shellEscape(v ?? "")}`);
   }
   await fs.writeFile(filePath, lines.join("\n") + "\n");
-  console.log(`Wrote resolved env shim to ${filePath}`);
+  log.info(`Wrote resolved env shim to ${filePath}`);
 }
 
 async function writeState(state: PrepareState): Promise<void> {
   const filePath = stateFilePath();
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, JSON.stringify(state, null, 2));
-  console.log(`Wrote droid state to ${filePath}`);
+  log.info(`Wrote droid state to ${filePath}`);
 }
 
 async function run(): Promise<void> {
@@ -231,7 +234,7 @@ async function run(): Promise<void> {
   };
 
   if (!isMergeRequestContext(context)) {
-    console.log(
+    log.info(
       "Not a merge_request_event pipeline; skipping droid review prepare.",
     );
     await writeState({
@@ -242,7 +245,7 @@ async function run(): Promise<void> {
   }
 
   if (!context.inputs.automaticReview) {
-    console.log("automatic_review is disabled; skipping droid review prepare.");
+    log.info("automatic_review is disabled; skipping droid review prepare.");
     await writeState({
       ...baseState,
       reason: "automatic-review-disabled",
@@ -260,7 +263,7 @@ async function run(): Promise<void> {
       err instanceof MissingGitlabTokenError ||
       err instanceof UnexpandedGitlabTokenError
     ) {
-      console.error(err.message);
+      log.error(err.message);
     }
     throw err;
   }
@@ -272,10 +275,7 @@ async function run(): Promise<void> {
   try {
     await setupDroidSettings(context.inputs.settings || undefined);
   } catch (err) {
-    console.warn(
-      "Failed to setup droid settings; continuing with defaults:",
-      err,
-    );
+    log.warn("Failed to setup droid settings; continuing with defaults:", err);
   }
 
   const client = new GitlabClient(token, context.apiUrl);
@@ -301,21 +301,21 @@ async function run(): Promise<void> {
   if (existing) {
     await client.updateNote(projectId, mrIid, existing.id, noteBody);
     trackingNoteId = existing.id;
-    console.log(`Reused existing tracking note ${trackingNoteId}`);
+    log.info(`Reused existing tracking note ${trackingNoteId}`);
   } else {
     const created = await client.createNote(projectId, mrIid, noteBody);
     trackingNoteId = created.id;
-    console.log(`Created tracking note ${trackingNoteId}`);
+    log.info(`Created tracking note ${trackingNoteId}`);
   }
 
-  console.log("Computing review artifacts (diff, notes, description)...");
+  log.info("Computing review artifacts (diff, notes, description)...");
   const artifacts = await computeReviewArtifacts({
     client,
     projectId,
     mrIid,
     outDir: promptsDir(),
   });
-  console.log(
+  log.info(
     `Artifacts written:\n  ${artifacts.diffPath}\n  ${artifacts.commentsPath}\n  ${artifacts.descriptionPath}`,
   );
 
@@ -334,14 +334,14 @@ async function run(): Promise<void> {
     },
     { flowLabel: "code review", modelInputName: "review_model" },
   );
-  console.log(
+  log.info(
     `Resolved review config: depth=${context.inputs.reviewDepth} ` +
       `explicitModel=${context.inputs.reviewModel || "(empty)"} ` +
       `explicitEffort=${context.inputs.reasoningEffort || "(empty)"} ` +
       `=> model=${resolved.model ?? "(org default)"} effort=${resolved.reasoningEffort ?? "(none)"}`,
   );
   if (resolved.fallbackNote) {
-    console.warn(resolved.fallbackNote);
+    log.warn(resolved.fallbackNote);
   }
 
   // The template passes these to `droid exec --tag` verbatim; the shim's
@@ -399,7 +399,7 @@ async function run(): Promise<void> {
   const promptPath = promptFilePath();
   await fs.mkdir(path.dirname(promptPath), { recursive: true });
   await fs.writeFile(promptPath, prompt);
-  console.log(
+  log.info(
     `Wrote Pass-1 candidates prompt (${prompt.length} bytes) to ${promptPath}`,
   );
 
@@ -426,7 +426,7 @@ async function run(): Promise<void> {
 
 if (import.meta.main) {
   run().catch((error) => {
-    console.error("gitlab-prepare failed:", error);
+    log.error("gitlab-prepare failed:", error);
     process.exit(1);
   });
 }

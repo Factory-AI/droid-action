@@ -2,6 +2,9 @@ import fs from "fs/promises";
 import path from "path";
 import type { Octokits } from "../api/client";
 import { GITHUB_SERVER_URL } from "../api/config";
+import { createLogger } from "../../logger";
+
+const log = createLogger("github/utils/image-downloader");
 
 const escapedUrl = GITHUB_SERVER_URL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const IMAGE_REGEX = new RegExp(
@@ -88,7 +91,7 @@ export async function downloadCommentImages(
           : comment.type === "pr_body"
             ? comment.pullNumber
             : comment.id;
-      console.log(`Found ${urls.length} image(s) in ${comment.type} ${id}`);
+      log.info(`Found ${urls.length} image(s) in ${comment.type} ${id}`);
     }
   }
 
@@ -169,7 +172,7 @@ export async function downloadCommentImages(
             : comment.type === "pr_body"
               ? comment.pullNumber
               : comment.id;
-        console.warn(`No HTML body found for ${comment.type} ${id}`);
+        log.warn(`No HTML body found for ${comment.type} ${id}`);
         continue;
       }
 
@@ -197,7 +200,7 @@ export async function downloadCommentImages(
         const localPath = path.join(downloadsDir, filename);
 
         try {
-          console.log(`Downloading ${originalUrl}...`);
+          log.info(`Downloading ${originalUrl}...`);
 
           const imageResponse = await fetch(signedUrl);
           if (!imageResponse.ok) {
@@ -210,11 +213,11 @@ export async function downloadCommentImages(
           const buffer = Buffer.from(arrayBuffer);
 
           await fs.writeFile(localPath, buffer);
-          console.log(`✓ Saved: ${localPath}`);
+          log.info(`✓ Saved: ${localPath}`);
 
           urlToPathMap.set(originalUrl, localPath);
         } catch (error) {
-          console.error(`✗ Failed to download ${originalUrl}:`, error);
+          log.error(`✗ Failed to download ${originalUrl}:`, error);
         }
       }
     } catch (error) {
@@ -224,10 +227,7 @@ export async function downloadCommentImages(
           : comment.type === "pr_body"
             ? comment.pullNumber
             : comment.id;
-      console.error(
-        `Failed to process images for ${comment.type} ${id}:`,
-        error,
-      );
+      log.error(`Failed to process images for ${comment.type} ${id}:`, error);
     }
   }
 

@@ -6,6 +6,9 @@
 
 import * as core from "@actions/core";
 import { setupGitHubToken } from "../github/token";
+import { createLogger } from "../logger";
+
+const log = createLogger("entrypoints/get-token");
 
 async function run() {
   try {
@@ -13,13 +16,13 @@ async function run() {
 
     let token: string;
     if (overrideToken) {
-      console.log("Using provided GitHub token");
+      log.info("Using provided GitHub token");
       core.setSecret(overrideToken);
       token = overrideToken;
     } else {
-      console.log("Requesting OIDC token...");
+      log.info("Requesting OIDC token...");
       token = await setupGitHubToken();
-      console.log("GitHub token obtained via OIDC");
+      log.info("GitHub token obtained via OIDC");
     }
 
     // Set output for next steps

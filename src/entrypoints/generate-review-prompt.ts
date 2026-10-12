@@ -20,6 +20,9 @@ import { applyModelPolicyFallback } from "../utils/model-policy";
 import { retryWithBackoff } from "../utils/retry";
 import { DroidRunType, setDroidRunType } from "../run-type";
 import { githubReviewSessionTagArg } from "../utils/review-session-tag";
+import { createLogger } from "../logger";
+
+const log = createLogger("entrypoints/generate-review-prompt");
 
 async function run() {
   try {
@@ -65,7 +68,7 @@ async function run() {
 
     // Checkout the PR branch before computing diff to ensure HEAD points
     // to the PR head commit, not the merge commit
-    console.log(
+    log.info(
       `Checking out PR #${context.entityNumber} branch for diff computation...`,
     );
     try {
@@ -80,14 +83,14 @@ async function run() {
             stdio: "pipe",
             env: { ...process.env, GH_TOKEN: githubToken },
           });
-          console.log(
+          log.info(
             `Successfully checked out PR branch: ${execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf8" }).trim()}`,
           );
         },
         { maxAttempts: 3, initialDelayMs: 3000, maxDelayMs: 15000 },
       );
     } catch (e) {
-      console.error(`Failed to checkout PR branch after retries: ${e}`);
+      log.error(`Failed to checkout PR branch after retries: ${e}`);
       throw new Error(
         `Failed to checkout PR #${context.entityNumber} branch for review`,
       );
@@ -226,7 +229,7 @@ async function run() {
     // Both code and security reviews use the two-pass pipeline (candidates + validator)
     core.setOutput("review_use_validator", "true");
 
-    console.log(`Generated ${reviewType} review prompt`);
+    log.info(`Generated ${reviewType} review prompt`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     core.setFailed(`Generate prompt failed: ${errorMessage}`);

@@ -27,6 +27,9 @@ import { collectExecTelemetry } from "../gitlab/data/exec-telemetry";
 import { readReviewPostOutcome } from "../core/review/tracking/results";
 import { postResultsFilePath } from "./gitlab-post-review";
 import { stateFilePath, type PrepareState } from "./gitlab-prepare";
+import { createLogger } from "../logger";
+
+const log = createLogger("entrypoints/gitlab-update-comment-link");
 
 async function readPostResults() {
   const filePath = postResultsFilePath();
@@ -34,7 +37,7 @@ async function readPostResults() {
   if (!results) {
     // Absent whenever posting did not get that far (skipped review, failed
     // pass). The note still renders, just without review counts.
-    console.log(`No post-results file at ${filePath}; omitting review counts.`);
+    log.info(`No post-results file at ${filePath}; omitting review counts.`);
   }
   return results;
 }
@@ -45,7 +48,7 @@ async function readState(): Promise<PrepareState | null> {
     const raw = await fs.readFile(filePath, "utf8");
     return JSON.parse(raw) as PrepareState;
   } catch (err) {
-    console.warn(`Could not read droid state file at ${filePath}:`, err);
+    log.warn(`Could not read droid state file at ${filePath}:`, err);
     return null;
   }
 }
@@ -53,12 +56,12 @@ async function readState(): Promise<PrepareState | null> {
 async function run(): Promise<void> {
   const state = await readState();
   if (!state) {
-    console.log("No droid state available; nothing to update.");
+    log.info("No droid state available; nothing to update.");
     return;
   }
 
   if (!state.shouldRunReview || !state.mrIid || !state.trackingNoteId) {
-    console.log(
+    log.info(
       `Skipping note update (shouldRunReview=${state.shouldRunReview}, ` +
         `mrIid=${state.mrIid}, trackingNoteId=${state.trackingNoteId}).`,
     );
@@ -115,7 +118,7 @@ async function run(): Promise<void> {
     body,
   );
 
-  console.log(
+  log.info(
     `Updated tracking note ${state.trackingNoteId} on MR !${state.mrIid} ` +
       `(state=${droidSuccess ? "success" : "failure"}).`,
   );
@@ -123,7 +126,7 @@ async function run(): Promise<void> {
 
 if (import.meta.main) {
   run().catch((error) => {
-    console.error("gitlab-update-comment-link failed:", error);
+    log.error("gitlab-update-comment-link failed:", error);
     process.exit(1);
   });
 }

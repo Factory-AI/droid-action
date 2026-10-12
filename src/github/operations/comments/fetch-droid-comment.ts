@@ -1,4 +1,7 @@
 import type { Octokits } from "../../api/client";
+import { createLogger } from "../../../logger";
+
+const log = createLogger("github/operations/comments/fetch-droid-comment");
 
 export interface FetchDroidCommentParams {
   owner: string;
@@ -32,7 +35,7 @@ export async function fetchDroidComment(
   // First, try the endpoint matching the event type for efficiency
   if (isPullRequestReviewCommentEvent) {
     try {
-      console.log(`Fetching PR review comment ${commentId}`);
+      log.info(`Fetching PR review comment ${commentId}`);
       const { data: prComment } = await octokit.rest.pulls.getReviewComment({
         owner,
         repo,
@@ -40,17 +43,17 @@ export async function fetchDroidComment(
       });
       comment = { body: prComment.body ?? null };
       isPRReviewComment = true;
-      console.log("Successfully fetched as PR review comment");
+      log.info("Successfully fetched as PR review comment");
     } catch {
       // Fall through to try issue comment API
-      console.log("PR review comment fetch failed, trying issue comment API");
+      log.info("PR review comment fetch failed, trying issue comment API");
     }
   }
 
   // Try issue comment API
   if (!comment) {
     try {
-      console.log(`Fetching issue comment ${commentId}`);
+      log.info(`Fetching issue comment ${commentId}`);
       const { data: issueComment } = await octokit.rest.issues.getComment({
         owner,
         repo,
@@ -58,11 +61,11 @@ export async function fetchDroidComment(
       });
       comment = { body: issueComment.body ?? null };
       isPRReviewComment = false;
-      console.log("Successfully fetched as issue comment");
+      log.info("Successfully fetched as issue comment");
     } catch (issueError) {
       // If event wasn't a PR review comment event, try review comment API as fallback
       if (!isPullRequestReviewCommentEvent) {
-        console.log("Issue comment fetch failed, trying PR review comment API");
+        log.info("Issue comment fetch failed, trying PR review comment API");
         try {
           const { data: prComment } = await octokit.rest.pulls.getReviewComment(
             {
@@ -73,7 +76,7 @@ export async function fetchDroidComment(
           );
           comment = { body: prComment.body ?? null };
           isPRReviewComment = true;
-          console.log("Successfully fetched as PR review comment");
+          log.info("Successfully fetched as PR review comment");
         } catch {
           // Both APIs failed, throw the original issue error
           throw issueError;

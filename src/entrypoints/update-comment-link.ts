@@ -17,6 +17,9 @@ import { updateDroidComment } from "../github/operations/comments/update-droid-c
 import { fetchDroidComment } from "../github/operations/comments/fetch-droid-comment";
 import { readReviewPostOutcome } from "../core/review/tracking/results";
 import { parsePrValidationRunType } from "../run-type";
+import { createLogger } from "../logger";
+
+const log = createLogger("entrypoints/update-comment-link");
 
 export async function readReviewPostResults() {
   const filePath =
@@ -24,7 +27,7 @@ export async function readReviewPostResults() {
     `${process.env.RUNNER_TEMP || "/tmp"}/droid-prompts/review_post_results.json`;
   const results = await readReviewPostOutcome(filePath);
   if (!results) {
-    console.log(`No review post-results file at ${filePath}; omitting counts.`);
+    log.info(`No review post-results file at ${filePath}; omitting counts.`);
   }
   return results;
 }
@@ -72,21 +75,21 @@ async function run() {
       if (is404) {
         // Comment was deleted (possibly by user, spam filter, or another automation)
         // This is not a critical failure - the main review/action likely completed
-        console.log(
+        log.info(
           `⚠️ Comment ${commentId} no longer exists (404). Skipping update.`,
         );
-        console.log(
+        log.info(
           "This can happen if the comment was deleted by a user, spam filter, or another automation.",
         );
         process.exit(0);
       }
 
       // For non-404 errors, log debug info and fail
-      console.error("Failed to fetch comment. Debug info:");
-      console.error(`Comment ID: ${commentId}`);
-      console.error(`Event name: ${context.eventName}`);
-      console.error(`Entity number: ${context.entityNumber}`);
-      console.error(`Repository: ${context.repository.full_name}`);
+      log.error("Failed to fetch comment. Debug info:");
+      log.error(`Comment ID: ${commentId}`);
+      log.error(`Event name: ${context.eventName}`);
+      log.error(`Entity number: ${context.entityNumber}`);
+      log.error(`Repository: ${context.repository.full_name}`);
 
       // Try to get the PR info to understand the comment structure
       try {
@@ -95,11 +98,11 @@ async function run() {
           repo,
           pull_number: context.entityNumber,
         });
-        console.log(`PR state: ${pr.state}`);
-        console.log(`PR comments count: ${pr.comments}`);
-        console.log(`PR review comments count: ${pr.review_comments}`);
+        log.info(`PR state: ${pr.state}`);
+        log.info(`PR comments count: ${pr.comments}`);
+        log.info(`PR review comments count: ${pr.review_comments}`);
       } catch {
-        console.error("Could not fetch PR info for debugging");
+        log.error("Could not fetch PR info for debugging");
       }
 
       throw finalError;
@@ -162,7 +165,7 @@ async function run() {
         const droidSuccess = process.env.DROID_SUCCESS !== "false";
         actionFailed = !droidSuccess;
       } catch (error) {
-        console.error("Error reading output file:", error);
+        log.error("Error reading output file:", error);
         // If we can't read the file, check for any failure markers
         actionFailed = process.env.DROID_SUCCESS === "false";
       }
@@ -200,11 +203,11 @@ async function run() {
         body: updatedBody,
         isPullRequestReviewComment: isPRReviewComment,
       });
-      console.log(
+      log.info(
         `✅ Updated ${isPRReviewComment ? "PR review" : "issue"} comment ${commentId} with job link`,
       );
     } catch (updateError) {
-      console.error(
+      log.error(
         `Failed to update ${isPRReviewComment ? "PR review" : "issue"} comment:`,
         updateError,
       );
@@ -213,7 +216,7 @@ async function run() {
 
     process.exit(0);
   } catch (error) {
-    console.error("Error updating comment with job link:", error);
+    log.error("Error updating comment with job link:", error);
     process.exit(1);
   }
 }

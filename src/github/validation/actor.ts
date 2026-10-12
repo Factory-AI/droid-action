@@ -7,6 +7,9 @@
 
 import type { Octokit } from "@octokit/rest";
 import type { ParsedGitHubContext } from "../context";
+import { createLogger } from "../../logger";
+
+const log = createLogger("github/validation/actor");
 
 export async function checkHumanActor(
   octokit: Octokit,
@@ -19,7 +22,7 @@ export async function checkHumanActor(
 
   const actorType = userData.type;
 
-  console.log(`Actor type: ${actorType}`);
+  log.info(`Actor type: ${actorType}`);
 
   // Check bot permissions if actor is not a User
   if (actorType !== "User") {
@@ -27,7 +30,7 @@ export async function checkHumanActor(
 
     // Check if all bots are allowed
     if (allowedBots.trim() === "*") {
-      console.log(
+      log.info(
         `All bots are allowed, skipping human actor check for: ${githubContext.actor}`,
       );
       return;
@@ -48,9 +51,7 @@ export async function checkHumanActor(
 
     // Check if specific bot is allowed
     if (allowedBotsList.includes(botName)) {
-      console.log(
-        `Bot ${botName} is in allowed list, skipping human actor check`,
-      );
+      log.info(`Bot ${botName} is in allowed list, skipping human actor check`);
       return;
     }
 
@@ -60,5 +61,5 @@ export async function checkHumanActor(
     );
   }
 
-  console.log(`Verified human actor: ${githubContext.actor}`);
+  log.info(`Verified human actor: ${githubContext.actor}`);
 }

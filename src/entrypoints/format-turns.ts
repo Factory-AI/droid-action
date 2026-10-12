@@ -2,6 +2,9 @@
 
 import { readFileSync, existsSync } from "fs";
 import { exit } from "process";
+import { createLogger } from "../logger";
+
+const log = createLogger("entrypoints/format-turns");
 
 export type ToolUse = {
   type: string;
@@ -426,18 +429,18 @@ function main(): void {
   // Get the JSON file path from command line arguments
   const args = process.argv.slice(2);
   if (args.length === 0) {
-    console.error("Usage: format-turns.ts <json-file>");
+    log.error("Usage: format-turns.ts <json-file>");
     exit(1);
   }
 
   const jsonFile = args[0];
   if (!jsonFile) {
-    console.error("Error: No JSON file provided");
+    log.error("Error: No JSON file provided");
     exit(1);
   }
 
   if (!existsSync(jsonFile)) {
-    console.error(`Error: ${jsonFile} not found`);
+    log.error(`Error: ${jsonFile} not found`);
     exit(1);
   }
 
@@ -448,13 +451,13 @@ function main(): void {
     if (jsonFile.endsWith(".jsonl")) {
       const trimmed = fileContent.trim();
       if (trimmed.length === 0) {
-        console.log("*(No session data available)*");
+        log.info("*(No session data available)*");
         return;
       }
 
-      console.log("```jsonl");
-      console.log(trimmed);
-      console.log("```");
+      log.info("```jsonl");
+      log.info(trimmed);
+      log.info("```");
       return;
     }
 
@@ -467,9 +470,9 @@ function main(): void {
     const markdown = formatGroupedContent(groupedContent);
 
     // Print to stdout (so it can be captured by shell)
-    console.log(markdown);
+    log.info(markdown);
   } catch (error) {
-    console.error(`Error processing file: ${error}`);
+    log.error(`Error processing file: ${error}`);
     exit(1);
   }
 }

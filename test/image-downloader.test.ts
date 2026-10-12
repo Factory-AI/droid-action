@@ -13,6 +13,15 @@ import { downloadCommentImages } from "../src/github/utils/image-downloader";
 import type { CommentWithImages } from "../src/github/utils/image-downloader";
 import type { Octokits } from "../src/github/api/client";
 
+// The structured logger writes one JSON entry per console line; these helpers
+// pull the parsed entries and their messages back out so assertions can stay
+// message-based.
+const loggedEntries = (spy: any): { msg: string; error?: unknown }[] =>
+  spy.mock.calls.map((call: unknown[]) => JSON.parse(String(call[0])));
+
+const loggedMessages = (spy: any): string[] =>
+  loggedEntries(spy).map((entry) => entry.msg);
+
 describe("downloadCommentImages", () => {
   let consoleLogSpy: any;
   let consoleWarnSpy: any;
@@ -90,9 +99,7 @@ describe("downloadCommentImages", () => {
     );
 
     expect(result.size).toBe(0);
-    expect(consoleLogSpy).not.toHaveBeenCalledWith(
-      expect.stringContaining("Found"),
-    );
+    expect(loggedMessages(consoleLogSpy).join(" | ")).not.toContain("Found");
   });
 
   test("should detect and download images from issue comments", async () => {
@@ -149,11 +156,13 @@ describe("downloadCommentImages", () => {
     expect(result.get(imageUrl)).toBe(
       "/tmp/github-images/image-1704067200000-0.png",
     );
-    expect(consoleLogSpy).toHaveBeenCalledWith(
+    expect(loggedMessages(consoleLogSpy)).toContain(
       "Found 1 image(s) in issue_comment 123",
     );
-    expect(consoleLogSpy).toHaveBeenCalledWith(`Downloading ${imageUrl}...`);
-    expect(consoleLogSpy).toHaveBeenCalledWith(
+    expect(loggedMessages(consoleLogSpy)).toContain(
+      `Downloading ${imageUrl}...`,
+    );
+    expect(loggedMessages(consoleLogSpy)).toContain(
       "✓ Saved: /tmp/github-images/image-1704067200000-0.png",
     );
   });
@@ -296,7 +305,7 @@ describe("downloadCommentImages", () => {
     expect(result.get(imageUrl)).toBe(
       "/tmp/github-images/image-1704067200000-0.gif",
     );
-    expect(consoleLogSpy).toHaveBeenCalledWith(
+    expect(loggedMessages(consoleLogSpy)).toContain(
       "Found 1 image(s) in issue_body 200",
     );
   });
@@ -344,7 +353,7 @@ describe("downloadCommentImages", () => {
     expect(result.get(imageUrl)).toBe(
       "/tmp/github-images/image-1704067200000-0.webp",
     );
-    expect(consoleLogSpy).toHaveBeenCalledWith(
+    expect(loggedMessages(consoleLogSpy)).toContain(
       "Found 1 image(s) in pr_body 300",
     );
   });
@@ -393,7 +402,7 @@ describe("downloadCommentImages", () => {
     expect(result.get(imageUrl2)).toBe(
       "/tmp/github-images/image-1704067200000-1.jpg",
     );
-    expect(consoleLogSpy).toHaveBeenCalledWith(
+    expect(loggedMessages(consoleLogSpy)).toContain(
       "Found 2 image(s) in issue_comment 999",
     );
   });
@@ -470,7 +479,7 @@ describe("downloadCommentImages", () => {
     );
 
     expect(result.size).toBe(0);
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
+    expect(loggedMessages(consoleWarnSpy)).toContain(
       "No HTML body found for issue_comment 333",
     );
   });
@@ -510,10 +519,16 @@ describe("downloadCommentImages", () => {
     );
 
     expect(result.size).toBe(0);
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
+    expect(loggedMessages(consoleErrorSpy)).toContain(
       `✗ Failed to download ${imageUrl}:`,
-      expect.any(Error),
     );
+    expect(
+      (
+        loggedEntries(consoleErrorSpy).find(
+          (entry) => entry.msg === `✗ Failed to download ${imageUrl}:`,
+        )?.error as { name: string }
+      ).name,
+    ).toBe("Error");
   });
 
   test("should handle API errors gracefully", async () => {
@@ -541,10 +556,17 @@ describe("downloadCommentImages", () => {
     );
 
     expect(result.size).toBe(0);
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
+    expect(loggedMessages(consoleErrorSpy)).toContain(
       "Failed to process images for issue_comment 555:",
-      expect.any(Error),
     );
+    expect(
+      (
+        loggedEntries(consoleErrorSpy).find(
+          (entry) =>
+            entry.msg === "Failed to process images for issue_comment 555:",
+        )?.error as { name: string }
+      ).name,
+    ).toBe("Error");
   });
 
   test("should extract correct file extensions", async () => {
@@ -717,11 +739,13 @@ describe("downloadCommentImages", () => {
     expect(result.get(imageUrl)).toBe(
       "/tmp/github-images/image-1704067200000-0.png",
     );
-    expect(consoleLogSpy).toHaveBeenCalledWith(
+    expect(loggedMessages(consoleLogSpy)).toContain(
       "Found 1 image(s) in issue_comment 777",
     );
-    expect(consoleLogSpy).toHaveBeenCalledWith(`Downloading ${imageUrl}...`);
-    expect(consoleLogSpy).toHaveBeenCalledWith(
+    expect(loggedMessages(consoleLogSpy)).toContain(
+      `Downloading ${imageUrl}...`,
+    );
+    expect(loggedMessages(consoleLogSpy)).toContain(
       "✓ Saved: /tmp/github-images/image-1704067200000-0.png",
     );
   });
@@ -772,7 +796,7 @@ describe("downloadCommentImages", () => {
     expect(result.get(imageUrl2)).toBe(
       "/tmp/github-images/image-1704067200000-1.png",
     );
-    expect(consoleLogSpy).toHaveBeenCalledWith(
+    expect(loggedMessages(consoleLogSpy)).toContain(
       "Found 2 image(s) in issue_comment 888",
     );
   });
@@ -822,7 +846,7 @@ describe("downloadCommentImages", () => {
     expect(result.get(htmlUrl)).toBe(
       "/tmp/github-images/image-1704067200000-1.jpg",
     );
-    expect(consoleLogSpy).toHaveBeenCalledWith(
+    expect(loggedMessages(consoleLogSpy)).toContain(
       "Found 2 image(s) in issue_comment 999",
     );
   });
@@ -865,7 +889,7 @@ describe("downloadCommentImages", () => {
     expect(result.get(imageUrl)).toBe(
       "/tmp/github-images/image-1704067200000-0.png",
     );
-    expect(consoleLogSpy).toHaveBeenCalledWith(
+    expect(loggedMessages(consoleLogSpy)).toContain(
       "Found 1 image(s) in issue_comment 1000",
     );
   });
@@ -909,7 +933,7 @@ describe("downloadCommentImages", () => {
     expect(result.get(imageUrl)).toBe(
       "/tmp/github-images/image-1704067200000-0.webp",
     );
-    expect(consoleLogSpy).toHaveBeenCalledWith(
+    expect(loggedMessages(consoleLogSpy)).toContain(
       "Found 1 image(s) in issue_comment 1001",
     );
   });

@@ -36,6 +36,9 @@ import {
   parsePrValidationRunType,
   type PrValidationRunType,
 } from "../run-type";
+import { createLogger } from "../logger";
+
+const log = createLogger("entrypoints/github-post-review");
 
 export const MAX_GITHUB_REVIEW_COMMENTS = 30;
 export const MAX_GITHUB_REVIEW_BODY_BYTES = 60 * 1024;
@@ -367,7 +370,7 @@ export async function run(
   const resultsPath = githubPostResultsFilePath();
   await fs.mkdir(path.dirname(resultsPath), { recursive: true });
   await fs.writeFile(resultsPath, JSON.stringify(results, null, 2));
-  console.log(
+  log.info(
     `Posted ${results.posted}/${parsed.approved.length} inline comments ` +
       `(${results.fallbackPosted} in the review body) on PR #${context.entityNumber} ` +
       `(results: ${resultsPath}).`,
@@ -391,7 +394,7 @@ export async function run(
 if (import.meta.main) {
   run().catch((error) => {
     const message = errorMessage(error);
-    console.error("github-post-review failed:", message);
+    log.error("github-post-review failed:", message);
     core.setOutput("conclusion", "failure");
     core.setOutput("error_message", message);
     process.exit(1);

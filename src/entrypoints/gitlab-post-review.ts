@@ -39,6 +39,9 @@ import {
   validatedFilePath,
   type PrepareState,
 } from "./gitlab-prepare";
+import { createLogger } from "../logger";
+
+const log = createLogger("entrypoints/gitlab-post-review");
 
 export type ReviewComment = ValidatedReviewComment;
 export {
@@ -260,7 +263,7 @@ export async function postReview(options: {
       ? buildDiffIndex(changes.changes)
       : null;
   } catch (error) {
-    console.warn(
+    log.warn(
       "Could not fetch MR changes; posting without a diff line index:",
       error instanceof Error ? error.message : String(error),
     );
@@ -316,7 +319,7 @@ export async function postReview(options: {
 
     if (posted) {
       result.posted += 1;
-      console.log(`  ${label} posted ${where}`);
+      log.info(`  ${label} posted ${where}`);
       continue;
     }
 
@@ -327,9 +330,7 @@ export async function postReview(options: {
         fallbackNoteBody(comment, line),
       );
       result.fallbackPosted += 1;
-      console.log(
-        `  ${label} posted ${where} as a regular note (${lastError})`,
-      );
+      log.info(`  ${label} posted ${where} as a regular note (${lastError})`);
     } catch (noteError) {
       const noteMessage =
         noteError instanceof Error ? noteError.message : String(noteError);
@@ -337,7 +338,7 @@ export async function postReview(options: {
         ? `${lastError}; note fallback failed: ${noteMessage}`
         : noteMessage;
       result.failures.push({ path: comment.path, line, error });
-      console.warn(`  ${label} failed ${where}: ${error}`);
+      log.warn(`  ${label} failed ${where}: ${error}`);
     }
   }
 
@@ -352,7 +353,7 @@ async function readState(): Promise<PrepareState | null> {
     const raw = await fs.readFile(filePath, "utf8");
     return JSON.parse(raw) as PrepareState;
   } catch (err) {
-    console.warn(`Could not read droid state file at ${filePath}:`, err);
+    log.warn(`Could not read droid state file at ${filePath}:`, err);
     return null;
   }
 }
@@ -366,7 +367,7 @@ async function run(): Promise<void> {
   }
 
   if (!state.shouldRunReview) {
-    console.log(
+    log.info(
       `Review was skipped (reason: ${state.reason ?? "unknown"}); nothing to post.`,
     );
     return;
@@ -376,7 +377,7 @@ async function run(): Promise<void> {
     // gitlab-prepare-validator short-circuited Pass 2 because Pass 1 left no
     // usable candidates file. There is nothing to post, and failing here
     // would undo that deliberate soft landing.
-    console.log(
+    log.info(
       `Pass 2 was skipped (reason: ${state.validatorSkippedReason}); nothing to post.`,
     );
     return;
@@ -400,12 +401,12 @@ async function run(): Promise<void> {
 
   const parsed = parseValidatedReview(raw);
 
-  console.log(
+  log.info(
     `Validated review: ${parsed.approvedCount} approved, ` +
       `${parsed.rejectedCount} rejected, ${parsed.skipped.length} unusable.`,
   );
   for (const skip of parsed.skipped) {
-    console.warn(
+    log.warn(
       `  skipped result #${skip.index}` +
         `${skip.path ? ` (${skip.path})` : ""}: ${skip.reason}`,
     );
@@ -439,7 +440,7 @@ async function run(): Promise<void> {
   const resultsPath = postResultsFilePath();
   await fs.mkdir(path.dirname(resultsPath), { recursive: true });
   await fs.writeFile(resultsPath, JSON.stringify(results, null, 2));
-  console.log(
+  log.info(
     `Posted ${results.posted}/${parsed.approved.length} inline comments ` +
       `(${results.fallbackPosted} as regular notes) on MR !${mrIid} ` +
       `(results: ${resultsPath}).`,
@@ -462,7 +463,7 @@ async function run(): Promise<void> {
 
 if (import.meta.main) {
   run().catch((error) => {
-    console.error("gitlab-post-review failed:", error);
+    log.error("gitlab-post-review failed:", error);
     process.exit(1);
   });
 }
