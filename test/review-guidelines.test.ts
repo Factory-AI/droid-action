@@ -38,6 +38,7 @@ describe("review guidelines action wiring", () => {
     expect(script).toContain(
       "--only-tools Read,Grep,Glob,LS,Create,Edit,ApplyPatch",
     );
+    expect(script).toContain("droid exec -m openai-latest-balanced ");
   });
 
   // GPT-6 Sol drops Create and Edit in favor of ApplyPatch, so a list without
