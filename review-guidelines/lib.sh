@@ -9,6 +9,8 @@
 github_token() {
   local tmp
   tmp=$(mktemp -d)
+  # @actions/core refuses to write a step output to a file that does not exist.
+  : > "$tmp/output"
   if ! GITHUB_OUTPUT="$tmp/output" GITHUB_TOKEN_FILE="$tmp/token" \
     bun run "$ACTION_ROOT/src/entrypoints/get-token.ts" >&2; then
     rm -rf "$tmp"

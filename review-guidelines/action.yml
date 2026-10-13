@@ -35,12 +35,13 @@ runs:
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
         "$HOME/.local/bin/droid" --version
 
-    # Reads only the builtin skill, so it runs before any token exists.
+    # Reads only the builtin skill, so it runs before any token exists. Models
+    # that write files with ApplyPatch drop Create, so both are allowed.
     - name: Write the mining scripts
       shell: bash
       run: |
         mkdir -p "$RUNNER_TEMP/review-guidelines"
-        droid exec --auto low --only-tools Create "/learn-review-guidelines --write-scripts $RUNNER_TEMP/review-guidelines"
+        droid exec --auto low --only-tools Create,ApplyPatch "/learn-review-guidelines --write-scripts $RUNNER_TEMP/review-guidelines"
       env:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
 

@@ -12,4 +12,4 @@ if [ ! -s "$work/out/acted_on.jsonl" ]; then
 fi
 
 env -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_URL -u GH_TOKEN \
-  droid exec --auto low --only-tools Read,Grep,Glob,LS,Create,Edit "/learn-review-guidelines --distill $work"
+  droid exec -m openai-latest-balanced --auto low --only-tools Read,Grep,Glob,LS,Create,Edit,ApplyPatch "/learn-review-guidelines --distill $work"

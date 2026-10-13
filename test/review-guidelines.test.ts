@@ -35,7 +35,19 @@ describe("review guidelines action wiring", () => {
     const script = readFileSync(path.join(actionDir, "distill.sh"), "utf8");
     expect(script).toContain("-u ACTIONS_ID_TOKEN_REQUEST_TOKEN");
     expect(script).toContain("-u ACTIONS_ID_TOKEN_REQUEST_URL");
-    expect(script).toContain("--only-tools Read,Grep,Glob,LS,Create,Edit");
+    expect(script).toContain(
+      "--only-tools Read,Grep,Glob,LS,Create,Edit,ApplyPatch",
+    );
+    expect(script).toContain("droid exec -m openai-latest-balanced ");
+  });
+
+  // GPT-6 Sol drops Create and Edit in favor of ApplyPatch, so a list without
+  // ApplyPatch leaves it no way to write the scripts or the guidelines.
+  it("lets every file-writing step use ApplyPatch", () => {
+    const write = learn.runs.steps.find(
+      (step: any) => step.name === "Write the mining scripts",
+    );
+    expect(write.run).toContain("--only-tools Create,ApplyPatch ");
   });
 
   // mine.py classifies every candidate with `droid exec`; without the key each
@@ -196,6 +208,21 @@ describe("review guidelines scripts", () => {
         ],
         token: "ghs_test",
       });
+    });
+
+    it("gives the token exchange an existing output file", async () => {
+      // Mirrors @actions/core: setOutput throws when GITHUB_OUTPUT is missing.
+      stub(
+        "bun",
+        `[ -f "$GITHUB_OUTPUT" ] || { echo "Missing file at path: $GITHUB_OUTPUT" >&2; exit 1; }\nprintf '%s' 'ghs_test' > "$GITHUB_TOKEN_FILE"`,
+      );
+
+      const outcome = await run("mine.sh");
+
+      expect(outcome.exitCode).toBe(0);
+      expect(
+        JSON.parse(readFileSync(path.join(dir, "args.json"), "utf8")).token,
+      ).toBe("ghs_test");
     });
 
     it("stops without mining when no token was issued", async () => {
