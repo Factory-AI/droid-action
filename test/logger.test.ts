@@ -143,6 +143,37 @@ describe("structured logger", () => {
     expect(resolveLogFormat({ DROID_LOG_FORMAT: "json" })).toBe("json");
     expect(resolveLogFormat({})).toBe("json");
   });
+
+  it("keeps trusted metadata when caller fields collide with it", () => {
+    const entries: LogEntry[] = [];
+    const log = createLogger("test/metadata", {
+      sink: capturingSink(entries),
+    });
+
+    log.info("ok", { level: "error", module: "other", ts: "fake" });
+
+    const entry = entries[0]!;
+    expect(entry.msg).toBe("ok");
+    expect(entry.level).toBe("info");
+    expect(entry.module).toBe("test/metadata");
+    expect(entry.ts).not.toBe("fake");
+  });
+
+  it("keeps trusted metadata when child bindings collide with it", () => {
+    const entries: LogEntry[] = [];
+    const log = createLogger("test/child-metadata", {
+      sink: capturingSink(entries),
+    });
+    const child = log.child({ level: "error", module: "evil", ts: "fake" });
+
+    child.warn("hmm");
+
+    const entry = entries[0]!;
+    expect(entry.msg).toBe("hmm");
+    expect(entry.level).toBe("warn");
+    expect(entry.module).toBe("test/child-metadata");
+    expect(entry.ts).not.toBe("fake");
+  });
 });
 
 describe("structured logger default sink", () => {
@@ -195,6 +226,38 @@ describe("structured logger default sink", () => {
     const parsed = JSON.parse(String(info.mock.calls[0]?.[0])) as LogEntry;
     expect(parsed.msg).toBe("unserializable");
     expect(parsed.note).toBe("log fields were not serializable");
+
+    info.mockRestore();
+  });
+
+  it("routes an info entry to stdout even when its fields claim level error", () => {
+    const logSpy = spyOn(console, "log").mockImplementation(() => {});
+    const errSpy = spyOn(console, "error").mockImplementation(() => {});
+    const log = createLogger("test/routing");
+
+    log.info("ok", { level: "error" });
+
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(errSpy).not.toHaveBeenCalled();
+    const parsed = JSON.parse(String(logSpy.mock.calls[0]?.[0])) as LogEntry;
+    expect(parsed.level).toBe("info");
+
+    logSpy.mockRestore();
+    errSpy.mockRestore();
+  });
+
+  it("records text entries with circular fields instead of throwing", () => {
+    const info = spyOn(console, "log").mockImplementation(() => {});
+    const log = createLogger("test/text-circular", { format: "text" });
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+
+    log.info("unserializable", circular);
+
+    const line = String(info.mock.calls[0]?.[0]);
+    expect(line).toContain("[test/text-circular]");
+    expect(line).toContain("unserializable");
+    expect(line).toContain("[Circular]");
 
     info.mockRestore();
   });

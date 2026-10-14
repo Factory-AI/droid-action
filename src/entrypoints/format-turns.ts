@@ -451,13 +451,15 @@ function main(): void {
     if (jsonFile.endsWith(".jsonl")) {
       const trimmed = fileContent.trim();
       if (trimmed.length === 0) {
-        log.info("*(No session data available)*");
+        // Generated report content goes straight to stdout: shell consumers
+        // capture the report itself, not a log envelope around it.
+        console.log("*(No session data available)*");
         return;
       }
 
-      log.info("```jsonl");
-      log.info(trimmed);
-      log.info("```");
+      console.log("```jsonl");
+      console.log(trimmed);
+      console.log("```");
       return;
     }
 
@@ -469,8 +471,11 @@ function main(): void {
     // Generate markdown
     const markdown = formatGroupedContent(groupedContent);
 
-    // Print to stdout (so it can be captured by shell)
-    log.info(markdown);
+    // Print to stdout so it can be captured by shell. This is the command's
+    // output, not a diagnostic, so it bypasses the structured logger: the JSON
+    // envelope would wrap the Markdown in escaped newlines, and
+    // DROID_LOG_LEVEL=warn would suppress the report entirely.
+    console.log(markdown);
   } catch (error) {
     log.error(`Error processing file: ${error}`);
     exit(1);

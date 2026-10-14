@@ -168,13 +168,32 @@ function stringifyEntry(entry: LogEntry): string {
 
 const RESERVED_KEYS = new Set(["ts", "level", "module", "msg"]);
 
+/**
+ * Stringifies a field value for text mode. Circular references (and other
+ * JSON.stringify failures like BigInt) must not throw here: a diagnostic call
+ * on an error path would then fail the action itself.
+ */
+function stringifyField(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    const seen = new WeakSet<object>();
+    const json = JSON.stringify(value, (_key, current) => {
+      if (typeof current === "object" && current !== null) {
+        if (seen.has(current)) return "[Circular]";
+        seen.add(current);
+      }
+      return current;
+    });
+    return json ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
 function formatText(entry: LogEntry): string {
   const extra = Object.entries(entry)
     .filter(([key]) => !RESERVED_KEYS.has(key))
-    .map(
-      ([key, value]) =>
-        `${key}=${typeof value === "string" ? value : JSON.stringify(value)}`,
-    )
+    .map(([key, value]) => `${key}=${stringifyField(value)}`)
     .join(" ");
   const prefix = `${entry.ts} ${entry.level.toUpperCase().padEnd(5)} [${entry.module}]`;
   return extra ? `${prefix} ${entry.msg} ${extra}` : `${prefix} ${entry.msg}`;
@@ -211,12 +230,15 @@ function makeLogger(
   ): void {
     if (LEVEL_ORDER[entryLevel] < LEVEL_ORDER[configuredLevel]) return;
     const { msg, fields } = normalize(message, details);
+    // Trusted metadata goes last: caller-supplied fields and child bindings
+    // accept arbitrary keys, so they must not be able to overwrite ts/level/
+    // module or make the default sink misroute an entry to another stream.
     sink({
+      ...bindings,
+      ...fields,
       ts: new Date().toISOString(),
       level: entryLevel,
       module,
-      ...bindings,
-      ...fields,
       msg,
     });
   }
