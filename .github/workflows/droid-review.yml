@@ -24,10 +24,28 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Install Droid CLI with retries
+        id: install_droid_cli
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh && "$HOME/.local/bin/droid" --version; then
+              echo "executable=$HOME/.local/bin/droid" >> "$GITHUB_OUTPUT"
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Droid CLI installation failed after 3 attempts" >&2
+              exit 1
+            fi
+            sleep 5
+          done
+
       - name: Run Droid Auto Review
         uses: Factory-AI/droid-action@dev
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
           automatic_security_review: true
+          path_to_droid_executable: ${{ steps.install_droid_cli.outputs.executable }}
           allowed_bots: "dependabot,factory-droid"
