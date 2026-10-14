@@ -13,6 +13,9 @@ import { parseGitHubContext, isEntityContext } from "../github/context";
 import { shouldTriggerTag } from "../tag";
 import { prepare } from "../prepare";
 import { collectActionInputsPresence } from "./collect-inputs";
+import { createLogger } from "../logger";
+
+const log = createLogger("entrypoints/prepare");
 
 async function run() {
   try {
@@ -45,13 +48,13 @@ async function run() {
     // Check trigger conditions
     const containsTrigger = shouldTriggerTag(context);
 
-    console.log(`Trigger result: ${containsTrigger}`);
+    log.info(`Trigger result: ${containsTrigger}`);
 
     // Set output for action.yml to check
     core.setOutput("contains_trigger", containsTrigger.toString());
 
     if (!containsTrigger) {
-      console.log("No trigger found, skipping remaining steps");
+      log.info("No trigger found, skipping remaining steps");
       // Still set github_token output even when skipping
       core.setOutput("github_token", githubToken);
       return;

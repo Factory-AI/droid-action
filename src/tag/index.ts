@@ -14,6 +14,9 @@ import type { Octokits } from "../github/api/client";
 import { isAutomationContext } from "../github/context";
 import { prepareStewardMode } from "../steward";
 import { DroidRunType, resolveTagRunType, setDroidRunType } from "../run-type";
+import { createLogger } from "../logger";
+
+const log = createLogger("tag/index");
 
 const DROID_APP_BOT_ID = 209825114;
 const SECURITY_REVIEW_MARKER = "## Security Review Summary";
@@ -65,7 +68,7 @@ async function hasExistingSecurityReview(
 
     return hasSecurityReview;
   } catch (error) {
-    console.warn("Failed to check for existing security review:", error);
+    log.warn("Failed to check for existing security review:", error);
     return false;
   }
 }
@@ -116,9 +119,7 @@ export async function prepareTagExecution({
   if (runAutomaticSecurityReview) {
     const hasExisting = await hasExistingSecurityReview(octokit, context);
     if (hasExisting) {
-      console.log(
-        "Security review already exists on this PR, skipping security",
-      );
+      log.info("Security review already exists on this PR, skipping security");
       runAutomaticSecurityReview = false;
 
       if (!context.inputs.automaticReview) {

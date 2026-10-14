@@ -2,13 +2,16 @@
 
 import * as core from "@actions/core";
 import { retryWithBackoff } from "../utils/retry";
+import { createLogger } from "../logger";
+
+const log = createLogger("github/token");
 
 async function getOidcToken(): Promise<string> {
   try {
     const oidcToken = await core.getIDToken("droid-github-action");
     return oidcToken;
   } catch (error) {
-    console.error("Failed to get OIDC token:", error);
+    log.error("Failed to get OIDC token:", error);
     throw new Error(
       "Could not fetch an OIDC token. Did you remember to add `id-token: write` to your workflow permissions?",
     );
@@ -33,7 +36,7 @@ async function exchangeForAppToken(oidcToken: string): Promise<string> {
       responseJson = await response.json();
     } catch (e) {
       // If JSON parsing fails, throw a generic error
-      console.error(
+      log.error(
         `App token exchange failed: ${response.status} ${response.statusText} - Could not parse response`,
       );
       throw new Error(`Token exchange failed with status ${response.status}`);
@@ -57,7 +60,7 @@ async function exchangeForAppToken(oidcToken: string): Promise<string> {
       core.warning(
         `Skipping action due to workflow validation: ${errorMessage}`,
       );
-      console.log(
+      log.info(
         "Action skipped due to workflow validation error. This is expected when adding Droid workflows to new repositories or on PRs with workflow changes. If you're seeing this, your workflow will begin working once you merge your PR.",
       );
       core.setOutput("skipped_due_to_workflow_validation_mismatch", "true");
@@ -67,7 +70,7 @@ async function exchangeForAppToken(oidcToken: string): Promise<string> {
     // Handle GitHub App not installed error with helpful message
     if (errorCode === "app_not_installed") {
       const repo = repository || "this repository";
-      console.error(
+      log.error(
         `The Factory GitHub App is not installed for ${repo}. ` +
           `Please install it at: https://github.com/apps/factory-ai`,
       );
@@ -76,7 +79,7 @@ async function exchangeForAppToken(oidcToken: string): Promise<string> {
 
     // Handle rate limiting with retry suggestion
     if (errorCode === "rate_limited") {
-      console.error(
+      log.error(
         `GitHub API rate limit exceeded. Please wait a few minutes and try again.`,
       );
       throw new Error(errorMessage);
@@ -85,23 +88,25 @@ async function exchangeForAppToken(oidcToken: string): Promise<string> {
     // Handle OIDC verification errors
     if (errorCode === "oidc_verification_failed") {
       if (specificErrorCode === "token_expired") {
-        console.error(
+        log.error(
           "OIDC token has expired. The workflow may be taking too long.",
         );
       } else if (specificErrorCode === "audience_mismatch") {
-        console.error(
+        log.error(
           "OIDC token audience mismatch. This is likely a configuration issue.",
         );
       } else if (specificErrorCode === "invalid_signature") {
-        console.error("OIDC token signature verification failed.");
+        log.error("OIDC token signature verification failed.");
       }
     }
 
     // Log the error with available context
-    console.error(
+    log.error(
       `App token exchange failed: ${response.status} ${response.statusText} - ${errorMessage}`,
-      errorCode !== errorMessage ? `(Code: ${errorCode})` : "",
-      specificErrorCode ? `(Specific: ${specificErrorCode})` : "",
+      {
+        ...(errorCode !== errorMessage && { code: errorCode }),
+        ...(specificErrorCode && { specificCode: specificErrorCode }),
+      },
     );
     throw new Error(errorMessage);
   }
@@ -130,23 +135,23 @@ export async function setupGitHubToken(): Promise<string> {
     const providedToken = process.env.OVERRIDE_GITHUB_TOKEN;
 
     if (providedToken) {
-      console.log("Using provided GITHUB_TOKEN for authentication");
+      log.info("Using provided GITHUB_TOKEN for authentication");
       core.setSecret(providedToken);
       core.setOutput("GITHUB_TOKEN", providedToken);
       return providedToken;
     }
 
-    console.log("Requesting OIDC token...");
+    log.info("Requesting OIDC token...");
     const oidcToken = await retryWithBackoff(() => getOidcToken());
-    console.log("OIDC token successfully obtained");
+    log.info("OIDC token successfully obtained");
 
-    console.log("Exchanging OIDC token for app token...");
+    log.info("Exchanging OIDC token for app token...");
     const appToken = await retryWithBackoff(() =>
       exchangeForAppToken(oidcToken),
     );
-    console.log("App token successfully obtained");
+    log.info("App token successfully obtained");
 
-    console.log("Using GITHUB_TOKEN from OIDC");
+    log.info("Using GITHUB_TOKEN from OIDC");
     core.setOutput("GITHUB_TOKEN", appToken);
     return appToken;
   } catch (error) {

@@ -1,5 +1,6 @@
 import { expect, test, describe } from "bun:test";
-import { readFileSync } from "fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import { join } from "path";
 import {
   formatTurnsFromData,
@@ -435,5 +436,103 @@ describe("integration tests", () => {
 
     // Compare the outputs
     expect(actualOutput).toBe(expectedOutput);
+  });
+});
+
+describe("CLI stdout contract", () => {
+  const scriptPath = join(
+    import.meta.dir,
+    "..",
+    "src",
+    "entrypoints",
+    "format-turns.ts",
+  );
+
+  function runCli(
+    args: string[],
+    env: Record<string, string> = {},
+  ): { stdout: string; stderr: string; exitCode: number | null } {
+    const proc = Bun.spawnSync({
+      cmd: [process.execPath, scriptPath, ...args],
+      env: { ...process.env, ...env },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    return {
+      stdout: proc.stdout.toString(),
+      stderr: proc.stderr.toString(),
+      exitCode: proc.exitCode,
+    };
+  }
+
+  function withTempFile(
+    name: string,
+    content: string,
+    fn: (path: string) => void,
+  ): void {
+    const dir = mkdtempSync(join(tmpdir(), "format-turns-cli-"));
+    writeFileSync(join(dir, name), content);
+    try {
+      fn(join(dir, name));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  test("prints the generated report to raw stdout, not wrapped in a log entry", () => {
+    const jsonPath = join(import.meta.dir, "fixtures", "sample-turns.json");
+    const expectedOutput = readFileSync(
+      join(import.meta.dir, "fixtures", "sample-turns-expected-output.md"),
+      "utf-8",
+    ).trim();
+
+    const { stdout, exitCode } = runCli([jsonPath]);
+
+    expect(exitCode).toBe(0);
+    expect(stdout.trim()).toBe(expectedOutput);
+    // The report is Markdown, not a JSON log envelope: the old behavior
+    // emitted a single JSON line with escaped newlines on stdout.
+    expect(() => JSON.parse(stdout)).toThrow();
+  });
+
+  test("prints the report even when the log level would suppress info logs", () => {
+    const jsonPath = join(import.meta.dir, "fixtures", "sample-turns.json");
+
+    const { stdout, exitCode } = runCli([jsonPath], {
+      DROID_LOG_LEVEL: "warn",
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("## Droid Exec Report");
+  });
+
+  test("prints the unwrapped report in text log mode", () => {
+    const jsonPath = join(import.meta.dir, "fixtures", "sample-turns.json");
+
+    const { stdout } = runCli([jsonPath], { DROID_LOG_FORMAT: "text" });
+
+    expect(stdout).toContain("## Droid Exec Report");
+    expect(stdout).not.toContain("[entrypoints/format-turns]");
+  });
+
+  test("passes JSONL session files through to stdout raw", () => {
+    withTempFile("session.jsonl", '{"a":1}\n{"b":2}\n', (jsonlPath) => {
+      const { stdout, exitCode } = runCli([jsonlPath]);
+
+      expect(exitCode).toBe(0);
+      expect(stdout).toBe('```jsonl\n{"a":1}\n{"b":2}\n```\n');
+    });
+  });
+
+  test("keeps diagnostics on the structured log stream and fails loudly", () => {
+    const { stdout, stderr, exitCode } = runCli([
+      join(tmpdir(), "format-turns-does-not-exist.json"),
+    ]);
+
+    expect(exitCode).toBe(1);
+    expect(stdout).toBe("");
+    const parsed = JSON.parse(stderr) as { level: string; module: string };
+    expect(parsed.level).toBe("error");
+    expect(parsed.module).toBe("entrypoints/format-turns");
   });
 });

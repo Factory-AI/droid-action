@@ -15,6 +15,9 @@ import { applyModelPolicyFallback } from "../../utils/model-policy";
 import { resolveReviewConfig } from "../../utils/review-depth";
 import { assertDroidRunType, DroidRunType } from "../../run-type";
 import { githubReviewSessionTagArg } from "../../utils/review-session-tag";
+import { createLogger } from "../../logger";
+
+const log = createLogger("tag/commands/security-review");
 
 type SecurityReviewCommandOptions = {
   context: GitHubContext;
@@ -59,7 +62,7 @@ export async function prepareSecurityReviewMode({
   };
 
   // Checkout the PR branch before computing diff
-  console.log(
+  log.info(
     `Checking out PR #${context.entityNumber} branch for diff computation...`,
   );
   try {
@@ -69,11 +72,11 @@ export async function prepareSecurityReviewMode({
       stdio: "pipe",
       env: { ...process.env, GH_TOKEN: githubToken },
     });
-    console.log(
+    log.info(
       `Successfully checked out PR branch: ${execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf8" }).trim()}`,
     );
   } catch (e) {
-    console.error(`Failed to checkout PR branch: ${e}`);
+    log.error(`Failed to checkout PR branch: ${e}`);
     throw new Error(
       `Failed to checkout PR #${context.entityNumber} branch for security review`,
     );

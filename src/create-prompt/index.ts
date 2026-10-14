@@ -21,6 +21,9 @@ import type {
   EventData,
   ReviewArtifacts,
 } from "./types";
+import { createLogger } from "../logger";
+
+const log = createLogger("create-prompt/index");
 
 export type { CommonFields, PreparedContext, ReviewArtifacts } from "./types";
 
@@ -346,9 +349,9 @@ export async function createPrompt({
 
     const promptContent = generatePrompt(preparedContext);
 
-    console.log("===== FINAL PROMPT =====");
-    console.log(promptContent);
-    console.log("=======================");
+    log.info("===== FINAL PROMPT =====");
+    log.info(promptContent);
+    log.info("=======================");
 
     await writeFile(
       `${process.env.RUNNER_TEMP || "/tmp"}/droid-prompts/droid-prompt.txt`,

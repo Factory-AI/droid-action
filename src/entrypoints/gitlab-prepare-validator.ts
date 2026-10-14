@@ -21,6 +21,9 @@ import * as path from "path";
 import { generateGitlabReviewValidatorPrompt } from "../gitlab/prompts/validator";
 import type { GitlabReviewPromptContext } from "../gitlab/prompts/types";
 import { stateFilePath, type PrepareState } from "./gitlab-prepare";
+import { createLogger } from "../logger";
+
+const log = createLogger("entrypoints/gitlab-prepare-validator");
 
 async function readState(): Promise<PrepareState> {
   const filePath = stateFilePath();
@@ -47,7 +50,7 @@ async function run(): Promise<void> {
   const state = await readState();
 
   if (!state.shouldRunReview) {
-    console.log(
+    log.info(
       `Pass 1 was skipped (reason: ${state.reason ?? "unknown"}); skipping validator prepare.`,
     );
     return;
@@ -74,15 +77,13 @@ async function run(): Promise<void> {
     ) {
       throw new Error("Missing or invalid 'comments' array in candidates");
     }
-    console.log(
+    log.info(
       `Pass 1 candidates validated: ${parsed.comments.length} comments found`,
     );
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    console.error(`Pass 1 candidates JSON is invalid or missing: ${message}`);
-    console.error(
-      "Skipping Pass 2 (validator) to avoid a full pipeline failure",
-    );
+    log.error(`Pass 1 candidates JSON is invalid or missing: ${message}`);
+    log.error("Skipping Pass 2 (validator) to avoid a full pipeline failure");
     // Write a no-op prompt so droid exec exits cleanly
     await fs.writeFile(
       promptPath,
@@ -114,14 +115,14 @@ async function run(): Promise<void> {
   const prompt = generateGitlabReviewValidatorPrompt(promptCtx);
   await fs.mkdir(path.dirname(promptPath), { recursive: true });
   await fs.writeFile(promptPath, prompt);
-  console.log(
+  log.info(
     `Wrote Pass-2 validator prompt (${prompt.length} bytes) to ${promptPath} (overwrote Pass 1)`,
   );
 }
 
 if (import.meta.main) {
   run().catch((error) => {
-    console.error("gitlab-prepare-validator failed:", error);
+    log.error("gitlab-prepare-validator failed:", error);
     process.exit(1);
   });
 }

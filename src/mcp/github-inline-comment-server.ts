@@ -5,6 +5,9 @@ import { z } from "zod";
 import { createOctokit } from "../github/api/client";
 import { prepareDroidCommentBody } from "../github/operations/comments/common";
 import { parsePrValidationRunType } from "../run-type";
+import { createLogger } from "../logger";
+
+const log = createLogger("mcp/github-inline-comment-server");
 
 // Get repository and PR information from environment variables
 const REPO_OWNER = process.env.REPO_OWNER;
@@ -12,7 +15,7 @@ const REPO_NAME = process.env.REPO_NAME;
 const PR_NUMBER = process.env.PR_NUMBER;
 
 if (!REPO_OWNER || !REPO_NAME || !PR_NUMBER) {
-  console.error(
+  log.error(
     "Error: REPO_OWNER, REPO_NAME, and PR_NUMBER environment variables are required",
   );
   process.exit(1);

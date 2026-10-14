@@ -11,13 +11,16 @@ import {
   prepareDroidCommentBody,
 } from "../github/operations/comments/common";
 import { DroidRunType, parsePrValidationRunType } from "../run-type";
+import { createLogger } from "../logger";
+
+const log = createLogger("mcp/github-comment-server");
 
 // Get repository information from environment variables
 const REPO_OWNER = process.env.REPO_OWNER;
 const REPO_NAME = process.env.REPO_NAME;
 
 if (!REPO_OWNER || !REPO_NAME) {
-  console.error(
+  log.error(
     "Error: REPO_OWNER and REPO_NAME environment variables are required",
   );
   process.exit(1);

@@ -3,6 +3,9 @@ import { writeFile, mkdir } from "fs/promises";
 import type { Octokits } from "../api/client";
 import type { ReviewArtifacts } from "../../create-prompt/types";
 import { retryWithBackoff } from "../../utils/retry";
+import { createLogger } from "../../logger";
+
+const log = createLogger("github/data/review-artifacts");
 
 const DIFF_MAX_BUFFER = 50 * 1024 * 1024; // 50MB buffer for large diffs
 
@@ -33,9 +36,9 @@ export async function computeAndStoreDiff(
           encoding: "utf8",
           stdio: "pipe",
         });
-      console.log("Unshallowed repository");
+      log.info("Unshallowed repository");
     } catch {
-      console.log("Repository already has full history");
+      log.info("Repository already has full history");
     }
 
     // Fetch the base branch (it may not exist locally yet)
@@ -44,9 +47,9 @@ export async function computeAndStoreDiff(
         encoding: "utf8",
         stdio: "pipe",
       });
-      console.log(`Fetched base branch: ${baseRef}`);
+      log.info(`Fetched base branch: ${baseRef}`);
     } catch {
-      console.log(`Base branch fetch skipped (may already exist): ${baseRef}`);
+      log.info(`Base branch fetch skipped (may already exist): ${baseRef}`);
     }
 
     const mergeBase = execSync(
@@ -62,9 +65,7 @@ export async function computeAndStoreDiff(
     // Fallback: use gh CLI to get the diff (works even with shallow clones)
     // Retry since gh CLI can have transient rate-limit or network failures
     if (options?.githubToken && options?.prNumber) {
-      console.log(
-        "Git merge-base failed, falling back to gh pr diff for PR diff",
-      );
+      log.info("Git merge-base failed, falling back to gh pr diff for PR diff");
       diff = await retryWithBackoff(
         () =>
           Promise.resolve(
@@ -85,7 +86,7 @@ export async function computeAndStoreDiff(
 
   const diffPath = `${promptsDir}/pr.diff`;
   await writeFile(diffPath, diff);
-  console.log(`Stored PR diff (${diff.length} bytes) at ${diffPath}`);
+  log.info(`Stored PR diff (${diff.length} bytes) at ${diffPath}`);
   return diffPath;
 }
 
@@ -121,7 +122,7 @@ export async function fetchAndStoreComments(
 
   const commentsPath = `${promptsDir}/existing_comments.json`;
   await writeFile(commentsPath, JSON.stringify(comments, null, 2));
-  console.log(
+  log.info(
     `Stored existing comments (${issueComments.data.length} issue, ${reviewComments.data.length} review) at ${commentsPath}`,
   );
   return commentsPath;
@@ -138,7 +139,7 @@ export async function storeDescription(
   const content = `# ${title}\n\n${body}`;
   const descriptionPath = `${promptsDir}/pr_description.txt`;
   await writeFile(descriptionPath, content);
-  console.log(
+  log.info(
     `Stored PR description (${content.length} bytes) at ${descriptionPath}`,
   );
   return descriptionPath;

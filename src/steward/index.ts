@@ -23,6 +23,9 @@ import {
 import { checksInScope, describeChecks } from "./scope";
 import type { FailedCheck } from "./scope";
 import type { PrepareResult } from "../prepare/types";
+import { createLogger } from "../logger";
+
+const log = createLogger("steward/index");
 
 export const STEWARD_RUN_MARKER_PREFIX = "<!-- ci-steward:run=";
 const STEWARD_BUDGET_MARKER = "<!-- ci-steward:budget-exhausted -->";
@@ -194,7 +197,7 @@ export async function prepareStewardMode(
     );
   } catch (error) {
     if (error instanceof StewardConfigError) {
-      console.error(`CI Steward configuration is invalid: ${error.message}`);
+      log.error(`CI Steward configuration is invalid: ${error.message}`);
       return skippedResult("invalid_config");
     }
     throw error;
@@ -236,7 +239,7 @@ export async function prepareStewardMode(
   } catch (error) {
     // An unreadable comment list means the budget is unknown, and an unknown
     // budget must not be treated as an unused one.
-    console.error(`CI Steward could not read the run budget: ${error}`);
+    log.error(`CI Steward could not read the run budget: ${error}`);
     return skippedResult("budget_unreadable");
   }
 
@@ -304,7 +307,7 @@ export async function prepareStewardMode(
       inScope = checksInScope(config.fix.scope, failed);
       if (inScope.length === 0) {
         fixEnabled = false;
-        console.log(
+        log.info(
           `CI Steward is diagnosing only: no failing check is within the configured fix scope (${config.fix.scope.join(", ")}). Failing checks: ${describeChecks(failed) || "none found"}.`,
         );
       } else if (
@@ -317,7 +320,7 @@ export async function prepareStewardMode(
         ))
       ) {
         fixEnabled = false;
-        console.log(
+        log.info(
           "CI Steward is diagnosing only: an in-scope workflow did not pass on the pull request base commit, so its failure is not attributable to this pull request.",
         );
       } else if (
@@ -330,7 +333,7 @@ export async function prepareStewardMode(
         )
       ) {
         fixEnabled = false;
-        console.log(
+        log.info(
           "CI Steward is diagnosing only: an in-scope workflow failed on at least two other recent pull requests, so the failure may be systemic.",
         );
       }
@@ -338,7 +341,7 @@ export async function prepareStewardMode(
       // An unreadable job list means the scope is unknown, and an unknown
       // scope must not be treated as a permissive one.
       fixEnabled = false;
-      console.error(
+      log.error(
         `CI Steward could not determine which checks failed, so auto-fix is off for this run: ${error}`,
       );
     }
@@ -445,7 +448,7 @@ ${config.instructions || "(none)"}`;
 
 function skippedResult(reason: string): PrepareResult {
   core.setOutput("steward_skipped", "true");
-  console.log(`CI Steward skipped: ${reason}`);
+  log.info(`CI Steward skipped: ${reason}`);
   return {
     skipped: true,
     reason,

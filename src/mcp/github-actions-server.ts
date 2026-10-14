@@ -6,6 +6,9 @@ import { z } from "zod";
 import { GITHUB_API_URL } from "../github/api/config";
 import { mkdir, writeFile } from "fs/promises";
 import { Octokit } from "@octokit/rest";
+import { createLogger } from "../logger";
+
+const log = createLogger("mcp/github-actions-server");
 
 const REPO_OWNER = process.env.REPO_OWNER;
 const REPO_NAME = process.env.REPO_NAME;
@@ -14,7 +17,7 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const RUNNER_TEMP = process.env.RUNNER_TEMP || "/tmp";
 
 if (!REPO_OWNER || !REPO_NAME || !PR_NUMBER || !GITHUB_TOKEN) {
-  console.error(
+  log.error(
     "[GitHub CI Server] Error: REPO_OWNER, REPO_NAME, PR_NUMBER, and GITHUB_TOKEN environment variables are required",
   );
   process.exit(1);
@@ -25,7 +28,7 @@ const server = new McpServer({
   version: "0.0.1",
 });
 
-console.error("[GitHub CI Server] MCP Server instance created");
+log.error("[GitHub CI Server] MCP Server instance created");
 
 server.tool(
   "rerun_failed_job",

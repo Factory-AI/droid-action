@@ -1,4 +1,7 @@
 import * as core from "@actions/core";
+import { createLogger } from "../logger";
+
+const log = createLogger("entrypoints/collect-inputs");
 
 export function collectActionInputsPresence(): void {
   const inputDefaults: Record<string, string> = {
@@ -38,7 +41,7 @@ export function collectActionInputsPresence(): void {
 
   const allInputsJson = process.env.ALL_INPUTS;
   if (!allInputsJson) {
-    console.log("ALL_INPUTS environment variable not found");
+    log.info("ALL_INPUTS environment variable not found");
     core.setOutput("action_inputs_present", JSON.stringify({}));
     return;
   }
@@ -47,7 +50,7 @@ export function collectActionInputsPresence(): void {
   try {
     allInputs = JSON.parse(allInputsJson);
   } catch (e) {
-    console.error("Failed to parse ALL_INPUTS JSON:", e);
+    log.error("Failed to parse ALL_INPUTS JSON:", e);
     core.setOutput("action_inputs_present", JSON.stringify({}));
     return;
   }

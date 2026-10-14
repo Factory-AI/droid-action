@@ -2,6 +2,9 @@
 
 import { readFileSync, existsSync } from "fs";
 import { exit } from "process";
+import { createLogger } from "../logger";
+
+const log = createLogger("entrypoints/format-turns");
 
 export type ToolUse = {
   type: string;
@@ -426,18 +429,18 @@ function main(): void {
   // Get the JSON file path from command line arguments
   const args = process.argv.slice(2);
   if (args.length === 0) {
-    console.error("Usage: format-turns.ts <json-file>");
+    log.error("Usage: format-turns.ts <json-file>");
     exit(1);
   }
 
   const jsonFile = args[0];
   if (!jsonFile) {
-    console.error("Error: No JSON file provided");
+    log.error("Error: No JSON file provided");
     exit(1);
   }
 
   if (!existsSync(jsonFile)) {
-    console.error(`Error: ${jsonFile} not found`);
+    log.error(`Error: ${jsonFile} not found`);
     exit(1);
   }
 
@@ -448,6 +451,8 @@ function main(): void {
     if (jsonFile.endsWith(".jsonl")) {
       const trimmed = fileContent.trim();
       if (trimmed.length === 0) {
+        // Generated report content goes straight to stdout: shell consumers
+        // capture the report itself, not a log envelope around it.
         console.log("*(No session data available)*");
         return;
       }
@@ -466,10 +471,13 @@ function main(): void {
     // Generate markdown
     const markdown = formatGroupedContent(groupedContent);
 
-    // Print to stdout (so it can be captured by shell)
+    // Print to stdout so it can be captured by shell. This is the command's
+    // output, not a diagnostic, so it bypasses the structured logger: the JSON
+    // envelope would wrap the Markdown in escaped newlines, and
+    // DROID_LOG_LEVEL=warn would suppress the report entirely.
     console.log(markdown);
   } catch (error) {
-    console.error(`Error processing file: ${error}`);
+    log.error(`Error processing file: ${error}`);
     exit(1);
   }
 }

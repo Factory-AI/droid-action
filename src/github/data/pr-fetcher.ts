@@ -2,6 +2,9 @@ import type { Octokits } from "../api/client";
 import { PR_QUERY, REPO_DEFAULT_BRANCH_QUERY } from "../api/queries/github";
 import type { GitHubPullRequest } from "../types";
 import { retryWithBackoff } from "../../utils/retry";
+import { createLogger } from "../../logger";
+
+const log = createLogger("github/data/pr-fetcher");
 
 /**
  * Represents the PR data needed by fill and review commands
@@ -180,7 +183,7 @@ export async function fetchPRBranchData({
       body: pullRequest.body ?? "",
     };
   } catch (error) {
-    console.error(`Failed to fetch PR branch data:`, error);
+    log.error(`Failed to fetch PR branch data:`, error);
     throw new Error(
       `Failed to fetch PR branch data for PR #${prNumber}: ${
         error instanceof Error ? error.message : String(error)
@@ -224,7 +227,7 @@ export async function fetchRepoDefaultBranch({
 
     return defaultBranchRef.name;
   } catch (error) {
-    console.error(`Failed to fetch default branch:`, error);
+    log.error(`Failed to fetch default branch:`, error);
     throw new Error(
       `Failed to fetch default branch for ${repository.owner}/${repository.repo}: ${
         error instanceof Error ? error.message : String(error)

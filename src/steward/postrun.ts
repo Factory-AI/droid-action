@@ -17,6 +17,9 @@
 
 import { $ } from "bun";
 import { createOctokit } from "../github/api/client";
+import { createLogger } from "../logger";
+
+const log = createLogger("steward/postrun");
 
 export function matchesProtectedPath(
   patterns: string[],
@@ -88,7 +91,7 @@ async function updateTrackingComment(body: string): Promise<void> {
       body: `${body}\n\n${marker}`,
     });
   } catch (error) {
-    console.error(`CI Steward could not update its comment: ${error}`);
+    log.error(`CI Steward could not update its comment: ${error}`);
   }
 }
 
@@ -110,7 +113,7 @@ async function main() {
   }
 
   if (violations.length > 0) {
-    console.error(
+    log.error(
       `CI Steward modified protected paths; reverting:\n${violations.map((file) => `  - ${file}`).join("\n")}`,
     );
     await revertProtectedPaths(baseSha, violations);

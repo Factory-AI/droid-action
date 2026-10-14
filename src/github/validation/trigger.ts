@@ -10,6 +10,9 @@ import {
 } from "../context";
 import type { ParsedGitHubContext } from "../context";
 import { extractCommandFromContext } from "../utils/command-parser";
+import { createLogger } from "../../logger";
+
+const log = createLogger("github/validation/trigger");
 
 export function checkContainsTrigger(context: ParsedGitHubContext): boolean {
   const {
@@ -19,9 +22,7 @@ export function checkContainsTrigger(context: ParsedGitHubContext): boolean {
   // Check for specific @droid commands (fill, review)
   const command = extractCommandFromContext(context);
   if (command && ["fill", "review", "security"].includes(command.command)) {
-    console.log(
-      `Detected @droid ${command.command} command, triggering action`,
-    );
+    log.info(`Detected @droid ${command.command} command, triggering action`);
     return true;
   }
 
@@ -57,17 +58,13 @@ export function checkContainsTrigger(context: ParsedGitHubContext): boolean {
 
     // Check in body
     if (regex.test(issueBody)) {
-      console.log(
-        `Issue body contains exact trigger phrase '${triggerPhrase}'`,
-      );
+      log.info(`Issue body contains exact trigger phrase '${triggerPhrase}'`);
       return true;
     }
 
     // Check in title
     if (regex.test(issueTitle)) {
-      console.log(
-        `Issue title contains exact trigger phrase '${triggerPhrase}'`,
-      );
+      log.info(`Issue title contains exact trigger phrase '${triggerPhrase}'`);
       return true;
     }
   }
@@ -83,7 +80,7 @@ export function checkContainsTrigger(context: ParsedGitHubContext): boolean {
 
     // Check in body
     if (regex.test(prBody)) {
-      console.log(
+      log.info(
         `Pull request body contains exact trigger phrase '${triggerPhrase}'`,
       );
       return true;
@@ -91,7 +88,7 @@ export function checkContainsTrigger(context: ParsedGitHubContext): boolean {
 
     // Check in title
     if (regex.test(prTitle)) {
-      console.log(
+      log.info(
         `Pull request title contains exact trigger phrase '${triggerPhrase}'`,
       );
       return true;
@@ -109,7 +106,7 @@ export function checkContainsTrigger(context: ParsedGitHubContext): boolean {
       `(^|\\s)${escapeRegExp(triggerPhrase)}([\\s.,!?;:]|$)`,
     );
     if (regex.test(reviewBody)) {
-      console.log(
+      log.info(
         `Pull request review contains exact trigger phrase '${triggerPhrase}'`,
       );
       return true;
@@ -129,12 +126,12 @@ export function checkContainsTrigger(context: ParsedGitHubContext): boolean {
       `(^|\\s)${escapeRegExp(triggerPhrase)}([\\s.,!?;:]|$)`,
     );
     if (regex.test(commentBody)) {
-      console.log(`Comment contains exact trigger phrase '${triggerPhrase}'`);
+      log.info(`Comment contains exact trigger phrase '${triggerPhrase}'`);
       return true;
     }
   }
 
-  console.log(`No trigger was met for ${triggerPhrase}`);
+  log.info(`No trigger was met for ${triggerPhrase}`);
 
   return false;
 }
