@@ -1,0 +1,23 @@
+test/modes/tag/review-command.test.ts
+  08cb23b42afc8ce7 388-389
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "d49af8a7cfb98c64584580a73b9726d984ff362e",
+  "prompts": {
+    "08cb23b42afc8ce7": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "c4776593-a880-4713-9475-6962f69754f4",
+        "model": "auto"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

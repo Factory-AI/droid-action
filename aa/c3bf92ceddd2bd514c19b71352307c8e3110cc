@@ -1,0 +1,35 @@
+src/utils/model-policy.ts
+  65f4b09a98453c71 137-146,149-151,168-171
+action.yml
+  65f4b09a98453c71 106-109,246,335,371,393
+security/action.yml
+  65f4b09a98453c71 127,151,160,166,181
+base-action/src/utils/model-policy-error.ts
+  65f4b09a98453c71 12-30,97-116
+src/entrypoints/collect-inputs.ts
+  65f4b09a98453c71 37
+test/model-policy-action-wiring.test.ts
+  65f4b09a98453c71 1-81
+review/action.yml
+  65f4b09a98453c71 27-30,99,124,139,154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "aac3bf92ceddd2bd514c19b71352307c8e3110cc",
+  "prompts": {
+    "65f4b09a98453c71": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "cd005c43-56d1-45bb-b6b7-a631d87a7f12",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Leo Tchourakov",
+      "messages": [],
+      "total_additions": 166,
+      "total_deletions": 6,
+      "accepted_lines": 161,
+      "overriden_lines": 0
+    }
+  }
+}

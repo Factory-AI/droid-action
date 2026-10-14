@@ -1,0 +1,29 @@
+base-action/src/utils/retry.ts
+  65f4b09a98453c71 6,26,40-43
+base-action/src/utils/model-policy-error.ts
+  65f4b09a98453c71 118-129
+test/model-policy-action-wiring.test.ts
+  65f4b09a98453c71 9,82-100
+action.yml
+  65f4b09a98453c71 369,439
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "0b559cdd0e76351248c3f07773bc5d27c7ef4b38",
+  "prompts": {
+    "65f4b09a98453c71": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "cd005c43-56d1-45bb-b6b7-a631d87a7f12",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Leo Tchourakov",
+      "messages": [],
+      "total_additions": 48,
+      "total_deletions": 24,
+      "accepted_lines": 42,
+      "overriden_lines": 0
+    }
+  }
+}

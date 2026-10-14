@@ -1,0 +1,25 @@
+test/run-type.test.ts
+  50fcb6948d4b8282 16-17,47-49
+src/run-type.ts
+  50fcb6948d4b8282 5,14,24,27-28,30,44,46-47,62,78,80,82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "f12b89b728694e58cc85a08b949c0d2df9a7a987",
+  "prompts": {
+    "50fcb6948d4b8282": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "f1775c06-cf38-490d-9450-331abe0aeefe",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Andrew Seo",
+      "messages": [],
+      "total_additions": 29,
+      "total_deletions": 12,
+      "accepted_lines": 18,
+      "overriden_lines": 2
+    }
+  }
+}

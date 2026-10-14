@@ -1,0 +1,25 @@
+src/tag/index.ts
+  50fcb6948d4b8282 113-137,140,142-143,166,173-176
+test/integration/review-flow.test.ts
+  50fcb6948d4b8282 30-93,327-400
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "033eea559553107b10815713bb25871c3ad736e4",
+  "prompts": {
+    "50fcb6948d4b8282": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "f1775c06-cf38-490d-9450-331abe0aeefe",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Andrew Seo",
+      "messages": [],
+      "total_additions": 311,
+      "total_deletions": 172,
+      "accepted_lines": 171,
+      "overriden_lines": 0
+    }
+  }
+}
