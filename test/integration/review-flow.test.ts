@@ -52,7 +52,10 @@ describe("review command integration", () => {
     });
   }
 
-  function createAutomaticReviewOctokit(hasExistingSecurityReview: boolean) {
+  function createAutomaticReviewOctokit(
+    hasExistingSecurityReview: boolean,
+    botId = 138933559,
+  ) {
     const octokit = {
       rest: {
         issues: {
@@ -61,7 +64,7 @@ describe("review command integration", () => {
               data: hasExistingSecurityReview
                 ? [
                     {
-                      user: { id: 209825114, login: "factory-droid[bot]" },
+                      user: { id: botId, login: "factory-droid[bot]" },
                       body: "## Security Review Summary",
                     },
                   ]
@@ -448,6 +451,26 @@ describe("review command integration", () => {
     expect(createCommentSpy).not.toHaveBeenCalled();
     expect(setOutputSpy).toHaveBeenCalledWith("run_code_review", "false");
     expect(setOutputSpy).toHaveBeenCalledWith("run_security_review", "false");
+  });
+
+  it("does not let Claude's security summary suppress Droid's review", async () => {
+    const context = createAutomaticReviewContext(false);
+    const octokit = createAutomaticReviewOctokit(true, 209825114);
+
+    const result = await prepareTagExecution({
+      context,
+      octokit,
+      githubToken: "token",
+    });
+
+    expect(result.skipped).toBeFalsy();
+    expect(createCommentSpy).toHaveBeenCalledWith(
+      octokit.rest,
+      context,
+      "security",
+      DroidRunType.SecurityReview,
+    );
+    expect(setOutputSpy).toHaveBeenCalledWith("run_security_review", "true");
   });
 
   it("creates a review-only comment when automatic security is skipped", async () => {

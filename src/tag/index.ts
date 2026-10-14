@@ -14,8 +14,7 @@ import type { Octokits } from "../github/api/client";
 import { isAutomationContext } from "../github/context";
 import { prepareStewardMode } from "../steward";
 import { DroidRunType, resolveTagRunType, setDroidRunType } from "../run-type";
-
-const DROID_APP_BOT_ID = 209825114;
+import { DROID_APP_BOT_ID } from "../github/bot-identity";
 const SECURITY_REVIEW_MARKER = "## Security Review Summary";
 
 export function shouldTriggerTag(context: GitHubContext): boolean {
