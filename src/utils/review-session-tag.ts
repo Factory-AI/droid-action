@@ -12,6 +12,8 @@ export const REVIEW_SESSION_TAG_NAME = "code-review";
 export type ReviewPass = "candidates" | "validator";
 export type ReviewType = "code" | "security";
 export type ReviewPlatform = "github" | "gitlab";
+/** The CLI records this as the usage event's product. */
+export type ReviewProduct = "code_review" | "security_review";
 
 /**
  * Every value is a string: `droid exec` validates `--tag` metadata as a
@@ -21,6 +23,7 @@ export type ReviewPlatform = "github" | "gitlab";
 export type ReviewSessionTagMetadata = {
   pass: ReviewPass;
   reviewType: ReviewType;
+  product: ReviewProduct;
   platform: ReviewPlatform;
   /** `owner/repo` on GitHub, `group/project` on GitLab. */
   repo: string;
@@ -68,6 +71,8 @@ export function buildReviewSessionTag(
   const metadata: ReviewSessionTagMetadata = {
     pass: input.pass,
     reviewType: input.reviewType,
+    product:
+      input.reviewType === "security" ? "security_review" : "code_review",
     platform: input.platform,
     repo: input.repo,
     pr: String(input.pr),
@@ -89,7 +94,10 @@ export function buildReviewSessionTag(
  * `droid_args` is split with shell-quote's `parse` before it reaches the CLI,
  * so quoting with the same library guarantees the JSON survives as one token.
  */
-export function formatReviewSessionTagArg(tag: ReviewSessionTag): string {
+export function formatSessionTagArg(tag: {
+  name: string;
+  metadata: object;
+}): string {
   return `--tag ${quoteShellArgs([JSON.stringify(tag)])}`;
 }
 
@@ -109,7 +117,7 @@ export function githubReviewSessionTagArg(input: {
     entityNumber: number;
   };
 }): string {
-  return formatReviewSessionTagArg(
+  return formatSessionTagArg(
     buildReviewSessionTag({
       pass: input.pass,
       reviewType: reviewTypeForRunType(input.runType),
