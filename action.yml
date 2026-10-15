@@ -64,7 +64,7 @@ inputs:
     required: false
     default: "false"
   security_model:
-    description: "Advanced. Leave empty to use the review_depth preset (recommended). Falls back to review_model. If set, use a provider tier alias such as 'openai-latest-premium' or 'anthropic-latest-balanced'. Only applies to security review flows."
+    description: "Advanced. Leave empty to use the review_depth preset (recommended). Falls back to review_model. If set, use a provider tier alias such as 'openai-latest-frontier' or 'anthropic-latest-balanced'. Only applies to security review flows."
     required: false
     default: ""
   security_severity_threshold:
@@ -96,7 +96,7 @@ inputs:
     required: false
     default: "deep"
   review_model:
-    description: "Advanced. Leave empty to use the review_depth preset (recommended). If set, use a provider tier alias such as 'openai-latest-premium' or 'anthropic-latest-balanced'; overrides the preset model."
+    description: "Advanced. Leave empty to use the review_depth preset (recommended). If set, use a provider tier alias such as 'openai-latest-frontier' or 'anthropic-latest-balanced'; overrides the preset model."
     required: false
     default: ""
   reasoning_effort:
@@ -124,7 +124,7 @@ inputs:
     required: false
     default: "40"
   fill_model:
-    description: "Advanced. Leave empty to use the default model (recommended). If set, use a provider tier alias such as 'openai-latest-premium' or 'anthropic-latest-balanced'. Only applies to fill flows."
+    description: "Advanced. Leave empty to use the default model (recommended). If set, use a provider tier alias such as 'openai-latest-frontier' or 'anthropic-latest-balanced'. Only applies to fill flows."
     required: false
     default: ""
   experimental_allowed_domains:

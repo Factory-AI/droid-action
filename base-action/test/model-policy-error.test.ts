@@ -27,8 +27,13 @@ describe("getModelArg", () => {
 
 describe("getLegacyTierAliasModel", () => {
   it("maps every tier alias to a concrete model", () => {
-    for (const provider of ["openai", "anthropic", "oss"]) {
-      for (const tier of ["premium", "balanced", "fast"]) {
+    const tiers = {
+      openai: ["frontier", "premium", "balanced", "medium", "small", "fast"],
+      anthropic: ["frontier", "premium", "balanced", "medium", "small", "fast"],
+      oss: ["premium", "balanced", "fast"],
+    };
+    for (const [provider, names] of Object.entries(tiers)) {
+      for (const tier of names) {
         expect(
           getLegacyTierAliasModel(`${provider}-latest-${tier}`),
         ).toBeTruthy();
@@ -37,6 +42,18 @@ describe("getLegacyTierAliasModel", () => {
     expect(getLegacyTierAliasModel("openai-latest-balanced")).toBe(
       "gpt-5.6-sol",
     );
+  });
+
+  it("maps the earlier premium and fast names like frontier and small", () => {
+    for (const provider of ["openai", "anthropic"]) {
+      expect([
+        getLegacyTierAliasModel(`${provider}-latest-premium`),
+        getLegacyTierAliasModel(`${provider}-latest-fast`),
+      ]).toEqual([
+        getLegacyTierAliasModel(`${provider}-latest-frontier`),
+        getLegacyTierAliasModel(`${provider}-latest-small`),
+      ]);
+    }
   });
 
   it("returns undefined for concrete models and missing values", () => {

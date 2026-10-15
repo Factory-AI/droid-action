@@ -105,12 +105,24 @@ export async function fetchModelPolicy(
 }
 
 /**
- * Matches Factory model tier aliases such as `openai-latest-balanced`. The
+ * Matches Factory model tier aliases such as `openai-latest-frontier`,
+ * including the earlier `-latest-premium` and `-latest-fast` names. The
  * Droid CLI resolves them to a concrete model and enforces the org policy on
  * that model, which this action cannot know in advance.
  */
 export function isModelTierAlias(modelId: string): boolean {
-  return /^[a-z0-9]+-latest-(premium|balanced|fast)$/.test(modelId);
+  return /^[a-z0-9]+-latest-(frontier|premium|balanced|medium|small|fast)$/.test(
+    modelId,
+  );
+}
+
+/**
+ * Matches version wildcards such as `claude-opus-*`, which the Droid CLI
+ * resolves to the newest allowed model in that line, so the policy applies to
+ * a model this action cannot know in advance.
+ */
+export function isModelVersionWildcard(modelId: string): boolean {
+  return modelId.includes("*");
 }
 
 /**
@@ -122,7 +134,7 @@ export function isModelAllowedByPolicy(
   modelId: string,
   policy: ModelPolicy | null | undefined,
 ): boolean {
-  if (!policy || isModelTierAlias(modelId)) {
+  if (!policy || isModelTierAlias(modelId) || isModelVersionWildcard(modelId)) {
     return true;
   }
   if (policy.blockedModelIds?.includes(modelId)) {
