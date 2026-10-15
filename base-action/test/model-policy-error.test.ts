@@ -6,9 +6,27 @@ import {
   getModelArg,
   isInvalidModelError,
   isModelPolicyError,
+  parseModelFallbackMode,
   replaceModelArg,
   stripModelArgs,
 } from "../src/utils/model-policy-error";
+
+describe("parseModelFallbackMode", () => {
+  it.each([undefined, "", "   ", "organization-default"])(
+    "defaults or accepts organization-default: %j",
+    (value) => {
+      expect(parseModelFallbackMode(value)).toBe("organization-default");
+    },
+  );
+  it("accepts fail with surrounding whitespace", () => {
+    expect(parseModelFallbackMode(" fail ")).toBe("fail");
+  });
+  it("rejects unsupported modes", () => {
+    expect(() => parseModelFallbackMode("typo")).toThrow(
+      "model_fallback must be one of:",
+    );
+  });
+});
 
 describe("getModelArg", () => {
   it("reads --model <value> and --model=value forms", () => {

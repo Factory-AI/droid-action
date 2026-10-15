@@ -8,6 +8,7 @@ import {
 
 const originalFetch = globalThis.fetch;
 const originalApiKey = process.env.FACTORY_API_KEY;
+const originalFallback = process.env.MODEL_FALLBACK;
 
 function mockFetch(handler: () => Promise<Response> | Response) {
   globalThis.fetch = Object.assign(async () => handler(), {
@@ -29,6 +30,8 @@ afterEach(() => {
   } else {
     process.env.FACTORY_API_KEY = originalApiKey;
   }
+  if (originalFallback === undefined) delete process.env.MODEL_FALLBACK;
+  else process.env.MODEL_FALLBACK = originalFallback;
 });
 
 describe("isModelPolicyError", () => {
@@ -153,6 +156,35 @@ describe("fetchModelPolicy", () => {
 describe("applyModelPolicyFallback", () => {
   const options = { flowLabel: "code review", modelInputName: "review_model" };
 
+  it("rejects a blocked model in fail mode", async () => {
+    process.env.FACTORY_API_KEY = "fk-test";
+    process.env.MODEL_FALLBACK = "fail";
+    mockFetch(() => managedSettingsResponse({ blockedModelIds: ["gpt-5.2"] }));
+    await expect(
+      applyModelPolicyFallback(
+        { model: "gpt-5.2", reasoningEffort: "high" },
+        options,
+      ),
+    ).rejects.toThrow('code review model "gpt-5.2" is not allowed');
+  });
+
+  it.each([{}, { model: "gpt-5.2" }])(
+    "validates the mode before any policy lookup: %j",
+    async (config) => {
+      process.env.FACTORY_API_KEY = "fk-test";
+      process.env.MODEL_FALLBACK = "typo";
+      let fetchCalled = false;
+      mockFetch(() => {
+        fetchCalled = true;
+        return managedSettingsResponse({ allowedModelIds: ["gpt-5.2"] });
+      });
+      await expect(applyModelPolicyFallback(config, options)).rejects.toThrow(
+        "model_fallback must be one of:",
+      );
+      expect(fetchCalled).toBe(false);
+    },
+  );
+
   it("keeps the model when it is allowed by the policy", async () => {
     process.env.FACTORY_API_KEY = "fk-test";
     mockFetch(() => managedSettingsResponse({ allowedModelIds: ["gpt-5.2"] }));
@@ -180,18 +212,22 @@ describe("applyModelPolicyFallback", () => {
     expect(result.fallbackNote).toContain("`review_model`");
   });
 
-  it("keeps the model when the policy lookup fails", async () => {
-    process.env.FACTORY_API_KEY = "fk-test";
-    mockFetch(() => {
-      throw new Error("connection refused");
-    });
+  it.each(["organization-default", "fail"])(
+    "keeps the model when the policy lookup fails in %s mode",
+    async (mode) => {
+      process.env.FACTORY_API_KEY = "fk-test";
+      process.env.MODEL_FALLBACK = mode;
+      mockFetch(() => {
+        throw new Error("connection refused");
+      });
 
-    const result = await applyModelPolicyFallback(
-      { model: "gpt-5.2", reasoningEffort: "high" },
-      options,
-    );
-    expect(result).toEqual({ model: "gpt-5.2", reasoningEffort: "high" });
-  });
+      const result = await applyModelPolicyFallback(
+        { model: "gpt-5.2", reasoningEffort: "high" },
+        options,
+      );
+      expect(result).toEqual({ model: "gpt-5.2", reasoningEffort: "high" });
+    },
+  );
 
   it("skips the check when there is no API key", async () => {
     delete process.env.FACTORY_API_KEY;
