@@ -114,6 +114,7 @@ export async function reportBuildStatus(
   url: string | null,
   state: BitbucketBuildStatus["state"],
   description: string,
+  sourceBranch: string | null,
 ): Promise<void> {
   if (!sha || !url) {
     console.warn(
@@ -135,6 +136,7 @@ export async function reportBuildStatus(
       name: BUILD_STATUS_NAME,
       url,
       description,
+      ...(sourceBranch ? { ref: `refs/heads/${sourceBranch}` } : {}),
     });
   } catch (error) {
     console.warn(
@@ -250,6 +252,7 @@ export async function run(
         statusUrl,
         "SUCCESSFUL",
         "Skipped: draft pull request",
+        pr.sourceBranch || null,
       );
     }
     return skip(
@@ -304,6 +307,7 @@ export async function run(
       statusUrl,
       "INPROGRESS",
       "Droid is reviewing",
+      pr.sourceBranch || null,
     );
   }
 

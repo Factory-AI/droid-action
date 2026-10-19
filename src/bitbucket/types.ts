@@ -73,6 +73,8 @@ export type BitbucketBuildStatus = {
   name: string;
   url: string;
   description?: string;
+  /** Full name of the built ref, e.g. `refs/heads/feature`. Data Center only. */
+  ref?: string;
 };
 
 export interface BitbucketClient {

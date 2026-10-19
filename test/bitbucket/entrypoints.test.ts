@@ -738,7 +738,16 @@ describe("Bitbucket Data Center review steps (Jenkins)", () => {
     ).toContain(BITBUCKET_TRACKING_MARKER);
     expect(reqs(f, "POST", "/builds")[0]).toMatchObject({
       path: `${DC_REPO}/commits/${"c".repeat(40)}/builds`,
-      body: { key: "droid-review", state: "INPROGRESS" },
+    });
+    // Required builds match on parent and ref, so both must be on the wire.
+    expect(reqs(f, "POST", "/builds")[0]!.body).toEqual({
+      key: "droid-review",
+      state: "INPROGRESS",
+      name: "Droid code review",
+      url: "https://jenkins.example.com/job/billing/PR-12/1/",
+      description: "Droid is reviewing",
+      parent: "droid-review",
+      ref: "refs/heads/feature/tax",
     });
     expect(await fs.readFile(state.diffPath!, "utf8")).toContain(
       "+const c = 4;",
@@ -777,7 +786,11 @@ describe("Bitbucket Data Center review steps (Jenkins)", () => {
     expect(puts).toHaveLength(1);
     expect(puts[0]!.body.version).toBe(0);
     expect(f.comments[0]!.body).toContain("Droid finished reviewing");
-    expect(reqs(f, "POST", "/builds").at(-1)!.body.state).toBe("SUCCESSFUL");
+    expect(reqs(f, "POST", "/builds").at(-1)!.body).toMatchObject({
+      state: "SUCCESSFUL",
+      parent: "droid-review",
+      ref: "refs/heads/feature/tax",
+    });
   });
 
   it("tells both passes and the PR when the server truncated the diff", async () => {

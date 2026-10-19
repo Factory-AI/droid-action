@@ -93,6 +93,7 @@ export async function run(
       state.buildUrl ?? state.prWebUrl,
       success ? "SUCCESSFUL" : "FAILED",
       success ? "Droid review finished" : "Droid review failed",
+      state.sourceBranch,
     );
   }
 }

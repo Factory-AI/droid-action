@@ -286,9 +286,33 @@ export class BitbucketDataCenterClient implements BitbucketClient {
     commitSha: string,
     status: BitbucketBuildStatus,
   ): Promise<void> {
-    await this.http.json(
-      `${this.repoUrl}/commits/${encodeURIComponent(commitSha)}/builds`,
-      { method: "POST", json: status },
-    );
+    const url = `${this.repoUrl}/commits/${encodeURIComponent(commitSha)}/builds`;
+    const base = {
+      key: status.key,
+      state: status.state,
+      name: status.name,
+      url: status.url,
+      description: status.description,
+    };
+    // Required builds merge checks match a status by `parent` (and `ref`),
+    // not by `key`, and Atlassian documents no fallback from one to the other.
+    const withParent = {
+      ...base,
+      parent: status.key,
+      ...(status.ref ? { ref: status.ref } : {}),
+    };
+    try {
+      await this.http.json(url, { method: "POST", json: withParent });
+    } catch (error) {
+      // Servers that predate Required builds (before 7.14) may reject the
+      // extra fields; they cannot enforce the check anyway.
+      if (!(error instanceof BitbucketApiError) || error.status !== 400) {
+        throw error;
+      }
+      console.warn(
+        `Bitbucket rejected the build status with parent/ref (${error.message}); retrying without them.`,
+      );
+      await this.http.json(url, { method: "POST", json: base });
+    }
   }
 }

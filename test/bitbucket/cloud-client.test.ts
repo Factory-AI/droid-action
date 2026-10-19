@@ -321,16 +321,18 @@ describe("BitbucketCloudClient", () => {
       state: "INPROGRESS",
       name: "Droid code review",
       url: "https://ci/1",
+      ref: "refs/heads/feature/x",
     });
     expect(server.requests[0]).toMatchObject({
       method: "POST",
       path: "/2.0/repositories/my-ws/my-repo/commit/abc123/statuses/build",
-      body: {
-        key: "droid-review",
-        state: "INPROGRESS",
-        name: "Droid code review",
-        url: "https://ci/1",
-      },
+    });
+    // Cloud has no parent/ref fields; the Data Center-only ref stays off.
+    expect(server.requests[0]!.body).toEqual({
+      key: "droid-review",
+      state: "INPROGRESS",
+      name: "Droid code review",
+      url: "https://ci/1",
     });
   });
 

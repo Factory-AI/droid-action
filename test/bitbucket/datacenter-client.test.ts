@@ -443,23 +443,58 @@ describe("BitbucketDataCenterClient", () => {
     });
   });
 
-  it("posts build statuses to the commit builds endpoint", async () => {
+  const STATUS = {
+    key: "droid-review",
+    state: "SUCCESSFUL",
+    name: "Droid code review",
+    url: "https://jenkins/job/1",
+    description: "Droid review finished",
+    ref: "refs/heads/feature/x",
+  } as const;
+  const BASE_BODY = {
+    key: "droid-review",
+    state: "SUCCESSFUL",
+    name: "Droid code review",
+    url: "https://jenkins/job/1",
+    description: "Droid review finished",
+  };
+
+  it("posts build statuses with the parent and ref that Required builds match", async () => {
     server = startFakeServer(() => new Response(null, { status: 204 }));
-    await client().setBuildStatus("a".repeat(40), {
-      key: "droid-review",
-      state: "SUCCESSFUL",
-      name: "Droid code review",
-      url: "https://jenkins/job/1",
-    });
+    await client().setBuildStatus("a".repeat(40), STATUS);
+    expect(server.requests).toHaveLength(1);
     expect(server.requests[0]).toMatchObject({
       method: "POST",
       path: `${REPO}/commits/${"a".repeat(40)}/builds`,
-      body: {
-        key: "droid-review",
-        state: "SUCCESSFUL",
-        url: "https://jenkins/job/1",
-      },
     });
+    expect(server.requests[0]!.body).toEqual({
+      ...BASE_BODY,
+      parent: "droid-review",
+      ref: "refs/heads/feature/x",
+    });
+  });
+
+  it("retries without parent and ref when an older server rejects them", async () => {
+    server = startFakeServer((req) =>
+      req.body.parent
+        ? json({ errors: [{ message: "Unrecognized field parent" }] }, 400)
+        : new Response(null, { status: 204 }),
+    );
+    await client().setBuildStatus("a".repeat(40), STATUS);
+    expect(server.requests.map((r) => r.body)).toEqual([
+      { ...BASE_BODY, parent: "droid-review", ref: "refs/heads/feature/x" },
+      BASE_BODY,
+    ]);
+  });
+
+  it("does not retry build statuses on other errors", async () => {
+    server = startFakeServer(() =>
+      json({ errors: [{ message: "Commit not found" }] }, 404),
+    );
+    await expect(
+      client().setBuildStatus("a".repeat(40), STATUS),
+    ).rejects.toThrow("Commit not found");
+    expect(server.requests).toHaveLength(1);
   });
 
   it("joins Data Center error messages", async () => {

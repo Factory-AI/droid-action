@@ -191,7 +191,16 @@ export class BitbucketCloudClient implements BitbucketClient {
   ): Promise<void> {
     await this.http.json(
       `${this.repoUrl}/commit/${encodeURIComponent(commitSha)}/statuses/build`,
-      { method: "POST", json: status },
+      {
+        method: "POST",
+        json: {
+          key: status.key,
+          state: status.state,
+          name: status.name,
+          url: status.url,
+          description: status.description,
+        },
+      },
     );
   }
 }
