@@ -1,0 +1,50 @@
+# Droid code review for Bitbucket Data Center pull requests on Bamboo.
+#
+# Save as `bamboo-specs/bamboo.yml` in a repository linked to Bamboo with
+# Repository-stored Specs enabled. The linked repository must be the
+# Bitbucket Data Center repository to review; plan branches are created for
+# pull requests, and Bamboo exposes the PR id as `bamboo_repository_pr_key`.
+#
+# Define FACTORY_API_KEY_SECRET and DROID_BITBUCKET_TOKEN_SECRET as secret
+# plan or global variables; Bamboo masks variables whose names contain
+# "secret". The agent needs bash, git, curl, and bun 1.2.x (or unzip so the
+# script can install bun).
+---
+version: 2
+plan:
+  project-key: DROID
+  key: REVIEW
+  name: Droid code review
+variables:
+  BITBUCKET_SERVER_URL: https://bitbucket.example.com
+  BITBUCKET_PROJECT_KEY: PROJ
+  BITBUCKET_REPO_SLUG: my-repo
+  DROID_ACTION_REF: main
+branches:
+  create: for-pull-request
+  delete:
+    after-deleted-days: 1
+stages:
+  - Review:
+      jobs:
+        - Droid review
+Droid review:
+  tasks:
+    - script:
+        interpreter: SHELL
+        scripts:
+          - |
+            if [ -z "${bamboo_repository_pr_key:-}" ]; then echo "Not a pull request build; skipping Droid review."; exit 0; fi
+            export BITBUCKET_VARIANT=datacenter
+            export BITBUCKET_SERVER_URL="$bamboo_BITBUCKET_SERVER_URL"
+            export BITBUCKET_PROJECT_KEY="$bamboo_BITBUCKET_PROJECT_KEY"
+            export BITBUCKET_REPO_SLUG="$bamboo_BITBUCKET_REPO_SLUG"
+            export FACTORY_API_KEY="$bamboo_FACTORY_API_KEY_SECRET"
+            export DROID_BITBUCKET_TOKEN="$bamboo_DROID_BITBUCKET_TOKEN_SECRET"
+            rm -rf /tmp/droid-action
+            git clone --depth 1 --branch "$bamboo_DROID_ACTION_REF" https://github.com/Factory-AI/droid-action.git /tmp/droid-action
+            bash /tmp/droid-action/bitbucket/droid-review.sh
+  artifacts:
+    - name: droid-debug
+      pattern: ".droid-debug/**"
+      shared: false

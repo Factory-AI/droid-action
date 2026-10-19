@@ -1,0 +1,695 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import * as fs from "fs/promises";
+import * as os from "os";
+import * as path from "path";
+import { run as prepare } from "../../src/entrypoints/bitbucket-prepare";
+import { run as prepareValidator } from "../../src/entrypoints/bitbucket-prepare-validator";
+import { run as postReview } from "../../src/entrypoints/bitbucket-post-review";
+import { run as updateComment } from "../../src/entrypoints/bitbucket-update-comment-link";
+import { BITBUCKET_TRACKING_MARKER } from "../../src/bitbucket/operations/tracking-comment";
+import {
+  APP_TS_DC_DIFF,
+  APP_TS_DIFF,
+  json,
+  notFound,
+  startFakeServer,
+  type FakeServer,
+  type RecordedRequest,
+} from "./fake-server";
+
+/**
+ * A minimal stateful Bitbucket (Cloud or Data Center) that keeps comments
+ * in memory, so the steps see each other's writes like on a real server.
+ */
+type Fake = {
+  server: FakeServer;
+  comments: Array<{ id: number; body: string; parentId: number | null }>;
+  draft: boolean;
+  /** Return a Response to override the default for a request. */
+  override?: (req: RecordedRequest) => Response | undefined;
+};
+
+const CLOUD_REPO = "/2.0/repositories/acme/web-app";
+const DC_REPO = "/bitbucket/rest/api/1.0/projects/PLAT/repos/billing";
+const FULL_SHA = "abcdef123456" + "0".repeat(28);
+
+function startCloud(fake: Omit<Fake, "server">): Fake {
+  const state = fake as Fake;
+  let nextId = 1000;
+  state.server = startFakeServer((req, url) => {
+    const override = state.override?.(req);
+    if (override) return override;
+    const p = url.pathname;
+    if (p === "/api/organization/managed-settings") return json({}, 404);
+    if (p === `${CLOUD_REPO}/pullrequests/42`) {
+      return json({
+        id: 42,
+        title: "Add c",
+        description: "Adds const c",
+        state: "OPEN",
+        draft: state.draft,
+        author: { nickname: "ada" },
+        source: {
+          branch: { name: "feature/c" },
+          commit: { hash: "abcdef123456" },
+        },
+        destination: {
+          branch: { name: "main" },
+          commit: { hash: "0123456789ab" },
+        },
+        links: {
+          html: { href: "https://bitbucket.org/acme/web-app/pull-requests/42" },
+        },
+      });
+    }
+    if (p === `${CLOUD_REPO}/pullrequests/42/diff`)
+      return new Response(APP_TS_DIFF);
+    if (
+      p === `${CLOUD_REPO}/pullrequests/42/comments` &&
+      req.method === "GET"
+    ) {
+      return json({
+        values: state.comments.map((c) => ({
+          id: c.id,
+          content: { raw: c.body },
+          ...(c.parentId ? { parent: { id: c.parentId } } : {}),
+        })),
+      });
+    }
+    if (
+      p === `${CLOUD_REPO}/pullrequests/42/comments` &&
+      req.method === "POST"
+    ) {
+      const c = { id: nextId++, body: req.body.content.raw, parentId: null };
+      state.comments.push(c);
+      return json({ id: c.id, content: { raw: c.body } }, 201);
+    }
+    const edit = /\/pullrequests\/42\/comments\/(\d+)$/.exec(p);
+    if (edit && req.method === "PUT") {
+      const c = state.comments.find((x) => x.id === Number(edit[1]));
+      if (!c) return notFound();
+      c.body = req.body.content.raw;
+      return json({ id: c.id, content: { raw: c.body } });
+    }
+    if (/\/commit\/[^/]+\/statuses\/build$/.test(p)) return json(req.body, 201);
+    return notFound();
+  });
+  return state;
+}
+
+function startDataCenter(fake: Omit<Fake, "server">): Fake {
+  const state = fake as Fake;
+  let nextId = 500;
+  const versions = new Map<number, number>();
+  state.server = startFakeServer((req, url) => {
+    const override = state.override?.(req);
+    if (override) return override;
+    const p = url.pathname;
+    const pr = `${DC_REPO}/pull-requests/12`;
+    if (p === "/api/organization/managed-settings") return json({}, 404);
+    if (p === pr) {
+      return json({
+        id: 12,
+        title: "Tax rules",
+        description: "Adds VAT",
+        state: "OPEN",
+        draft: state.draft,
+        fromRef: { displayId: "feature/tax", latestCommit: "c".repeat(40) },
+        toRef: { displayId: "main", latestCommit: "d".repeat(40) },
+        links: {
+          self: [
+            {
+              href: `${state.server.url}/bitbucket/projects/PLAT/repos/billing/pull-requests/12`,
+            },
+          ],
+        },
+      });
+    }
+    if (p === `${pr}/diff`) return json({ diffs: [APP_TS_DC_DIFF] });
+    if (p === `${pr}/activities`) {
+      return json({
+        isLastPage: true,
+        start: 0,
+        values: state.comments.map((c) => ({
+          action: "COMMENTED",
+          commentAction: "ADDED",
+          comment: { id: c.id, version: versions.get(c.id) ?? 0, text: c.body },
+        })),
+      });
+    }
+    if (p === `${pr}/comments` && req.method === "POST") {
+      const c = { id: nextId++, body: req.body.text, parentId: null };
+      state.comments.push(c);
+      versions.set(c.id, 0);
+      return json({ id: c.id, version: 0, text: c.body }, 201);
+    }
+    const one = new RegExp(`^${pr}/comments/(\\d+)$`).exec(p);
+    if (one) {
+      const c = state.comments.find((x) => x.id === Number(one[1]));
+      if (!c) return notFound();
+      const version = versions.get(c.id) ?? 0;
+      if (req.method === "GET")
+        return json({ id: c.id, version, text: c.body });
+      if (req.body.version !== version)
+        return json({ errors: [{ message: "stale" }] }, 409);
+      c.body = req.body.text;
+      versions.set(c.id, version + 1);
+      return json({ id: c.id, version: version + 1, text: c.body });
+    }
+    if (/\/commits\/[^/]+\/builds$/.test(p))
+      return new Response(null, { status: 204 });
+    return notFound();
+  });
+  return state;
+}
+
+const ENV_KEYS = [
+  "BITBUCKET_WORKSPACE",
+  "BITBUCKET_REPO_SLUG",
+  "BITBUCKET_PR_ID",
+  "BITBUCKET_COMMIT",
+  "BITBUCKET_BUILD_NUMBER",
+  "BITBUCKET_GIT_HTTP_ORIGIN",
+  "BITBUCKET_STEP_UUID",
+  "BITBUCKET_PIPELINE_UUID",
+  "BITBUCKET_API_URL",
+  "BITBUCKET_VARIANT",
+  "BITBUCKET_SERVER_URL",
+  "BITBUCKET_PROJECT_KEY",
+  "DROID_PR_URL",
+  "CHANGE_URL",
+  "CHANGE_ID",
+  "BUILD_URL",
+  "BUILD_TAG",
+  "GIT_COMMIT",
+  "DROID_BUILD_URL",
+  "DROID_RUN_ID",
+  "bamboo_repository_pr_key",
+  "bamboo_resultsUrl",
+  "bamboo_buildResultKey",
+  "bamboo_planRepository_revision",
+  "DROID_BITBUCKET_TOKEN",
+  "DROID_BITBUCKET_USERNAME",
+  "DROID_BITBUCKET_API_TOKEN",
+  "FACTORY_API_KEY",
+  "FACTORY_API_BASE_URL",
+  "AUTOMATIC_REVIEW",
+  "AUTOMATIC_SECURITY_REVIEW",
+  "REVIEW_DEPTH",
+  "REVIEW_MODEL",
+  "REASONING_EFFORT",
+  "INCLUDE_SUGGESTIONS",
+  "REVIEW_DRAFTS",
+  "BUILD_STATUS",
+  "DROID_SETTINGS",
+  "DROID_PROMPT_FILE",
+  "DROID_STATE_FILE",
+  "REVIEW_CANDIDATES_PATH",
+  "REVIEW_VALIDATED_PATH",
+  "REVIEW_POST_RESULTS_PATH",
+  "DROID_RESOLVED_ENV_FILE",
+  "DROID_SUCCESS",
+  "DROID_ERROR_DETAILS",
+  "DROID_PASS1_LOG",
+  "DROID_PASS2_LOG",
+];
+
+let tmp: string;
+let saved: Record<string, string | undefined>;
+let fake: Fake | undefined;
+
+const deps = {
+  setupSettings: async () => {},
+  downgradeModel: (m: string | undefined) => m,
+  retryDelayMs: 0,
+};
+
+beforeEach(async () => {
+  tmp = await fs.mkdtemp(path.join(os.tmpdir(), "droid-bb-"));
+  saved = {};
+  for (const k of ENV_KEYS) {
+    saved[k] = process.env[k];
+    delete process.env[k];
+  }
+  process.env.DROID_PROMPT_FILE = path.join(tmp, "droid-prompt.txt");
+  process.env.FACTORY_API_KEY = "fk-test";
+  process.env.DROID_BITBUCKET_TOKEN = "bb-secret";
+});
+
+afterEach(async () => {
+  fake?.server.stop();
+  fake = undefined;
+  for (const k of ENV_KEYS) {
+    if (saved[k] === undefined) delete process.env[k];
+    else process.env[k] = saved[k];
+  }
+  await fs.rm(tmp, { recursive: true, force: true });
+});
+
+function useCloud(opts: Partial<Fake> = {}) {
+  fake = startCloud({ comments: [], draft: false, ...opts });
+  Object.assign(process.env, {
+    BITBUCKET_WORKSPACE: "acme",
+    BITBUCKET_REPO_SLUG: "web-app",
+    BITBUCKET_PR_ID: "42",
+    BITBUCKET_COMMIT: FULL_SHA,
+    BITBUCKET_BUILD_NUMBER: "9",
+    BITBUCKET_GIT_HTTP_ORIGIN: "http://bitbucket.org/acme/web-app",
+    BITBUCKET_PIPELINE_UUID: "{pipe}",
+    BITBUCKET_API_URL: `${fake.server.url}/2.0`,
+    FACTORY_API_BASE_URL: fake.server.url,
+  });
+  return fake;
+}
+
+function useDataCenter(opts: Partial<Fake> = {}) {
+  fake = startDataCenter({ comments: [], draft: false, ...opts });
+  Object.assign(process.env, {
+    CHANGE_ID: "12",
+    CHANGE_URL: `${fake.server.url}/bitbucket/projects/PLAT/repos/billing/pull-requests/12`,
+    BUILD_URL: "https://jenkins.example.com/job/billing/PR-12/1/",
+    FACTORY_API_BASE_URL: fake.server.url,
+  });
+  return fake;
+}
+
+const reqs = (f: Fake, method: string, pathPart: string) =>
+  f.server.requests.filter(
+    (r) => r.method === method && r.path.includes(pathPart),
+  );
+
+async function writeValidated(
+  results: unknown[],
+  summary = "Two real issues.",
+) {
+  await fs.writeFile(
+    path.join(tmp, "review_validated.json"),
+    JSON.stringify({
+      version: 1,
+      results,
+      reviewSummary: { status: "approved", body: summary },
+    }),
+  );
+}
+
+const VALIDATED = [
+  {
+    status: "approved",
+    comment: {
+      path: "src/app.ts",
+      line: 3,
+      side: "RIGHT",
+      body: "[P1] c is unused",
+    },
+  },
+  {
+    status: "approved",
+    comment: {
+      path: "src/app.ts",
+      line: null,
+      old_line: 2,
+      side: "LEFT",
+      body: "[P2] b changed",
+    },
+  },
+  {
+    status: "approved",
+    comment: {
+      path: "src/app.ts",
+      line: 40,
+      side: "RIGHT",
+      body: "[P2] far away",
+    },
+  },
+  {
+    status: "rejected",
+    candidate: { path: "src/app.ts", line: 1, body: "nope" },
+    reason: "false positive",
+  },
+];
+
+describe("Bitbucket Cloud review steps", () => {
+  it("runs prepare → post → final update against the API", async () => {
+    const f = useCloud();
+    process.env.BUILD_STATUS = "true";
+    process.env.AUTOMATIC_SECURITY_REVIEW = "true";
+
+    const state = await prepare(deps);
+
+    expect(state).toMatchObject({
+      shouldRunReview: true,
+      prId: 42,
+      repoFullName: "acme/web-app",
+      headSha: FULL_SHA,
+      sourceBranch: "feature/c",
+      targetBranch: "main",
+      securityReviewEnabled: true,
+      target: {
+        variant: "cloud",
+        workspace: "acme",
+        repoSlug: "web-app",
+        prId: 42,
+      },
+    });
+    // Every request authenticates with the configured token.
+    for (const r of f.server.requests.filter((r) =>
+      r.path.startsWith("/2.0"),
+    )) {
+      expect(r.headers.authorization).toBe("Bearer bb-secret");
+    }
+
+    const created = reqs(f, "POST", "/pullrequests/42/comments");
+    expect(created).toHaveLength(1);
+    expect(created[0]!.body.content.raw).toContain(BITBUCKET_TRACKING_MARKER);
+    expect(created[0]!.body.content.raw).toContain(
+      "Droid is reviewing this pull request",
+    );
+    expect(state.trackingCommentId).toBe(f.comments[0]!.id);
+
+    const status = reqs(f, "POST", "/statuses/build");
+    expect(status.map((r) => [r.path, r.body.state, r.body.key])).toEqual([
+      [
+        `${CLOUD_REPO}/commit/${FULL_SHA}/statuses/build`,
+        "INPROGRESS",
+        "droid-review",
+      ],
+    ]);
+    expect(status[0]!.body.url).toBe(
+      "http://bitbucket.org/acme/web-app/pipelines/results/9",
+    );
+
+    expect(await fs.readFile(state.diffPath!, "utf8")).toBe(APP_TS_DIFF);
+    expect(await fs.readFile(state.descriptionPath!, "utf8")).toBe(
+      "Title: Add c\n\nAdds const c\n",
+    );
+    const prompt = await fs.readFile(state.promptPath!, "utf8");
+    expect(prompt).toContain("acme/web-app");
+    expect(prompt).toContain(state.candidatesPath!);
+    expect(prompt).toContain("security-reviewer");
+    const shim = await fs.readFile(path.join(tmp, "resolved-env.sh"), "utf8");
+    expect(shim).toContain("export RESOLVED_MODEL='openai-latest-balanced'");
+    expect(shim).toContain('"platform":"bitbucket"');
+    expect(shim).toContain('"runId":"{pipe}"');
+    expect(shim).not.toContain("bb-secret");
+
+    await fs.writeFile(
+      state.candidatesPath!,
+      JSON.stringify({ comments: [{}, {}] }),
+    );
+    await prepareValidator();
+    expect(await fs.readFile(state.promptPath!, "utf8")).toContain(
+      "Phase 2 (validator)",
+    );
+
+    await writeValidated(VALIDATED);
+    await postReview({ retryDelayMs: 0 });
+
+    const posted = reqs(f, "POST", "/pullrequests/42/comments")
+      .slice(1)
+      .map((r) => r.body);
+    expect(posted).toEqual([
+      {
+        content: { raw: "[P1] c is unused" },
+        inline: { path: "src/app.ts", to: 3 },
+      },
+      {
+        content: { raw: "[P2] b changed" },
+        inline: { path: "src/app.ts", from: 2 },
+      },
+      { content: { raw: expect.stringContaining("`src/app.ts:40`") } },
+    ]);
+    const results = JSON.parse(
+      await fs.readFile(path.join(tmp, "review_post_results.json"), "utf8"),
+    );
+    expect(results).toMatchObject({
+      posted: 2,
+      fallbackPosted: 1,
+      approved: 3,
+      rejected: 1,
+      failed: 0,
+    });
+
+    const pass1 = path.join(tmp, "pass1.jsonl");
+    await fs.writeFile(
+      pass1,
+      '{"type":"completion","session_id":"sess-1","numTurns":4,"durationMs":2000}\n',
+    );
+    process.env.DROID_PASS1_LOG = pass1;
+    await updateComment({ retryDelayMs: 0 });
+
+    const tracking = f.comments.find((c) => c.id === state.trackingCommentId)!;
+    expect(tracking.body).toContain(
+      "Droid finished reviewing this pull request",
+    );
+    expect(tracking.body).toContain("Two real issues.");
+    expect(tracking.body).toContain(
+      "2 inline comments posted · 1 posted as a regular comment",
+    );
+    expect(tracking.body).toContain("Security review: enabled");
+    expect(tracking.body).toContain("pass 1 `sess-1`");
+    expect(reqs(f, "POST", "/statuses/build").map((r) => r.body.state)).toEqual(
+      ["INPROGRESS", "SUCCESSFUL"],
+    );
+  });
+
+  it("reuses the existing tracking comment instead of posting a new one", async () => {
+    const f = useCloud({
+      comments: [
+        { id: 7, body: "nice", parentId: null },
+        { id: 8, body: `${BITBUCKET_TRACKING_MARKER}\n\nold`, parentId: null },
+      ],
+    });
+
+    const state = await prepare(deps);
+
+    expect(state.trackingCommentId).toBe(8);
+    expect(reqs(f, "POST", "/comments")).toHaveLength(0);
+    expect(reqs(f, "PUT", "/comments/8")).toHaveLength(1);
+    expect(f.comments[1]!.body).toContain("Droid is reviewing");
+    expect(reqs(f, "POST", "/statuses/build")).toHaveLength(0);
+  });
+
+  it("skips draft pull requests unless REVIEW_DRAFTS is set", async () => {
+    const f = useCloud({ draft: true });
+    process.env.BUILD_STATUS = "true";
+
+    const state = await prepare(deps);
+
+    expect(state).toMatchObject({
+      shouldRunReview: false,
+      reason: "draft",
+      trackingCommentId: null,
+    });
+    expect(reqs(f, "POST", "/comments")).toHaveLength(0);
+    expect(
+      reqs(f, "POST", "/statuses/build").map((r) => [
+        r.body.state,
+        r.body.description,
+      ]),
+    ).toEqual([["SUCCESSFUL", "Skipped: draft pull request"]]);
+
+    process.env.REVIEW_DRAFTS = "true";
+    expect((await prepare(deps)).shouldRunReview).toBe(true);
+  });
+
+  it("makes no API calls outside a pull request build or with review disabled", async () => {
+    const f = useCloud();
+    delete process.env.BITBUCKET_PR_ID;
+    expect(await prepare(deps)).toMatchObject({
+      shouldRunReview: false,
+      reason: "not-pull-request",
+    });
+
+    process.env.BITBUCKET_PR_ID = "42";
+    process.env.AUTOMATIC_REVIEW = "false";
+    expect(await prepare(deps)).toMatchObject({
+      reason: "automatic-review-disabled",
+    });
+    expect(f.server.requests).toHaveLength(0);
+
+    // Later steps no-op on a skipped state.
+    await prepareValidator();
+    await postReview();
+    await updateComment();
+    expect(f.server.requests).toHaveLength(0);
+  });
+
+  it("fails before touching the PR when FACTORY_API_KEY is missing", async () => {
+    const f = useCloud();
+    delete process.env.FACTORY_API_KEY;
+    await expect(prepare(deps)).rejects.toThrow(/Missing FACTORY_API_KEY/);
+    expect(reqs(f, "POST", "/comments")).toHaveLength(0);
+  });
+
+  it("reports a prepare failure that happens after the tracking comment exists", async () => {
+    const f = useCloud();
+    await expect(
+      prepare({
+        ...deps,
+        downgradeModel: () => {
+          throw new Error("droid CLI missing");
+        },
+      }),
+    ).rejects.toThrow("droid CLI missing");
+
+    process.env.DROID_SUCCESS = "true";
+    await updateComment({ retryDelayMs: 0 });
+
+    expect(f.comments[0]!.body).toContain("Droid encountered an error");
+    expect(f.comments[0]!.body).toContain("The prepare step did not finish.");
+  });
+
+  it("marks the review failed with error details and a FAILED build status", async () => {
+    const f = useCloud();
+    process.env.BUILD_STATUS = "true";
+    await prepare(deps);
+
+    process.env.DROID_SUCCESS = "false";
+    process.env.DROID_ERROR_DETAILS = "droid exec pass 1 (candidates) failed";
+    await updateComment({ retryDelayMs: 0 });
+
+    expect(f.comments[0]!.body).toContain("**Error details**");
+    expect(f.comments[0]!.body).toContain(
+      "droid exec pass 1 (candidates) failed",
+    );
+    expect(reqs(f, "POST", "/statuses/build").at(-1)!.body.state).toBe(
+      "FAILED",
+    );
+  });
+
+  it("fails the posting step when no approved comment reaches the PR", async () => {
+    const f = useCloud();
+    await prepare(deps);
+    await writeValidated([VALIDATED[0]]);
+    f.override = (req) =>
+      req.method === "POST" && req.path.endsWith("/comments")
+        ? json({ type: "error", error: { message: "Forbidden" } }, 403)
+        : undefined;
+
+    await expect(postReview({ retryDelayMs: 0 })).rejects.toThrow(
+      /all 1 approved comments failed to post\. First error: .*Bitbucket API 403/,
+    );
+  });
+
+  it("skips posting when the validator was short-circuited", async () => {
+    const f = useCloud();
+    await prepare(deps);
+    // Pass 1 wrote no candidates file.
+    await prepareValidator();
+    const before = f.server.requests.length;
+    await postReview();
+    expect(f.server.requests.length).toBe(before);
+    expect(
+      await fs.readFile(path.join(tmp, "droid-prompt.txt"), "utf8"),
+    ).toContain("No review findings to validate");
+  });
+
+  it("refuses to report success when Pass 2 wrote nothing", async () => {
+    useCloud();
+    const state = await prepare(deps);
+    await fs.writeFile(state.candidatesPath!, JSON.stringify({ comments: [] }));
+    await prepareValidator();
+    await expect(postReview()).rejects.toThrow(/Pass 2 did not write/);
+  });
+});
+
+describe("Bitbucket Data Center review steps (Jenkins)", () => {
+  it("runs the full flow from CHANGE_URL with DC anchors and versioned updates", async () => {
+    const f = useDataCenter();
+    process.env.BUILD_STATUS = "true";
+
+    const state = await prepare(deps);
+
+    expect(state).toMatchObject({
+      shouldRunReview: true,
+      prId: 12,
+      repoFullName: "PLAT/billing",
+      headSha: "c".repeat(40),
+      buildUrl: "https://jenkins.example.com/job/billing/PR-12/1/",
+      target: {
+        variant: "datacenter",
+        serverUrl: `${f.server.url}/bitbucket`,
+        projectKey: "PLAT",
+        repoSlug: "billing",
+      },
+    });
+    expect(
+      reqs(f, "POST", "/pull-requests/12/comments")[0]!.body.text,
+    ).toContain(BITBUCKET_TRACKING_MARKER);
+    expect(reqs(f, "POST", "/builds")[0]).toMatchObject({
+      path: `${DC_REPO}/commits/${"c".repeat(40)}/builds`,
+      body: { key: "droid-review", state: "INPROGRESS" },
+    });
+    expect(await fs.readFile(state.diffPath!, "utf8")).toContain(
+      "+const c = 4;",
+    );
+
+    await writeValidated(VALIDATED);
+    await postReview({ retryDelayMs: 0 });
+
+    const anchors = reqs(f, "POST", "/pull-requests/12/comments")
+      .slice(1)
+      .map((r) => r.body.anchor ?? null);
+    expect(anchors).toEqual([
+      {
+        diffType: "EFFECTIVE",
+        path: "src/app.ts",
+        line: 3,
+        lineType: "ADDED",
+        fileType: "TO",
+      },
+      {
+        diffType: "EFFECTIVE",
+        path: "src/app.ts",
+        line: 2,
+        lineType: "REMOVED",
+        fileType: "FROM",
+      },
+      null,
+    ]);
+
+    await updateComment({ retryDelayMs: 0 });
+    const puts = reqs(f, "PUT", `/comments/${state.trackingCommentId}`);
+    expect(puts).toHaveLength(1);
+    expect(puts[0]!.body.version).toBe(0);
+    expect(f.comments[0]!.body).toContain("Droid finished reviewing");
+    expect(reqs(f, "POST", "/builds").at(-1)!.body.state).toBe("SUCCESSFUL");
+  });
+
+  it("reuses the tracking comment found in the activity feed", async () => {
+    const f = useDataCenter({
+      comments: [
+        {
+          id: 3,
+          body: `${BITBUCKET_TRACKING_MARKER}\nprevious run`,
+          parentId: null,
+        },
+      ],
+    });
+    const state = await prepare(deps);
+    expect(state.trackingCommentId).toBe(3);
+    expect(reqs(f, "POST", "/comments")).toHaveLength(0);
+    expect(reqs(f, "PUT", "/comments/3")[0]!.body).toMatchObject({
+      version: 0,
+    });
+  });
+
+  it("reports a clear 401 for a bad token", async () => {
+    const f = useDataCenter();
+    f.override = () =>
+      json(
+        {
+          errors: [
+            {
+              message:
+                "Authentication failed. Please check your credentials and try again.",
+            },
+          ],
+        },
+        401,
+      );
+    await expect(prepare(deps)).rejects.toThrow(
+      /Bitbucket API 401: Unauthorized .*Authentication failed/,
+    );
+  });
+});

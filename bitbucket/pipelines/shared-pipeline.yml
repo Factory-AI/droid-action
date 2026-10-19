@@ -1,0 +1,29 @@
+# Central Droid code review pipeline for a whole Bitbucket Cloud workspace.
+#
+# Put this file in a dedicated repository in the workspace (for example
+# `droid-pipelines`) as its `bitbucket-pipelines.yml`. Each consuming
+# repository then needs only:
+#
+#   pipelines:
+#     pull-requests:
+#       "**":
+#         import: droid-pipelines:main:droid-review
+#
+# Imported pipelines run with the consuming repository's variables plus the
+# workspace variables, so define FACTORY_API_KEY and DROID_BITBUCKET_TOKEN
+# (a workspace access token) once as secured workspace variables.
+export: true
+
+definitions:
+  pipelines:
+    droid-review:
+      - step:
+          name: Droid code review
+          image: oven/bun:1.2.11
+          max-time: 60
+          script:
+            - apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates curl
+            - git clone --depth 1 --branch "${DROID_ACTION_REF:-main}" https://github.com/Factory-AI/droid-action.git /tmp/droid-action
+            - bash /tmp/droid-action/bitbucket/droid-review.sh
+          artifacts:
+            - .droid-debug/**

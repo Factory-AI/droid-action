@@ -1,0 +1,53 @@
+// Droid code review for Bitbucket Data Center pull requests on Jenkins.
+//
+// Requires the Bitbucket Branch Source plugin with a Multibranch Pipeline
+// (or a "Bitbucket Team/Project" organization folder) pointing at your
+// Bitbucket Data Center server and "Discover pull requests" enabled. The
+// plugin builds each PR as `PR-<id>` and sets CHANGE_URL, which the review
+// parses for the server URL, project key, repository slug and PR id.
+//
+// Credentials (Jenkins "Secret text"):
+//   factory-api-key        Factory API key
+//   bitbucket-droid-token  Bitbucket HTTP access token (Repository read)
+pipeline {
+  agent {
+    docker {
+      image 'oven/bun:1.2.11'
+      args '-u root'
+    }
+  }
+  options {
+    timeout(time: 60, unit: 'MINUTES')
+  }
+  environment {
+    DROID_ACTION_REF = 'main'
+    REVIEW_DEPTH = 'deep'
+    AUTOMATIC_SECURITY_REVIEW = 'false'
+    // Set to 'true' and require the `droid-review` build in Bitbucket to
+    // enforce the review through a Required builds merge check.
+    BUILD_STATUS = 'false'
+  }
+  stages {
+    stage('Droid code review') {
+      when { changeRequest() }
+      steps {
+        withCredentials([
+          string(credentialsId: 'factory-api-key', variable: 'FACTORY_API_KEY'),
+          string(credentialsId: 'bitbucket-droid-token', variable: 'DROID_BITBUCKET_TOKEN'),
+        ]) {
+          sh '''
+            apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates curl
+            rm -rf /tmp/droid-action
+            git clone --depth 1 --branch "$DROID_ACTION_REF" https://github.com/Factory-AI/droid-action.git /tmp/droid-action
+            bash /tmp/droid-action/bitbucket/droid-review.sh
+          '''
+        }
+      }
+    }
+  }
+  post {
+    always {
+      archiveArtifacts artifacts: '.droid-debug/**', allowEmptyArchive: true
+    }
+  }
+}
