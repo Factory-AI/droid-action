@@ -49,3 +49,6 @@ Droid review:
     - name: droid-debug
       pattern: ".droid-debug/**"
       shared: false
+      # Bamboo YAML artifacts are required by default; non-PR builds exit
+      # before .droid-debug exists and would otherwise fail.
+      required: false

@@ -72,6 +72,16 @@ describe("Bitbucket Data Center CI examples", () => {
     expect(script).toContain(
       'bash "$DROID_TMP/droid-action/bitbucket/droid-review.sh"',
     );
+    // Non-PR builds exit before .droid-debug exists, and Bamboo YAML
+    // artifacts are required unless marked otherwise.
+    expect(doc[jobName].artifacts).toEqual([
+      {
+        name: "droid-debug",
+        pattern: ".droid-debug/**",
+        shared: false,
+        required: false,
+      },
+    ]);
   });
 
   it.each([

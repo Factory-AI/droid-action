@@ -41,7 +41,17 @@ A fixed path such as `/tmp/droid-action` is fine in Bitbucket Pipelines, where e
 
 Both `droid exec` passes run without the Bitbucket credentials in their environment (including any other variable holding the same secret, such as Bamboo's `bamboo_..._SECRET`) and without any tool that can post to the pull request. The steps that hold the credentials run from the action checkout, so `.env` or `bunfig.toml` files in the pull request are never loaded. They keep `Execute` for investigating the code, so treat the review job like any CI job that builds untrusted code.
 
-The agent needs `bash`, `git`, `curl`, and `bun` 1.2.x (the script installs bun if `unzip` is available). Network access: `github.com`, `registry.npmjs.org`, `app.factory.ai`, your Bitbucket API host, and `bun.sh` when bun is not preinstalled.
+The agent needs `bash`, `git`, `curl`, and `bun` 1.2.x (the script installs bun if `unzip` is available). It needs outbound HTTPS to:
+
+- `github.com`, to clone droid-action (or your mirror's host, if you change the clone URL).
+- `registry.npmjs.org`, for `bun install` of droid-action's dependencies.
+- `app.factory.ai`, for the Droid CLI installer script and the Factory API.
+- `downloads.factory.ai`, for the Droid CLI binary and its checksum.
+- `api.factory.ai`, for the Factory API that `droid exec` calls.
+- Your Bitbucket API host: `api.bitbucket.org` on Cloud, or your server URL on Data Center.
+- Only when bun is not preinstalled (Jenkins, Bamboo, or other CI): `bun.sh` for the installer, plus `github.com` and `release-assets.githubusercontent.com` for the bun release download.
+- Only in the Pipelines templates: `deb.debian.org`, where the `oven/bun` image installs `git` and `curl` with `apt-get`.
+- Only when `ORG_GUIDELINES_SOURCE` is a URL or git repository: that host.
 
 **Pinning:** `DROID_ACTION_REF` is a branch or tag (not a SHA). Pin a release tag for reproducible runs. Set `DROID_ACTION_REPO` and change the clone URL to use a private mirror.
 
