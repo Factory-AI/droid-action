@@ -25,8 +25,8 @@ is GA on Services and on Server 2020+. Override it with an
 Azure Repos ignores the YAML `pr:` trigger, so PR runs come from a
 **Build validation branch policy** on the target branch. Each run:
 
-1. Skips anything that is not a PR build, draft PRs, and PRs that are not
-   active.
+1. Skips anything that is not a PR build, draft PRs (unless
+   `REVIEW_DRAFTS` is `"true"`), and PRs that are not active.
 2. Creates (or reuses) the tracking comment on the PR.
 3. Builds the diff locally from the PR iteration's merge base and source
    commit, and checks out the source commit.
@@ -91,6 +91,7 @@ steps:
       AUTOMATIC_SECURITY_REVIEW: "false"
       REVIEW_DEPTH: deep
       INCLUDE_SUGGESTIONS: "true"
+      REVIEW_DRAFTS: "false"
 
   # Build artifacts work on Services and Server alike; the `publish`
   # shortcut (Pipeline Artifacts) is Services-only.
@@ -177,6 +178,8 @@ Project settings > Repositories > Security > select the identity > set
    Build validation > + > select the pipeline. Recommended: trigger
    Automatic, policy requirement **Optional**, build expiration
    **Never**. Optional keeps a Factory outage from blocking merges.
+   If you make the policy **Required**, also set `REVIEW_DRAFTS: "true"`
+   (see Drafts below).
 
 The `/install-code-review` skill in the Droid CLI automates these steps
 through the REST API, including org-wide rollout across repositories.
@@ -192,6 +195,7 @@ Set these in the review step's `env:`:
 | `REVIEW_DEPTH`                                                         | `deep`                               | `deep` (thorough) or `shallow` (fast).                                                                                                             |
 | `REVIEW_MODEL` / `REASONING_EFFORT`                                    | `""`                                 | Advanced overrides of the depth preset.                                                                                                            |
 | `INCLUDE_SUGGESTIONS`                                                  | `"true"`                             | Allow suggestion blocks in review comments.                                                                                                        |
+| `REVIEW_DRAFTS`                                                        | `"false"`                            | Review draft PRs too. Set it to `"true"` whenever the build policy is Required (blocking); see Drafts below.                                       |
 | `SECURITY_BLOCK_ON_CRITICAL` / `SECURITY_BLOCK_ON_HIGH`                | `"true"` / `"false"`                 | Accepted for parity with GitLab; currently informational only.                                                                                     |
 | `DROID_SETTINGS`                                                       | `""`                                 | Droid Exec settings as JSON or a path to a JSON file.                                                                                              |
 | `ORG_GUIDELINES_SOURCE` / `ORG_GUIDELINES_REF` / `ORG_GUIDELINES_PATH` | `""` / `""` / `review-guidelines.md` | Org-wide guidelines from a local file, a public http(s) URL, or a git clone URL. The GitLab-only `group/repo` shorthand is ignored with a warning. |
@@ -213,9 +217,13 @@ Fork pull requests are skipped before anything is posted: Azure Pipelines
 withholds secrets from fork builds, and the job should not run fork code
 with a token that can write to the PR.
 
-Drafts: Azure DevOps does not re-run build policies when a draft is
-published. The review runs on the next push, or when you queue the check
-again from the PR.
+Drafts: by default draft PRs are skipped, and the run still succeeds.
+Azure DevOps does not re-run build policies when a draft is published, so
+that skipped run keeps satisfying the policy until the next push. With an
+Optional policy this only delays the review. With a **Required** (blocking)
+policy it means a draft published without a new push can be completed
+without any review, so set `REVIEW_DRAFTS: "true"` in that case. Drafts are
+then reviewed like any other PR.
 
 ## Troubleshooting
 

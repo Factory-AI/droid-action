@@ -49,6 +49,8 @@ describe("azure-devops/droid-review.yml", () => {
       AUTOMATIC_REVIEW: "true",
       AUTOMATIC_SECURITY_REVIEW: "false",
       REVIEW_DEPTH: "deep",
+      // Off by default; the skill turns it on for blocking policies.
+      REVIEW_DRAFTS: "false",
     });
     const script = step.bash as string;
     expect(script).toContain(

@@ -47,6 +47,7 @@ export type ParsedAzureDevopsContext = {
     reviewModel: string;
     reasoningEffort: string;
     includeSuggestions: boolean;
+    reviewDrafts: boolean;
     securityBlockOnCritical: boolean;
     securityBlockOnHigh: boolean;
     settings: string;
@@ -145,6 +146,7 @@ export function parseAzureDevopsContext(
       reviewModel: optional(env, "REVIEW_MODEL") ?? "",
       reasoningEffort: optional(env, "REASONING_EFFORT") ?? "",
       includeSuggestions: flag(env, "INCLUDE_SUGGESTIONS", true),
+      reviewDrafts: flag(env, "REVIEW_DRAFTS", false),
       securityBlockOnCritical: flag(env, "SECURITY_BLOCK_ON_CRITICAL", true),
       securityBlockOnHigh: flag(env, "SECURITY_BLOCK_ON_HIGH", false),
       settings: optional(env, "DROID_SETTINGS") ?? "",

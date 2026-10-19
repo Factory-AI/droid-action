@@ -84,6 +84,11 @@ describe("parseAzureDevopsContext", () => {
     expect(ctx.inputs.automaticSecurityReview).toBe(true);
     expect(ctx.inputs.reviewDepth).toBe("shallow");
     expect(ctx.inputs.includeSuggestions).toBe(false);
+    expect(ctx.inputs.reviewDrafts).toBe(false);
+    expect(
+      parseAzureDevopsContext({ ...SERVICES_ENV, REVIEW_DRAFTS: "true" }).inputs
+        .reviewDrafts,
+    ).toBe(true);
     expect(ctx.inputs.securityBlockOnCritical).toBe(true);
     expect(ctx.pullRequest?.isFork).toBe(true);
   });

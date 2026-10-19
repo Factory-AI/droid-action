@@ -47,6 +47,7 @@ steps:
       AUTOMATIC_SECURITY_REVIEW: "false"
       REVIEW_DEPTH: deep
       INCLUDE_SUGGESTIONS: "true"
+      REVIEW_DRAFTS: "false"
 
   # Build artifacts work on Services and Server alike; the `publish`
   # shortcut (Pipeline Artifacts) is Services-only.

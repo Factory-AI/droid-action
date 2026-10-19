@@ -4,7 +4,7 @@
  * Prepare step for Azure Pipelines PR builds (before Pass 1).
  *
  *   1. Parse the pipeline env; skip anything that is not an Azure Repos PR
- *      build, a draft, or an inactive PR.
+ *      build, a draft (unless REVIEW_DRAFTS), or an inactive PR.
  *   2. Create or reuse the sticky tracking thread.
  *   3. Pick the PR iteration this build was queued for, check out its
  *      source commit, and write the diff / existing comments / description
@@ -190,7 +190,11 @@ export async function run(
   });
 
   const pr = await client.getPullRequest(pullRequestId);
-  if (pr.isDraft) return skip("draft-pull-request");
+  // Publishing a draft does not re-run build policies, so under a blocking
+  // policy a skipped draft run would let the PR merge unreviewed.
+  if (pr.isDraft && !ctx.inputs.reviewDrafts) {
+    return skip("draft-pull-request");
+  }
   if (pr.status !== "active") return skip(`pull-request-${pr.status}`);
 
   const threads = await client.listThreads(pullRequestId);

@@ -176,6 +176,20 @@ describe("azure-devops-prepare", () => {
     expect(readState(env).shouldRunReview).toBe(false);
   });
 
+  it("reviews draft pull requests when REVIEW_DRAFTS is true", async () => {
+    const fake = fakeAdo(pullRequest({ isDraft: true }));
+    const env = envFor({ REVIEW_DRAFTS: "true" });
+    const state = await prepare(deps(env, fake));
+    expect(state.shouldRunReview).toBe(true);
+    expect(state.reason).toBeUndefined();
+    expect(fs.existsSync(state.promptPath!)).toBe(true);
+    expect(
+      fake.requests.some(
+        (r) => r.method === "POST" && r.url.includes(`${PR_PATH}/threads`),
+      ),
+    ).toBe(true);
+  });
+
   it("skips abandoned pull requests", async () => {
     const fake = fakeAdo(pullRequest({ status: "abandoned" }));
     const state = await prepare(deps(envFor(), fake));
