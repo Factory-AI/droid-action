@@ -60,22 +60,42 @@ export function resolveBitbucketAuth(
 ): BitbucketAuth {
   const token = read(env, "DROID_BITBUCKET_TOKEN");
   if (token) {
-    return { scheme: "bearer", header: `Bearer ${token}` };
+    return { header: `Bearer ${token}` };
   }
   const username = read(env, "DROID_BITBUCKET_USERNAME");
   const apiToken = read(env, "DROID_BITBUCKET_API_TOKEN");
   if (username && apiToken) {
     const encoded = Buffer.from(`${username}:${apiToken}`).toString("base64");
-    return { scheme: "basic", header: `Basic ${encoded}` };
+    return { header: `Basic ${encoded}` };
   }
   throw new MissingBitbucketCredentialsError();
 }
 
-/** Copy of `env` without any Bitbucket credential, for `droid exec`. */
+/** Variables whose value is a secret (the username is not). */
+const SECRET_ENV_VARS = [
+  "DROID_BITBUCKET_TOKEN",
+  "DROID_BITBUCKET_API_TOKEN",
+  "BITBUCKET_STEP_OIDC_TOKEN",
+] as const;
+
+/**
+ * Copy of `env` without any Bitbucket credential, for `droid exec`. CI
+ * systems often keep the original secret under another name (Bamboo's
+ * `bamboo_..._SECRET` that the template copies into DROID_BITBUCKET_TOKEN),
+ * so any variable holding the same value goes too.
+ */
 export function withoutBitbucketCredentials(
   env: NodeJS.ProcessEnv,
 ): NodeJS.ProcessEnv {
+  const secrets = new Set(
+    SECRET_ENV_VARS.map((name) => env[name]?.trim()).filter((v): v is string =>
+      Boolean(v),
+    ),
+  );
   const out = { ...env };
   for (const name of BITBUCKET_CREDENTIAL_ENV_VARS) delete out[name];
+  for (const [name, value] of Object.entries(out)) {
+    if (value !== undefined && secrets.has(value.trim())) delete out[name];
+  }
   return out;
 }

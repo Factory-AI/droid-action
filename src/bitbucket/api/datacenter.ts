@@ -123,9 +123,9 @@ function toComment(
  * https://developer.atlassian.com/server/bitbucket/rest/
  */
 export class BitbucketDataCenterClient implements BitbucketClient {
-  readonly variant = "datacenter" as const;
   // DC inline comments anchor to exactly one line.
   readonly supportsMultiLineComments = false;
+  readonly pinsAnchorsToCommits = true;
   private readonly http: BitbucketHttp;
   private readonly repoUrl: string;
   private readonly prUrl: string;
@@ -166,12 +166,10 @@ export class BitbucketDataCenterClient implements BitbucketClient {
       title: pr.title ?? "",
       description: pr.description ?? "",
       draft: pr.draft === true,
-      state: pr.state,
       sourceBranch: pr.fromRef?.displayId ?? "",
       targetBranch: pr.toRef?.displayId ?? "",
       headSha: pr.fromRef?.latestCommit ?? null,
       baseSha: pr.toRef?.latestCommit ?? null,
-      authorName: pr.author?.user?.name ?? pr.author?.user?.displayName ?? null,
       webUrl: pr.links?.self?.[0]?.href ?? null,
     };
   }

@@ -14,7 +14,7 @@ import {
   type FakeServer,
 } from "./fake-server";
 
-const AUTH = { scheme: "bearer" as const, header: "Bearer dc-secret" };
+const AUTH = { header: "Bearer dc-secret" };
 const REPO = "/bitbucket/rest/api/1.0/projects/PROJ/repos/my-repo";
 const PR = `${REPO}/pull-requests/12`;
 
@@ -145,12 +145,10 @@ describe("BitbucketDataCenterClient", () => {
       title: "Add c",
       description: "Adds c",
       draft: false,
-      state: "OPEN",
       sourceBranch: "feature/c",
       targetBranch: "main",
       headSha: "a".repeat(40),
       baseSha: "b".repeat(40),
-      authorName: "ada",
       webUrl:
         "https://bb.example.com/projects/PROJ/repos/my-repo/pull-requests/12",
     });
@@ -372,7 +370,6 @@ describe("BitbucketDataCenterClient", () => {
       oldPath: "src/app.ts",
       line: 3,
       lineType: "ADDED",
-      oldLine: null,
       startLine: 2,
     });
     await c.createInlineComment("removed", {
@@ -380,7 +377,6 @@ describe("BitbucketDataCenterClient", () => {
       oldPath: null,
       line: 2,
       lineType: "REMOVED",
-      oldLine: 2,
       startLine: null,
     });
     await c.createInlineComment("context in renamed file", {
@@ -388,7 +384,6 @@ describe("BitbucketDataCenterClient", () => {
       oldPath: "src/old.ts",
       line: 4,
       lineType: "CONTEXT",
-      oldLine: 3,
       startLine: null,
     });
 
@@ -434,7 +429,6 @@ describe("BitbucketDataCenterClient", () => {
       oldPath: null,
       line: 3,
       lineType: "ADDED",
-      oldLine: null,
       startLine: null,
       diffRefs: { fromHash: "b".repeat(40), toHash: "a".repeat(40) },
     });

@@ -14,7 +14,6 @@ import type {
 } from "../types";
 
 export type BitbucketReviewArtifacts = ReviewArtifactPaths & {
-  diff: string;
   diffTruncated: boolean;
 };
 
@@ -39,5 +38,5 @@ export async function computeReviewArtifacts(opts: {
       description: "pr_description.txt",
     },
   );
-  return { ...paths, diff: diff.text, diffTruncated: diff.truncated };
+  return { ...paths, diffTruncated: diff.truncated };
 }

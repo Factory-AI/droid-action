@@ -204,8 +204,6 @@ export async function run(
     descriptionPath: null,
     candidatesPath: null,
     validatedPath: null,
-    resolvedModel: null,
-    resolvedReasoningEffort: null,
   };
 
   const skip = async (reason: string, message: string) => {
@@ -357,8 +355,6 @@ export async function run(
   await writeResolvedEnvShim({
     RESOLVED_MODEL: resolved.model ?? null,
     RESOLVED_REASONING_EFFORT: resolved.reasoningEffort ?? null,
-    DROID_PR_ID: String(pr.id),
-    DROID_TRACKING_COMMENT_ID: String(trackingCommentId),
     DROID_SESSION_TAG_CANDIDATES: sessionTag("candidates"),
     DROID_SESSION_TAG_VALIDATOR: sessionTag("validator"),
   });
@@ -394,8 +390,6 @@ export async function run(
     descriptionPath: artifacts.descriptionPath,
     candidatesPath: promptCtx.candidatesPath,
     validatedPath: promptCtx.validatedPath,
-    resolvedModel: resolved.model ?? null,
-    resolvedReasoningEffort: resolved.reasoningEffort ?? null,
   };
   await writeState(state);
   return state;

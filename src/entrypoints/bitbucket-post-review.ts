@@ -12,6 +12,7 @@ import * as path from "path";
 import { createBitbucketClient } from "../bitbucket/api/client";
 import { resolveBitbucketAuth } from "../bitbucket/token";
 import { postReview } from "../bitbucket/operations/post-review";
+import type { BitbucketClient } from "../bitbucket/types";
 import {
   postResultsFilePath,
   readState,
@@ -23,6 +24,35 @@ import {
 } from "../core/review/validated/diff";
 import { parseValidatedReview } from "../core/review/validated/parse";
 import type { ReviewPostResults } from "../core/review/tracking/types";
+
+/**
+ * Bitbucket Cloud places an inline comment on the pull request's current
+ * diff. If commits landed during the review, the reviewed line numbers can
+ * point at different code, so the findings must not anchor inline.
+ */
+async function headChangedReason(
+  client: BitbucketClient,
+  reviewedSha: string | null,
+): Promise<string | null> {
+  if (!reviewedSha) return null;
+  let current: string | null;
+  try {
+    current = (await client.getPullRequest()).headSha;
+  } catch (error) {
+    console.warn(
+      `Could not re-check the pull request head before posting: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return null;
+  }
+  if (
+    !current ||
+    current.startsWith(reviewedSha) ||
+    reviewedSha.startsWith(current)
+  ) {
+    return null;
+  }
+  return `reviewed at commit ${reviewedSha.slice(0, 12)}; the pull request has changed since`;
+}
 
 export async function run(
   options: { retryDelayMs?: number } = {},
@@ -40,10 +70,10 @@ export async function run(
     return;
   }
   if (state.validatorSkippedReason) {
-    console.log(
-      `Pass 2 was skipped (${state.validatorSkippedReason}); nothing to post.`,
+    throw new Error(
+      `bitbucket-post-review: Pass 1 did not produce valid review candidates ` +
+        `(${state.validatorSkippedReason}); nothing was validated or posted.`,
     );
-    return;
   }
   if (!state.target) {
     throw new Error(
@@ -88,11 +118,17 @@ export async function run(
     state.baseSha && state.headSha
       ? { fromHash: state.baseSha, toHash: state.headSha }
       : null;
+  const inlineBlockedReason =
+    parsed.approved.length > 0 && !client.pinsAnchorsToCommits
+      ? await headChangedReason(client, state.headSha)
+      : null;
+  if (inlineBlockedReason) console.warn(inlineBlockedReason);
   const result = await postReview({
     client,
     comments: parsed.approved,
     index,
     diffRefs,
+    inlineBlockedReason,
   });
 
   const results: ReviewPostResults = {

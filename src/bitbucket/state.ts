@@ -35,8 +35,6 @@ export type BitbucketPrepareState = {
   descriptionPath: string | null;
   candidatesPath: string | null;
   validatedPath: string | null;
-  resolvedModel: string | null;
-  resolvedReasoningEffort: string | null;
   /** Set when Pass 1 left no usable candidates, so Pass 2 never ran. */
   validatorSkippedReason?: string;
 };

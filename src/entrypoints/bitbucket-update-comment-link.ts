@@ -32,11 +32,20 @@ export async function run(
     return;
   }
 
+  // Pass 1 exiting cleanly without usable candidates means nothing was
+  // validated or posted; a passing droid-review build must not hide that.
+  const skippedValidation = state.validatorSkippedReason
+    ? `Pass 1 did not produce valid review candidates (${state.validatorSkippedReason}), so no findings were validated or posted.`
+    : null;
   const success =
-    process.env.DROID_SUCCESS !== "false" && state.shouldRunReview;
+    process.env.DROID_SUCCESS !== "false" &&
+    state.shouldRunReview &&
+    !skippedValidation;
   const errorDetails =
     process.env.DROID_ERROR_DETAILS ||
-    (state.shouldRunReview ? null : "The prepare step did not finish.");
+    (state.shouldRunReview
+      ? skippedValidation
+      : "The prepare step did not finish.");
 
   const telemetry = await collectExecTelemetry({
     pass1LogPath: process.env.DROID_PASS1_LOG || null,

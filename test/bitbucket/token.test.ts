@@ -9,7 +9,6 @@ import {
 describe("resolveBitbucketAuth", () => {
   it("uses Bearer for an access token", () => {
     expect(resolveBitbucketAuth({ DROID_BITBUCKET_TOKEN: " tok " })).toEqual({
-      scheme: "bearer",
       header: "Bearer tok",
     });
   });
@@ -21,7 +20,6 @@ describe("resolveBitbucketAuth", () => {
         DROID_BITBUCKET_API_TOKEN: "secret",
       }),
     ).toEqual({
-      scheme: "basic",
       header: "Basic ZGV2QGV4YW1wbGUuY29tOnNlY3JldA==",
     });
   });
@@ -32,8 +30,8 @@ describe("resolveBitbucketAuth", () => {
         DROID_BITBUCKET_TOKEN: "tok",
         DROID_BITBUCKET_USERNAME: "u",
         DROID_BITBUCKET_API_TOKEN: "p",
-      }).scheme,
-    ).toBe("bearer");
+      }).header,
+    ).toBe("Bearer tok");
   });
 
   it("requires both halves of Basic auth", () => {
@@ -96,5 +94,22 @@ describe("withoutBitbucketCredentials", () => {
       BITBUCKET_PR_ID: "1",
     });
     expect(env.DROID_BITBUCKET_TOKEN).toBe("a");
+  });
+
+  it("also drops CI aliases that hold the same secret, such as Bamboo's", () => {
+    const env = {
+      DROID_BITBUCKET_TOKEN: "bb-secret",
+      bamboo_DROID_BITBUCKET_TOKEN_SECRET: "bb-secret",
+      DROID_BITBUCKET_USERNAME: "dev@example.com",
+      DROID_BITBUCKET_API_TOKEN: "api-secret",
+      bamboo_API_TOKEN_SECRET: " api-secret ",
+      bamboo_planKey: "PROJ-PLAN",
+      AUTHOR_EMAIL: "dev@example.com",
+    };
+    expect(withoutBitbucketCredentials(env)).toEqual({
+      bamboo_planKey: "PROJ-PLAN",
+      // A username is not a secret; only token values are matched.
+      AUTHOR_EMAIL: "dev@example.com",
+    });
   });
 });

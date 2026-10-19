@@ -12,7 +12,6 @@ export type BitbucketPullRequest = {
   description: string;
   /** Cloud `draft`; DC 8.18+ `draft`. False when the server has no drafts. */
   draft: boolean;
-  state: string;
   sourceBranch: string;
   targetBranch: string;
   /** Full SHA of the source branch head. */
@@ -22,7 +21,6 @@ export type BitbucketPullRequest = {
    * Cloud runtime never needs it.
    */
   baseSha: string | null;
-  authorName: string | null;
   webUrl: string | null;
 };
 
@@ -50,7 +48,6 @@ export type BitbucketInlineAnchor = {
   oldPath: string | null;
   line: number;
   lineType: BitbucketLineType;
-  oldLine: number | null;
   /** Start of a multi-line span on the same side, or null. */
   startLine: number | null;
   /**
@@ -79,9 +76,14 @@ export type BitbucketBuildStatus = {
 };
 
 export interface BitbucketClient {
-  readonly variant: BitbucketVariant;
   /** Whether inline comments can span several lines. */
   readonly supportsMultiLineComments: boolean;
+  /**
+   * Whether inline anchors can name the commits they were computed against
+   * (`BitbucketInlineAnchor.diffRefs`). Without it, an anchor always lands on
+   * the pull request's current diff.
+   */
+  readonly pinsAnchorsToCommits: boolean;
   getPullRequest(): Promise<BitbucketPullRequest>;
   getDiff(): Promise<BitbucketDiff>;
   /** Every non-deleted comment on the pull request, replies included. */

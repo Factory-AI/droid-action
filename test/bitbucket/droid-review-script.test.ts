@@ -24,7 +24,7 @@ const FAKE_DROID = `#!/usr/bin/env bash
 if [ "$1" = "--version" ]; then echo "droid 0.0.0-test"; exit 0; fi
 for a in "$@"; do [ "$a" = "--list-tools" ] && exit 0; done
 { printf '%s\\0' "$@"; printf '\\n'; } >> "$FAKE_DIR/argv"
-if [ -n "\${DROID_BITBUCKET_TOKEN:-}" ]; then echo leaked > "$FAKE_DIR/leak"; fi
+if env | grep -q bb-secret; then env | grep bb-secret | cut -d= -f1 > "$FAKE_DIR/leak"; fi
 prompt=""
 while [ $# -gt 0 ]; do [ "$1" = "-f" ] && prompt="$2"; shift; done
 dir="$(dirname "$prompt")"
@@ -42,6 +42,7 @@ fi
 let tmp: string;
 let server: FakeServer;
 let comments: Array<{ id: number; body: string }>;
+let failCommentUpdates = false;
 
 beforeEach(async () => {
   tmp = await fs.mkdtemp(path.join(os.tmpdir(), "droid-bb-sh-"));
@@ -70,6 +71,7 @@ beforeEach(async () => {
     }),
   );
   comments = [];
+  failCommentUpdates = false;
   let nextId = 1;
   server = startFakeServer((req, url) => {
     const p = url.pathname;
@@ -101,6 +103,9 @@ beforeEach(async () => {
       return json({ id: c.id, content: { raw: c.body } }, 201);
     }
     const edit = /\/comments\/(\d+)$/.exec(p);
+    if (edit && req.method === "PUT" && failCommentUpdates) {
+      return json({ type: "error", error: { message: "boom" } }, 400);
+    }
     if (edit && req.method === "PUT") {
       const c = comments.find((x) => x.id === Number(edit[1]))!;
       c.body = req.body.content.raw;
@@ -284,6 +289,48 @@ describe("bitbucket/droid-review.sh", () => {
     await fs.writeFile(path.join(action, "bun.lock"), "lock v2");
     await run();
     expect(await installs()).toBe(2);
+  }, 60_000);
+
+  it("keeps a CI alias of the token (Bamboo) out of both passes", async () => {
+    const { code } = await runScript({
+      bamboo_DROID_BITBUCKET_TOKEN_SECRET: "bb-secret",
+    });
+    expect(code).toBe(0);
+    expect(await argvCalls()).toHaveLength(2);
+    expect(await exists(path.join(tmp, "leak"))).toBe(false);
+  }, 60_000);
+
+  it("ignores .env and bunfig.toml that a pull request adds to its checkout", async () => {
+    const work = path.join(tmp, "work");
+    await fs.writeFile(
+      path.join(work, ".env"),
+      "DROID_BUILD_URL=https://evil.example/build\n",
+    );
+    await fs.writeFile(
+      path.join(work, "bunfig.toml"),
+      'preload = ["./evil.ts"]\n',
+    );
+    await fs.writeFile(
+      path.join(work, "evil.ts"),
+      `require("fs").writeFileSync(${JSON.stringify(path.join(tmp, "pwned"))}, String(process.env.DROID_BITBUCKET_TOKEN));\n`,
+    );
+
+    const { code } = await runScript();
+
+    expect(code).toBe(0);
+    expect(await exists(path.join(tmp, "pwned"))).toBe(false);
+    expect(comments[0]!.body).not.toContain("evil.example");
+  }, 60_000);
+
+  it("fails the job when the final tracking update fails", async () => {
+    failCommentUpdates = true;
+    const { code, output } = await runScript();
+    expect(code).not.toBe(0);
+    expect(output).toContain(
+      "could not update the tracking comment with the final result",
+    );
+    // The review itself ran and posted.
+    expect(comments.map((c) => c.body)).toContain("[P1] c is unused");
   }, 60_000);
 
   it("fails with the credential guidance when no token is configured", async () => {

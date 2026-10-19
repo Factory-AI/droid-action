@@ -39,7 +39,7 @@ A fixed path such as `/tmp/droid-action` is fine in Bitbucket Pipelines, where e
 5. `bitbucket-post-review` posts the approved findings through the Bitbucket REST API.
 6. `bitbucket-update-comment-link` always runs last and renders the final tracking comment (and build status).
 
-Both `droid exec` passes run without the Bitbucket credentials in their environment and without any tool that can post to the pull request. They keep `Execute` for investigating the code, so treat the review job like any CI job that builds untrusted code.
+Both `droid exec` passes run without the Bitbucket credentials in their environment (including any other variable holding the same secret, such as Bamboo's `bamboo_..._SECRET`) and without any tool that can post to the pull request. The steps that hold the credentials run from the action checkout, so `.env` or `bunfig.toml` files in the pull request are never loaded. They keep `Execute` for investigating the code, so treat the review job like any CI job that builds untrusted code.
 
 The agent needs `bash`, `git`, `curl`, and `bun` 1.2.x (the script installs bun if `unzip` is available). Network access: `github.com`, `registry.npmjs.org`, `app.factory.ai`, your Bitbucket API host, and `bun.sh` when bun is not preinstalled.
 
@@ -106,7 +106,9 @@ Secured variables are not available to pull requests from forks, so forked PRs f
 
 ### Whole workspace
 
-Bitbucket Cloud shared pipeline configurations let one repository own the pipeline definition:
+**Requires the Bitbucket Cloud Premium plan.** Sharing Pipelines configurations across repositories (`export: true` / `import:`) is a Premium-only feature ([Atlassian: Share Pipelines Configurations](https://support.atlassian.com/bitbucket-cloud/docs/share-pipelines-configurations/)). On Free or Standard, use the [single-repository](#single-repository) file in every repository instead.
+
+With Premium, shared pipeline configurations let one repository own the pipeline definition:
 
 1. Create a repository in the workspace (for example `droid-pipelines`) and commit [`bitbucket/pipelines/shared-pipeline.yml`](../bitbucket/pipelines/shared-pipeline.yml) as its `bitbucket-pipelines.yml` (it sets `export: true`).
 2. Add secured **workspace** variables `FACTORY_API_KEY` and `DROID_BITBUCKET_TOKEN` (a workspace access token): Workspace settings → Workspace variables, or `POST /2.0/workspaces/{workspace}/pipelines-config/variables`.

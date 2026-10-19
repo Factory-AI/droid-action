@@ -6,7 +6,6 @@
  */
 
 export type BitbucketAuth = {
-  scheme: "bearer" | "basic";
   /** Full `Authorization` header value. Never log it. */
   header: string;
 };

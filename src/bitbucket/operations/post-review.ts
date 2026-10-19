@@ -36,8 +36,8 @@ export function resolveInlineAnchor(
 
   if (!index) {
     return comment.side === "LEFT"
-      ? { anchor: { ...base, line, lineType: "REMOVED", oldLine: line } }
-      : { anchor: { ...base, line, lineType: "ADDED", oldLine: null } };
+      ? { anchor: { ...base, line, lineType: "REMOVED" } }
+      : { anchor: { ...base, line, lineType: "ADDED" } };
   }
 
   const file =
@@ -50,7 +50,7 @@ export function resolveInlineAnchor(
       return { reason: `old line ${line} is not part of the PR diff` };
     }
     if (entry === "removed") {
-      return { anchor: { ...base, line, lineType: "REMOVED", oldLine: line } };
+      return { anchor: { ...base, line, lineType: "REMOVED" } };
     }
     // An unchanged line exists on both sides; anchor it on the new file.
     return {
@@ -58,7 +58,6 @@ export function resolveInlineAnchor(
         ...base,
         line: entry,
         lineType: "CONTEXT",
-        oldLine: line,
         startLine: null,
       },
     };
@@ -69,20 +68,21 @@ export function resolveInlineAnchor(
     return { reason: `line ${line} is not part of the PR diff` };
   }
   if (entry === "added") {
-    return { anchor: { ...base, line, lineType: "ADDED", oldLine: null } };
+    return { anchor: { ...base, line, lineType: "ADDED" } };
   }
-  return { anchor: { ...base, line, lineType: "CONTEXT", oldLine: entry } };
+  return { anchor: { ...base, line, lineType: "CONTEXT" } };
 }
 
 export function fallbackCommentBody(
   comment: ValidatedReviewComment,
   line: number | null,
+  why = "could not be posted inline",
 ): string {
   const filePath =
     comment.side === "LEFT" ? (comment.old_path ?? comment.path) : comment.path;
   const location = line !== null ? `${filePath}:${line}` : filePath;
   return (
-    `**\`${location}\`** (could not be posted inline, ` +
+    `**\`${location}\`** (${why}, ` +
     `so the finding is posted as a regular comment)\n\n${comment.body}`
   );
 }
@@ -93,9 +93,16 @@ export async function postReview(options: {
   index: Map<string, FileLineIndex> | null;
   /** Commits the reviewed diff was computed between, when known. */
   diffRefs?: { fromHash: string; toHash: string } | null;
+  /**
+   * Set when inline anchors would land on the wrong code (the pull request
+   * changed after the review and the client cannot pin anchors); every
+   * finding then posts as a regular comment explaining why.
+   */
+  inlineBlockedReason?: string | null;
 }): Promise<PostReviewResult> {
   const { client, comments, index } = options;
   const diffRefs = options.diffRefs ?? null;
+  const blocked = options.inlineBlockedReason ?? null;
   const result: PostReviewResult = {
     posted: 0,
     fallbackPosted: 0,
@@ -110,7 +117,9 @@ export async function postReview(options: {
 
     let lastError = "";
     let posted = false;
-    if ("reason" in resolved) {
+    if (blocked) {
+      lastError = blocked;
+    } else if ("reason" in resolved) {
       lastError = resolved.reason;
     } else {
       const pinned = { ...resolved.anchor, diffRefs };
@@ -138,7 +147,9 @@ export async function postReview(options: {
     }
 
     try {
-      await client.createComment(fallbackCommentBody(comment, line));
+      await client.createComment(
+        fallbackCommentBody(comment, line, blocked ?? undefined),
+      );
       result.fallbackPosted += 1;
       console.log(`  ${label} posted as a regular comment (${lastError})`);
     } catch (fallbackError) {

@@ -51,8 +51,8 @@ function toComment(c: CloudComment): BitbucketComment {
  * https://developer.atlassian.com/cloud/bitbucket/rest/api-group-pullrequests/
  */
 export class BitbucketCloudClient implements BitbucketClient {
-  readonly variant = "cloud" as const;
   readonly supportsMultiLineComments = true;
+  readonly pinsAnchorsToCommits = false;
   private readonly http: BitbucketHttp;
   private readonly repoUrl: string;
   private readonly prUrl: string;
@@ -82,12 +82,10 @@ export class BitbucketCloudClient implements BitbucketClient {
       title: pr.title ?? "",
       description: pr.description ?? "",
       draft: pr.draft === true,
-      state: pr.state,
       sourceBranch: pr.source?.branch?.name ?? "",
       targetBranch: pr.destination?.branch?.name ?? "",
       headSha: shortHead ? await this.resolveCommitOrKeep(shortHead) : null,
       baseSha: pr.destination?.commit?.hash ?? null,
-      authorName: pr.author?.nickname ?? pr.author?.display_name ?? null,
       webUrl: pr.links?.html?.href ?? null,
     };
   }

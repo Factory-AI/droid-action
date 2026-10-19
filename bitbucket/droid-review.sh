@@ -45,6 +45,14 @@ mkdir -p "$PROMPTS_DIR"
 rm -f "$ERROR_FILE" "$DROID_STATE_FILE" "$DROID_PASS1_LOG" "$DROID_PASS2_LOG" \
   "$PROMPTS_DIR"/review_*.json "$PROMPTS_DIR"/resolved-env.sh
 
+# Bun loads .env files and bunfig.toml (including its preload scripts) from
+# the current directory. Steps that hold the Bitbucket credentials must not
+# run in the pull request's checkout, where a PR could add those files to
+# redirect API calls or run code; they run from the action checkout instead.
+in_action_dir() {
+  (cd "$DROID_ACTION_DIR" && "$@")
+}
+
 fail() {
   echo "$1" >"$ERROR_FILE"
   echo "ERROR: $1" >&2
@@ -68,7 +76,12 @@ finish() {
   cp -r "$PROMPTS_DIR/." "$WORK_DIR/.droid-debug/prompts/" 2>/dev/null
   cp "$ERROR_FILE" "$WORK_DIR/.droid-debug/" 2>/dev/null
   if [ -f "$DROID_STATE_FILE" ] && command -v bun >/dev/null 2>&1; then
-    (cd "$WORK_DIR" && bun run "$DROID_ACTION_DIR/src/entrypoints/bitbucket-update-comment-link.ts")
+    # A tracking comment stuck on "reviewing" (or a droid-review status
+    # stuck in progress) must not pass as a successful job.
+    if ! in_action_dir bun run "$DROID_ACTION_DIR/src/entrypoints/bitbucket-update-comment-link.ts"; then
+      echo "ERROR: could not update the tracking comment with the final result" >&2
+      [ "$rc" -eq 0 ] && rc=1
+    fi
   fi
   rm -rf "$RUN_DIR"
   exit "$rc"
@@ -118,7 +131,7 @@ fi
 cd "$WORK_DIR" || fail "cannot cd into $WORK_DIR"
 
 # ---- Prepare --------------------------------------------------------------
-bun run "$DROID_ACTION_DIR/src/entrypoints/bitbucket-prepare.ts" ||
+in_action_dir bun run "$DROID_ACTION_DIR/src/entrypoints/bitbucket-prepare.ts" ||
   fail "bitbucket-prepare failed; see the CI log for the cause"
 
 if ! grep -q '"shouldRunReview": true' "$DROID_STATE_FILE"; then
@@ -130,14 +143,34 @@ RESOLVED_ENV_SHIM="${DROID_RESOLVED_ENV_FILE:-$PROMPTS_DIR/resolved-env.sh}"
 # shellcheck disable=SC1090
 [ -f "$RESOLVED_ENV_SHIM" ] && . "$RESOLVED_ENV_SHIM"
 
+# `env -u` arguments that remove every Bitbucket credential, including CI
+# aliases holding the same secret (Bamboo's bamboo_..._SECRET variables).
+UNSET_CREDENTIALS=(-u DROID_BITBUCKET_TOKEN -u DROID_BITBUCKET_USERNAME
+  -u DROID_BITBUCKET_API_TOKEN -u BITBUCKET_STEP_OIDC_TOKEN)
+collect_credential_aliases() {
+  local name value secret
+  local -a secrets=()
+  for name in DROID_BITBUCKET_TOKEN DROID_BITBUCKET_API_TOKEN BITBUCKET_STEP_OIDC_TOKEN; do
+    [ -n "${!name:-}" ] && secrets+=("${!name}")
+  done
+  [ "${#secrets[@]}" -eq 0 ] && return 0
+  while IFS= read -r name; do
+    value="${!name:-}"
+    [ -z "$value" ] && continue
+    for secret in "${secrets[@]}"; do
+      if [ "$value" = "$secret" ]; then UNSET_CREDENTIALS+=(-u "$name"); fi
+    done
+  done < <(compgen -e)
+}
+collect_credential_aliases
+
 run_pass() {
   local tools="$1" log="$2" tag="$3"
   local -a args=(exec -f "$DROID_PROMPT_FILE" --enabled-tools "$tools"
     --output-format stream-json --skip-permissions-unsafe --tag "$tag")
   [ -n "${RESOLVED_MODEL:-}" ] && args+=(--model "$RESOLVED_MODEL")
   [ -n "${RESOLVED_REASONING_EFFORT:-}" ] && args+=(--reasoning-effort "$RESOLVED_REASONING_EFFORT")
-  env -u DROID_BITBUCKET_TOKEN -u DROID_BITBUCKET_USERNAME -u DROID_BITBUCKET_API_TOKEN \
-    -u BITBUCKET_STEP_OIDC_TOKEN droid "${args[@]}" 2>&1 | tee "$log"
+  env "${UNSET_CREDENTIALS[@]}" droid "${args[@]}" 2>&1 | tee "$log"
 }
 
 # ---- Pass 1: candidates ---------------------------------------------------
@@ -145,7 +178,7 @@ run_pass "Read,Grep,Glob,LS,Execute,Edit,Create,ApplyPatch,Task,Skill,FetchUrl" 
   "$DROID_PASS1_LOG" "${DROID_SESSION_TAG_CANDIDATES:-code-review}" ||
   fail "droid exec pass 1 (candidates) failed"
 
-bun run "$DROID_ACTION_DIR/src/entrypoints/bitbucket-prepare-validator.ts" ||
+in_action_dir bun run "$DROID_ACTION_DIR/src/entrypoints/bitbucket-prepare-validator.ts" ||
   fail "bitbucket-prepare-validator failed"
 
 # ---- Pass 2: validator ----------------------------------------------------
@@ -154,5 +187,5 @@ run_pass "Read,Grep,Glob,LS,Execute,Edit,Create,ApplyPatch,Skill" \
   fail "droid exec pass 2 (validator) failed"
 
 # ---- Post the approved findings ------------------------------------------
-bun run "$DROID_ACTION_DIR/src/entrypoints/bitbucket-post-review.ts" ||
+in_action_dir bun run "$DROID_ACTION_DIR/src/entrypoints/bitbucket-post-review.ts" ||
   fail "bitbucket-post-review failed to post the review"

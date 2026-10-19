@@ -37,19 +37,18 @@ describe("resolveInlineAnchor", () => {
         oldPath: null,
         line: 3,
         lineType: "ADDED",
-        oldLine: null,
         startLine: 2,
       },
     });
     expect(resolveInlineAnchor(comment({ line: 4 }), INDEX)).toMatchObject({
-      anchor: { line: 4, lineType: "CONTEXT", oldLine: 3 },
+      anchor: { line: 4, lineType: "CONTEXT" },
     });
     expect(
       resolveInlineAnchor(
         comment({ side: "LEFT", line: null, old_line: 2 }),
         INDEX,
       ),
-    ).toMatchObject({ anchor: { line: 2, lineType: "REMOVED", oldLine: 2 } });
+    ).toMatchObject({ anchor: { line: 2, lineType: "REMOVED" } });
   });
 
   it("moves a LEFT anchor on an unchanged line to its new-file line", () => {
@@ -64,7 +63,6 @@ describe("resolveInlineAnchor", () => {
         oldPath: null,
         line: 4,
         lineType: "CONTEXT",
-        oldLine: 3,
         startLine: null,
       },
     });
@@ -119,7 +117,7 @@ function fakeClient(opts: {
     [];
   const generalCalls: string[] = [];
   const client = {
-    variant: opts.multiLine ? "cloud" : "datacenter",
+    pinsAnchorsToCommits: !opts.multiLine,
     supportsMultiLineComments: opts.multiLine,
     async createInlineComment(body: string, anchor: BitbucketInlineAnchor) {
       inlineCalls.push({ body, anchor });

@@ -1,5 +1,9 @@
 # Central Droid code review pipeline for a whole Bitbucket Cloud workspace.
 #
+# Requires the Bitbucket Cloud Premium plan: sharing Pipelines
+# configurations (`export` / `import`) is a Premium-only feature. On other
+# plans, commit bitbucket-pipelines.yml to each repository instead.
+#
 # Put this file in a dedicated repository in the workspace (for example
 # `droid-pipelines`) as its `bitbucket-pipelines.yml`. Each consuming
 # repository then needs only:

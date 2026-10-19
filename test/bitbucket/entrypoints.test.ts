@@ -635,17 +635,73 @@ describe("Bitbucket Cloud review steps", () => {
     );
   });
 
-  it("skips posting when the validator was short-circuited", async () => {
+  it("reports a failed review when Pass 1 left no usable candidates", async () => {
     const f = useCloud();
+    process.env.BUILD_STATUS = "true";
     await prepare(deps);
     // Pass 1 wrote no candidates file.
     await prepareValidator();
-    const before = f.server.requests.length;
-    await postReview();
-    expect(f.server.requests.length).toBe(before);
     expect(
       await fs.readFile(path.join(tmp, "droid-prompt.txt"), "utf8"),
     ).toContain("No review findings to validate");
+
+    const before = f.server.requests.length;
+    await expect(postReview()).rejects.toThrow(
+      /Pass 1 did not produce valid review candidates/,
+    );
+    expect(f.server.requests.length).toBe(before);
+
+    // Even if the job script did not fail, the final report must.
+    process.env.DROID_SUCCESS = "true";
+    await updateComment({ retryDelayMs: 0 });
+    expect(f.comments[0]!.body).toContain("Droid encountered an error");
+    expect(f.comments[0]!.body).toContain(
+      "Pass 1 did not produce valid review candidates",
+    );
+    expect(reqs(f, "POST", "/statuses/build").at(-1)!.body.state).toBe(
+      "FAILED",
+    );
+  });
+
+  it("anchors nothing inline on Cloud when the PR changed after the review", async () => {
+    const f = useCloud();
+    await prepare(deps);
+    await writeValidated([VALIDATED[0]]);
+    const moved = "9".repeat(40);
+    f.override = (req) => {
+      if (req.path === `${CLOUD_REPO}/pullrequests/42`) {
+        return json({
+          id: 42,
+          title: "Add c",
+          state: "OPEN",
+          source: { branch: { name: "feature/c" }, commit: { hash: moved } },
+          destination: {
+            branch: { name: "main" },
+            commit: { hash: "0123456789ab" },
+          },
+        });
+      }
+      return undefined;
+    };
+
+    await postReview({ retryDelayMs: 0 });
+
+    const posted = reqs(f, "POST", "/pullrequests/42/comments").slice(1);
+    expect(posted).toHaveLength(1);
+    expect(posted[0]!.body.inline).toBeUndefined();
+    expect(posted[0]!.body.content.raw).toContain(
+      `reviewed at commit ${FULL_SHA.slice(0, 12)}; the pull request has changed since`,
+    );
+    expect(posted[0]!.body.content.raw).toContain("[P1] c is unused");
+  });
+
+  it("still anchors inline on Cloud when the PR head is unchanged", async () => {
+    const f = useCloud();
+    await prepare(deps);
+    await writeValidated([VALIDATED[0]]);
+    await postReview({ retryDelayMs: 0 });
+    const posted = reqs(f, "POST", "/pullrequests/42/comments").slice(1);
+    expect(posted[0]!.body.inline).toEqual({ path: "src/app.ts", to: 3 });
   });
 
   it("refuses to report success when Pass 2 wrote nothing", async () => {

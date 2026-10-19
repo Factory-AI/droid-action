@@ -14,7 +14,7 @@ import {
   type FakeServer,
 } from "./fake-server";
 
-const BEARER = { scheme: "bearer" as const, header: "Bearer cloud-secret" };
+const BEARER = { header: "Bearer cloud-secret" };
 const PR_PATH = "/2.0/repositories/my-ws/my-repo/pullrequests/7";
 
 let server: FakeServer;
@@ -84,13 +84,11 @@ describe("BitbucketCloudClient", () => {
       title: "Add c",
       description: "Adds const c",
       draft: true,
-      state: "OPEN",
       sourceBranch: "feature/c",
       targetBranch: "main",
       // The PR payload only carries the 12-character abbreviation.
       headSha: FULL_HEAD,
       baseSha: "0123456789ab",
-      authorName: "ada",
       webUrl: "https://bitbucket.org/my-ws/my-repo/pull-requests/7",
     });
   });
@@ -289,7 +287,6 @@ describe("BitbucketCloudClient", () => {
       oldPath: null,
       line: 3,
       lineType: "ADDED",
-      oldLine: null,
       startLine: 2,
     });
     await c.createInlineComment("removed", {
@@ -297,7 +294,6 @@ describe("BitbucketCloudClient", () => {
       oldPath: null,
       line: 2,
       lineType: "REMOVED",
-      oldLine: 2,
       startLine: null,
     });
     await c.createInlineComment("context", {
@@ -305,7 +301,6 @@ describe("BitbucketCloudClient", () => {
       oldPath: null,
       line: 4,
       lineType: "CONTEXT",
-      oldLine: 3,
       startLine: null,
     });
 
