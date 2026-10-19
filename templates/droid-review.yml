@@ -179,8 +179,13 @@ droid-review:
     - bash "$DROID_ACTION_DIR/gitlab/install-org-guidelines.sh"
   script:
     - export PATH="$HOME/.local/bin:$PATH"
+    # Every `bun run` starts from DROID_ACTION_DIR, never CI_PROJECT_DIR: Bun
+    # loads `.env` and `bunfig.toml` (including `preload` scripts) from its
+    # working directory, so an MR could otherwise plant them and run code
+    # while GITLAB_TOKEN and FACTORY_API_KEY are in the environment. The
+    # subshell keeps the droid exec passes in the project checkout.
     - |
-      if ! bun run "$DROID_ACTION_DIR/src/entrypoints/gitlab-prepare.ts"; then
+      if ! (cd "$DROID_ACTION_DIR" && bun run src/entrypoints/gitlab-prepare.ts); then
         export DROID_SUCCESS=false
         echo "gitlab-prepare exited non-zero" > /tmp/droid-error.txt
         exit 1
@@ -228,7 +233,7 @@ droid-review:
       fi
     - |
       # ---- Prepare Pass 2 prompt ----
-      if ! bun run "$DROID_ACTION_DIR/src/entrypoints/gitlab-prepare-validator.ts"; then
+      if ! (cd "$DROID_ACTION_DIR" && bun run src/entrypoints/gitlab-prepare-validator.ts); then
         export DROID_SUCCESS=false
         echo "gitlab-prepare-validator failed" > /tmp/droid-error.txt
         exit 1
@@ -256,7 +261,7 @@ droid-review:
       # Reads review_validated.json and creates one inline discussion per
       # approved comment. Comments that cannot be anchored are reported in
       # the job log and counted in the tracking note.
-      if ! bun run "$DROID_ACTION_DIR/src/entrypoints/gitlab-post-review.ts"; then
+      if ! (cd "$DROID_ACTION_DIR" && bun run src/entrypoints/gitlab-post-review.ts); then
         export DROID_SUCCESS=false
         echo "gitlab-post-review failed to post the review" > /tmp/droid-error.txt
         exit 1
@@ -274,7 +279,7 @@ droid-review:
     - mkdir -p "$CI_PROJECT_DIR/.droid-debug/prompts" || true
     - cp -r /tmp/droid-prompts/. "$CI_PROJECT_DIR/.droid-debug/prompts/" 2>/dev/null || true
     - cp /tmp/droid-error.txt "$CI_PROJECT_DIR/.droid-debug/" 2>/dev/null || true
-    - bun run "$DROID_ACTION_DIR/src/entrypoints/gitlab-update-comment-link.ts" || true
+    - (cd "$DROID_ACTION_DIR" && bun run src/entrypoints/gitlab-update-comment-link.ts) || true
   artifacts:
     when: always
     paths:
