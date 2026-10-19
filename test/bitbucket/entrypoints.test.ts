@@ -6,7 +6,11 @@ import { run as prepare } from "../../src/entrypoints/bitbucket-prepare";
 import { run as prepareValidator } from "../../src/entrypoints/bitbucket-prepare-validator";
 import { run as postReview } from "../../src/entrypoints/bitbucket-post-review";
 import { run as updateComment } from "../../src/entrypoints/bitbucket-update-comment-link";
-import { BITBUCKET_TRACKING_MARKER } from "../../src/bitbucket/operations/tracking-comment";
+import {
+  BITBUCKET_TRACKING_MARKER,
+  TRUNCATED_DIFF_NOTICE,
+} from "../../src/bitbucket/operations/tracking-comment";
+import { TRUNCATED_DIFF_NOTE } from "../../src/bitbucket/prompts";
 import {
   APP_TS_DC_DIFF,
   APP_TS_DIFF,
@@ -25,6 +29,8 @@ type Fake = {
   server: FakeServer;
   comments: Array<{ id: number; body: string; parentId: number | null }>;
   draft: boolean;
+  /** Data Center only: mark the diff as truncated. */
+  diffTruncated?: boolean;
   /** Return a Response to override the default for a request. */
   override?: (req: RecordedRequest) => Response | undefined;
 };
@@ -64,6 +70,8 @@ function startCloud(fake: Omit<Fake, "server">): Fake {
     }
     if (p === `${CLOUD_REPO}/pullrequests/42/diff`)
       return new Response(APP_TS_DIFF);
+    if (p === `${CLOUD_REPO}/commit/abcdef123456`)
+      return json({ hash: FULL_SHA });
     if (
       p === `${CLOUD_REPO}/pullrequests/42/comments` &&
       req.method === "GET"
@@ -125,7 +133,12 @@ function startDataCenter(fake: Omit<Fake, "server">): Fake {
         },
       });
     }
-    if (p === `${pr}/diff`) return json({ diffs: [APP_TS_DC_DIFF] });
+    if (p === `${pr}/diff`) {
+      return json({
+        diffs: [APP_TS_DC_DIFF],
+        truncated: state.diffTruncated === true,
+      });
+    }
     if (p === `${pr}/activities`) {
       return json({
         isLastPage: true,
@@ -521,6 +534,57 @@ describe("Bitbucket Cloud review steps", () => {
     expect(reqs(f, "POST", "/comments")).toHaveLength(0);
   });
 
+  it("treats a FACTORY_API_KEY Bamboo never expanded as missing", async () => {
+    const f = useCloud();
+    process.env.FACTORY_API_KEY = "${bamboo.FACTORY_API_KEY_SECRET}";
+    await expect(prepare(deps)).rejects.toThrow(/Missing FACTORY_API_KEY/);
+    expect(reqs(f, "POST", "/comments")).toHaveLength(0);
+  });
+
+  it("posts the build status on the full head SHA when the CI gives none", async () => {
+    const f = useCloud();
+    delete process.env.BITBUCKET_COMMIT;
+    process.env.BUILD_STATUS = "true";
+
+    const state = await prepare(deps);
+
+    expect(state.headSha).toBe(FULL_SHA);
+    expect(reqs(f, "POST", "/statuses/build").map((r) => r.path)).toEqual([
+      `${CLOUD_REPO}/commit/${FULL_SHA}/statuses/build`,
+    ]);
+  });
+
+  it("skips the build status rather than post it on an abbreviated SHA", async () => {
+    const f = useCloud();
+    delete process.env.BITBUCKET_COMMIT;
+    process.env.BUILD_STATUS = "true";
+    f.override = (req) =>
+      req.path.endsWith("/commit/abcdef123456") ? notFound() : undefined;
+
+    const state = await prepare(deps);
+
+    expect(state.headSha).toBe("abcdef123456");
+    expect(reqs(f, "POST", "/statuses/build")).toHaveLength(0);
+  });
+
+  it("creates the tracking comment before fetching the diff, so a diff failure shows on the PR", async () => {
+    const f = useCloud();
+    f.override = (req) =>
+      req.path.endsWith("/pullrequests/42/diff")
+        ? json({ type: "error", error: { message: "diff exploded" } }, 500)
+        : undefined;
+
+    await expect(prepare(deps)).rejects.toThrow(/diff exploded/);
+    expect(f.comments).toHaveLength(1);
+    expect(f.comments[0]!.body).toContain("Droid is reviewing");
+
+    process.env.DROID_SUCCESS = "false";
+    process.env.DROID_ERROR_DETAILS = "bitbucket-prepare failed";
+    await updateComment({ retryDelayMs: 0 });
+    expect(f.comments[0]!.body).toContain("Droid encountered an error");
+    expect(f.comments[0]!.body).toContain("bitbucket-prepare failed");
+  });
+
   it("reports a prepare failure that happens after the tracking comment exists", async () => {
     const f = useCloud();
     await expect(
@@ -637,6 +701,8 @@ describe("Bitbucket Data Center review steps (Jenkins)", () => {
         line: 3,
         lineType: "ADDED",
         fileType: "TO",
+        fromHash: "d".repeat(40),
+        toHash: "c".repeat(40),
       },
       {
         diffType: "EFFECTIVE",
@@ -644,6 +710,8 @@ describe("Bitbucket Data Center review steps (Jenkins)", () => {
         line: 2,
         lineType: "REMOVED",
         fileType: "FROM",
+        fromHash: "d".repeat(40),
+        toHash: "c".repeat(40),
       },
       null,
     ]);
@@ -654,6 +722,41 @@ describe("Bitbucket Data Center review steps (Jenkins)", () => {
     expect(puts[0]!.body.version).toBe(0);
     expect(f.comments[0]!.body).toContain("Droid finished reviewing");
     expect(reqs(f, "POST", "/builds").at(-1)!.body.state).toBe("SUCCESSFUL");
+  });
+
+  it("tells both passes and the PR when the server truncated the diff", async () => {
+    const f = useDataCenter({ diffTruncated: true });
+
+    const state = await prepare(deps);
+
+    expect(state.diffTruncated).toBe(true);
+    expect(await fs.readFile(state.promptPath!, "utf8")).toStartWith(
+      TRUNCATED_DIFF_NOTE,
+    );
+    await fs.writeFile(
+      state.candidatesPath!,
+      JSON.stringify({ comments: [{}] }),
+    );
+    await prepareValidator();
+    const validator = await fs.readFile(state.promptPath!, "utf8");
+    expect(validator).toStartWith(TRUNCATED_DIFF_NOTE);
+    expect(validator).toContain("Phase 2 (validator)");
+
+    await writeValidated([]);
+    await postReview({ retryDelayMs: 0 });
+    await updateComment({ retryDelayMs: 0 });
+    expect(f.comments[0]!.body).toContain(TRUNCATED_DIFF_NOTICE);
+  });
+
+  it("does not flag a complete diff as truncated", async () => {
+    const f = useDataCenter();
+    const state = await prepare(deps);
+    expect(state.diffTruncated).toBeUndefined();
+    expect(await fs.readFile(state.promptPath!, "utf8")).not.toContain(
+      TRUNCATED_DIFF_NOTE,
+    );
+    await updateComment({ retryDelayMs: 0 });
+    expect(f.comments[0]!.body).not.toContain(TRUNCATED_DIFF_NOTICE);
   });
 
   it("reuses the tracking comment found in the activity feed", async () => {

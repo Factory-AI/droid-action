@@ -24,16 +24,23 @@ set -uo pipefail
 
 DROID_ACTION_DIR="${DROID_ACTION_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 WORK_DIR="${DROID_WORK_DIR:-${BITBUCKET_CLONE_DIR:-${WORKSPACE:-$PWD}}}"
-export DROID_PROMPT_FILE="${DROID_PROMPT_FILE:-/tmp/droid-prompts/droid-prompt.txt}"
+# Per-run scratch directory: concurrent jobs on one Jenkins/Bamboo agent
+# must not share prompts, state, or results. It stays outside the checkout
+# so a pull request cannot plant a symlink at one of these paths.
+RUN_DIR="$(mktemp -d "${TMPDIR:-/tmp}/droid-review.XXXXXX")" || {
+  echo "ERROR: could not create a temporary directory" >&2
+  exit 1
+}
+export DROID_PROMPT_FILE="${DROID_PROMPT_FILE:-$RUN_DIR/prompts/droid-prompt.txt}"
 PROMPTS_DIR="$(dirname "$DROID_PROMPT_FILE")"
 export DROID_STATE_FILE="${DROID_STATE_FILE:-$PROMPTS_DIR/.droid-state.json}"
 export DROID_PASS1_LOG="$PROMPTS_DIR/pass1-output.jsonl"
 export DROID_PASS2_LOG="$PROMPTS_DIR/pass2-output.jsonl"
-ERROR_FILE="${DROID_ERROR_FILE:-/tmp/droid-error.txt}"
+ERROR_FILE="${DROID_ERROR_FILE:-$RUN_DIR/droid-error.txt}"
 export PATH="$HOME/.local/bin:$HOME/.bun/bin:$PATH"
 
-# A reused agent (Jenkins/Bamboo without containers) must not pick up a
-# previous run's state, results, or logs.
+# Overridden paths may be reused across runs: never pick up a previous
+# run's state, results, or logs.
 mkdir -p "$PROMPTS_DIR"
 rm -f "$ERROR_FILE" "$DROID_STATE_FILE" "$DROID_PASS1_LOG" "$DROID_PASS2_LOG" \
   "$PROMPTS_DIR"/review_*.json "$PROMPTS_DIR"/resolved-env.sh
@@ -63,6 +70,7 @@ finish() {
   if [ -f "$DROID_STATE_FILE" ] && command -v bun >/dev/null 2>&1; then
     (cd "$WORK_DIR" && bun run "$DROID_ACTION_DIR/src/entrypoints/bitbucket-update-comment-link.ts")
   fi
+  rm -rf "$RUN_DIR"
   exit "$rc"
 }
 trap finish EXIT
@@ -75,9 +83,14 @@ if ! command -v bun >/dev/null 2>&1; then
   curl -fsSL https://bun.sh/install | bash -s "bun-v1.2.11" >/dev/null ||
     fail "bun is required and could not be installed (the installer needs unzip)"
 fi
-if [ ! -d "$DROID_ACTION_DIR/node_modules" ]; then
+# Reinstall when the dependencies changed since the last install, not only
+# when node_modules is missing (a persistent agent keeps an old checkout).
+DEPS_STAMP="$DROID_ACTION_DIR/node_modules/.droid-deps-hash"
+deps_hash="$(cat "$DROID_ACTION_DIR/package.json" "$DROID_ACTION_DIR/bun.lock" 2>/dev/null | cksum)"
+if [ ! -d "$DROID_ACTION_DIR/node_modules" ] || [ "$(cat "$DEPS_STAMP" 2>/dev/null)" != "$deps_hash" ]; then
   (cd "$DROID_ACTION_DIR" && bun install --frozen-lockfile) ||
     fail "bun install failed in $DROID_ACTION_DIR"
+  echo "$deps_hash" >"$DEPS_STAMP" 2>/dev/null || true
 fi
 if ! command -v droid >/dev/null 2>&1; then
   curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh ||

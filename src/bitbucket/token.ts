@@ -32,12 +32,21 @@ export class UnexpandedBitbucketTokenError extends Error {
   }
 }
 
-const UNEXPANDED = /^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?$/;
+/**
+ * A variable reference the CI passed through literally: `$NAME`, `${NAME}`,
+ * Bamboo's `${bamboo.NAME}`, or Azure-style `$(NAME)`.
+ */
+const UNEXPANDED =
+  /^\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[A-Za-z_][A-Za-z0-9_.]*\}|\([A-Za-z_][A-Za-z0-9_.]*\))$/;
+
+export function isUnexpandedReference(value: string): boolean {
+  return UNEXPANDED.test(value.trim());
+}
 
 function read(env: NodeJS.ProcessEnv, name: string): string | null {
   const value = env[name]?.trim();
   if (!value) return null;
-  if (UNEXPANDED.test(value))
+  if (isUnexpandedReference(value))
     throw new UnexpandedBitbucketTokenError(name, value);
   return value;
 }

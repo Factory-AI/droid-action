@@ -68,7 +68,17 @@ describe("Bitbucket Data Center CI examples", () => {
     expect(script).toContain(
       'export FACTORY_API_KEY="$bamboo_FACTORY_API_KEY_SECRET"',
     );
-    expect(script).toContain(RUN);
+    expect(script).toContain('DROID_TMP="$(mktemp -d)"');
+    expect(script).toContain(
+      'bash "$DROID_TMP/droid-action/bitbucket/droid-review.sh"',
+    );
+  });
+
+  it.each([
+    "bitbucket/examples/Jenkinsfile",
+    "bitbucket/examples/bamboo-specs.yml",
+  ])("%s never shares a fixed clone path between concurrent builds", (file) => {
+    expect(read(file)).not.toContain("/tmp/droid-action");
   });
 
   it("Jenkinsfile runs only for change requests with both credentials bound", () => {
@@ -76,7 +86,12 @@ describe("Bitbucket Data Center CI examples", () => {
     expect(jenkinsfile).toContain("when { changeRequest() }");
     expect(jenkinsfile).toContain("variable: 'FACTORY_API_KEY'");
     expect(jenkinsfile).toContain("variable: 'DROID_BITBUCKET_TOKEN'");
-    expect(jenkinsfile).toContain(RUN);
+    expect(jenkinsfile).toContain(
+      'DROID_ACTION_DIR="$WORKSPACE@tmp/droid-action"',
+    );
+    expect(jenkinsfile).toContain(
+      'bash "$DROID_ACTION_DIR/bitbucket/droid-review.sh"',
+    );
     // Balanced braces: a cheap guard against a broken Groovy edit.
     const opens = (jenkinsfile.match(/{/g) ?? []).length;
     const closes = (jenkinsfile.match(/}/g) ?? []).length;

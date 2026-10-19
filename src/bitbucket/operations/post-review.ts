@@ -91,8 +91,11 @@ export async function postReview(options: {
   client: BitbucketClient;
   comments: ValidatedReviewComment[];
   index: Map<string, FileLineIndex> | null;
+  /** Commits the reviewed diff was computed between, when known. */
+  diffRefs?: { fromHash: string; toHash: string } | null;
 }): Promise<PostReviewResult> {
   const { client, comments, index } = options;
+  const diffRefs = options.diffRefs ?? null;
   const result: PostReviewResult = {
     posted: 0,
     fallbackPosted: 0,
@@ -110,15 +113,13 @@ export async function postReview(options: {
     if ("reason" in resolved) {
       lastError = resolved.reason;
     } else {
+      const pinned = { ...resolved.anchor, diffRefs };
       const attempts: BitbucketInlineAnchor[] = [];
-      if (
-        resolved.anchor.startLine !== null &&
-        client.supportsMultiLineComments
-      ) {
-        attempts.push(resolved.anchor);
+      if (pinned.startLine !== null && client.supportsMultiLineComments) {
+        attempts.push(pinned);
       }
       // A refused range still posts on its end line.
-      attempts.push({ ...resolved.anchor, startLine: null });
+      attempts.push({ ...pinned, startLine: null });
       for (const anchor of attempts) {
         try {
           await client.createInlineComment(comment.body, anchor);

@@ -3,6 +3,7 @@ import type {
   BitbucketBuildStatus,
   BitbucketClient,
   BitbucketComment,
+  BitbucketDiff,
   BitbucketInlineAnchor,
   BitbucketPullRequest,
 } from "../types";
@@ -75,6 +76,7 @@ export class BitbucketCloudClient implements BitbucketClient {
 
   async getPullRequest(): Promise<BitbucketPullRequest> {
     const pr = await this.http.json<CloudPullRequest>(this.prUrl);
+    const shortHead = pr.source?.commit?.hash ?? null;
     return {
       id: pr.id,
       title: pr.title ?? "",
@@ -83,15 +85,48 @@ export class BitbucketCloudClient implements BitbucketClient {
       state: pr.state,
       sourceBranch: pr.source?.branch?.name ?? "",
       targetBranch: pr.destination?.branch?.name ?? "",
-      headSha: pr.source?.commit?.hash ?? null,
+      headSha: shortHead ? await this.resolveCommitOrKeep(shortHead) : null,
+      baseSha: pr.destination?.commit?.hash ?? null,
       authorName: pr.author?.nickname ?? pr.author?.display_name ?? null,
       webUrl: pr.links?.html?.href ?? null,
     };
   }
 
-  /** The endpoint answers with a 302 to the diff resource, which fetch follows. */
-  getDiff(): Promise<string> {
-    return this.http.text(`${this.prUrl}/diff`);
+  /**
+   * The PR payload abbreviates commit hashes to 12 characters, which the
+   * build status endpoint does not accept reliably; look the full hash up.
+   */
+  private async resolveCommit(hash: string): Promise<string> {
+    if (hash.length >= 40) return hash;
+    const commit = await this.http.json<{ hash?: string }>(
+      `${this.repoUrl}/commit/${encodeURIComponent(hash)}`,
+    );
+    if (!commit?.hash || !commit.hash.startsWith(hash)) {
+      throw new Error(`Bitbucket returned no full commit hash for ${hash}`);
+    }
+    return commit.hash;
+  }
+
+  private async resolveCommitOrKeep(hash: string): Promise<string> {
+    try {
+      return await this.resolveCommit(hash);
+    } catch (error) {
+      console.warn(
+        `Could not resolve the full hash of commit ${hash}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return hash;
+    }
+  }
+
+  /**
+   * The endpoint answers with a 302 to the diff resource; the HTTP layer
+   * follows it with the credentials. Cloud does not truncate raw diffs.
+   */
+  async getDiff(): Promise<BitbucketDiff> {
+    return {
+      text: await this.http.text(`${this.prUrl}/diff`),
+      truncated: false,
+    };
   }
 
   async listComments(): Promise<BitbucketComment[]> {

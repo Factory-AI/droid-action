@@ -7,6 +7,7 @@ import type {
   BitbucketBuildStatus,
   BitbucketClient,
   BitbucketComment,
+  BitbucketDiff,
   BitbucketInlineAnchor,
   BitbucketPullRequest,
 } from "../types";
@@ -52,7 +53,9 @@ export type DcDiff = {
   source?: { toString: string } | null;
   destination?: { toString: string } | null;
   binary?: boolean;
+  truncated?: boolean;
   hunks?: Array<{
+    truncated?: boolean;
     sourceLine: number;
     sourceSpan: number;
     destinationLine: number;
@@ -167,16 +170,28 @@ export class BitbucketDataCenterClient implements BitbucketClient {
       sourceBranch: pr.fromRef?.displayId ?? "",
       targetBranch: pr.toRef?.displayId ?? "",
       headSha: pr.fromRef?.latestCommit ?? null,
+      baseSha: pr.toRef?.latestCommit ?? null,
       authorName: pr.author?.user?.name ?? pr.author?.user?.displayName ?? null,
       webUrl: pr.links?.self?.[0]?.href ?? null,
     };
   }
 
-  async getDiff(): Promise<string> {
-    const data = await this.http.json<{ diffs?: DcDiff[] }>(
-      `${this.prUrl}/diff?contextLines=3&withComments=false`,
-    );
-    return dcDiffToUnified(data.diffs ?? []);
+  /**
+   * The server caps diff size (`page.max.diff.lines` and friends) and marks
+   * what it cut with `truncated` at the top level, per file, or per hunk.
+   */
+  async getDiff(): Promise<BitbucketDiff> {
+    const data = await this.http.json<{
+      diffs?: DcDiff[];
+      truncated?: boolean;
+    }>(`${this.prUrl}/diff?contextLines=3&withComments=false`);
+    const diffs = data.diffs ?? [];
+    const truncated =
+      data.truncated === true ||
+      diffs.some(
+        (d) => d.truncated === true || (d.hunks ?? []).some((h) => h.truncated),
+      );
+    return { text: dcDiffToUnified(diffs), truncated };
   }
 
   /** Comments arrive through the activity feed; replies are nested. */
@@ -254,6 +269,12 @@ export class BitbucketDataCenterClient implements BitbucketClient {
     };
     if (anchor.oldPath && anchor.oldPath !== anchor.path) {
       dcAnchor.srcPath = anchor.oldPath;
+    }
+    // For the effective diff, "from" is the target branch and "to" the
+    // source branch, matching what the web UI sends.
+    if (anchor.diffRefs) {
+      dcAnchor.fromHash = anchor.diffRefs.fromHash;
+      dcAnchor.toHash = anchor.diffRefs.toHash;
     }
     const created = await this.http.json<DcComment>(`${this.prUrl}/comments`, {
       method: "POST",

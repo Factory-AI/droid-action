@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { BitbucketCloudClient } from "../../src/bitbucket/api/cloud";
 import {
   BitbucketApiError,
+  mayForwardCredentials,
   type BitbucketAuth,
 } from "../../src/bitbucket/api/http";
 import { resolveBitbucketAuth } from "../../src/bitbucket/token";
@@ -17,7 +18,15 @@ const BEARER = { scheme: "bearer" as const, header: "Bearer cloud-secret" };
 const PR_PATH = "/2.0/repositories/my-ws/my-repo/pullrequests/7";
 
 let server: FakeServer;
-afterEach(() => server?.stop());
+let other: FakeServer | undefined;
+afterEach(() => {
+  server?.stop();
+  other?.stop();
+  other = undefined;
+});
+
+const FULL_HEAD = "abcdef123456" + "7".repeat(28);
+const COMMIT_PATH = "/2.0/repositories/my-ws/my-repo/commit/abcdef123456";
 
 function client(auth: BitbucketAuth = BEARER) {
   return new BitbucketCloudClient({
@@ -53,13 +62,18 @@ const CLOUD_PR = {
 
 describe("BitbucketCloudClient", () => {
   it("fetches and normalizes a pull request with a Bearer token", async () => {
-    server = startFakeServer((req) =>
-      req.path === PR_PATH ? json(CLOUD_PR) : notFound(),
-    );
+    server = startFakeServer((req) => {
+      if (req.path === PR_PATH) return json(CLOUD_PR);
+      if (req.path === COMMIT_PATH) return json({ hash: FULL_HEAD });
+      return notFound();
+    });
 
     const pr = await client().getPullRequest();
 
-    expect(server.requests).toHaveLength(1);
+    expect(server.requests.map((r) => r.path)).toEqual([PR_PATH, COMMIT_PATH]);
+    expect(server.requests[1]!.headers.authorization).toBe(
+      "Bearer cloud-secret",
+    );
     expect(server.requests[0]!.method).toBe("GET");
     expect(server.requests[0]!.headers.authorization).toBe(
       "Bearer cloud-secret",
@@ -73,10 +87,20 @@ describe("BitbucketCloudClient", () => {
       state: "OPEN",
       sourceBranch: "feature/c",
       targetBranch: "main",
-      headSha: "abcdef123456",
+      // The PR payload only carries the 12-character abbreviation.
+      headSha: FULL_HEAD,
+      baseSha: "0123456789ab",
       authorName: "ada",
       webUrl: "https://bitbucket.org/my-ws/my-repo/pull-requests/7",
     });
+  });
+
+  it("keeps the abbreviated head when the commit lookup fails", async () => {
+    server = startFakeServer((req) =>
+      req.path === PR_PATH ? json(CLOUD_PR) : notFound(),
+    );
+    const pr = await client().getPullRequest();
+    expect(pr.headSha).toBe("abcdef123456");
   });
 
   it("sends HTTP Basic auth for an API token or app password", async () => {
@@ -127,11 +151,58 @@ describe("BitbucketCloudClient", () => {
 
     const diff = await client().getDiff();
 
-    expect(diff).toBe(APP_TS_DIFF);
+    expect(diff).toEqual({ text: APP_TS_DIFF, truncated: false });
     expect(server.requests).toHaveLength(2);
     expect(server.requests[1]!.headers.authorization).toBe(
       "Bearer cloud-secret",
     );
+  });
+
+  it("keeps the credentials on a diff redirect to another origin of the same host", async () => {
+    // fetch strips Authorization on any cross-origin redirect; a different
+    // port is enough to make it cross-origin.
+    other = startFakeServer(
+      () =>
+        new Response(APP_TS_DIFF, {
+          headers: { "Content-Type": "text/plain" },
+        }),
+    );
+    server = startFakeServer(
+      () =>
+        new Response(null, {
+          status: 302,
+          headers: {
+            Location: `${other!.url}/2.0/repositories/my-ws/my-repo/diff/x`,
+          },
+        }),
+    );
+
+    const diff = await client().getDiff();
+
+    expect(diff.text).toBe(APP_TS_DIFF);
+    expect(other.requests).toHaveLength(1);
+    expect(other.requests[0]!.headers.authorization).toBe(
+      "Bearer cloud-secret",
+    );
+    expect(other.requests[0]!.headers.accept).toBe("text/plain");
+  });
+
+  it("never forwards the credentials to a redirect on a foreign host", async () => {
+    other = startFakeServer(() => new Response(APP_TS_DIFF));
+    server = startFakeServer(
+      () =>
+        new Response(null, {
+          status: 302,
+          headers: {
+            Location: `${other!.url.replace("localhost", "127.0.0.1")}/diff`,
+          },
+        }),
+    );
+
+    await client().getDiff();
+
+    expect(other.requests).toHaveLength(1);
+    expect(other.requests[0]!.headers.authorization).toBeUndefined();
   });
 
   it("follows `next` links across comment pages and drops deleted comments", async () => {
@@ -304,7 +375,7 @@ describe("BitbucketCloudClient", () => {
     });
     const pr = await client().getPullRequest();
     expect(pr.id).toBe(7);
-    expect(server.requests).toHaveLength(3);
+    expect(server.requests.filter((r) => r.path === PR_PATH)).toHaveLength(3);
 
     server.stop();
     server = startFakeServer(() => json({}, 503));
@@ -315,11 +386,103 @@ describe("BitbucketCloudClient", () => {
     expect(server.requests).toHaveLength(4);
   });
 
+  it.each([502, 504])(
+    "does not repeat a POST after a %i the server may have committed",
+    async (status) => {
+      server = startFakeServer(() => json({}, status));
+      await expect(client().createComment("x")).rejects.toThrow(
+        new RegExp(`Bitbucket API ${status}`),
+      );
+      expect(server.requests).toHaveLength(1);
+    },
+  );
+
+  it("does not repeat a POST after a 503 without Retry-After", async () => {
+    server = startFakeServer(() => json({}, 503));
+    await expect(
+      client().setBuildStatus("a".repeat(40), {
+        key: "droid-review",
+        state: "INPROGRESS",
+        name: "Droid code review",
+        url: "https://ci/1",
+      }),
+    ).rejects.toThrow(/Bitbucket API 503/);
+    expect(server.requests).toHaveLength(1);
+  });
+
+  it("retries a POST the server explicitly refused (429, or 503 with Retry-After)", async () => {
+    let calls = 0;
+    server = startFakeServer((req) => {
+      calls += 1;
+      if (calls === 1) return json({}, 429);
+      if (calls === 2) return json({}, 503, { "Retry-After": "1" });
+      return json({ id: 9, content: { raw: req.body.content.raw } }, 201);
+    });
+    const created = await client().createComment("x");
+    expect(created.id).toBe(9);
+    expect(server.requests.map((r) => r.method)).toEqual([
+      "POST",
+      "POST",
+      "POST",
+    ]);
+  });
+
+  it("retries an idempotent PUT on a gateway timeout", async () => {
+    let calls = 0;
+    server = startFakeServer(() => {
+      calls += 1;
+      return calls === 1
+        ? json({}, 504)
+        : json({ id: 5, content: { raw: "u" } });
+    });
+    await client().updateComment(5, "u");
+    expect(server.requests).toHaveLength(2);
+  });
+
   it("does not retry client errors", async () => {
     server = startFakeServer(() =>
       json({ type: "error", error: { message: "nope" } }, 404),
     );
     await expect(client().getPullRequest()).rejects.toThrow(/404/);
     expect(server.requests).toHaveLength(1);
+  });
+});
+
+describe("mayForwardCredentials", () => {
+  const u = (s: string) => new URL(s);
+  it("allows the same host and moves between Bitbucket Cloud hosts", () => {
+    expect(
+      mayForwardCredentials(
+        u("https://api.bitbucket.org/2.0/x"),
+        u("https://api.bitbucket.org/2.0/y"),
+      ),
+    ).toBe(true);
+    expect(
+      mayForwardCredentials(
+        u("https://api.bitbucket.org/2.0/x"),
+        u("https://bitbucket.org/ws/repo/diff"),
+      ),
+    ).toBe(true);
+  });
+
+  it("refuses other hosts, look-alikes, and https downgrades", () => {
+    expect(
+      mayForwardCredentials(
+        u("https://api.bitbucket.org/2.0/x"),
+        u("https://bbuseruploads.s3.amazonaws.com/x"),
+      ),
+    ).toBe(false);
+    expect(
+      mayForwardCredentials(
+        u("https://api.bitbucket.org/2.0/x"),
+        u("https://bitbucket.org.evil.example/x"),
+      ),
+    ).toBe(false);
+    expect(
+      mayForwardCredentials(
+        u("https://api.bitbucket.org/2.0/x"),
+        u("http://api.bitbucket.org/2.0/x"),
+      ),
+    ).toBe(false);
   });
 });

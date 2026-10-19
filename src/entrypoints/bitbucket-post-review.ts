@@ -84,7 +84,16 @@ export async function run(
     resolveBitbucketAuth(),
     options,
   );
-  const result = await postReview({ client, comments: parsed.approved, index });
+  const diffRefs =
+    state.baseSha && state.headSha
+      ? { fromHash: state.baseSha, toHash: state.headSha }
+      : null;
+  const result = await postReview({
+    client,
+    comments: parsed.approved,
+    index,
+    diffRefs,
+  });
 
   const results: ReviewPostResults = {
     posted: result.posted,

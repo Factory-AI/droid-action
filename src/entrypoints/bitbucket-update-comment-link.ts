@@ -57,6 +57,7 @@ export async function run(
     pipelineUrl: state.buildUrl,
     errorDetails,
     securityReviewRan: state.securityReviewEnabled,
+    diffTruncated: state.diffTruncated === true,
     telemetry: {
       totalNumTurns: telemetry.totalNumTurns,
       totalDurationMs: telemetry.totalDurationMs,

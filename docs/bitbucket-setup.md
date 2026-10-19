@@ -21,16 +21,18 @@ What you get, matching the GitLab and GitHub integrations:
 
 ## How it runs
 
-Every CI system runs the same two commands:
+Every CI system runs the same two commands, with the action cloned to a directory outside the checkout under review:
 
 ```sh
 git clone --depth 1 --branch "${DROID_ACTION_REF:-main}" https://github.com/Factory-AI/droid-action.git /tmp/droid-action
 bash /tmp/droid-action/bitbucket/droid-review.sh
 ```
 
+A fixed path such as `/tmp/droid-action` is fine in Bitbucket Pipelines, where every step gets a fresh container. On Jenkins or Bamboo agents that run several builds at once, use a per-build directory instead, as the [Jenkins](#jenkins) and [Bamboo](#bamboo) examples do. The script itself keeps its prompts, state, and results in a fresh `mktemp -d` directory per run, so concurrent runs never share files.
+
 [`bitbucket/droid-review.sh`](../bitbucket/droid-review.sh) installs the Droid CLI (and bun, if missing), then:
 
-1. `bitbucket-prepare` finds the pull request, creates or updates the tracking comment, and writes the diff, existing comments, and description to disk.
+1. `bitbucket-prepare` finds the pull request, creates or updates the tracking comment (before fetching the diff, so any later failure shows on the PR), and writes the diff, existing comments, and description to disk.
 2. `droid exec` pass 1 writes candidate findings.
 3. `bitbucket-prepare-validator` builds the validation prompt.
 4. `droid exec` pass 2 writes the approved findings.
@@ -55,25 +57,27 @@ When both are set, the Bearer token wins. Store all of them as secured/masked va
 
 Permissions:
 
-- **Cloud access token:** `pullrequest:write` and `repository` scopes; add `repository:write` when `BUILD_STATUS=true`. Comments appear as the token's bot user.
-- **Cloud API token:** `read:pullrequest:bitbucket`, `write:pullrequest:bitbucket`, `read:repository:bitbucket` (+ `write:repository:bitbucket` for build statuses). **App password:** Pull requests Write, Repositories Read (+ Write for build statuses).
+- **Cloud access token:** `pullrequest:write` (read, comment on, and update pull requests) and `repository` (read commits; the `repository` scope does not cover pull requests, so both are needed). Add `repository:write` when `BUILD_STATUS=true`. Comments appear as the token's bot user.
+- **Cloud API token:** `read:pullrequest:bitbucket`, `write:pullrequest:bitbucket`, `read:repository:bitbucket` (+ `write:repository:bitbucket` for build statuses). Write scopes do not imply the matching read scope, so request both. **App password:** Pull requests Write, Repositories Read (+ Write for build statuses).
 - **Data Center HTTP access token:** Repository read (or Project read for a project-wide token) is enough to read, comment, and post build statuses. Comments appear as the token's bot user.
+
+The scope needed to post a Cloud build status (`repository:write`) and the Data Center permission for the repository-scoped build status endpoint (Repository read) follow Atlassian's documentation as of this writing; if a build status is refused with 403, grant the write level.
 
 ## Inputs
 
 All inputs are environment variables; set them as CI variables or `export` them before the `bash` line.
 
-| Variable                                                               | Default                                | Meaning                                                                                               |
-| ---------------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `AUTOMATIC_REVIEW`                                                     | `true`                                 | `false` turns the job into a no-op.                                                                   |
-| `AUTOMATIC_SECURITY_REVIEW`                                            | `false`                                | Run the security reviewer in parallel.                                                                |
-| `REVIEW_DEPTH`                                                         | `deep`                                 | `deep` or `shallow`.                                                                                  |
-| `REVIEW_MODEL` / `REASONING_EFFORT`                                    | empty                                  | Advanced overrides of the depth preset.                                                               |
-| `INCLUDE_SUGGESTIONS`                                                  | `true`                                 | Allow suggestion blocks in comments.                                                                  |
-| `REVIEW_DRAFTS`                                                        | `false`                                | Review draft pull requests too.                                                                       |
-| `BUILD_STATUS`                                                         | `false`                                | Post a `droid-review` build status on the PR head commit (in progress, then successful or failed).    |
-| `DROID_SETTINGS`                                                       | empty                                  | Droid Exec settings JSON, or a path to a JSON file.                                                   |
-| `ORG_GUIDELINES_SOURCE` / `ORG_GUIDELINES_REF` / `ORG_GUIDELINES_PATH` | empty / empty / `review-guidelines.md` | Organization review guidelines from a file path, an http(s) URL, or a git clone URL ending in `.git`. |
+| Variable                                                               | Default                                | Meaning                                                                                                                                                                                 |
+| ---------------------------------------------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTOMATIC_REVIEW`                                                     | `true`                                 | `false` turns the job into a no-op.                                                                                                                                                     |
+| `AUTOMATIC_SECURITY_REVIEW`                                            | `false`                                | Run the security reviewer in parallel.                                                                                                                                                  |
+| `REVIEW_DEPTH`                                                         | `deep`                                 | `deep` or `shallow`.                                                                                                                                                                    |
+| `REVIEW_MODEL` / `REASONING_EFFORT`                                    | empty                                  | Advanced overrides of the depth preset.                                                                                                                                                 |
+| `INCLUDE_SUGGESTIONS`                                                  | `true`                                 | Allow suggestion blocks in comments.                                                                                                                                                    |
+| `REVIEW_DRAFTS`                                                        | `false`                                | Review draft pull requests too.                                                                                                                                                         |
+| `BUILD_STATUS`                                                         | `false`                                | Post a `droid-review` build status on the PR head commit (in progress, then successful or failed). Blocking merges on it needs Bitbucket Cloud Premium or Data Center; see Enforcement. |
+| `DROID_SETTINGS`                                                       | empty                                  | Droid Exec settings JSON, or a path to a JSON file.                                                                                                                                     |
+| `ORG_GUIDELINES_SOURCE` / `ORG_GUIDELINES_REF` / `ORG_GUIDELINES_PATH` | empty / empty / `review-guidelines.md` | Organization review guidelines from a file path, an http(s) URL, or a git clone URL ending in `.git`.                                                                                   |
 
 ## Pull request context
 
@@ -82,8 +86,8 @@ All inputs are environment variables; set them as CI variables or `export` them 
 - **Bitbucket Pipelines:** nothing to configure. The script reads `BITBUCKET_WORKSPACE`, `BITBUCKET_REPO_SLUG`, `BITBUCKET_PR_ID`, `BITBUCKET_COMMIT`, and links the tracking comment to the pipeline step.
 - **Data Center**, first match wins:
   1. `BITBUCKET_SERVER_URL` (including any context path, e.g. `https://host/bitbucket`), `BITBUCKET_PROJECT_KEY`, `BITBUCKET_REPO_SLUG`, `BITBUCKET_PR_ID`.
-  2. A pull request URL in `DROID_PR_URL`, or Jenkins' `CHANGE_URL` (`<server>/projects/<KEY>/repos/<slug>/pull-requests/<id>`). Explicit variables override parts of it.
-  3. The PR id from Jenkins `CHANGE_ID` or Bamboo `bamboo_repository_pr_key`.
+  2. A pull request URL in `DROID_PR_URL`, or Jenkins' `CHANGE_URL` (`<server>/projects/<KEY>/repos/<slug>/pull-requests/<id>`). Explicit variables override parts of it; when `BITBUCKET_SERVER_URL` names a different host than the URL, the review warns and calls `BITBUCKET_SERVER_URL`.
+  3. The PR id from Bamboo `bamboo_repository_pr_key`, or from Jenkins `CHANGE_ID` only when `CHANGE_URL` is a Bitbucket pull request URL. Jenkins sets `CHANGE_ID` for GitHub and GitLab change requests too, so any other `CHANGE_ID` is ignored with a warning.
   4. The CI link from `DROID_BUILD_URL`, Jenkins `BUILD_URL`, or Bamboo `bamboo_resultsUrl`.
 
 A build without a pull request id logs `Not a pull request build; skipping Droid review.` and exits successfully.
@@ -119,7 +123,9 @@ Imported pipelines use the consuming repository's variables plus workspace varia
 
 ### Enforcement
 
-Add a branch restriction that requires passing builds: Repository settings → Branch restrictions, or `POST /2.0/repositories/{workspace}/{repo}/branch-restrictions` with `{"kind": "require_passing_builds_to_merge", "pattern": "main", "value": 1}`. Merge checks only block merges on the **Premium** plan with "Enforce merge checks" enabled; on other plans they are advisory. Enforcement proves the review ran successfully; it does not block on findings.
+Add a branch restriction that requires passing builds: Repository settings → Branch restrictions, or `POST /2.0/repositories/{workspace}/{repo}/branch-restrictions` with `{"kind": "require_passing_builds_to_merge", "pattern": "main", "value": 1}`.
+
+**Enforcement requires the Bitbucket Cloud Premium plan.** Only Premium can turn on "Prevent a merge with unresolved merge checks"; on Free and Standard, a failed or missing build only shows a warning and the PR can still be merged. Enforcement proves the review ran successfully; it does not block on findings.
 
 ## Bitbucket Data Center
 
@@ -130,11 +136,13 @@ Add a branch restriction that requires passing builds: Repository settings → B
 3. Add "Secret text" credentials `factory-api-key` and `bitbucket-droid-token`.
 4. Commit [`bitbucket/examples/Jenkinsfile`](../bitbucket/examples/Jenkinsfile) (or add its stage to your existing `Jenkinsfile`).
 
+The example clones the action into `$WORKSPACE@tmp/droid-action`, Jenkins' per-workspace scratch directory, so concurrent builds never share it and it stays out of the checkout under review. It runs the `oven/bun` container as root only to `apt-get install` git and curl, then hands workspace files back to the workspace owner. With an agent image that already has bash, git, curl, and bun, drop `args '-u root'`, the `apt-get` line, and the `chown` trap.
+
 The plugin builds each pull request as `PR-<id>` and sets `CHANGE_URL`, `CHANGE_ID`, and `BUILD_URL`, which is all the review needs. With other plugins or generic webhook triggers, set `BITBUCKET_SERVER_URL`, `BITBUCKET_PROJECT_KEY`, `BITBUCKET_REPO_SLUG`, and `BITBUCKET_PR_ID` (or `DROID_PR_URL`) in the pipeline's `environment` block.
 
 ### Bamboo
 
-Link the Data Center repository, enable plan branches for pull requests, and use [`bitbucket/examples/bamboo-specs.yml`](../bitbucket/examples/bamboo-specs.yml) as `bamboo-specs/bamboo.yml`. Fill in the server URL, project key, and repository slug variables, and add secret variables `FACTORY_API_KEY_SECRET` and `DROID_BITBUCKET_TOKEN_SECRET`.
+Link the Data Center repository, enable plan branches for pull requests, and use [`bitbucket/examples/bamboo-specs.yml`](../bitbucket/examples/bamboo-specs.yml) as `bamboo-specs/bamboo.yml`. Fill in the server URL, project key, and repository slug variables, and add secret variables `FACTORY_API_KEY_SECRET` and `DROID_BITBUCKET_TOKEN_SECRET`. The example clones the action into a fresh `mktemp -d` directory per build and removes it afterwards, so concurrent builds on one agent never collide.
 
 ### Other CI systems
 
@@ -149,7 +157,9 @@ Run the review with `BUILD_STATUS=true` so it posts a build status with the fixe
 | Message                                                         | Cause                                                                                                                                                              |
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `Missing Bitbucket credentials.`                                | No token variable reached the job (missing, or withheld from a forked PR).                                                                                         |
-| `... was passed through as the literal string "$..."`           | The CI passed an unexpanded variable reference.                                                                                                                    |
+| `... was passed through as the literal string "$..."`           | The CI passed an unexpanded variable reference (`$NAME`, `${NAME}`, Bamboo's `${bamboo.NAME}`).                                                                    |
+| `Bitbucket truncated the pull request diff`                     | The diff exceeds the Data Center server's diff size limit. The review covers only part of the changes, and the tracking comment says so.                           |
+| `ignoring Jenkins CHANGE_ID`                                    | Jenkins built a change request whose `CHANGE_URL` is not a Bitbucket pull request (for example a GitHub PR). Set `BITBUCKET_PR_ID` to review it anyway.            |
 | `Missing FACTORY_API_KEY.`                                      | The Factory key is not set for this job.                                                                                                                           |
 | `Could not determine the Bitbucket variant.`                    | Not running in Pipelines and no Data Center variables or PR URL are set.                                                                                           |
 | `Missing Bitbucket Data Center context: ...`                    | The server URL, project key, or repository slug could not be resolved.                                                                                             |

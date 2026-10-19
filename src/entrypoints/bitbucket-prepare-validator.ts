@@ -72,6 +72,7 @@ export async function run(): Promise<void> {
     validatedPath: ensure(state.validatedPath, "validatedPath"),
     includeSuggestions: state.includeSuggestions,
     securityReviewEnabled: state.securityReviewEnabled,
+    diffTruncated: state.diffTruncated === true,
   });
   await fs.writeFile(promptPath, prompt);
   console.log(`Wrote Pass-2 validator prompt to ${promptPath}`);

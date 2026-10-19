@@ -64,6 +64,21 @@ describe("resolveBitbucketAuth", () => {
       }),
     ).toThrow(UnexpandedBitbucketTokenError);
   });
+
+  it.each([
+    "${bamboo.DROID_BITBUCKET_TOKEN_SECRET}",
+    "$(DROID_BITBUCKET_TOKEN)",
+  ])("refuses the unexpanded CI reference %s", (value) => {
+    expect(() =>
+      resolveBitbucketAuth({ DROID_BITBUCKET_TOKEN: value }),
+    ).toThrow(UnexpandedBitbucketTokenError);
+  });
+
+  it("accepts real tokens that merely contain a dollar sign", () => {
+    expect(
+      resolveBitbucketAuth({ DROID_BITBUCKET_TOKEN: "abc$def.ghi" }).header,
+    ).toBe("Bearer abc$def.ghi");
+  });
 });
 
 describe("withoutBitbucketCredentials", () => {

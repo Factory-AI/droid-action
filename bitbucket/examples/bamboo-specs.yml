@@ -41,9 +41,10 @@ Droid review:
             export BITBUCKET_REPO_SLUG="$bamboo_BITBUCKET_REPO_SLUG"
             export FACTORY_API_KEY="$bamboo_FACTORY_API_KEY_SECRET"
             export DROID_BITBUCKET_TOKEN="$bamboo_DROID_BITBUCKET_TOKEN_SECRET"
-            rm -rf /tmp/droid-action
-            git clone --depth 1 --branch "$bamboo_DROID_ACTION_REF" https://github.com/Factory-AI/droid-action.git /tmp/droid-action
-            bash /tmp/droid-action/bitbucket/droid-review.sh
+            DROID_TMP="$(mktemp -d)"
+            trap 'rm -rf "$DROID_TMP"' EXIT
+            git clone --depth 1 --branch "$bamboo_DROID_ACTION_REF" https://github.com/Factory-AI/droid-action.git "$DROID_TMP/droid-action"
+            bash "$DROID_TMP/droid-action/bitbucket/droid-review.sh"
   artifacts:
     - name: droid-debug
       pattern: ".droid-debug/**"

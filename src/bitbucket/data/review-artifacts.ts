@@ -1,7 +1,8 @@
 /**
- * Fetch the pull request, diff and comments, and write the three review
- * artifacts (pr.diff, existing_comments.json, pr_description.txt) the
- * review prompts read from disk.
+ * Fetch the diff and write the three review artifacts (pr.diff,
+ * existing_comments.json, pr_description.txt) the review prompts read from
+ * disk. The comments come from the caller, which already listed them to
+ * find the tracking comment.
  */
 
 import { writeReviewArtifacts } from "../../core/review/artifacts/write";
@@ -14,7 +15,7 @@ import type {
 
 export type BitbucketReviewArtifacts = ReviewArtifactPaths & {
   diff: string;
-  comments: BitbucketComment[];
+  diffTruncated: boolean;
 };
 
 export function buildDescriptionContent(pr: BitbucketPullRequest): string {
@@ -24,21 +25,19 @@ export function buildDescriptionContent(pr: BitbucketPullRequest): string {
 export async function computeReviewArtifacts(opts: {
   client: BitbucketClient;
   pr: BitbucketPullRequest;
+  comments: BitbucketComment[];
   outDir: string;
 }): Promise<BitbucketReviewArtifacts> {
-  const { client, pr, outDir } = opts;
-  const [diff, comments] = await Promise.all([
-    client.getDiff(),
-    client.listComments(),
-  ]);
+  const { client, pr, comments, outDir } = opts;
+  const diff = await client.getDiff();
   const paths = await writeReviewArtifacts(
     outDir,
-    { diff, comments, description: buildDescriptionContent(pr) },
+    { diff: diff.text, comments, description: buildDescriptionContent(pr) },
     {
       diff: "pr.diff",
       comments: "existing_comments.json",
       description: "pr_description.txt",
     },
   );
-  return { ...paths, diff, comments };
+  return { ...paths, diff: diff.text, diffTruncated: diff.truncated };
 }

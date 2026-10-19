@@ -233,6 +233,59 @@ describe("bitbucket/droid-review.sh", () => {
     expect(await exists(path.join(tmp, "argv"))).toBe(false);
   }, 60_000);
 
+  it("keeps each run's files in its own temporary directory and removes it", async () => {
+    const scratch = path.join(tmp, "scratch");
+    await fs.mkdir(scratch);
+    const { code } = await runScript({
+      TMPDIR: scratch,
+      DROID_PROMPT_FILE: "",
+      DROID_ERROR_FILE: "",
+    });
+    expect(code).toBe(0);
+
+    const [pass1] = await argvCalls();
+    const prompt = pass1![pass1!.indexOf("-f") + 1]!;
+    expect(prompt).toStartWith(`${scratch}/droid-review.`);
+    expect(await fs.readdir(scratch)).toEqual([]);
+    expect(
+      await exists(
+        path.join(tmp, "work/.droid-debug/prompts/review_validated.json"),
+      ),
+    ).toBe(true);
+  }, 60_000);
+
+  it("reinstalls dependencies when the lockfile changes", async () => {
+    // A stand-in action checkout whose `bun` only records how it was called.
+    const action = path.join(tmp, "action");
+    await fs.mkdir(path.join(action, "node_modules"), { recursive: true });
+    await fs.writeFile(path.join(action, "package.json"), "{}");
+    await fs.writeFile(path.join(action, "bun.lock"), "lock v1");
+    const fakeBin = path.join(tmp, "fake-bun");
+    await fs.mkdir(fakeBin);
+    await fs.writeFile(
+      path.join(fakeBin, "bun"),
+      '#!/usr/bin/env bash\necho "$1" >> "$FAKE_DIR/bun-calls"\n[ "$1" = install ] && exit 0\nexit 1\n',
+      { mode: 0o755 },
+    );
+    const installs = async () =>
+      (await fs.readFile(path.join(tmp, "bun-calls"), "utf8"))
+        .split("\n")
+        .filter((l) => l === "install").length;
+    const run = () =>
+      runScript({
+        DROID_ACTION_DIR: action,
+        PATH: `${fakeBin}:${path.join(tmp, "bin")}:/usr/local/bin:/usr/bin:/bin`,
+      });
+
+    await run();
+    expect(await installs()).toBe(1);
+    await run();
+    expect(await installs()).toBe(1);
+    await fs.writeFile(path.join(action, "bun.lock"), "lock v2");
+    await run();
+    expect(await installs()).toBe(2);
+  }, 60_000);
+
   it("fails with the credential guidance when no token is configured", async () => {
     const { code, output } = await runScript({ DROID_BITBUCKET_TOKEN: "" });
     expect(code).not.toBe(0);

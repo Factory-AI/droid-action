@@ -19,6 +19,10 @@ export type BitbucketPrepareState = {
   prWebUrl: string | null;
   trackingCommentId: number | null;
   headSha: string | null;
+  /** Target branch head when the diff was fetched (Data Center anchors). */
+  baseSha?: string | null;
+  /** The server truncated the diff, so the review saw only part of it. */
+  diffTruncated?: boolean;
   buildUrl: string | null;
   buildStatus: boolean;
   includeSuggestions: boolean;

@@ -149,6 +149,7 @@ describe("BitbucketDataCenterClient", () => {
       sourceBranch: "feature/c",
       targetBranch: "main",
       headSha: "a".repeat(40),
+      baseSha: "b".repeat(40),
       authorName: "ada",
       webUrl:
         "https://bb.example.com/projects/PROJ/repos/my-repo/pull-requests/12",
@@ -169,7 +170,29 @@ describe("BitbucketDataCenterClient", () => {
     expect(server.requests[0]!.path).toBe(
       `${PR}/diff?contextLines=3&withComments=false`,
     );
-    expect(diff).toContain("+const c = 4;");
+    expect(diff.text).toContain("+const c = 4;");
+    expect(diff.truncated).toBe(false);
+  });
+
+  it.each([
+    ["the whole response", { diffs: [APP_TS_DC_DIFF], truncated: true }],
+    ["one file", { diffs: [{ ...APP_TS_DC_DIFF, truncated: true }] }],
+    [
+      "one hunk",
+      {
+        diffs: [
+          {
+            ...APP_TS_DC_DIFF,
+            hunks: [{ ...APP_TS_DC_DIFF.hunks![0]!, truncated: true }],
+          },
+        ],
+      },
+    ],
+  ])("reports a diff the server truncated in %s", async (_label, body) => {
+    server = startFakeServer(() => json(body));
+    const diff = await client().getDiff();
+    expect(diff.truncated).toBe(true);
+    expect(diff.text).toContain("+const c = 4;");
   });
 
   it("pages through activities with start/nextPageStart and keeps only comments", async () => {
@@ -402,6 +425,28 @@ describe("BitbucketDataCenterClient", () => {
         },
       },
     ]);
+  });
+
+  it("pins anchors to the reviewed commits when they are known", async () => {
+    server = startFakeServer(() => json({ id: 1, version: 0, text: "x" }, 201));
+    await client().createInlineComment("added", {
+      path: "src/app.ts",
+      oldPath: null,
+      line: 3,
+      lineType: "ADDED",
+      oldLine: null,
+      startLine: null,
+      diffRefs: { fromHash: "b".repeat(40), toHash: "a".repeat(40) },
+    });
+    expect(server.requests[0]!.body.anchor).toEqual({
+      diffType: "EFFECTIVE",
+      path: "src/app.ts",
+      line: 3,
+      lineType: "ADDED",
+      fileType: "TO",
+      fromHash: "b".repeat(40),
+      toHash: "a".repeat(40),
+    });
   });
 
   it("posts build statuses to the commit builds endpoint", async () => {

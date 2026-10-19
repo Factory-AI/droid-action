@@ -24,8 +24,11 @@ const STATE_HEADER: Record<ReviewTrackingState, string> = {
   failure: "**Droid encountered an error reviewing this pull request** ❌",
 };
 
+export const TRUNCATED_DIFF_NOTICE =
+  "Note: Bitbucket truncated this pull request's diff, so the review covered only part of the changes.";
+
 export function buildTrackingCommentBody(
-  options: ReviewTrackingFields,
+  options: ReviewTrackingFields & { diffTruncated?: boolean },
 ): string {
   const lines: string[] = [BITBUCKET_TRACKING_MARKER, ""];
   lines.push(STATE_HEADER[options.state]);
@@ -38,6 +41,10 @@ export function buildTrackingCommentBody(
   if (options.pipelineUrl) lines.push(`Build: ${options.pipelineUrl}`);
   if (options.jobUrl && options.jobUrl !== options.pipelineUrl) {
     lines.push(`Job log: ${options.jobUrl}`);
+  }
+  if (options.diffTruncated) {
+    lines.push("");
+    lines.push(TRUNCATED_DIFF_NOTICE);
   }
 
   const review = options.review;

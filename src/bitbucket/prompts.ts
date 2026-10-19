@@ -50,7 +50,20 @@ export type BitbucketReviewPromptContext = {
   validatedPath: string;
   includeSuggestions: boolean;
   securityReviewEnabled: boolean;
+  diffTruncated?: boolean;
 };
+
+export const TRUNCATED_DIFF_NOTE =
+  "IMPORTANT: Bitbucket truncated this pull request's diff because it exceeds the server's diff size limit, " +
+  "so the diff file is incomplete. Review what it contains, inspect the remaining changes in the repository " +
+  "checkout where you can, and do not assume that a file missing from the diff is unchanged.";
+
+function withTruncationNote(
+  prompt: string,
+  ctx: BitbucketReviewPromptContext,
+): string {
+  return ctx.diffTruncated ? `${TRUNCATED_DIFF_NOTE}\n\n${prompt}` : prompt;
+}
 
 function shared(ctx: BitbucketReviewPromptContext) {
   return {
@@ -72,15 +85,18 @@ function shared(ctx: BitbucketReviewPromptContext) {
 export function generateBitbucketCandidatesPrompt(
   ctx: BitbucketReviewPromptContext,
 ): string {
-  return generateCandidatesPrompt(shared(ctx));
+  return withTruncationNote(generateCandidatesPrompt(shared(ctx)), ctx);
 }
 
 export function generateBitbucketValidatorPrompt(
   ctx: BitbucketReviewPromptContext,
 ): string {
-  return generateValidatorPrompt({
-    ...shared(ctx),
-    postingMode: "file",
-    validatedPath: ctx.validatedPath,
-  });
+  return withTruncationNote(
+    generateValidatorPrompt({
+      ...shared(ctx),
+      postingMode: "file",
+      validatedPath: ctx.validatedPath,
+    }),
+    ctx,
+  );
 }

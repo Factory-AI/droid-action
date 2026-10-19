@@ -15,8 +15,13 @@ export type BitbucketPullRequest = {
   state: string;
   sourceBranch: string;
   targetBranch: string;
-  /** Source branch head. Cloud returns a 12-character abbreviation. */
+  /** Full SHA of the source branch head. */
   headSha: string | null;
+  /**
+   * Target branch head. Full on Data Center; Cloud abbreviates it and the
+   * Cloud runtime never needs it.
+   */
+  baseSha: string | null;
   authorName: string | null;
   webUrl: string | null;
 };
@@ -48,6 +53,19 @@ export type BitbucketInlineAnchor = {
   oldLine: number | null;
   /** Start of a multi-line span on the same side, or null. */
   startLine: number | null;
+  /**
+   * The commits the reviewed diff was computed between. Data Center pins
+   * the anchor to them so a push after the review cannot shift it onto
+   * different code; Cloud has no equivalent and ignores it.
+   */
+  diffRefs?: { fromHash: string; toHash: string } | null;
+};
+
+export type BitbucketDiff = {
+  /** Unified diff (`diff --git` format). */
+  text: string;
+  /** True when the server cut the diff short (Data Center size limits). */
+  truncated: boolean;
 };
 
 export type BitbucketBuildState = "INPROGRESS" | "SUCCESSFUL" | "FAILED";
@@ -65,8 +83,7 @@ export interface BitbucketClient {
   /** Whether inline comments can span several lines. */
   readonly supportsMultiLineComments: boolean;
   getPullRequest(): Promise<BitbucketPullRequest>;
-  /** Unified diff (`diff --git` format) of the pull request. */
-  getDiff(): Promise<string>;
+  getDiff(): Promise<BitbucketDiff>;
   /** Every non-deleted comment on the pull request, replies included. */
   listComments(): Promise<BitbucketComment[]>;
   createComment(body: string): Promise<BitbucketComment>;

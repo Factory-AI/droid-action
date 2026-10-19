@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import {
   BitbucketContextError,
   parseBitbucketContext,
@@ -34,6 +34,10 @@ const JENKINS_PR_ENV = {
   BUILD_TAG: "jenkins-billing-PR-12-3",
   GIT_COMMIT: "c".repeat(40),
 };
+
+afterEach(() => {
+  (console.warn as { mockRestore?: () => void }).mockRestore?.();
+});
 
 describe("parseBitbucketContext: Bitbucket Cloud (Pipelines)", () => {
   it("reads the pull request and builds the step URL", () => {
@@ -141,7 +145,8 @@ describe("parseBitbucketContext: Bitbucket Data Center", () => {
     });
   });
 
-  it("lets explicit variables override the parsed URL", () => {
+  it("lets explicit variables override the parsed URL, warning about a host mismatch", () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
     const ctx = parseBitbucketContext({
       ...JENKINS_PR_ENV,
       BITBUCKET_SERVER_URL: "http://internal-bitbucket:7990/",
@@ -153,6 +158,36 @@ describe("parseBitbucketContext: Bitbucket Data Center", () => {
       projectKey: "PLAT",
       prId: 13,
     });
+    expect(warn.mock.calls.flat().join(" ")).toContain(
+      "points at git.example.com but BITBUCKET_SERVER_URL is internal-bitbucket",
+    );
+  });
+
+  it("does not warn when the URL and BITBUCKET_SERVER_URL name the same host", () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    parseBitbucketContext({
+      ...JENKINS_PR_ENV,
+      BITBUCKET_SERVER_URL: "https://git.example.com/bitbucket",
+    });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a GitHub pull request", "https://github.com/acme/billing/pull/12"],
+    ["missing", undefined],
+  ])("ignores Jenkins CHANGE_ID when CHANGE_URL is %s", (_label, changeUrl) => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const env: Record<string, string> = {
+      BITBUCKET_SERVER_URL: "https://bb.example.com",
+      BITBUCKET_PROJECT_KEY: "PLAT",
+      BITBUCKET_REPO_SLUG: "billing",
+      CHANGE_ID: "12",
+    };
+    if (changeUrl) env.CHANGE_URL = changeUrl;
+    expect(parseBitbucketContext(env).prId).toBeNull();
+    expect(warn.mock.calls.flat().join(" ")).toContain(
+      "ignoring Jenkins CHANGE_ID=12",
+    );
   });
 
   it("resolves Bamboo pull request builds", () => {

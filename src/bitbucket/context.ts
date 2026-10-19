@@ -182,6 +182,33 @@ function cloudBuildUrl(env: Env): string | null {
   return step ? `${base}/steps/${encodeURIComponent(step)}` : base;
 }
 
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Jenkins sets CHANGE_ID for change requests from any SCM (GitHub, GitLab,
+ * ...). It names a Bitbucket pull request only when CHANGE_URL is one.
+ */
+function jenkinsChangeId(env: Env, variant: BitbucketVariant): number | null {
+  const changeId = opt(env, "CHANGE_ID");
+  if (changeId === null) return null;
+  const changeUrl = opt(env, "CHANGE_URL");
+  const parsed = changeUrl ? parsePullRequestUrl(changeUrl) : null;
+  if (parsed?.variant !== variant) {
+    console.warn(
+      `WARNING: ignoring Jenkins CHANGE_ID=${changeId} because CHANGE_URL (${changeUrl ?? "unset"}) ` +
+        "is not a Bitbucket pull request URL. Set BITBUCKET_PR_ID to review this build anyway.",
+    );
+    return null;
+  }
+  return parsePrId(changeId, "CHANGE_ID");
+}
+
 export function parseBitbucketContext(
   env: Env = process.env,
 ): ParsedBitbucketContext {
@@ -191,11 +218,23 @@ export function parseBitbucketContext(
   const inputs = parseInputs(env);
 
   const explicitPrId = opt(env, "BITBUCKET_PR_ID");
-  const ciPrId = opt(env, "CHANGE_ID", "bamboo_repository_pr_key");
   const prId =
     parsePrId(explicitPrId, "BITBUCKET_PR_ID") ??
     (prUrl && prUrl.variant === variant ? prUrl.prId : null) ??
-    parsePrId(ciPrId, "CHANGE_ID / bamboo_repository_pr_key");
+    jenkinsChangeId(env, variant) ??
+    parsePrId(opt(env, "bamboo_repository_pr_key"), "bamboo_repository_pr_key");
+
+  const explicitServer = opt(env, "BITBUCKET_SERVER_URL");
+  if (prUrl?.variant === "datacenter" && explicitServer) {
+    const urlHost = hostOf(prUrl.serverUrl);
+    const serverHost = hostOf(explicitServer);
+    if (urlHost && serverHost && urlHost !== serverHost) {
+      console.warn(
+        `WARNING: the pull request URL points at ${urlHost} but BITBUCKET_SERVER_URL is ${serverHost}; ` +
+          "API calls go to BITBUCKET_SERVER_URL. Make sure both name the same Bitbucket instance.",
+      );
+    }
+  }
 
   const commitSha = opt(
     env,

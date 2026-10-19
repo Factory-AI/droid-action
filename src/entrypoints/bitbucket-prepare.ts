@@ -7,7 +7,8 @@
  *      not a pull-request build, automatic review is off, or the PR is a
  *      draft.
  *   2. Create or reuse the sticky tracking comment and, when enabled, mark
- *      the `droid-review` build status in progress.
+ *      the `droid-review` build status in progress. This happens before the
+ *      diff is fetched so a failure from here on shows up on the PR.
  *   3. Write the review artifacts, resolve review depth, write the Pass-1
  *      prompt, the env shim, and the state file the later steps read.
  */
@@ -20,6 +21,7 @@ import {
   type ParsedBitbucketContext,
 } from "../bitbucket/context";
 import {
+  isUnexpandedReference,
   resolveBitbucketAuth,
   withoutBitbucketCredentials,
 } from "../bitbucket/token";
@@ -116,6 +118,13 @@ export async function reportBuildStatus(
   if (!sha || !url) {
     console.warn(
       "BUILD_STATUS is enabled but the commit SHA or a build/PR URL is unknown; not posting a build status.",
+    );
+    return;
+  }
+  // An abbreviated hash can 404 or, if ambiguous, land on another commit.
+  if (!/^[0-9a-f]{40}$/i.test(sha)) {
+    console.warn(
+      `BUILD_STATUS is enabled but only the abbreviated commit ${sha} is known; not posting a build status.`,
     );
     return;
   }
@@ -231,6 +240,7 @@ export async function run(
   base.target = target;
   base.prWebUrl = pr.webUrl;
   base.headSha = headSha;
+  base.baseSha = pr.baseSha;
   base.sourceBranch = pr.sourceBranch;
   base.targetBranch = pr.targetBranch;
 
@@ -250,7 +260,8 @@ export async function run(
     );
   }
 
-  if (!process.env.FACTORY_API_KEY?.trim()) {
+  const factoryApiKey = process.env.FACTORY_API_KEY?.trim();
+  if (!factoryApiKey || isUnexpandedReference(factoryApiKey)) {
     throw new MissingFactoryApiKeyError();
   }
 
@@ -272,14 +283,8 @@ export async function run(
     securityReviewRan: securityReviewEnabled,
   });
 
-  console.log("Computing review artifacts (diff, comments, description)...");
-  const artifacts = await computeReviewArtifacts({
-    client,
-    pr,
-    outDir: promptsDir(),
-  });
-
-  const existing = findExistingTrackingComment(artifacts.comments);
+  const comments = await client.listComments();
+  const existing = findExistingTrackingComment(comments);
   let trackingCommentId: number;
   if (existing) {
     await client.updateComment(existing.id, runningBody);
@@ -302,6 +307,21 @@ export async function run(
       "INPROGRESS",
       "Droid is reviewing",
     );
+  }
+
+  console.log("Computing review artifacts (diff, comments, description)...");
+  const artifacts = await computeReviewArtifacts({
+    client,
+    pr,
+    comments,
+    outDir: promptsDir(),
+  });
+  if (artifacts.diffTruncated) {
+    console.warn(
+      "WARNING: Bitbucket truncated the pull request diff (server diff size limit); the review covers only part of the changes.",
+    );
+    base.diffTruncated = true;
+    await writeState({ ...base, reason: "prepare-incomplete" });
   }
 
   const reviewConfig = resolveReviewConfig({
@@ -356,6 +376,7 @@ export async function run(
     validatedPath: validatedFilePath(),
     includeSuggestions: ctx.inputs.includeSuggestions,
     securityReviewEnabled,
+    diffTruncated: artifacts.diffTruncated,
   };
   const prompt = generateBitbucketCandidatesPrompt(promptCtx);
   const promptPath = promptFilePath();
