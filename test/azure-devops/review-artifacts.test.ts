@@ -31,10 +31,15 @@ describe("selectIteration", () => {
     const its = [iteration(2, "bbb"), iteration(1, "AAA"), iteration(3, "ccc")];
     expect(selectIteration(its, "aaa").id).toBe(1);
   });
-  it("falls back to the latest iteration", () => {
+  it("falls back to the latest iteration when the build has no source commit", () => {
     const its = [iteration(2, "bbb"), iteration(3, "ccc"), iteration(1, "aaa")];
-    expect(selectIteration(its, "zzz").id).toBe(3);
     expect(selectIteration(its, null).id).toBe(3);
+  });
+  it("refuses to review another iteration than the queued commit's", () => {
+    const its = [iteration(2, "bbb"), iteration(3, "ccc"), iteration(1, "aaa")];
+    expect(() => selectIteration(its, "zzz")).toThrow(
+      "No pull request iteration has source commit zzz (latest is iteration 3)",
+    );
   });
   it("throws without iterations", () => {
     expect(() => selectIteration([], null)).toThrow("no iterations");

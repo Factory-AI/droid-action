@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "fs";
 import * as path from "path";
 import { run as prepare } from "../../src/entrypoints/azure-devops-prepare";
@@ -422,6 +422,59 @@ describe("validator + posting + tracking update", () => {
     expect(body).toContain("3 inline comments posted");
     expect(body).toContain("9 turns");
     expect(body).toContain("`sess-1`");
+  });
+
+  it("marks the build SucceededWithIssues when some approved findings fail to post", async () => {
+    const ok = fakeAdo();
+    // Thread POSTs 1-2 are the tracking thread and the first finding; the
+    // second finding's inline and fallback attempts all fail.
+    let threadPosts = 0;
+    const fetch = async (url: string, init: RequestInit = {}) => {
+      if (
+        init.method === "POST" &&
+        new URL(url).pathname.endsWith(`${PR_PATH}/threads`) &&
+        ++threadPosts > 2
+      ) {
+        return json({ message: "rejected" }, 400);
+      }
+      return ok.fetch(url, init);
+    };
+    const env = envFor();
+    const state = await prepare({ ...deps(env, ok), fetch });
+    fs.writeFileSync(
+      state.validatedPath!,
+      JSON.stringify({
+        meta: { headSha: repo.source },
+        results: [
+          {
+            status: "approved",
+            comment: { path: "app.ts", line: 4, side: "RIGHT", body: "[P1] a" },
+          },
+          {
+            status: "approved",
+            comment: { path: "app.ts", line: 2, side: "RIGHT", body: "[P1] b" },
+          },
+        ],
+      }),
+    );
+    const logs: string[] = [];
+    const spy = spyOn(console, "log").mockImplementation((...args) => {
+      logs.push(args.join(" "));
+    });
+    try {
+      const results = await postReview({ env, fetch });
+      expect(results).toMatchObject({ posted: 1, failed: 1 });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(logs).toContain("##vso[task.complete result=SucceededWithIssues;]");
+    expect(
+      logs.some((l) =>
+        l.startsWith(
+          "##vso[task.logissue type=warning]1 of 2 approved findings could not be posted.",
+        ),
+      ),
+    ).toBe(true);
   });
 
   it("posts nothing when Pass 1 left no usable candidates", async () => {

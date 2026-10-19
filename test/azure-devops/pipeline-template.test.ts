@@ -59,21 +59,40 @@ describe("azure-devops/droid-review.yml", () => {
     expect(fs.existsSync(path.join(REPO_ROOT, runPath!))).toBe(true);
   });
 
-  it("publishes debug artifacts even when the review fails", () => {
-    const publish = pipeline.steps.find((s: any) => s.publish);
+  it("publishes debug artifacts as build artifacts even when the review fails", () => {
+    const publish = pipeline.steps.find(
+      (s: any) => s.task === "PublishBuildArtifacts@1",
+    );
     expect(publish).toMatchObject({
-      publish: "$(Agent.TempDirectory)/droid-debug",
       condition: "always()",
       continueOnError: true,
+      inputs: {
+        PathtoPublish: "$(Agent.TempDirectory)/droid-debug",
+        ArtifactName: "droid-debug-$(System.JobAttempt)",
+        publishLocation: "Container",
+      },
     });
+    // PublishBuildArtifacts fails on a missing path; the review step makes
+    // the directory before anything that can fail.
+    const script = pipeline.steps.find((s: any) => typeof s.bash === "string")
+      .bash as string;
+    expect(script.split("\n")[1]).toBe(
+      "# Created first so the artifact step below always has a directory.",
+    );
+    expect(script.split("\n")[2]).toBe(
+      'mkdir -p "$AGENT_TEMPDIRECTORY/droid-debug"',
+    );
   });
 
-  it("only uses steps available on self-hosted agents", () => {
+  it("only uses steps that Azure DevOps Server supports", () => {
+    expect(pipeline.steps.length).toBeGreaterThan(0);
     for (const step of pipeline.steps) {
-      const kind = Object.keys(step).find((k) =>
-        ["checkout", "bash", "publish", "task", "script"].includes(k),
-      );
-      expect(["checkout", "bash", "publish"]).toContain(kind);
+      // `publish` / `download` are Pipeline Artifacts, which Server rejects.
+      expect(step.publish).toBeUndefined();
+      expect(step.download).toBeUndefined();
+      const kind = ["checkout", "bash", "task"].find((k) => k in step);
+      expect(kind).toBeDefined();
+      if (kind === "task") expect(step.task).toBe("PublishBuildArtifacts@1");
     }
   });
 

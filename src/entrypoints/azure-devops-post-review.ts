@@ -148,6 +148,15 @@ export async function run(
         `First error: ${results.failures[0]?.error ?? "unknown"}`,
     );
   }
+  if (results.failed > 0) {
+    // Some findings reached the PR, so the review is not a failure, but the
+    // build should say it is incomplete so someone re-queues it.
+    console.log(
+      `##vso[task.logissue type=warning]${results.failed} of ${parsed.approved.length} approved findings could not be posted. ` +
+        `First error: ${results.failures[0]?.error ?? "unknown"}`,
+    );
+    console.log("##vso[task.complete result=SucceededWithIssues;]");
+  }
   return results;
 }
 

@@ -76,6 +76,8 @@ steps:
 
   - bash: |
       set -euo pipefail
+      # Created first so the artifact step below always has a directory.
+      mkdir -p "$AGENT_TEMPDIRECTORY/droid-debug"
       DROID_ACTION_DIR="$AGENT_TEMPDIRECTORY/droid-action"
       rm -rf "$DROID_ACTION_DIR"
       git clone --quiet --depth 1 --branch "$DROID_ACTION_REF" "$DROID_ACTION_REPO" "$DROID_ACTION_DIR"
@@ -90,10 +92,16 @@ steps:
       REVIEW_DEPTH: deep
       INCLUDE_SUGGESTIONS: "true"
 
-  - publish: $(Agent.TempDirectory)/droid-debug
-    artifact: droid-debug-$(System.JobAttempt)
+  # Build artifacts work on Services and Server alike; the `publish`
+  # shortcut (Pipeline Artifacts) is Services-only.
+  - task: PublishBuildArtifacts@1
+    displayName: Publish Droid debug artifacts
     condition: always()
     continueOnError: true
+    inputs:
+      PathtoPublish: $(Agent.TempDirectory)/droid-debug
+      ArtifactName: droid-debug-$(System.JobAttempt)
+      publishLocation: Container
 ```
 
 The file is self-contained: it clones droid-action at `DROID_ACTION_REF`
@@ -198,7 +206,7 @@ Set these in the review step's `env:`:
 - **A tracking comment** (a general thread with no status, so it never
   blocks comment resolution) that shows progress, the build link, posting
   counts, turns, duration, and session IDs.
-- **A pipeline artifact** `droid-debug-<attempt>` with prompts, the
+- **A build artifact** `droid-debug-<attempt>` (PublishBuildArtifacts, so it works on Server too) with prompts, the
   candidate and validated JSON, and the raw `droid exec` logs.
 
 Fork pull requests are skipped before anything is posted: Azure Pipelines

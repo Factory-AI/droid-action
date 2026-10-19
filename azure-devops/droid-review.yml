@@ -32,6 +32,8 @@ steps:
 
   - bash: |
       set -euo pipefail
+      # Created first so the artifact step below always has a directory.
+      mkdir -p "$AGENT_TEMPDIRECTORY/droid-debug"
       DROID_ACTION_DIR="$AGENT_TEMPDIRECTORY/droid-action"
       rm -rf "$DROID_ACTION_DIR"
       git clone --quiet --depth 1 --branch "$DROID_ACTION_REF" "$DROID_ACTION_REPO" "$DROID_ACTION_DIR"
@@ -46,7 +48,13 @@ steps:
       REVIEW_DEPTH: deep
       INCLUDE_SUGGESTIONS: "true"
 
-  - publish: $(Agent.TempDirectory)/droid-debug
-    artifact: droid-debug-$(System.JobAttempt)
+  # Build artifacts work on Services and Server alike; the `publish`
+  # shortcut (Pipeline Artifacts) is Services-only.
+  - task: PublishBuildArtifacts@1
+    displayName: Publish Droid debug artifacts
     condition: always()
     continueOnError: true
+    inputs:
+      PathtoPublish: $(Agent.TempDirectory)/droid-debug
+      ArtifactName: droid-debug-$(System.JobAttempt)
+      publishLocation: Container

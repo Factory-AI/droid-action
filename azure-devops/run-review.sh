@@ -32,6 +32,16 @@ ERROR_FILE="$PROMPTS_DIR/droid-error.txt"
 mkdir -p "$PROMPTS_DIR" "$DEBUG_DIR"
 rm -f "$ERROR_FILE" "$DROID_STATE_FILE"
 
+# Entrypoints read the PR checkout from here, so they never need it as cwd.
+export BUILD_SOURCESDIRECTORY="${BUILD_SOURCESDIRECTORY:-$PWD}"
+
+# Bun loads bunfig.toml (including `preload` modules) and .env files from the
+# working directory. The PR checkout is untrusted and these steps hold the
+# Azure DevOps token, so they always run from the droid-action checkout.
+run_entrypoint() {
+  (cd "$DROID_ACTION_DIR" && bun run "$DROID_ACTION_DIR/src/entrypoints/$1")
+}
+
 is_unexpanded() {
   [[ "$1" =~ ^\$\([^\)]*\)$ ]]
 }
@@ -58,7 +68,7 @@ finish() {
     fi
     DROID_ERROR_DETAILS="$(cat "$ERROR_FILE" 2>/dev/null || true)"
     export DROID_ERROR_DETAILS
-    bun run "$DROID_ACTION_DIR/src/entrypoints/azure-devops-update-comment-link.ts" ||
+    run_entrypoint azure-devops-update-comment-link.ts ||
       echo "warning: could not update the tracking thread" >&2
   fi
   cp -r "$PROMPTS_DIR/." "$DEBUG_DIR/" 2>/dev/null || true
@@ -117,7 +127,7 @@ elif [ -n "${ORG_GUIDELINES_SOURCE:-}" ]; then
 fi
 
 # ---- Prepare ---------------------------------------------------------------
-if ! bun run "$DROID_ACTION_DIR/src/entrypoints/azure-devops-prepare.ts"; then
+if ! run_entrypoint azure-devops-prepare.ts; then
   fail "azure-devops-prepare failed; see the step log for the Azure DevOps API error"
 fi
 
@@ -166,7 +176,7 @@ run_pass "Read,Grep,Glob,LS,Execute,Edit,Create,ApplyPatch,Task,Skill,FetchUrl" 
   fail "droid exec pass 1 (candidates) failed"
 
 # ---- Pass 2: validator -----------------------------------------------------
-bun run "$DROID_ACTION_DIR/src/entrypoints/azure-devops-prepare-validator.ts" ||
+run_entrypoint azure-devops-prepare-validator.ts ||
   fail "azure-devops-prepare-validator failed"
 
 run_pass "Read,Grep,Glob,LS,Execute,Edit,Create,ApplyPatch,Skill" \
@@ -174,5 +184,5 @@ run_pass "Read,Grep,Glob,LS,Execute,Edit,Create,ApplyPatch,Skill" \
   fail "droid exec pass 2 (validator) failed"
 
 # ---- Post findings ---------------------------------------------------------
-bun run "$DROID_ACTION_DIR/src/entrypoints/azure-devops-post-review.ts" ||
+run_entrypoint azure-devops-post-review.ts ||
   fail "azure-devops-post-review failed to post the review"

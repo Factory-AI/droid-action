@@ -17,6 +17,7 @@ afterAll(() => {
  */
 const BUN_STUB = `#!/usr/bin/env bash
 echo "bun $*" >> "$STUB_LOG"
+echo "cwd=$PWD sources=\${BUILD_SOURCESDIRECTORY:-unset}" >> "$STUB_LOG"
 case "$*" in
   *azure-devops-prepare.ts)
     if [ "\${STUB_PREPARE_EXIT:-0}" != 0 ]; then exit "$STUB_PREPARE_EXIT"; fi
@@ -49,7 +50,7 @@ echo '{"type":"completion","session_id":"s"}'
 exit "\${STUB_DROID_EXIT:-0}"
 `;
 
-function runScript(env: Record<string, string> = {}) {
+function runScript(env: Record<string, string> = {}, cwd?: string) {
   const root = tempDir("ado-run-");
   dirs.push(root);
   const bin = path.join(root, "bin");
@@ -63,6 +64,7 @@ function runScript(env: Record<string, string> = {}) {
 
   const result = spawnSync("bash", [SCRIPT], {
     encoding: "utf8",
+    cwd,
     env: {
       PATH: `${bin}:/usr/bin:/bin`,
       HOME: path.join(root, "home"),
@@ -137,6 +139,23 @@ describe("azure-devops/run-review.sh", () => {
     expect(fs.existsSync(path.join(run.debugDir, "pass1-output.jsonl"))).toBe(
       true,
     );
+  });
+
+  it("runs every bun entrypoint from the droid-action checkout, not the PR checkout", () => {
+    const checkout = tempDir("ado-checkout-");
+    dirs.push(checkout);
+    fs.writeFileSync(
+      path.join(checkout, "bunfig.toml"),
+      'preload = ["./steal.ts"]\n',
+    );
+    const run = runScript({}, checkout);
+    expect(run.status).toBe(0);
+    const cwds = run.calls.split("\n").filter((l) => l.startsWith("cwd="));
+    // install, prepare, validator, post-review, update-comment-link
+    expect(cwds).toHaveLength(5);
+    for (const line of cwds) {
+      expect(line).toBe(`cwd=${REPO_ROOT} sources=${checkout}`);
+    }
   });
 
   it("marks the run failed and exits non-zero when a pass fails", () => {

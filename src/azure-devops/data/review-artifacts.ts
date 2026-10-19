@@ -68,7 +68,8 @@ export function buildDescriptionContent(pr: AdoPullRequest): string {
 
 /**
  * The iteration to review: the one whose source commit is the commit this
- * build was queued for, else the latest one.
+ * build was queued for. Without that commit (older Server versions do not
+ * set it), the latest one.
  */
 export function selectIteration(
   iterations: AdoIteration[],
@@ -85,6 +86,12 @@ export function selectIteration(
         sourceCommitId.toLowerCase(),
     );
     if (match) return match;
+    // Reviewing another iteration would post findings against a commit this
+    // build did not check out.
+    throw new Error(
+      `No pull request iteration has source commit ${sourceCommitId} ` +
+        `(latest is iteration ${sorted[sorted.length - 1]!.id}); re-queue the build.`,
+    );
   }
   return sorted[sorted.length - 1]!;
 }
@@ -112,12 +119,11 @@ export async function writeAzureDevopsReviewArtifacts(opts: {
   threads: AdoThread[];
   range: { base: string; head: string };
   outDir: string;
-}): Promise<ReviewArtifactPaths & { diff: string }> {
-  const diff = diffCommits(opts.git, opts.range.base, opts.range.head);
-  const paths = await writeReviewArtifacts(
+}): Promise<ReviewArtifactPaths> {
+  return writeReviewArtifacts(
     opts.outDir,
     {
-      diff,
+      diff: diffCommits(opts.git, opts.range.base, opts.range.head),
       comments: flattenThreads(opts.threads),
       description: buildDescriptionContent(opts.pr),
     },
@@ -127,5 +133,4 @@ export async function writeAzureDevopsReviewArtifacts(opts: {
       description: "pr_description.txt",
     },
   );
-  return { ...paths, diff };
 }

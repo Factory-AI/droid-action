@@ -274,8 +274,6 @@ export async function run(
   await writeResolvedEnvShim(env, {
     RESOLVED_MODEL: resolved.model ?? null,
     RESOLVED_REASONING_EFFORT: resolved.reasoningEffort ?? null,
-    DROID_PR_ID: String(pullRequestId),
-    DROID_TRACKING_THREAD_ID: String(tracking.threadId),
     DROID_SESSION_TAG_CANDIDATES: sessionTag("candidates"),
     DROID_SESSION_TAG_VALIDATOR: sessionTag("validator"),
   });
