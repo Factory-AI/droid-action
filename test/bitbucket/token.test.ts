@@ -58,7 +58,7 @@ describe("resolveBitbucketAuth", () => {
     expect(() =>
       resolveBitbucketAuth({
         DROID_BITBUCKET_USERNAME: "u",
-        DROID_BITBUCKET_API_TOKEN: "${APP_PASSWORD}",
+        DROID_BITBUCKET_API_TOKEN: "${BITBUCKET_API_TOKEN}",
       }),
     ).toThrow(UnexpandedBitbucketTokenError);
   });

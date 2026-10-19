@@ -7,8 +7,8 @@
 #
 #   FACTORY_API_KEY             Factory API key (required)
 #   DROID_BITBUCKET_TOKEN       Bearer token (Cloud access token / DC HTTP access token), or
-#   DROID_BITBUCKET_USERNAME +  Basic auth (Cloud API token + Atlassian email,
-#   DROID_BITBUCKET_API_TOKEN   or app password + Bitbucket username)
+#   DROID_BITBUCKET_USERNAME +  Basic auth (Cloud API token + Atlassian account email;
+#   DROID_BITBUCKET_API_TOKEN   Cloud app passwords were retired in June 2026)
 #
 # Pull request context comes from Pipelines variables (Cloud), or from
 # BITBUCKET_SERVER_URL / BITBUCKET_PROJECT_KEY / BITBUCKET_REPO_SLUG /

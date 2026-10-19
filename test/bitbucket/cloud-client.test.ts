@@ -101,7 +101,7 @@ describe("BitbucketCloudClient", () => {
     expect(pr.headSha).toBe("abcdef123456");
   });
 
-  it("sends HTTP Basic auth for an API token or app password", async () => {
+  it("sends HTTP Basic auth for an API token", async () => {
     server = startFakeServer(() => json(CLOUD_PR));
     const auth = resolveBitbucketAuth({
       DROID_BITBUCKET_USERNAME: "dev@example.com",

@@ -14,8 +14,8 @@ export class MissingBitbucketCredentialsError extends Error {
     super(
       "Missing Bitbucket credentials. Set DROID_BITBUCKET_TOKEN (Bitbucket Cloud repository/project/workspace " +
         "access token, or Data Center HTTP access token; sent as Bearer) or DROID_BITBUCKET_USERNAME + " +
-        "DROID_BITBUCKET_API_TOKEN (Bitbucket Cloud API token with your Atlassian email, or an app password " +
-        "with your Bitbucket username; sent as Basic) as secured CI variables.",
+        "DROID_BITBUCKET_API_TOKEN (Bitbucket Cloud API token, with your Atlassian account email as the " +
+        "username; sent as Basic) as secured CI variables. Bitbucket Cloud app passwords no longer work.",
     );
     this.name = "MissingBitbucketCredentialsError";
   }
