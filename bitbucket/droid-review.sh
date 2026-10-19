@@ -93,7 +93,9 @@ command -v git >/dev/null 2>&1 || fail "git is required on the CI agent"
 command -v curl >/dev/null 2>&1 || fail "curl is required on the CI agent"
 if ! command -v bun >/dev/null 2>&1; then
   echo "bun not found; installing bun 1.2.11"
-  curl -fsSL https://bun.sh/install | bash -s "bun-v1.2.11" >/dev/null ||
+  # From the scratch directory: the installer runs the new bun, which must
+  # not see a bunfig.toml or .env in the pull request's checkout.
+  (cd "$RUN_DIR" && curl -fsSL https://bun.sh/install | bash -s "bun-v1.2.11" >/dev/null) ||
     fail "bun is required and could not be installed (the installer needs unzip)"
 fi
 # Reinstall when the dependencies changed since the last install, not only
