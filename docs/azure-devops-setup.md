@@ -177,16 +177,16 @@ through the REST API, including org-wide rollout across repositories.
 
 Set these in the review step's `env:`:
 
-| Variable                                                               | Default                              | Description                                                                      |
-| ---------------------------------------------------------------------- | ------------------------------------ | -------------------------------------------------------------------------------- |
-| `AUTOMATIC_REVIEW`                                                     | `"true"`                             | Run code review on PR builds.                                                    |
-| `AUTOMATIC_SECURITY_REVIEW`                                            | `"false"`                            | Also run the security-reviewer subagent. Findings are prefixed `[security]`.     |
-| `REVIEW_DEPTH`                                                         | `deep`                               | `deep` (thorough) or `shallow` (fast).                                           |
-| `REVIEW_MODEL` / `REASONING_EFFORT`                                    | `""`                                 | Advanced overrides of the depth preset.                                          |
-| `INCLUDE_SUGGESTIONS`                                                  | `"true"`                             | Allow suggestion blocks in review comments.                                      |
-| `SECURITY_BLOCK_ON_CRITICAL` / `SECURITY_BLOCK_ON_HIGH`                | `"true"` / `"false"`                 | Accepted for parity with GitLab; currently informational only.                   |
-| `DROID_SETTINGS`                                                       | `""`                                 | Droid Exec settings as JSON or a path to a JSON file.                            |
-| `ORG_GUIDELINES_SOURCE` / `ORG_GUIDELINES_REF` / `ORG_GUIDELINES_PATH` | `""` / `""` / `review-guidelines.md` | Org-wide guidelines from a local file, a public http(s) URL, or a git clone URL. |
+| Variable                                                               | Default                              | Description                                                                                                                                        |
+| ---------------------------------------------------------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTOMATIC_REVIEW`                                                     | `"true"`                             | Run code review on PR builds.                                                                                                                      |
+| `AUTOMATIC_SECURITY_REVIEW`                                            | `"false"`                            | Also run the security-reviewer subagent. Findings are prefixed `[security]`.                                                                       |
+| `REVIEW_DEPTH`                                                         | `deep`                               | `deep` (thorough) or `shallow` (fast).                                                                                                             |
+| `REVIEW_MODEL` / `REASONING_EFFORT`                                    | `""`                                 | Advanced overrides of the depth preset.                                                                                                            |
+| `INCLUDE_SUGGESTIONS`                                                  | `"true"`                             | Allow suggestion blocks in review comments.                                                                                                        |
+| `SECURITY_BLOCK_ON_CRITICAL` / `SECURITY_BLOCK_ON_HIGH`                | `"true"` / `"false"`                 | Accepted for parity with GitLab; currently informational only.                                                                                     |
+| `DROID_SETTINGS`                                                       | `""`                                 | Droid Exec settings as JSON or a path to a JSON file.                                                                                              |
+| `ORG_GUIDELINES_SOURCE` / `ORG_GUIDELINES_REF` / `ORG_GUIDELINES_PATH` | `""` / `""` / `review-guidelines.md` | Org-wide guidelines from a local file, a public http(s) URL, or a git clone URL. The GitLab-only `group/repo` shorthand is ignored with a warning. |
 
 ## What you get
 
@@ -201,18 +201,22 @@ Set these in the review step's `env:`:
 - **A pipeline artifact** `droid-debug-<attempt>` with prompts, the
   candidate and validated JSON, and the raw `droid exec` logs.
 
+Fork pull requests are skipped before anything is posted: Azure Pipelines
+withholds secrets from fork builds, and the job should not run fork code
+with a token that can write to the PR.
+
 Drafts: Azure DevOps does not re-run build policies when a draft is
 published. The review runs on the next push, or when you queue the check
 again from the PR.
 
 ## Troubleshooting
 
-| Message                                                       | Cause and fix                                                                               |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `Missing Azure DevOps token`                                  | `SYSTEM_ACCESSTOKEN: $(System.AccessToken)` is not mapped and no `AZURE_DEVOPS_PAT` is set. |
-| `SYSTEM_ACCESSTOKEN was passed through as the literal string` | Typo in the `$(System.AccessToken)` mapping.                                                |
-| `FACTORY_API_KEY is not set`                                  | The variable group is not linked or authorized, or the secret is not mapped in `env:`.      |
-| `TF401027 ... 'PullRequestContribute' permission`             | Grant the build service identity "Contribute to pull requests" (section 3).                 |
-| `Azure DevOps API 401`, or a 203 HTML sign-in page            | The PAT is invalid, expired, or missing the Code (Read & write) scope.                      |
-| `commit <sha> is not available in the checkout`               | Shallow clone. Keep `fetchDepth: 0` and clear the pipeline's "Shallow fetch" setting.       |
-| `unsupported-repository-provider` in the log                  | The pipeline builds a repository that is not Azure Repos Git.                               |
+| Message                                                       | Cause and fix                                                                                                                              |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Missing Azure DevOps token`                                  | `SYSTEM_ACCESSTOKEN: $(System.AccessToken)` is not mapped and no `AZURE_DEVOPS_PAT` is set.                                                |
+| `SYSTEM_ACCESSTOKEN was passed through as the literal string` | Typo in the `$(System.AccessToken)` mapping.                                                                                               |
+| `FACTORY_API_KEY is not set`                                  | The variable group is not linked or authorized, or the secret is not mapped in `env:`. The check runs before anything is posted to the PR. |
+| `TF401027 ... 'PullRequestContribute' permission`             | Grant the build service identity "Contribute to pull requests" (section 3).                                                                |
+| `Azure DevOps API 401`, or a 203 HTML sign-in page            | The PAT is invalid, expired, or missing the Code (Read & write) scope.                                                                     |
+| `commit <sha> is not available in the checkout`               | Shallow clone. Keep `fetchDepth: 0` and clear the pipeline's "Shallow fetch" setting.                                                      |
+| `unsupported-repository-provider` in the log                  | The pipeline builds a repository that is not Azure Repos Git.                                                                              |

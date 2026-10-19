@@ -85,6 +85,37 @@ if [ "${DROID_SKIP_DEPENDENCY_INSTALL:-}" != "true" ]; then
     fail "bun install failed in $DROID_ACTION_DIR"
 fi
 
+# ---- Preflight -------------------------------------------------------------
+# Both checks run before prepare so a build that cannot review never posts a
+# tracking thread on the PR.
+case "${SYSTEM_PULLREQUEST_ISFORK:-}" in
+  [Tt]rue)
+    echo "Skipping Droid review: pull request comes from a fork (Azure Pipelines withholds secrets from fork builds)."
+    exit 0
+    ;;
+esac
+
+if [ "${BUILD_REASON:-}" = "PullRequest" ] &&
+  { [ -z "${FACTORY_API_KEY:-}" ] || is_unexpanded "$FACTORY_API_KEY"; }; then
+  fail "FACTORY_API_KEY is not set. Add it as a secret variable (e.g. in the droid-review variable group), authorize the pipeline to use the group, and map it in the step's env: FACTORY_API_KEY: \$(FACTORY_API_KEY). Nothing was posted to the pull request."
+fi
+
+# The shared installer treats any other bare value as a GitLab project path
+# and clones it from gitlab.com, which never makes sense on Azure DevOps.
+if [ -n "${ORG_GUIDELINES_SOURCE:-}" ] && ! is_unexpanded "$ORG_GUIDELINES_SOURCE"; then
+  case "$ORG_GUIDELINES_SOURCE" in
+    http://* | https://* | ssh://* | git@* | file://* | *.git) ;;
+    *)
+      if [ ! -f "$ORG_GUIDELINES_SOURCE" ]; then
+        echo "##vso[task.logissue type=warning]ORG_GUIDELINES_SOURCE '$ORG_GUIDELINES_SOURCE' is not a file on the agent, an http(s) URL, or a git clone URL; skipping org review guidelines."
+        unset ORG_GUIDELINES_SOURCE
+      fi
+      ;;
+  esac
+elif [ -n "${ORG_GUIDELINES_SOURCE:-}" ]; then
+  unset ORG_GUIDELINES_SOURCE
+fi
+
 # ---- Prepare ---------------------------------------------------------------
 if ! bun run "$DROID_ACTION_DIR/src/entrypoints/azure-devops-prepare.ts"; then
   fail "azure-devops-prepare failed; see the step log for the Azure DevOps API error"
@@ -95,6 +126,7 @@ if ! grep -q '"shouldRunReview": true' "$DROID_STATE_FILE"; then
   exit 0
 fi
 
+# Fallback for builds whose Build.Reason was not visible to the preflight.
 if [ -z "${FACTORY_API_KEY:-}" ] || is_unexpanded "$FACTORY_API_KEY"; then
   fail "FACTORY_API_KEY is not set. Add it as a secret variable (e.g. in the droid-review variable group), authorize the pipeline to use the group, and map it in the step's env: FACTORY_API_KEY: \$(FACTORY_API_KEY)."
 fi

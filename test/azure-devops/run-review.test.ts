@@ -80,6 +80,7 @@ function runScript(env: Record<string, string> = {}) {
     stdout: result.stdout + result.stderr,
     calls: fs.readFileSync(log, "utf8"),
     debugDir: path.join(agentTemp, "droid-debug"),
+    home: path.join(root, "home"),
   };
 }
 
@@ -165,6 +166,55 @@ describe("azure-devops/run-review.sh", () => {
     expect(run.calls).toContain(
       "update success=false details=FACTORY_API_KEY is not set",
     );
+  });
+
+  it("fails before prepare when a PR build has no FACTORY_API_KEY", () => {
+    const run = runScript({ BUILD_REASON: "PullRequest", FACTORY_API_KEY: "" });
+    expect(run.status).toBe(1);
+    expect(run.calls).not.toContain("azure-devops-prepare.ts");
+    expect(run.calls).not.toContain("azure-devops-update-comment-link.ts");
+    expect(run.stdout).toContain("FACTORY_API_KEY is not set");
+    expect(run.stdout).toContain("Nothing was posted to the pull request");
+  });
+
+  it("skips fork pull requests before prepare, even without secrets", () => {
+    const run = runScript({
+      BUILD_REASON: "PullRequest",
+      SYSTEM_PULLREQUEST_ISFORK: "True",
+      FACTORY_API_KEY: "",
+    });
+    expect(run.status).toBe(0);
+    expect(run.calls).not.toContain("azure-devops-prepare.ts");
+    expect(run.calls).not.toContain("azure-devops-update-comment-link.ts");
+    expect(run.stdout).toContain("pull request comes from a fork");
+  });
+
+  it("ignores a GitLab-style group/repo ORG_GUIDELINES_SOURCE", () => {
+    const run = runScript({ ORG_GUIDELINES_SOURCE: "platform/review-rules" });
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain(
+      "ORG_GUIDELINES_SOURCE 'platform/review-rules' is not a file on the agent",
+    );
+    expect(run.stdout).not.toContain("could not clone");
+    expect(
+      fs.existsSync(
+        path.join(run.home, ".factory/skills/org-review-guidelines"),
+      ),
+    ).toBe(false);
+  });
+
+  it("installs org guidelines from a file on the agent", () => {
+    const file = path.join(tempDir("ado-guide-"), "rules.md");
+    dirs.push(path.dirname(file));
+    fs.writeFileSync(file, "Always check errors.\n");
+    const run = runScript({ ORG_GUIDELINES_SOURCE: file });
+    expect(run.status).toBe(0);
+    expect(
+      fs.readFileSync(
+        path.join(run.home, ".factory/skills/org-review-guidelines/SKILL.md"),
+        "utf8",
+      ),
+    ).toContain("Always check errors.");
   });
 
   it("does not touch the tracking thread when prepare fails before writing state", () => {

@@ -66,6 +66,11 @@ export type AzureDevopsClientOptions = {
   auth: AzureDevopsAuth;
   apiVersion?: string;
   fetch?: FetchLike;
+  /** Retries after the first attempt for throttled or unavailable responses. */
+  maxRetries?: number;
+  /** Base for exponential backoff when the response has no Retry-After. */
+  retryDelayMs?: number;
+  sleep?: (ms: number) => Promise<void>;
 };
 
 type RequestOptions = {
@@ -79,6 +84,28 @@ type RawResponse<T> = { data: T; headers: Headers };
 const CONTINUATION_HEADER = "x-ms-continuationtoken";
 const ITERATION_CHANGES_PAGE_SIZE = 2000;
 const MAX_PAGES = 1000;
+const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+const MAX_RETRY_AFTER_MS = 30_000;
+
+/**
+ * A 5xx on a POST may arrive after Azure DevOps already created the thread,
+ * so retrying it could duplicate a comment. A 429 means the request was
+ * throttled before it ran, which is safe to retry for any method.
+ */
+function isRetryable(method: string, status: number): boolean {
+  if (!RETRYABLE_STATUSES.has(status)) return false;
+  return method !== "POST" || status === 429;
+}
+
+/** Retry-After is either delay-seconds or an HTTP date. */
+function retryAfterMs(headers: Headers): number | null {
+  const value = headers.get("Retry-After");
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const date = Date.parse(value);
+  return Number.isNaN(date) ? null : Math.max(0, date - Date.now());
+}
 
 export class AzureDevopsClient {
   readonly collectionUri: string;
@@ -87,6 +114,9 @@ export class AzureDevopsClient {
   readonly apiVersion: string;
   private readonly auth: AzureDevopsAuth;
   private readonly fetchImpl: FetchLike;
+  private readonly maxRetries: number;
+  private readonly retryDelayMs: number;
+  private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(options: AzureDevopsClientOptions) {
     this.collectionUri = normalizeCollectionUri(options.collectionUri);
@@ -96,6 +126,10 @@ export class AzureDevopsClient {
     this.apiVersion = options.apiVersion ?? AZURE_DEVOPS_DEFAULT_API_VERSION;
     this.fetchImpl =
       options.fetch ?? ((url, init) => globalThis.fetch(url, init));
+    this.maxRetries = options.maxRetries ?? 3;
+    this.retryDelayMs = options.retryDelayMs ?? 1000;
+    this.sleep =
+      options.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   }
 
   /** `{collection}/{project}/_apis/git/repositories/{repo}` */
@@ -135,7 +169,24 @@ export class AzureDevopsClient {
       body = JSON.stringify(options.json);
     }
 
-    const response = await this.fetchImpl(url, { method, headers, body });
+    let response = await this.fetchImpl(url, { method, headers, body });
+    for (
+      let attempt = 0;
+      attempt < this.maxRetries && isRetryable(method, response.status);
+      attempt++
+    ) {
+      const delay = Math.min(
+        retryAfterMs(response.headers) ?? this.retryDelayMs * 2 ** attempt,
+        MAX_RETRY_AFTER_MS,
+      );
+      // Drain the body so the connection can be reused.
+      await response.text().catch(() => "");
+      console.warn(
+        `Azure DevOps API ${response.status} on ${method}; retrying in ${delay}ms (${attempt + 1}/${this.maxRetries})`,
+      );
+      await this.sleep(delay);
+      response = await this.fetchImpl(url, { method, headers, body });
+    }
     const text = await response.text();
 
     if (!response.ok) {

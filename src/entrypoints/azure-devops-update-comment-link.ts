@@ -48,9 +48,20 @@ export async function run(
       env.DROID_PASS2_LOG || path.join(promptsDir(env), "pass2-output.jsonl"),
   });
 
+  let review: Awaited<ReturnType<typeof readReviewPostOutcome>> = null;
+  try {
+    review = await readReviewPostOutcome(postResultsFilePath(env));
+  } catch (error) {
+    // Finalizing the thread matters more than the posting counts.
+    console.warn(
+      "Ignoring unreadable review_post_results.json:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+
   const body = buildTrackingCommentBody({
     state: success ? "success" : "failure",
-    review: await readReviewPostOutcome(postResultsFilePath(env)),
+    review,
     pipelineUrl: state.buildUrl,
     jobUrl: state.jobUrl,
     triggerUsername: state.triggeredBy,

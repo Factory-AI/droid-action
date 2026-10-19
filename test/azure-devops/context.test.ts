@@ -120,6 +120,17 @@ describe("reviewSkipReason", () => {
     ).toBe("unsupported-repository-provider (GitHub)");
   });
 
+  it("skips fork pull requests", () => {
+    expect(
+      reviewSkipReason(
+        parseAzureDevopsContext({
+          ...SERVICES_ENV,
+          SYSTEM_PULLREQUEST_ISFORK: "True",
+        }),
+      ),
+    ).toBe("fork-pull-request");
+  });
+
   it("skips when automatic review is off", () => {
     expect(
       reviewSkipReason(

@@ -3,6 +3,7 @@ import {
   AzureDevopsApiError,
   AzureDevopsClient,
 } from "../../src/azure-devops/api/client";
+import type { AdoCreateThreadRequest } from "../../src/azure-devops/types";
 import { createFakeAdo, json } from "./helpers";
 
 const SERVICES = "https://dev.azure.com/contoso/";
@@ -15,6 +16,7 @@ function client(fake: ReturnType<typeof createFakeAdo>, overrides = {}) {
     repositoryId: "repo-guid",
     auth: { kind: "bearer", token: "job-token" },
     fetch: fake.fetch,
+    sleep: async () => {},
     ...overrides,
   });
 }
@@ -159,6 +161,67 @@ describe("AzureDevopsClient pagination", () => {
     const second = new URL(fake.requests[1]!.url).searchParams;
     expect(second.get("$skip")).toBe("2");
     expect(second.get("$top")).toBe("2");
+  });
+});
+
+describe("AzureDevopsClient retries", () => {
+  function flaky(method: string, suffix: string, failures: Response[]) {
+    const fake = createFakeAdo();
+    let calls = 0;
+    fake.on(method, suffix, () =>
+      calls < failures.length ? failures[calls++]! : json({ id: 1 }),
+    );
+    return fake;
+  }
+
+  it("retries a throttled GET after the Retry-After delay", async () => {
+    const fake = flaky("GET", "/pullRequests/1", [
+      json({ message: "slow down" }, 429, { "Retry-After": "2" }),
+      new Response("bad gateway", { status: 502 }),
+    ]);
+    const delays: number[] = [];
+    const pr = await client(fake, {
+      sleep: async (ms: number) => void delays.push(ms),
+      retryDelayMs: 100,
+    }).getPullRequest(1);
+    expect(pr).toEqual({ id: 1 } as never);
+    expect(fake.requests).toHaveLength(3);
+    // Retry-After wins on the first retry; backoff doubles on the second.
+    expect(delays).toEqual([2000, 200]);
+  });
+
+  it("gives up after maxRetries and surfaces the last error", async () => {
+    const fake = createFakeAdo();
+    fake.on(
+      "GET",
+      "/pullRequests/1",
+      () => new Response("down", { status: 503 }),
+    );
+    const error = await client(fake, { maxRetries: 2 })
+      .getPullRequest(1)
+      .catch((e) => e);
+    expect(error).toBeInstanceOf(AzureDevopsApiError);
+    expect(error.status).toBe(503);
+    expect(fake.requests).toHaveLength(3);
+  });
+
+  const thread: AdoCreateThreadRequest = {
+    comments: [{ parentCommentId: 0, content: "x", commentType: "text" }],
+  };
+
+  it("retries a POST that was throttled", async () => {
+    const fake = flaky("POST", "/threads", [json({}, 429)]);
+    await client(fake).createThread(1, thread);
+    expect(fake.requests).toHaveLength(2);
+  });
+
+  it("does not retry a POST on 5xx, which may already have created the thread", async () => {
+    const fake = flaky("POST", "/threads", [json({}, 503)]);
+    const error = await client(fake)
+      .createThread(1, thread)
+      .catch((e) => e);
+    expect(error.status).toBe(503);
+    expect(fake.requests).toHaveLength(1);
   });
 });
 

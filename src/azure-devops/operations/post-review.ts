@@ -149,6 +149,9 @@ export async function postReview(opts: {
           trackingIds.get(toAdoPath(comment.path));
         const pullRequestThreadContext = {
           ...(changeTrackingId !== undefined ? { changeTrackingId } : {}),
+          // Equal iterations mean "merge base vs this iteration" (the full
+          // PR diff the findings were made against). first=1 would instead
+          // anchor against iteration 1's source, an inter-iteration diff.
           iterationContext: {
             firstComparingIteration: iterationId,
             secondComparingIteration: iterationId,

@@ -160,6 +160,11 @@ export function reviewSkipReason(ctx: ParsedAzureDevopsContext): string | null {
   if (ctx.repository.provider && ctx.repository.provider !== "TfsGit") {
     return `unsupported-repository-provider (${ctx.repository.provider})`;
   }
+  if (ctx.pullRequest.isFork) {
+    // Pipelines withhold secrets from fork PR builds, and the job token
+    // cannot be trusted with fork code either.
+    return "fork-pull-request";
+  }
   if (!ctx.inputs.automaticReview) {
     return "automatic-review-disabled";
   }

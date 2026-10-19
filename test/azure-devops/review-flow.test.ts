@@ -5,7 +5,10 @@ import { run as prepare } from "../../src/entrypoints/azure-devops-prepare";
 import { run as prepareValidator } from "../../src/entrypoints/azure-devops-prepare-validator";
 import { run as postReview } from "../../src/entrypoints/azure-devops-post-review";
 import { run as updateTracking } from "../../src/entrypoints/azure-devops-update-comment-link";
-import type { AzureDevopsPrepareState } from "../../src/azure-devops/paths";
+import {
+  postResultsFilePath,
+  type AzureDevopsPrepareState,
+} from "../../src/azure-devops/paths";
 import { DROID_TRACKING_PROPERTY } from "../../src/azure-devops/operations/tracking-thread";
 import {
   SERVICES_ENV,
@@ -275,14 +278,14 @@ describe("azure-devops-prepare", () => {
       json({ id: 61, comments: [{ id: 1 }] }),
     );
     failing.on("GET", `${PR_PATH}/iterations`, () =>
-      json({ message: "boom" }, 500),
+      json({ message: "boom" }, 404),
     );
     failing.on("PATCH", `${PR_PATH}/threads/61/comments/1`, (req) =>
       json({ id: 1, ...(req.body as object) }),
     );
     const env = envFor();
     await expect(prepare(deps(env, failing))).rejects.toThrow(
-      "Azure DevOps API 500",
+      "Azure DevOps API 404",
     );
     expect(readState(env)).toMatchObject({
       shouldRunReview: true,
@@ -431,6 +434,20 @@ describe("validator + posting + tracking update", () => {
     fake.requests.length = 0;
     expect(await postReview({ env, fetch: fake.fetch })).toBeNull();
     expect(fake.requests).toHaveLength(0);
+  });
+
+  it("still finalizes the tracking thread when the post results file is malformed", async () => {
+    const fake = fakeAdo();
+    const env = envFor();
+    await prepare(deps(env, fake));
+    fs.writeFileSync(postResultsFilePath(env), "{ truncated");
+    fake.requests.length = 0;
+    const body = await updateTracking({
+      env: { ...env, DROID_SUCCESS: "true" },
+      fetch: fake.fetch,
+    });
+    expect(fake.requests.map((r) => r.method)).toEqual(["PATCH"]);
+    expect(body).toContain("Droid finished reviewing this pull request");
   });
 
   it("fails when Pass 2 never wrote the validated file", async () => {
