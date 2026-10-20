@@ -73,7 +73,7 @@ runs:
       id: token
       shell: bash
       run: |
-        bun run ${{ github.action_path }}/../src/entrypoints/get-token.ts
+        bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../src/entrypoints/get-token.ts
       env:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
@@ -82,7 +82,7 @@ runs:
       id: prompt
       shell: bash
       run: |
-        bun run ${{ github.action_path }}/../src/entrypoints/generate-review-prompt.ts
+        bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../src/entrypoints/generate-review-prompt.ts
       env:
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
@@ -108,7 +108,7 @@ runs:
       id: review
       shell: bash
       run: |
-        bun run ${{ github.action_path }}/../base-action/src/index.ts
+        bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../base-action/src/index.ts
       env:
         INPUT_PROMPT_FILE: ${{ runner.temp }}/droid-prompts/droid-prompt.txt
         INPUT_DROID_ARGS: ${{ steps.prompt.outputs.droid_args }}
@@ -121,7 +121,7 @@ runs:
       id: prepare_validator
       shell: bash
       run: |
-        bun run ${{ github.action_path }}/../src/entrypoints/prepare-validator.ts
+        bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../src/entrypoints/prepare-validator.ts
       env:
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
@@ -137,7 +137,7 @@ runs:
       id: validator
       shell: bash
       run: |
-        bun run ${{ github.action_path }}/../base-action/src/index.ts
+        bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../base-action/src/index.ts
       env:
         INPUT_PROMPT_FILE: ${{ runner.temp }}/droid-prompts/droid-prompt.txt
         INPUT_DROID_ARGS: ${{ steps.prepare_validator.outputs.droid_args }}
@@ -150,7 +150,7 @@ runs:
       continue-on-error: true
       shell: bash
       run: |
-        bun run ${{ github.action_path }}/../src/entrypoints/update-comment-link.ts
+        bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../src/entrypoints/update-comment-link.ts
       env:
         DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
@@ -163,3 +163,15 @@ runs:
         DROID_ERROR_MESSAGE: ${{ steps.review.outputs.error_message || '' }}
         DROID_VALIDATOR_ERROR_MESSAGE: ${{ steps.validator.outputs.error_message || '' }}
         MODEL_FALLBACK_NOTE: ${{ steps.prompt.outputs.model_fallback_note || steps.prepare_validator.outputs.model_fallback_note || steps.review.outputs.model_fallback_note || steps.validator.outputs.model_fallback_note || '' }}
+
+    # Must stay the last step: everything above may still call GitHub with the
+    # token. A provided github_token belongs to the caller and is left alone.
+    - name: Revoke GitHub App token
+      if: always() && inputs.github_token == ''
+      continue-on-error: true
+      shell: bash
+      run: |
+        bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../src/entrypoints/revoke-github-token.ts
+      env:
+        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
