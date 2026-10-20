@@ -5,6 +5,7 @@
  */
 
 import * as core from "@actions/core";
+import { writeFileSync } from "fs";
 import { setupGitHubToken } from "../github/token";
 
 async function run() {
@@ -20,6 +21,14 @@ async function run() {
       console.log("Requesting OIDC token...");
       token = await setupGitHubToken();
       console.log("GitHub token obtained via OIDC");
+    }
+
+    // A caller that must not leave the token in a step output (which later
+    // steps can read) asks for an owner-only file it deletes after use.
+    const tokenFile = process.env.GITHUB_TOKEN_FILE?.trim();
+    if (tokenFile) {
+      writeFileSync(tokenFile, token, { mode: 0o600 });
+      return;
     }
 
     // Set output for next steps

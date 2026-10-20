@@ -109,4 +109,97 @@ describe("GitlabClient", () => {
       expect(e.message).toContain('"message":"404 Not Found"');
     }
   });
+
+  describe("credential handling", () => {
+    const FACTORY_KEY = "fk-" + "a".repeat(40);
+    const CLIENT_TOKEN = "client-token-value-1234567890";
+    let savedKey: string | undefined;
+
+    beforeEach(() => {
+      savedKey = process.env.FACTORY_API_KEY;
+      process.env.FACTORY_API_KEY = "factory-env-secret-1234567890";
+    });
+
+    afterEach(() => {
+      if (savedKey === undefined) delete process.env.FACTORY_API_KEY;
+      else process.env.FACTORY_API_KEY = savedKey;
+    });
+
+    it("redacts credentials from every body it writes", async () => {
+      const bodies: string[] = [];
+      mockFetch((_url, init) => {
+        bodies.push(String(init.body));
+        return jsonResponse({ id: 1 });
+      });
+      const leak = `token ${CLIENT_TOKEN} env factory-env-secret-1234567890 key ${FACTORY_KEY}`;
+      const client = new GitlabClient(CLIENT_TOKEN);
+
+      await client.createNote(1, 2, leak);
+      await client.updateNote(1, 2, 3, leak);
+      await client.createDiscussionOnDiff(1, 2, leak, {
+        base_sha: "a",
+        start_sha: "b",
+        head_sha: "c",
+        position_type: "text",
+        new_path: "x.ts",
+        new_line: 1,
+      });
+      await client.updateMrDescription(1, 2, leak);
+
+      expect(bodies).toHaveLength(4);
+      for (const body of bodies) {
+        expect(body).not.toContain(CLIENT_TOKEN);
+        expect(body).not.toContain("factory-env-secret-1234567890");
+        expect(body).not.toContain(FACTORY_KEY);
+        expect(body).toContain("[REDACTED]");
+      }
+    });
+
+    it("redacts credentials echoed in an error response", async () => {
+      mockFetch(
+        () =>
+          new Response(
+            JSON.stringify({ message: `bad token ${CLIENT_TOKEN}` }),
+            { status: 401, statusText: "Unauthorized" },
+          ),
+      );
+      const client = new GitlabClient(CLIENT_TOKEN);
+      const err = await client.getMr(1, 2).catch((e) => e);
+      expect(err).toBeInstanceOf(GitlabApiError);
+      expect(err.message).not.toContain(CLIENT_TOKEN);
+      expect(JSON.stringify(err.body)).not.toContain(CLIENT_TOKEN);
+      expect(err.message).toContain("[REDACTED]");
+    });
+
+    it("refuses redirects so PRIVATE-TOKEN never follows one", async () => {
+      const fetchMock = mockFetch(() => jsonResponse({ iid: 2 }));
+      await new GitlabClient(CLIENT_TOKEN).getMr(1, 2);
+      expect(fetchMock.mock.calls[0]![1].redirect).toBe("error");
+    });
+  });
+
+  describe("request paths", () => {
+    const request = (client: GitlabClient, path: string) =>
+      (
+        client as unknown as {
+          request: (path: string) => Promise<unknown>;
+        }
+      ).request(path);
+
+    for (const path of [
+      "https://evil.example.com/api/v4/user",
+      "http://gitlab.com/api/v4/user",
+      "https://gitlab.com/api/v4/user",
+      "//evil.example.com/user",
+      "user",
+    ]) {
+      it(`refuses ${path} without sending the token anywhere`, async () => {
+        const fetchMock = mockFetch(() => jsonResponse({}));
+        await expect(
+          request(new GitlabClient("glpat-test"), path),
+        ).rejects.toThrow(/relative to its API base URL/);
+        expect(fetchMock).toHaveBeenCalledTimes(0);
+      });
+    }
+  });
 });

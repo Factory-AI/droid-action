@@ -5,6 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { Octokit } from "@octokit/rest";
 import { GITHUB_API_URL } from "../github/api/config";
+import { withRequestRedaction } from "../github/api/client";
 import {
   createGitHubCommentReview,
   type GitHubReviewCommentPayload,
@@ -1056,10 +1057,13 @@ async function runServer() {
     process.exit(1);
   }
 
-  const octokit = new Octokit({
-    auth: token,
-    baseUrl: GITHUB_API_URL,
-  });
+  const octokit = withRequestRedaction(
+    new Octokit({
+      auth: token,
+      baseUrl: GITHUB_API_URL,
+    }),
+    token,
+  );
 
   const server = createGitHubPRServer({ owner, repo, octokit });
 

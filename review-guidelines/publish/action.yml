@@ -1,0 +1,42 @@
+name: "Droid Review Guidelines: Publish"
+description: "Open or update the pull request with the guidelines a review-guidelines job learned. Run it in a later job (needs: <that job>) on a fresh checkout."
+
+inputs:
+  factory_api_key:
+    description: "Factory API key. Optional; only used to check that the published files do not contain it."
+    required: false
+    default: ""
+  github_token:
+    description: "GitHub token (optional - will use OIDC if not provided). Needs to push a branch and open pull requests."
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Download the guidelines
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      with:
+        name: review-guidelines
+        path: ${{ runner.temp }}/review-guidelines-result
+
+    - name: Install Bun
+      uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+      with:
+        bun-version: 1.2.11
+
+    - name: Install Dependencies
+      shell: bash
+      run: |
+        cd ${{ github.action_path }}/../..
+        bun install
+
+    - name: Open the guidelines PR
+      id: publish
+      shell: bash
+      run: bash ${{ github.action_path }}/../publish.sh
+      env:
+        ACTION_ROOT: ${{ github.action_path }}/../..
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+        # Only to check that the published files do not contain it.
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}

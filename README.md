@@ -172,6 +172,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Run Droid Exec
         uses: Factory-AI/droid-action@main
@@ -209,6 +210,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Run Droid Auto Review
         uses: Factory-AI/droid-action@main
@@ -221,6 +223,10 @@ jobs:
 
 Set `automatic_review: true` to run code reviews automatically on non-draft PRs. Set `automatic_security_review: true` to additionally run a STRIDE-based security review concurrently on every non-draft PR.
 The example allows reviews triggered by `factory-droid[bot]`. `allowed_bots` checks the event actor, not the PR author, so PRs opened by other bots can also be reviewed when a human triggers the workflow.
+
+Both examples set `persist-credentials: false` so the workflow's `GITHUB_TOKEN` is not left in `.git/config`, where any command Droid runs could read it. The action authenticates its own git commands through `gh`.
+
+Pull requests from forks are reviewed without checking out their code. The action fetches the fork's commits to a separate ref and reviews the diff, so files from the fork, such as `.factory` hooks and MCP servers, `bunfig.toml` and `.env`, are never loaded in a job that holds your secrets. Droid is told it is reviewing a fork and reads the fork's files from that ref.
 
 ## Using the Commands
 
@@ -285,6 +291,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: Factory-AI/droid-action@main
         with:
@@ -323,6 +330,8 @@ To leave comments and approvals on your PRs, Droid needs a GitHub token. There a
     id-token: write # required for GitHub App auth
   ```
 
+  The action revokes this app token when it finishes, so later steps in your job cannot use its `github_token` output.
+
 - **Your own token (override).** If you'd rather use a personal access token or your own GitHub App — for example on GitHub Enterprise, or to control which account posts comments — pass it as `github_token`. When set, Droid uses it directly and skips the app. The token needs write access to pull requests and repository contents.
 
   ```yaml
@@ -338,10 +347,11 @@ To leave comments and approvals on your PRs, Droid needs a GitHub token. There a
 
 ### Core Inputs
 
-| Input             | Purpose                                                                                                |
-| ----------------- | ------------------------------------------------------------------------------------------------------ |
-| `factory_api_key` | **Required.** Grants Droid Exec permission to run via Factory.                                         |
-| `github_token`    | Optional override if you prefer a custom GitHub App/token. By default the installed app token is used. |
+| Input                    | Purpose                                                                                                                                                                                                                                       |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `factory_api_key`        | **Required.** Grants Droid Exec permission to run via Factory.                                                                                                                                                                                |
+| `github_token`           | Optional override if you prefer a custom GitHub App/token. By default the installed app token is used.                                                                                                                                        |
+| `upload_debug_artifacts` | Default `false`. Uploads a `droid-review-debug-<run_id>` artifact with Droid's logs, sessions and review prompts. Credentials are redacted, but anyone who can read the repository's Actions runs can download it, including on public repos. |
 
 ### Review Configuration
 
@@ -406,7 +416,62 @@ Additional checks for this codebase:
 
 These guidelines are automatically loaded whenever the `review` skill runs, which covers both the code review candidate-generation and validation passes. No workflow changes needed.
 
-Security review reads a separate skill, `.factory/skills/security-review-guidelines/SKILL.md`, and does not pick up `review-guidelines`. Its rules take priority over the built-in STRIDE/OWASP methodology when they conflict, but cannot relax the skill's safety invariants (no uploading or transmitting findings, no writes outside the local audit directory, no destructive commands). Add a rule to both skills if it should apply to both reviews.
+### Learning guidelines from past reviews
+
+The `review-guidelines` actions write this file for you. On each run, the first job collects the review comments that authors acted on since the last run and turns them into guidelines. A second job opens a pull request with the changes (or updates the open one). Nothing reaches the repository until you merge that pull request.
+
+```yaml
+name: Learn review guidelines
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+jobs:
+  learn-review-guidelines:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # `id-token: write` lets the job request the OIDC token it exchanges for
+    # a Factory GitHub App token.
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: droid-review-guidelines
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: Factory-AI/droid-action/review-guidelines@main
+        with:
+          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+
+  publish-review-guidelines:
+    needs: learn-review-guidelines
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: Factory-AI/droid-action/review-guidelines/publish@main
+        with:
+          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+```
+
+| Input                  | Action                      | Default | Description                                                                                      |
+| ---------------------- | --------------------------- | ------- | ------------------------------------------------------------------------------------------------ |
+| `include_bot_comments` | `review-guidelines`         | `true`  | Learn from bots' review comments too. Set to `false` to use people's comments only.              |
+| `github_token`         | both                        | `""`    | Optional. Without it, each action exchanges the job's OIDC token for a Factory GitHub App token. |
+| `factory_api_key`      | `review-guidelines/publish` | `""`    | Optional. Only used to check that the published files do not contain it.                         |
+
+The step that writes guidelines reads untrusted comment text. It runs with file tools only and no GitHub token, and because it could still change any file in its job, publishing happens in the second job on a fresh runner. That job accepts only the guidelines files and the PR description, refuses anything else, and refuses output that contains a credential.
 
 ## Security Skills
 

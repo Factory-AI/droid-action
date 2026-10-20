@@ -8,6 +8,15 @@ import type { DroidRunType } from "../run-type";
 import { parsePrCommentKind } from "../github/operations/comments/common";
 import { Octokit } from "@octokit/rest";
 
+// Droid starts MCP servers in the repository checkout. Without these flags Bun
+// would load bunfig.toml (including preload scripts) and .env files from it
+// into a server process that holds a GitHub token.
+export const BUN_RUN_ARGS = [
+  "--config=/dev/null",
+  "--env-file=/dev/null",
+  "run",
+] as const;
+
 type PrepareConfigParams = {
   githubToken: string;
   owner: string;
@@ -107,7 +116,7 @@ export async function prepareMcpTools(
 
     baseMcpTools.mcpServers.github_comment = {
       command: "bun",
-      args: ["run", `${repoRoot}/src/mcp/github-comment-server.ts`],
+      args: [...BUN_RUN_ARGS, `${repoRoot}/src/mcp/github-comment-server.ts`],
       env: {
         GITHUB_TOKEN: githubToken,
         REPO_OWNER: owner,
@@ -134,7 +143,10 @@ export async function prepareMcpTools(
     if (isPullRequestRun && (hasGitHubMcpTools || hasInlineCommentTools)) {
       baseMcpTools.mcpServers.github_inline_comment = {
         command: "bun",
-        args: ["run", `${repoRoot}/src/mcp/github-inline-comment-server.ts`],
+        args: [
+          ...BUN_RUN_ARGS,
+          `${repoRoot}/src/mcp/github-inline-comment-server.ts`,
+        ],
         env: {
           GITHUB_TOKEN: githubToken,
           REPO_OWNER: owner,
@@ -166,7 +178,7 @@ export async function prepareMcpTools(
       }
       baseMcpTools.mcpServers.github_ci = {
         command: "bun",
-        args: ["run", `${repoRoot}/src/mcp/github-actions-server.ts`],
+        args: [...BUN_RUN_ARGS, `${repoRoot}/src/mcp/github-actions-server.ts`],
         env: {
           // Use workflow github token, not app token
           GITHUB_TOKEN: process.env.DEFAULT_WORKFLOW_TOKEN,
@@ -181,7 +193,7 @@ export async function prepareMcpTools(
     if (isEntityContext(context) && context.isPR && hasGitHubPRTools) {
       baseMcpTools.mcpServers.github_pr = {
         command: "bun",
-        args: ["run", `${repoRoot}/src/mcp/github-pr-server.ts`],
+        args: [...BUN_RUN_ARGS, `${repoRoot}/src/mcp/github-pr-server.ts`],
         env: {
           GITHUB_TOKEN: githubToken,
           REPO_OWNER: owner,
