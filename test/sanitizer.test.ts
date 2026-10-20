@@ -9,6 +9,7 @@ import {
   stripHtmlComments,
   redactGitHubTokens,
 } from "../src/github/utils/sanitizer";
+import { redactCredentialPatterns } from "../src/utils/redact-credentials";
 
 describe("stripInvisibleCharacters", () => {
   it("should remove zero-width characters", () => {
@@ -337,10 +338,59 @@ export GITHUB_TOKEN=[REDACTED_GITHUB_TOKEN]
     expect(redactGitHubTokens(content)).toBe(content);
   });
 
+  it("should redact a token in git's base64 extraheader form", () => {
+    const encoded = Buffer.from(
+      `x-access-token:ghs_${"a".repeat(36)}`,
+    ).toString("base64");
+    expect(redactGitHubTokens(`AUTHORIZATION: basic ${encoded}\n`)).toBe(
+      "AUTHORIZATION: basic [REDACTED_GITHUB_TOKEN]\n",
+    );
+  });
+
   it("should handle edge cases", () => {
     expect(redactGitHubTokens("")).toBe("");
     expect(redactGitHubTokens("ghp_")).toBe("ghp_");
     expect(redactGitHubTokens("github_pat_short")).toBe("github_pat_short");
+  });
+
+  it("should redact a token that starts a line inside JSON-encoded text", () => {
+    const tokens = [
+      `ghp_${"a".repeat(36)}`,
+      `ghs_${"b".repeat(40)}`,
+      `github_pat_${"c".repeat(60)}`,
+      Buffer.from(`x-access-token:ghs_${"d".repeat(36)}`).toString("base64"),
+    ];
+    for (const token of tokens) {
+      for (const separator of ["\n", "\r\n", "\t"]) {
+        const encoded = JSON.stringify(`$ env${separator}${token}`);
+        expect(redactGitHubTokens(encoded)).toBe(
+          JSON.stringify(`$ env${separator}[REDACTED_GITHUB_TOKEN]`),
+        );
+      }
+    }
+  });
+
+  it("should not treat a plain letter before a prefix as a JSON escape", () => {
+    const content = `xghp_${"a".repeat(36)} and nghs_${"b".repeat(40)}`;
+    expect(redactGitHubTokens(content)).toBe(content);
+  });
+});
+
+describe("redactCredentialPatterns in JSON-encoded text", () => {
+  it("should redact Factory API keys and GitLab tokens that start a line", () => {
+    const factoryKey = `fk-${"e".repeat(30)}`;
+    const gitlabToken = `glpat-${"f".repeat(24)}`;
+    const encoded = JSON.stringify(`key:\n${factoryKey}\n${gitlabToken}`);
+    expect(redactCredentialPatterns(encoded)).toBe(
+      JSON.stringify(
+        "key:\n[REDACTED_FACTORY_API_KEY]\n[REDACTED_GITLAB_TOKEN]",
+      ),
+    );
+  });
+
+  it("should still leave identifiers that only contain a prefix alone", () => {
+    const content = `dfk-${"e".repeat(30)} my.glpat-${"f".repeat(24)}`;
+    expect(redactCredentialPatterns(content)).toBe(content);
   });
 });
 

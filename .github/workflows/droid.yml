@@ -32,6 +32,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Run Droid Exec
         uses: Factory-AI/droid-action@v5

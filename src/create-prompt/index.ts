@@ -19,6 +19,7 @@ import type {
   CommonFields,
   PreparedContext,
   EventData,
+  PrBranchPromptData,
   ReviewArtifacts,
 } from "./types";
 
@@ -75,7 +76,7 @@ export function prepareContext(
   droidCommentId?: string,
   baseBranch?: string,
   droidBranch?: string,
-  prBranchData?: { headRefName: string; headRefOid: string },
+  prBranchData?: PrBranchPromptData,
   reviewArtifacts?: ReviewArtifacts,
 ): PreparedContext {
   const repository = context.repository.full_name;
@@ -297,7 +298,7 @@ export type PromptCreationOptions = {
   commentId?: number;
   baseBranch?: string;
   droidBranch?: string;
-  prBranchData?: { headRefName: string; headRefOid: string };
+  prBranchData?: PrBranchPromptData;
   generatePrompt: PromptGenerator;
   allowedTools?: string[];
   disallowedTools?: string[];

@@ -526,6 +526,8 @@ describe("gitlab-post-review entrypoint", () => {
     "REVIEW_POST_RESULTS_PATH",
     "DROID_PROMPT_FILE",
     "CI_PROJECT_DIR",
+    "CI_PROJECT_ID",
+    "CI_MERGE_REQUEST_IID",
   ] as const;
 
   let tmpDir: string;
@@ -608,6 +610,8 @@ describe("gitlab-post-review entrypoint", () => {
     }
     process.env.GITLAB_TOKEN = "test-token";
     process.env.CI_API_V4_URL = "https://gitlab.example.com/api/v4";
+    process.env.CI_PROJECT_ID = "4242";
+    process.env.CI_MERGE_REQUEST_IID = "7";
     process.env.REVIEW_POST_RESULTS_PATH = path.join(
       tmpDir,
       "review_post_results.json",
@@ -700,6 +704,36 @@ describe("gitlab-post-review entrypoint", () => {
 
     await postReviewRun();
 
+    expect(calls).toHaveLength(0);
+  });
+
+  // The state file sits where the review passes can rewrite it, so it must
+  // never be able to point the post at another project or MR.
+  it("refuses to post when the state file names another project", async () => {
+    await writeState({ projectId: "9999" });
+    await writeValidated([approved()]);
+    stubFetch(posted);
+
+    await expect(postReviewRun()).rejects.toThrow(/project/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses to post when the state file names another MR", async () => {
+    await writeState({ mrIid: 8 });
+    await writeValidated([approved()]);
+    stubFetch(posted);
+
+    await expect(postReviewRun()).rejects.toThrow(/MR !/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses to post without CI_MERGE_REQUEST_IID", async () => {
+    delete process.env.CI_MERGE_REQUEST_IID;
+    await writeState();
+    await writeValidated([approved()]);
+    stubFetch(posted);
+
+    await expect(postReviewRun()).rejects.toThrow(/CI_MERGE_REQUEST_IID/);
     expect(calls).toHaveLength(0);
   });
 

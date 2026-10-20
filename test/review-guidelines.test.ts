@@ -126,12 +126,24 @@ describe("review guidelines scripts", () => {
     chmodSync(file, 0o755);
   };
 
-  /** A `bun` that stands in for get-token.ts, issuing `token` (or none). */
+  /**
+   * A `bun` that stands in for get-token.ts, issuing `token` (or none), and
+   * records every call with the GITHUB_TOKEN it was given.
+   */
   const stubToken = (token: string) =>
     stub(
       "bun",
-      token ? `printf '%s' '${token}' > "$GITHUB_TOKEN_FILE"` : "exit 0",
+      [
+        `echo "$* GITHUB_TOKEN=\${GITHUB_TOKEN:-}" >> "${path.join(dir, "bun-calls")}"`,
+        `case "$*" in *get-token.ts*) ${
+          token ? `printf '%s' '${token}' > "$GITHUB_TOKEN_FILE"` : "exit 0"
+        } ;; esac`,
+      ].join("\n"),
     );
+  const bunCalls = () => {
+    const file = path.join(dir, "bun-calls");
+    return existsSync(file) ? readFileSync(file, "utf8") : "";
+  };
 
   const writeGuidelines = (body: string) => {
     const target = path.join(repo, ".factory/skills/review-guidelines");
@@ -232,6 +244,37 @@ describe("review guidelines scripts", () => {
 
       expect(outcome.exitCode).toBe(0);
       expect(existsSync(path.join(dir, "args.json"))).toBe(false);
+      expect(bunCalls()).not.toContain("revoke-github-token.ts");
+    });
+
+    // The distill step that follows reads untrusted comments.
+    it("revokes the token it was issued before the step ends", async () => {
+      const outcome = await run("mine.sh");
+
+      expect(outcome.exitCode).toBe(0);
+      expect(bunCalls()).toContain(
+        "revoke-github-token.ts GITHUB_TOKEN=ghs_test",
+      );
+    });
+
+    it("revokes the token when mining fails", async () => {
+      writeFileSync(path.join(work, "mine.py"), "raise SystemExit(3)\n");
+
+      const outcome = await run("mine.sh");
+
+      expect(outcome.exitCode).toBe(3);
+      expect(bunCalls()).toContain(
+        "revoke-github-token.ts GITHUB_TOKEN=ghs_test",
+      );
+    });
+
+    it("leaves a provided github_token alone", async () => {
+      const outcome = await run("mine.sh", {
+        OVERRIDE_GITHUB_TOKEN: "ghs_test",
+      });
+
+      expect(outcome.exitCode).toBe(0);
+      expect(bunCalls()).not.toContain("revoke-github-token.ts");
     });
   });
 
@@ -250,6 +293,35 @@ describe("review guidelines scripts", () => {
       expect(readFileSync(path.join(result, "status"), "utf8").trim()).toBe(
         "update",
       );
+    });
+
+    // The staged files become a public artifact on a public repository.
+    it("refuses to stage a credential", async () => {
+      writeFileSync(path.join(work, "pr-body.md"), "New guidelines\n");
+      writeGuidelines(
+        "http.extraheader AUTHORIZATION: basic eC1hY2Nlc3MtdG9rZW46Z2hzX2FiYw==\n",
+      );
+
+      const outcome = await run("stage.sh");
+
+      expect(outcome.exitCode).toBe(1);
+      expect(outcome.stdout.toString()).toContain("contain a credential");
+      expect(existsSync(path.join(result, "status"))).toBe(false);
+      expect(existsSync(path.join(result, "SKILL.md"))).toBe(false);
+    });
+
+    it("refuses to stage the Factory API key", async () => {
+      writeFileSync(
+        path.join(work, "pr-body.md"),
+        "Key: factory-key-value-abc\n",
+      );
+
+      const outcome = await run("stage.sh", {
+        FACTORY_API_KEY: "factory-key-value-abc",
+      });
+
+      expect(outcome.exitCode).toBe(1);
+      expect(existsSync(path.join(result, "pr-body.md"))).toBe(false);
     });
 
     it("marks the result empty when there is nothing to publish", async () => {
@@ -283,6 +355,22 @@ describe("review guidelines scripts", () => {
       expect(readFileSync(path.join(dir, "gh-calls"), "utf8")).toContain(
         "pr create --head droid/review-guidelines",
       );
+      expect(bunCalls()).toContain(
+        "revoke-github-token.ts GITHUB_TOKEN=ghs_test",
+      );
+    });
+
+    it("refuses a token in git's base64 extraheader form", async () => {
+      writeResult({
+        status: "update\n",
+        "pr-body.md": "New guidelines\n",
+        "SKILL.md": "basic eC1hY2Nlc3MtdG9rZW46Z2hzX2FiYw==\n",
+      });
+
+      const outcome = await run("publish.sh");
+
+      expect(outcome.exitCode).toBe(1);
+      expect(await remoteHeads()).toBe("");
     });
 
     it("refuses guidelines that contain a credential", async () => {

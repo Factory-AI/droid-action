@@ -2,7 +2,6 @@
 
 import * as core from "@actions/core";
 import { readFile } from "fs/promises";
-import { setupGitHubToken } from "../github/token";
 import { createOctokit } from "../github/api/client";
 import { parseGitHubContext, isEntityContext } from "../github/context";
 import { prepareReviewValidatorMode } from "../tag/commands/review-validator";
@@ -54,7 +53,13 @@ async function run() {
       }
     }
 
-    const githubToken = await setupGitHubToken();
+    // The token the action already holds for this run. Minting another one
+    // here would leave a second live token that nothing revokes.
+    const githubToken = process.env.GITHUB_TOKEN?.trim();
+    if (!githubToken) {
+      throw new Error("GITHUB_TOKEN is required for validator run");
+    }
+    core.setSecret(githubToken);
     const octokit = createOctokit(githubToken);
 
     const trackingCommentId = Number(process.env.DROID_COMMENT_ID);
@@ -69,7 +74,6 @@ async function run() {
       runType,
     });
 
-    core.setOutput("github_token", githubToken);
     core.setOutput("validator_should_run", "true");
     if (result?.mcpTools) core.setOutput("mcp_tools", result.mcpTools);
   } catch (error) {

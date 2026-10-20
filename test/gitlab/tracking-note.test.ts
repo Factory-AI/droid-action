@@ -2,8 +2,8 @@ import { describe, expect, it } from "bun:test";
 import {
   DROID_TRACKING_MARKER,
   buildTrackingNoteBody,
-  findExistingTrackingNote,
 } from "../../src/gitlab/operations/tracking-note";
+import { findOwnTrackingNote } from "../../src/gitlab/operations/post-target";
 
 describe("buildTrackingNoteBody", () => {
   it("includes the tracking marker in every state", () => {
@@ -130,18 +130,32 @@ describe("buildTrackingNoteBody", () => {
   });
 });
 
-describe("findExistingTrackingNote", () => {
-  it("finds the note containing the droid marker", () => {
+describe("findOwnTrackingNote", () => {
+  const bot = { id: 99, username: "droid-bot" };
+  const human = { id: 5, username: "mr-author" };
+
+  it("finds the note containing the droid marker written by the token's user", () => {
     const notes = [
-      { id: 1, body: "regular comment" },
-      { id: 2, body: `${DROID_TRACKING_MARKER}\nDroid is reviewing...` },
-      { id: 3, body: "another comment" },
+      { id: 1, body: "regular comment", author: bot },
+      {
+        id: 2,
+        body: `${DROID_TRACKING_MARKER}\nDroid is reviewing...`,
+        author: bot,
+      },
+      { id: 3, body: "another comment", author: human },
     ];
-    expect(findExistingTrackingNote(notes)?.id).toBe(2);
+    expect(findOwnTrackingNote(notes, bot.id)?.id).toBe(2);
+  });
+
+  it("ignores a marker pasted into someone else's note", () => {
+    const notes = [
+      { id: 1, body: `${DROID_TRACKING_MARKER}\nfake`, author: human },
+    ];
+    expect(findOwnTrackingNote(notes, bot.id)).toBeUndefined();
   });
 
   it("returns undefined when no tracking note exists", () => {
-    const notes = [{ id: 1, body: "regular comment" }];
-    expect(findExistingTrackingNote(notes)).toBeUndefined();
+    const notes = [{ id: 1, body: "regular comment", author: bot }];
+    expect(findOwnTrackingNote(notes, bot.id)).toBeUndefined();
   });
 });

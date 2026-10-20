@@ -16,6 +16,7 @@ if [ -z "$GH_TOKEN" ]; then
   exit 0
 fi
 export GH_TOKEN
+trap revoke_github_token EXIT
 
 if [ -n "$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty')" ]; then
   git_with_token fetch -q origin "$branch"
