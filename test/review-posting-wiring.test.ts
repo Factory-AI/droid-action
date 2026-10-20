@@ -12,15 +12,25 @@ const stepById = (action: any, id: string): any =>
 
 describe("review safety wiring", () => {
   for (const relativePath of ["action.yml", "prepare/action.yml"]) {
-    it(`preserves the automatic security opt-in contract in ${relativePath}`, () => {
+    it(`forwards the security choice to preparation in ${relativePath}`, () => {
       const action = loadAction(relativePath);
 
-      expect(action.inputs.automatic_security_review.default).toBe("false");
       expect(stepById(action, "prepare").env.AUTOMATIC_SECURITY_REVIEW).toBe(
         "${{ inputs.automatic_security_review }}",
       );
     });
   }
+
+  it("uses the actual security result when updating the final comment", () => {
+    const action = loadAction("action.yml");
+    const updateComment = action.runs.steps.find(
+      (step: any) => step.name === "Update comment with job link",
+    );
+
+    expect(updateComment.env.AUTOMATIC_SECURITY_REVIEW).toBe(
+      "${{ steps.prepare.outputs.run_security_review }}",
+    );
+  });
 
   it("wires candidate/validator caps and deterministic posting in the main action", () => {
     const action = loadAction("action.yml");

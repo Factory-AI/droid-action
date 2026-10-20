@@ -223,7 +223,7 @@ jobs:
 Set `automatic_review: true` to run code reviews automatically on non-draft PRs. Set `automatic_security_review: true` to additionally run a STRIDE-based security review concurrently on every non-draft PR.
 The example allows reviews triggered by `factory-droid[bot]`. `allowed_bots` checks the event actor, not the PR author, so PRs opened by other bots can also be reviewed when a human triggers the workflow.
 
-New GitHub setup tooling enables security review by default and writes your choice explicitly. To opt out, set `automatic_security_review: false`. Existing workflows are unchanged: omitting this input still leaves automatic security review off. Explicit `@droid security` commands remain available.
+On GitHub, omitting `automatic_security_review` (or leaving it empty) follows `automatic_review`. Existing workflows with `automatic_review: true` therefore also run security review unless they explicitly set `automatic_security_review: false`. New GitHub setup tooling writes your choice explicitly. Workflows that omit both inputs remain mention-driven, and explicit `@droid security` commands remain available.
 
 ## Using the Commands
 
@@ -254,7 +254,7 @@ New GitHub setup tooling enables security review by default and writes your choi
 
 #### Enabling automatic security review
 
-To enable security review in an existing automatic-review workflow, add `automatic_security_review: true` to your `droid-review.yml`:
+Security review is enabled by default in GitHub workflows with `automatic_review: true`. You can also set it explicitly in your `droid-review.yml`:
 
 ```yaml
 - name: Run Droid Auto Review
@@ -387,15 +387,15 @@ We recommend using one of these presets rather than choosing a model yourself. I
 
 ### Security Configuration
 
-| Input                         | Default  | Purpose                                                                                                           |
-| ----------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------- |
-| `automatic_security_review`   | `false`  | Automatically run security review on PRs without requiring `@droid security`.                                     |
-| `security_severity_threshold` | `medium` | Minimum severity to report (`critical`, `high`, `medium`, `low`). Findings below this threshold are filtered out. |
-| `security_block_on_critical`  | `true`   | Submit `REQUEST_CHANGES` review when critical severity findings are detected.                                     |
-| `security_block_on_high`      | `false`  | Submit `REQUEST_CHANGES` review when high severity findings are detected.                                         |
-| `security_notify_team`        | `""`     | GitHub team to @mention on critical findings (e.g., `@org/security-team`).                                        |
-| `security_scan_schedule`      | `false`  | Configuration for scheduled security scans (when invoked from scheduled workflows).                               |
-| `security_scan_days`          | `7`      | Number of days of commits to scan for scheduled security scans.                                                   |
+| Input                         | Default                    | Purpose                                                                                                           |
+| ----------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `automatic_security_review`   | Follows `automatic_review` | Automatically run security review on PRs without requiring `@droid security`. Set `false` to opt out.             |
+| `security_severity_threshold` | `medium`                   | Minimum severity to report (`critical`, `high`, `medium`, `low`). Findings below this threshold are filtered out. |
+| `security_block_on_critical`  | `true`                     | Submit `REQUEST_CHANGES` review when critical severity findings are detected.                                     |
+| `security_block_on_high`      | `false`                    | Submit `REQUEST_CHANGES` review when high severity findings are detected.                                         |
+| `security_notify_team`        | `""`                       | GitHub team to @mention on critical findings (e.g., `@org/security-team`).                                        |
+| `security_scan_schedule`      | `false`                    | Configuration for scheduled security scans (when invoked from scheduled workflows).                               |
+| `security_scan_days`          | `7`                        | Number of days of commits to scan for scheduled security scans.                                                   |
 
 ## Custom Review Guidelines
 

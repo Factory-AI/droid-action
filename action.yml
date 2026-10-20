@@ -60,9 +60,9 @@ inputs:
     required: false
     default: "false"
   automatic_security_review:
-    description: "Automatically run the security review flow for pull request contexts without requiring an explicit @droid security command. Only supported for PR-related events."
+    description: "Automatically run the security review flow for pull request contexts without requiring an explicit @droid security command. Defaults to automatic_review when omitted; set false to opt out. Only supported for PR-related events."
     required: false
-    default: "false"
+    default: ""
   security_model:
     description: "Advanced. Leave empty to use the review_depth preset (recommended). Falls back to review_model. If set, use a provider tier alias such as 'openai-latest-premium' or 'anthropic-latest-balanced'. Only applies to security review flows."
     required: false
@@ -440,7 +440,7 @@ runs:
         USE_STICKY_COMMENT: ${{ inputs.use_sticky_comment }}
         TRACK_PROGRESS: ${{ inputs.track_progress }}
         AUTOMATIC_REVIEW: ${{ inputs.automatic_review }}
-        AUTOMATIC_SECURITY_REVIEW: ${{ inputs.automatic_security_review }}
+        AUTOMATIC_SECURITY_REVIEW: ${{ steps.prepare.outputs.run_security_review }}
 
     - name: Collect .factory debug files
       if: always() && steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true'

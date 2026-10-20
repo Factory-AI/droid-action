@@ -13,9 +13,9 @@ inputs:
     required: false
     default: "false"
   automatic_security_review:
-    description: "Run automatic security review"
+    description: "Run automatic security review. Defaults to automatic_review when omitted; set false to opt out."
     required: false
-    default: "false"
+    default: ""
 
 outputs:
   github_token:
@@ -77,6 +77,7 @@ runs:
       id: detect
       shell: bash
       run: |
+        set -euo pipefail
         # Use outputs from prepare step (set by src/tag/index.ts)
         # Fall back to input flags if outputs not set
         RUN_CODE="${{ steps.prepare.outputs.run_code_review }}"
@@ -88,8 +89,11 @@ runs:
         fi
         if [ -z "$RUN_SEC" ]; then
           RUN_SEC="${{ inputs.automatic_security_review }}"
+          if [ -z "$RUN_SEC" ]; then
+            RUN_SEC="${{ inputs.automatic_review }}"
+          fi
         fi
 
-        echo "run_code_review=$RUN_CODE" >> $GITHUB_OUTPUT
-        echo "run_security_review=$RUN_SEC" >> $GITHUB_OUTPUT
+        echo "run_code_review=$RUN_CODE" >> "$GITHUB_OUTPUT"
+        echo "run_security_review=$RUN_SEC" >> "$GITHUB_OUTPUT"
         echo "Detected: code_review=$RUN_CODE, security_review=$RUN_SEC"
