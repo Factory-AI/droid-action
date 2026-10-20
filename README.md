@@ -85,6 +85,7 @@ The guided flow will:
 - Help you install the Droid GitHub App (or configure GitLab access).
 - Generate the workflow files (`droid.yml` and `droid-review.yml`) with sensible defaults.
 - Prompt you for `review_depth`, security review options, and other inputs.
+- Recommend security review for new GitHub setups, while retaining an explicit opt-out.
 - Open a PR/MR containing the new workflow files for you to review and merge.
 
 For GitHub-only setups you can also run `/install-github-app`. See the [Automated Code Review guide](https://docs.factory.ai/guides/droid-exec/code-review) and the [GitHub App installation guide](https://docs.factory.ai/cli/features/install-github-app) for full details.
@@ -222,6 +223,8 @@ jobs:
 Set `automatic_review: true` to run code reviews automatically on non-draft PRs. Set `automatic_security_review: true` to additionally run a STRIDE-based security review concurrently on every non-draft PR.
 The example allows reviews triggered by `factory-droid[bot]`. `allowed_bots` checks the event actor, not the PR author, so PRs opened by other bots can also be reviewed when a human triggers the workflow.
 
+New GitHub setup tooling enables security review by default and writes your choice explicitly. To opt out, set `automatic_security_review: false`. Existing workflows are unchanged: omitting this input still leaves automatic security review off. Explicit `@droid security` commands remain available.
+
 ## Using the Commands
 
 ### `@droid fill`
@@ -251,7 +254,7 @@ The example allows reviews triggered by `factory-droid[bot]`. `allowed_bots` che
 
 #### Enabling automatic security review
 
-To run the security review on every non-draft PR (alongside the regular code review), add `automatic_security_review: true` to your `droid-review.yml`:
+To enable security review in an existing automatic-review workflow, add `automatic_security_review: true` to your `droid-review.yml`:
 
 ```yaml
 - name: Run Droid Auto Review
@@ -367,12 +370,14 @@ To leave comments and approvals on your PRs, Droid needs a GitHub token. There a
   with:
     factory_api_key: ${{ secrets.FACTORY_API_KEY }}
     automatic_review: true
+    automatic_security_review: true
 
 # Shallow review for faster feedback
 - uses: Factory-AI/droid-action@main
   with:
     factory_api_key: ${{ secrets.FACTORY_API_KEY }}
     automatic_review: true
+    automatic_security_review: true
     review_depth: shallow
 ```
 
@@ -501,6 +506,7 @@ If you set a model, use a provider tier alias. Factory keeps each alias on its r
   with:
     factory_api_key: ${{ secrets.FACTORY_API_KEY }}
     automatic_review: true
+    automatic_security_review: true
     review_model: openai-latest-premium # or anthropic-latest-balanced
 ```
 

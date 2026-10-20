@@ -10,7 +10,9 @@ import * as actorValidation from "../../src/github/validation/actor";
 import * as promptModule from "../../src/create-prompt";
 import * as reviewArtifactsModule from "../../src/github/data/review-artifacts";
 import * as core from "@actions/core";
+import * as github from "@actions/github";
 import * as childProcess from "node:child_process";
+import { parseGitHubContext } from "../../src/github/context";
 import { DroidRunType } from "../../src/run-type";
 import { parseSessionTagFromDroidArgs } from "../utils/session-tag-helpers";
 
@@ -18,6 +20,15 @@ describe("review command integration", () => {
   const originalRunnerTemp = process.env.RUNNER_TEMP;
   const originalDroidArgs = process.env.DROID_ARGS;
   const originalSecurityReviewEnabled = process.env.SECURITY_REVIEW_ENABLED;
+  const originalAutomaticInputs = {
+    AUTOMATIC_REVIEW: process.env.AUTOMATIC_REVIEW,
+    AUTOMATIC_SECURITY_REVIEW: process.env.AUTOMATIC_SECURITY_REVIEW,
+  };
+  const originalGitHubContext = {
+    eventName: github.context.eventName,
+    payload: github.context.payload,
+    actor: github.context.actor,
+  };
   let tmpDir: string;
   let graphqlSpy: ReturnType<typeof spyOn>;
   let createCommentSpy: ReturnType<typeof spyOn>;
@@ -29,27 +40,26 @@ describe("review command integration", () => {
   let computeArtifactsSpy: ReturnType<typeof spyOn>;
   let execSyncSpy: ReturnType<typeof spyOn>;
 
-  function createAutomaticReviewContext(automaticReview: boolean) {
-    return createMockContext({
-      eventName: "issue_comment",
-      isPR: true,
-      inputs: {
-        automaticReview,
-        automaticSecurityReview: true,
+  function createAutomaticReviewContext(
+    automaticReview: boolean,
+    automaticSecurityReview: string | undefined,
+  ) {
+    process.env.AUTOMATIC_REVIEW = String(automaticReview);
+    if (automaticSecurityReview === undefined) {
+      delete process.env.AUTOMATIC_SECURITY_REVIEW;
+    } else {
+      process.env.AUTOMATIC_SECURITY_REVIEW = automaticSecurityReview;
+    }
+    github.context.eventName = "pull_request";
+    github.context.actor = "human-reviewer";
+    github.context.payload = {
+      repository: {
+        name: "test-repo",
+        owner: { login: "test-owner" },
       },
-      payload: {
-        comment: {
-          id: 888,
-          body: "",
-          user: { login: "human-reviewer" },
-          created_at: "2024-02-02T00:00:00Z",
-        },
-        issue: {
-          number: 7,
-          pull_request: {},
-        },
-      } as any,
-    });
+      pull_request: { number: 7, body: "" },
+    };
+    return parseGitHubContext();
   }
 
   function createAutomaticReviewOctokit(
@@ -163,6 +173,15 @@ describe("review command integration", () => {
       process.env.SECURITY_REVIEW_ENABLED = originalSecurityReviewEnabled;
     } else {
       delete process.env.SECURITY_REVIEW_ENABLED;
+    }
+
+    Object.assign(github.context, originalGitHubContext);
+    for (const [name, value] of Object.entries(originalAutomaticInputs)) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
     }
   });
 
@@ -429,8 +448,50 @@ describe("review command integration", () => {
     expect(runSecurityReviewCall?.[1]).toBe("true");
   });
 
+  for (const { name, input } of [
+    { name: "explicitly false", input: "false" },
+    { name: "omitted", input: undefined },
+  ]) {
+    it(`keeps automatic security off when its input is ${name}`, async () => {
+      const context = createAutomaticReviewContext(true, input);
+      const octokit = createAutomaticReviewOctokit(false);
+
+      const result = await prepareTagExecution({
+        context,
+        octokit,
+        githubToken: "token",
+      });
+
+      expect(result.skipped).toBeFalsy();
+      expect(createCommentSpy).toHaveBeenCalledWith(
+        octokit.rest,
+        context,
+        "default",
+        DroidRunType.Review,
+      );
+      expect(setOutputSpy).toHaveBeenCalledWith("run_code_review", "true");
+      expect(setOutputSpy).toHaveBeenCalledWith("run_security_review", "false");
+      expect(setOutputSpy).not.toHaveBeenCalledWith(
+        "install_security_skills",
+        "true",
+      );
+      expect(exportVarSpy).not.toHaveBeenCalledWith(
+        "SECURITY_REVIEW_ENABLED",
+        "true",
+      );
+      expect(candidatesSessionTag()).toEqual({
+        name: "code-review",
+        metadata: expect.objectContaining({
+          pass: "candidates",
+          reviewType: "code",
+          securityReview: "false",
+        }),
+      });
+    });
+  }
+
   it("does not create a comment when automatic security review is skipped", async () => {
-    const context = createAutomaticReviewContext(false);
+    const context = createAutomaticReviewContext(false, "true");
     const octokit = createAutomaticReviewOctokit(true);
 
     const result = await prepareTagExecution({
@@ -454,7 +515,7 @@ describe("review command integration", () => {
   });
 
   it("does not let Claude's security summary suppress Droid's review", async () => {
-    const context = createAutomaticReviewContext(false);
+    const context = createAutomaticReviewContext(false, "true");
     const octokit = createAutomaticReviewOctokit(true, 209825114);
 
     const result = await prepareTagExecution({
@@ -474,7 +535,7 @@ describe("review command integration", () => {
   });
 
   it("creates a review-only comment when automatic security is skipped", async () => {
-    const context = createAutomaticReviewContext(true);
+    const context = createAutomaticReviewContext(true, "true");
     const octokit = createAutomaticReviewOctokit(true);
 
     const result = await prepareTagExecution({
@@ -512,7 +573,7 @@ describe("review command integration", () => {
     exportVarSpy.mockImplementation((name: string, value: unknown) => {
       process.env[name] = String(value);
     });
-    const context = createAutomaticReviewContext(true);
+    const context = createAutomaticReviewContext(true, "true");
     const octokit = createAutomaticReviewOctokit(false);
 
     const result = await prepareTagExecution({

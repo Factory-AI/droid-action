@@ -11,6 +11,17 @@ const stepById = (action: any, id: string): any =>
   action.runs.steps.find((step: any) => step.id === id);
 
 describe("review safety wiring", () => {
+  for (const relativePath of ["action.yml", "prepare/action.yml"]) {
+    it(`preserves the automatic security opt-in contract in ${relativePath}`, () => {
+      const action = loadAction(relativePath);
+
+      expect(action.inputs.automatic_security_review.default).toBe("false");
+      expect(stepById(action, "prepare").env.AUTOMATIC_SECURITY_REVIEW).toBe(
+        "${{ inputs.automatic_security_review }}",
+      );
+    });
+  }
+
   it("wires candidate/validator caps and deterministic posting in the main action", () => {
     const action = loadAction("action.yml");
 
