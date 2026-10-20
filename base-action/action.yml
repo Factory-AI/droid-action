@@ -111,7 +111,7 @@ runs:
           echo "Changing directory to DROID_WORKING_DIR: $DROID_WORKING_DIR"
           cd "$DROID_WORKING_DIR"
         fi
-        bun run ${GITHUB_ACTION_PATH}/src/index.ts
+        bun --config=/dev/null --env-file=/dev/null run ${GITHUB_ACTION_PATH}/src/index.ts
       env:
         # Model configuration
         INPUT_PROMPT: ${{ inputs.prompt }}
