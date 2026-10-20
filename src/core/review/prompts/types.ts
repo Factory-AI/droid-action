@@ -103,4 +103,6 @@ export interface ReviewPromptContext {
   includeSuggestions: boolean;
   /** Spawn security-reviewer subagent during Pass 1 (candidates only) */
   securityReviewEnabled: boolean;
+  /** Where the change's code is (or is not) available, e.g. for a fork PR that is not checked out */
+  sourceNote?: string;
 }

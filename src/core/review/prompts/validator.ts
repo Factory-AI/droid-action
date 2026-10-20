@@ -97,6 +97,7 @@ export function generateValidatorPrompt(ctx: ReviewPromptContext): string {
     validatedPath,
     includeSuggestions,
     postingMode = "tool",
+    sourceNote,
   } = ctx;
 
   if (!validatedPath) {
@@ -135,7 +136,7 @@ Read these files before validating:
 * Existing Comments: \`${commentsPath}\`
 
 If the diff is large, read in chunks (offset/limit). **Do not proceed until you have read the ENTIRE diff.**
-
+${sourceNote ? `\n${sourceNote}\n` : ""}
 ### Critical Requirements
 
 1. You MUST read and validate **every** candidate before ${postingMode === "file" ? `writing \`${validatedPath}\`` : "posting anything"}.

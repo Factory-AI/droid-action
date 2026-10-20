@@ -33,6 +33,7 @@ describe("prepareReviewValidatorMode", () => {
       baseRefName: "main",
       headRefName: "feature",
       headRefOid: "abc123",
+      isFork: false,
       title: "PR",
       body: "",
     });

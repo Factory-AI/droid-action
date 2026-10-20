@@ -56,6 +56,7 @@ describe("prepareSecurityReviewMode", () => {
       baseRefName: MOCK_PR_DATA.baseRefName,
       headRefName: MOCK_PR_DATA.headRefName,
       headRefOid: MOCK_PR_DATA.headRefOid,
+      isFork: false,
       title: "Test PR",
       body: "Test description",
     });
