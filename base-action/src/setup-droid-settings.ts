@@ -1,6 +1,6 @@
 import { $ } from "bun";
 import { homedir } from "os";
-import { readFile } from "fs/promises";
+import { readFile, writeFile } from "fs/promises";
 
 export async function setupDroidSettings(
   settingsInput?: string,
@@ -20,9 +20,10 @@ export async function setupDroidSettings(
     const existingSettings = await $`cat ${settingsPath}`.quiet().text();
     if (existingSettings.trim()) {
       settings = JSON.parse(existingSettings);
+      // Only the keys: settings can hold credentials (`env`, MCP headers), and
+      // the job log is public on public repositories.
       console.log(
-        `Found existing settings:`,
-        JSON.stringify(settings, null, 2),
+        `Found existing settings with keys: ${Object.keys(settings).join(", ") || "(none)"}`,
       );
     } else {
       console.log(`Settings file exists but is empty`);
@@ -36,23 +37,35 @@ export async function setupDroidSettings(
     console.log(`Processing settings input...`);
     let inputSettings: Record<string, unknown> = {};
 
-    try {
-      // First try to parse as JSON
-      inputSettings = JSON.parse(settingsInput);
-      console.log(`Parsed settings input as JSON`);
-    } catch (e) {
-      // If not JSON, treat as file path
-      console.log(
-        `Settings input is not JSON, treating as file path: ${settingsInput}`,
-      );
+    // Parse errors can quote the text they failed on, so none of the messages
+    // below include one: settings can hold credentials.
+    const trimmed = settingsInput.trim();
+    if (trimmed.startsWith("{")) {
       try {
-        const fileContent = await readFile(settingsInput, "utf-8");
-        inputSettings = JSON.parse(fileContent);
-        console.log(`Successfully read and parsed settings from file`);
+        inputSettings = JSON.parse(trimmed);
+      } catch {
+        throw new Error(
+          "Failed to process settings input: it looks like JSON but does not parse",
+        );
+      }
+      console.log(`Parsed settings input as JSON`);
+    } else {
+      console.log(`Settings input is not JSON, treating it as a file path`);
+      let fileContent: string;
+      try {
+        fileContent = await readFile(trimmed, "utf-8");
       } catch (fileError) {
-        console.error(`Failed to read or parse settings file: ${fileError}`);
+        console.error(`Failed to read settings file: ${fileError}`);
         throw new Error(`Failed to process settings input: ${fileError}`);
       }
+      try {
+        inputSettings = JSON.parse(fileContent);
+      } catch {
+        throw new Error(
+          `Failed to process settings input: ${trimmed} is not valid JSON`,
+        );
+      }
+      console.log(`Successfully read and parsed settings from file`);
     }
 
     // Merge input settings with existing settings
@@ -60,10 +73,8 @@ export async function setupDroidSettings(
     console.log(`Merged settings with input settings`);
   }
 
-  // Always set enableAllProjectMcpServers to true
-  settings.enableAllProjectMcpServers = true;
-  console.log(`Updated settings with enableAllProjectMcpServers: true`);
-
-  await $`echo ${JSON.stringify(settings, null, 2)} > ${settingsPath}`.quiet();
+  await writeFile(settingsPath, JSON.stringify(settings, null, 2), {
+    mode: 0o600,
+  });
   console.log(`Settings saved successfully`);
 }

@@ -14,8 +14,69 @@ import {
   describeUsageLimitError,
   isUsageLimitError,
 } from "./utils/usage-limit-error";
+import { redactCredentials } from "./utils/redact-credentials";
 
 const execAsync = promisify(exec);
+
+// Variables Droid has no use for. The OIDC pair mints identity tokens for this
+// workflow, the runtime tokens reach the Actions cache and artifact services,
+// the file-command paths set environment variables, PATH entries and outputs
+// for later steps, and INPUT_* repeats this step's inputs, MCP server tokens
+// included. Withholding them keeps them out of anything Droid or a tool prints.
+// It is not a sandbox: Droid runs as the same user and can still read the
+// environment of the processes that started it.
+const WITHHELD_ENV_NAMES = new Set([
+  "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+  "ACTIONS_ID_TOKEN_REQUEST_URL",
+  "ACTIONS_RUNTIME_TOKEN",
+  "ACTIONS_RUNTIME_URL",
+  "ACTIONS_CACHE_URL",
+  "ACTIONS_RESULTS_URL",
+  "GITHUB_ENV",
+  "GITHUB_PATH",
+  "GITHUB_OUTPUT",
+  "GITHUB_STATE",
+  "GITHUB_STEP_SUMMARY",
+  "OVERRIDE_GITHUB_TOKEN",
+  "DEFAULT_WORKFLOW_TOKEN",
+]);
+
+export function buildDroidEnv(
+  base: NodeJS.ProcessEnv,
+  extra: Record<string, string>,
+): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [name, value] of Object.entries(base)) {
+    if (
+      value === undefined ||
+      WITHHELD_ENV_NAMES.has(name) ||
+      name.startsWith("INPUT_")
+    ) {
+      continue;
+    }
+    env[name] = value;
+  }
+  return { ...env, ...extra };
+}
+
+/**
+ * Removes MCP servers this run registered. `droid mcp add` stores each
+ * server's env, GitHub token included, in ~/.factory/mcp.json, where a later
+ * Droid run in the same job (the validator) would otherwise start them again
+ * and could read the token.
+ */
+async function unregisterMcpServers(names: readonly string[]): Promise<void> {
+  for (const name of names) {
+    try {
+      await execAsync(`droid mcp remove ${name}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `Could not remove MCP server ${name}: ${redactEnvSecrets(message)}`,
+      );
+    }
+  }
+}
 
 /** Redact inline `--env KEY=value` secrets before logging a command string. */
 function redactEnvSecrets(text: string): string {
@@ -38,8 +99,9 @@ function sanitizeJsonOutput(
   showFullOutput: boolean,
 ): string | null {
   if (showFullOutput) {
-    // In full output mode, return the full JSON
-    return JSON.stringify(jsonObj, null, 2);
+    // Full output is the raw transcript, tool output included, and the job
+    // log is public on public repositories.
+    return redactCredentials(JSON.stringify(jsonObj, null, 2));
   }
 
   // In non-full-output mode, provide minimal safe output
@@ -212,6 +274,7 @@ export function prepareRunConfig(
 }
 
 export async function runDroid(promptPath: string, options: DroidOptions) {
+  const registeredMcpServers: string[] = [];
   // If MCP tools config is provided, register servers via `droid mcp add` before running exec
   if (options.mcpTools && options.mcpTools.trim()) {
     try {
@@ -256,6 +319,7 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
               },
               { maxAttempts: 3, initialDelayMs: 2000, maxDelayMs: 10000 },
             );
+            registeredMcpServers.push(name);
             console.log(`  ✓ Registered MCP server: ${name}`);
           } catch (e) {
             const message = e instanceof Error ? e.message : String(e);
@@ -269,6 +333,7 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
       }
     } catch (e) {
       console.error("Failed to register MCP servers:", e);
+      await unregisterMcpServers(registeredMcpServers);
       // Don't continue without MCP if we were expecting it
       throw new Error(`MCP server registration failed: ${e}`);
     }
@@ -374,10 +439,7 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
     let turnLimitHit = false;
     const droidProcess = spawn(droidExecutable, currentDroidArgs, {
       stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        ...config.env,
-      },
+      env: buildDroidEnv(process.env, config.env),
     });
 
     const stopForTurnLimit = () => {
@@ -396,10 +458,26 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
       forceKill.unref();
     };
 
-    droidProcess.stderr.on("data", (data) => {
-      const text = data.toString();
+    const writeStderr = (chunk: string): void => {
+      const text = redactCredentials(chunk);
       process.stderr.write(text);
       stderrTail = (stderrTail + text).slice(-STDERR_TAIL_LIMIT);
+    };
+    // Redact whole lines so a credential split across two chunks still matches.
+    let stderrBuffer = "";
+    droidProcess.stderr.on("data", (data) => {
+      stderrBuffer += data.toString();
+      const end = stderrBuffer.lastIndexOf("\n");
+      if (end === -1) return;
+      writeStderr(stderrBuffer.slice(0, end + 1));
+      stderrBuffer = stderrBuffer.slice(end + 1);
+    });
+
+    droidProcess.stderr.on("end", () => {
+      if (stderrBuffer) {
+        writeStderr(stderrBuffer);
+        stderrBuffer = "";
+      }
     });
 
     droidProcess.stderr.on("error", (error) => {
@@ -465,7 +543,7 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
       } catch {
         // Not a JSON object
         if (showFullOutput) {
-          process.stdout.write(`${line}\n`);
+          process.stdout.write(`${redactCredentials(line)}\n`);
         }
         // In non-full-output mode, suppress non-JSON output
       }
@@ -585,9 +663,11 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
           ),
       },
     );
+    await unregisterMcpServers(registeredMcpServers);
     core.setOutput("conclusion", "success");
     return;
   } catch (_) {
+    await unregisterMcpServers(registeredMcpServers);
     const capError = getTurnCapError();
     const limitError = getUsageLimitError();
     if (!capError && !limitError) {
@@ -613,10 +693,12 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
             : finalStderrTail
               ? `Droid Exec exited with code ${lastExitCode}:\n${finalStderrTail}`
               : `Droid Exec exited with code ${lastExitCode}`;
+    // The error message is posted to the pull request.
+    const redactedErrorMessage = redactCredentials(rawErrorMessage);
     const errorMessage =
-      rawErrorMessage.length > 2000
-        ? `${rawErrorMessage.slice(0, 2000)}…`
-        : rawErrorMessage;
+      redactedErrorMessage.length > 2000
+        ? `${redactedErrorMessage.slice(0, 2000)}…`
+        : redactedErrorMessage;
     console.error(`Droid Exec failed: ${errorMessage}`);
     core.setOutput("error_message", errorMessage);
     core.setOutput("conclusion", "failure");

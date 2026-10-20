@@ -320,6 +320,15 @@ export GITHUB_TOKEN=[REDACTED_GITHUB_TOKEN]
     expect(redactGitHubTokens(content)).toBe(content);
   });
 
+  it("should redact a token in git's base64 extraheader form", () => {
+    const encoded = Buffer.from(
+      `x-access-token:ghs_${"a".repeat(36)}`,
+    ).toString("base64");
+    expect(redactGitHubTokens(`AUTHORIZATION: basic ${encoded}\n`)).toBe(
+      "AUTHORIZATION: basic [REDACTED_GITHUB_TOKEN]\n",
+    );
+  });
+
   it("should handle edge cases", () => {
     expect(redactGitHubTokens("")).toBe("");
     expect(redactGitHubTokens("ghp_")).toBe("ghp_");

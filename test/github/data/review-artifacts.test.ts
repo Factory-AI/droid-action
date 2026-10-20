@@ -77,6 +77,38 @@ describe("review-artifacts", () => {
       expect(writeCall![1]).toContain("diff from gh cli");
     });
 
+    // actions/checkout may not have persisted a credential, so with a token
+    // the fetches authenticate through gh instead.
+    it("authenticates its fetches through gh when given a token", async () => {
+      const fetches: { cmd: string; token?: string }[] = [];
+      execSyncSpy = spyOn(childProcess, "execSync").mockImplementation(((
+        cmd: string,
+        opts?: any,
+      ) => {
+        if (cmd.includes("is-shallow-repository")) return "true\n";
+        if (cmd.includes(" fetch ")) {
+          fetches.push({ cmd, token: opts?.env?.GH_TOKEN });
+          return "";
+        }
+        if (cmd.includes("merge-base")) return "abc123\n";
+        if (cmd.includes("diff")) return "diff --git a/f.ts b/f.ts\n";
+        return "";
+      }) as typeof childProcess.execSync);
+
+      await computeAndStoreDiff("main", "/tmp/test", {
+        githubToken: "test-token",
+        prNumber: 42,
+      });
+
+      expect(fetches).toHaveLength(2);
+      for (const fetch of fetches) {
+        expect(fetch.cmd).toContain(
+          "credential.helper=!gh auth git-credential",
+        );
+        expect(fetch.token).toBe("test-token");
+      }
+    });
+
     it("throws when merge-base fails and no fallback credentials", async () => {
       execSyncSpy = spyOn(childProcess, "execSync").mockImplementation(((
         cmd: string,

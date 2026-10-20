@@ -143,6 +143,10 @@ inputs:
     description: "Show full JSON output from Droid Exec. WARNING: This outputs ALL Droid messages including tool execution results which may contain secrets, API keys, or other sensitive information. These logs are publicly visible in GitHub Actions. Only enable for debugging in non-sensitive environments."
     required: false
     default: "false"
+  upload_debug_artifacts:
+    description: "Upload a droid-review-debug-<run_id> workflow artifact with Droid's logs, session transcripts and review prompts, for troubleshooting. Known credentials are redacted and Droid's MCP configuration is never included, but the files still contain pull request content and anything Droid printed. Anyone who can read the repository's Actions runs can download the artifact; on a public repository that is any signed-in GitHub user."
+    required: false
+    default: "false"
   ci_steward:
     description: "Enable CI Steward mode for workflow_run events."
     required: false
@@ -182,7 +186,7 @@ inputs:
 
 outputs:
   github_token:
-    description: "The GitHub token used by the action (Droid App token if available)"
+    description: "The GitHub token used by the action. A Factory Droid App token the action minted is revoked when the action finishes, so later steps that need a token should pass their own github_token."
     value: ${{ steps.prepare.outputs.github_token }}
 
 runs:
@@ -209,11 +213,15 @@ runs:
         cd ${GITHUB_ACTION_PATH}
         bun install
 
+    # Every `bun run` passes --config=/dev/null --env-file=/dev/null. Bun
+    # otherwise loads bunfig.toml (including preload scripts) and .env files
+    # from the working directory, which is the caller's checkout, into a
+    # process that holds the job's credentials.
     - name: Prepare action
       id: prepare
       shell: bash
       run: |
-        bun run ${GITHUB_ACTION_PATH}/src/entrypoints/prepare.ts
+        bun --config=/dev/null --env-file=/dev/null run ${GITHUB_ACTION_PATH}/src/entrypoints/prepare.ts
       env:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         TRIGGER_PHRASE: ${{ inputs.trigger_phrase }}
@@ -323,7 +331,7 @@ runs:
       run: |
 
         # Run the base-action
-        bun run ${GITHUB_ACTION_PATH}/base-action/src/index.ts
+        bun --config=/dev/null --env-file=/dev/null run ${GITHUB_ACTION_PATH}/base-action/src/index.ts
       env:
         # Base-action inputs
         INPUT_PROMPT_FILE: ${{ runner.temp }}/droid-prompts/droid-prompt.txt
@@ -347,7 +355,7 @@ runs:
       if: steps.prepare.outputs.steward_skipped != 'true' && github.event_name == 'workflow_run' && steps.prepare.outputs.droid_comment_id && always()
       shell: bash
       run: |
-        bun run ${GITHUB_ACTION_PATH}/src/steward/postrun.ts
+        bun --config=/dev/null --env-file=/dev/null run ${GITHUB_ACTION_PATH}/src/steward/postrun.ts
       env:
         REPOSITORY: ${{ github.repository }}
         GITHUB_TOKEN: ${{ steps.prepare.outputs.github_token }}
@@ -361,7 +369,7 @@ runs:
       if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true' && steps.prepare.outputs.run_code_review == 'true'
       shell: bash
       run: |
-        bun run ${GITHUB_ACTION_PATH}/src/entrypoints/prepare-validator.ts
+        bun --config=/dev/null --env-file=/dev/null run ${GITHUB_ACTION_PATH}/src/entrypoints/prepare-validator.ts
       env:
         GITHUB_TOKEN: ${{ steps.prepare.outputs.github_token }}
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
@@ -380,7 +388,7 @@ runs:
       run: |
 
         # Run the base-action
-        bun run ${GITHUB_ACTION_PATH}/base-action/src/index.ts
+        bun --config=/dev/null --env-file=/dev/null run ${GITHUB_ACTION_PATH}/base-action/src/index.ts
       env:
         # Base-action inputs
         INPUT_PROMPT_FILE: ${{ runner.temp }}/droid-prompts/droid-prompt.txt
@@ -394,10 +402,11 @@ runs:
         INPUT_SHOW_FULL_OUTPUT: ${{ inputs.show_full_output }}
         INPUT_MAX_TURNS: ${{ inputs.review_validator_max_turns }}
 
-        # No GITHUB_TOKEN here on purpose: the validator only reads files and
-        # writes review_validated.json, and it keeps `Execute`. Withholding the
-        # token means a prompt injection in the diff has no credential to
-        # reach the GitHub API with; the post_review step below does the write.
+        # No GITHUB_TOKEN here: the validator only reads files and writes
+        # review_validated.json, and the post_review step below does the write.
+        # This narrows what a prompt injection in the diff can reach, but it is
+        # not a boundary: the validator keeps `Execute` and runs as the same
+        # user as the rest of the job, whose processes still hold credentials.
         NODE_VERSION: ${{ env.NODE_VERSION }}
         DETAILED_PERMISSION_MESSAGES: "1"
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
@@ -407,7 +416,7 @@ runs:
       if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true' && steps.prepare.outputs.run_code_review == 'true' && steps.prepare_validator.outputs.validator_should_run != 'false' && steps.droid_validator.outputs.conclusion == 'success'
       shell: bash
       run: |
-        bun run ${GITHUB_ACTION_PATH}/src/entrypoints/github-post-review.ts
+        bun --config=/dev/null --env-file=/dev/null run ${GITHUB_ACTION_PATH}/src/entrypoints/github-post-review.ts
       env:
         GITHUB_TOKEN: ${{ steps.prepare.outputs.github_token }}
         REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
@@ -418,7 +427,7 @@ runs:
       if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true' && steps.prepare.outputs.droid_comment_id && github.event_name != 'workflow_run' && always()
       shell: bash
       run: |
-        bun run ${GITHUB_ACTION_PATH}/src/entrypoints/update-comment-link.ts
+        bun --config=/dev/null --env-file=/dev/null run ${GITHUB_ACTION_PATH}/src/entrypoints/update-comment-link.ts
       env:
         REPOSITORY: ${{ github.repository }}
         PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
@@ -442,22 +451,41 @@ runs:
         AUTOMATIC_REVIEW: ${{ inputs.automatic_review }}
         AUTOMATIC_SECURITY_REVIEW: ${{ inputs.automatic_security_review }}
 
-    - name: Collect .factory debug files
-      if: always() && steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true'
+    # Workflow artifacts are public on public repositories, so only a redacted
+    # copy of selected files is ever staged, and only when asked for.
+    - name: Collect debug files
+      id: collect_debug
+      if: always() && inputs.upload_debug_artifacts == 'true' && steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true'
+      continue-on-error: true
       shell: bash
       run: |
-        if [ -d "$HOME/.factory" ]; then
-          cp -r "$HOME/.factory" "${{ runner.temp }}/.factory"
-        fi
+        bun --config=/dev/null --env-file=/dev/null run ${GITHUB_ACTION_PATH}/src/entrypoints/collect-debug-artifacts.ts
+      env:
+        DEBUG_ARTIFACTS_DIR: ${{ runner.temp }}/droid-debug-artifacts
+        # Passed only so their values can be redacted from the staged files.
+        GITHUB_TOKEN: ${{ steps.prepare.outputs.github_token }}
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+        DEFAULT_WORKFLOW_TOKEN: ${{ github.token }}
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
 
     - name: Upload debug artifacts
-      if: always() && steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true'
+      if: always() && steps.collect_debug.outcome == 'success'
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: droid-review-debug-${{ github.run_id }}
-        path: |
-          ${{ runner.temp }}/.factory/**
-          ${{ runner.temp }}/droid-prompts/**
+        path: ${{ runner.temp }}/droid-debug-artifacts/
         include-hidden-files: true
         if-no-files-found: ignore
         retention-days: 7
+
+    # Must stay the last step: everything above may still call GitHub with the
+    # token. A provided github_token belongs to the caller and is left alone.
+    - name: Revoke GitHub App token
+      if: always() && inputs.github_token == ''
+      continue-on-error: true
+      shell: bash
+      run: |
+        bun --config=/dev/null --env-file=/dev/null run ${GITHUB_ACTION_PATH}/src/entrypoints/revoke-github-token.ts
+      env:
+        GITHUB_TOKEN: ${{ steps.prepare.outputs.github_token }}
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}

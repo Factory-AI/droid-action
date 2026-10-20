@@ -10,12 +10,19 @@
 # JSON, then `gitlab-post-review` posts the approved findings and
 # `gitlab-update-comment-link` renders the tracking note.
 #
-# The passes get no MR tool (`--enabled-tools` below) and run with
-# GITLAB_TOKEN stripped from their environment, so a prompt-injected diff
-# has neither a tool nor a credential for writing to your project. They do
-# keep `Execute` for investigating the code, which means they can still run
-# shell commands and reach the network — treat the review job like any
-# other CI job that builds untrusted code.
+# The passes get no MR tool (`--enabled-tools` below), and GITLAB_TOKEN is
+# unset in the environment they start with. That is not a security boundary:
+# they keep `Execute` for investigating the code, run as the same OS user as
+# the job shell, and can read the token (and every other CI variable this job
+# holds, including FACTORY_API_KEY and CI_JOB_TOKEN) from their parent
+# processes' /proc/<pid>/environ, then reach the network. Treat the review job
+# like any other CI job that runs untrusted code, and scope the credentials it
+# receives accordingly (see docs/gitlab-setup.md).
+#
+# Every `bun run` passes `--config=/dev/null --env-file=/dev/null`: Bun reads
+# bunfig.toml (including `preload` scripts) and .env files from the current
+# directory, which here is the MR checkout, so without them a merge request
+# could run code with the job's credentials or override FACTORY_API_BASE_URL.
 #
 # Consumed via:
 #   include:
@@ -79,12 +86,13 @@ spec:
       default: ""
     org_guidelines_source:
       description: |
-        Where organization-wide review guidelines live. Accepts a local
-        file path on the runner (e.g. a group-level file-type CI/CD
-        variable), an http(s) URL to the raw markdown (same-instance
-        URLs authenticate with $CI_JOB_TOKEN), a git clone URL ending
-        in `.git`, or a GitLab project path (e.g. "my-group/review-
-        guidelines") cloned from $CI_SERVER_HOST using $CI_JOB_TOKEN
+        Where organization-wide review guidelines live. Accepts an
+        absolute file path on the runner (e.g. a group-level file-type
+        CI/CD variable), an https URL to the raw markdown (same-instance
+        URLs authenticate with $CI_JOB_TOKEN and do not follow
+        redirects), an https clone URL ending in `.git`, or a GitLab
+        project path (e.g. "my-group/review-guidelines") cloned from
+        $CI_SERVER_HOST using $CI_JOB_TOKEN
         (add the consuming projects to the guidelines repo's job-token
         allowlist). The guidelines are installed as a user-level
         `org-review-guidelines` skill on the runner, separate from a
@@ -155,6 +163,7 @@ droid-review:
     - apt-get install -y -qq --no-install-recommends git ca-certificates curl
     - git clone --depth 1 --branch "$DROID_ACTION_REF" "$DROID_ACTION_REPO" "$DROID_ACTION_DIR"
     - cd "$DROID_ACTION_DIR" && bun install --frozen-lockfile
+    # From here on the working directory is the untrusted MR checkout.
     - cd "$CI_PROJECT_DIR"
     - curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh
     - export PATH="$HOME/.local/bin:$PATH"
@@ -175,7 +184,7 @@ droid-review:
   script:
     - export PATH="$HOME/.local/bin:$PATH"
     - |
-      if ! bun run "$DROID_ACTION_DIR/src/entrypoints/gitlab-prepare.ts"; then
+      if ! bun --config=/dev/null --env-file=/dev/null run "$DROID_ACTION_DIR/src/entrypoints/gitlab-prepare.ts"; then
         export DROID_SUCCESS=false
         echo "gitlab-prepare exited non-zero" > /tmp/droid-error.txt
         exit 1
@@ -214,8 +223,9 @@ droid-review:
       # the bare tag name when the shim came from an older gitlab-prepare.
       SESSION_TAG="${DROID_SESSION_TAG_CANDIDATES:-code-review}"
       echo "Running Pass 1 (candidates): droid $DROID_ARGS --tag '$SESSION_TAG'"
-      # The pass reads files and writes JSON; it never needs the GitLab token,
-      # so keep it out of the environment the model's Execute tool inherits.
+      # The pass never needs the GitLab token, so it does not start with it.
+      # This is hygiene, not isolation: the pass can still read the token from
+      # this shell's /proc/<pid>/environ.
       if ! env -u GITLAB_TOKEN -u OVERRIDE_GITLAB_TOKEN droid $DROID_ARGS --tag "$SESSION_TAG" 2>&1 | tee "$PASS1_LOG"; then
         export DROID_SUCCESS=false
         echo "droid exec pass 1 (candidates) failed" > /tmp/droid-error.txt
@@ -223,7 +233,7 @@ droid-review:
       fi
     - |
       # ---- Prepare Pass 2 prompt ----
-      if ! bun run "$DROID_ACTION_DIR/src/entrypoints/gitlab-prepare-validator.ts"; then
+      if ! bun --config=/dev/null --env-file=/dev/null run "$DROID_ACTION_DIR/src/entrypoints/gitlab-prepare-validator.ts"; then
         export DROID_SUCCESS=false
         echo "gitlab-prepare-validator failed" > /tmp/droid-error.txt
         exit 1
@@ -251,25 +261,28 @@ droid-review:
       # Reads review_validated.json and creates one inline discussion per
       # approved comment. Comments that cannot be anchored are reported in
       # the job log and counted in the tracking note.
-      if ! bun run "$DROID_ACTION_DIR/src/entrypoints/gitlab-post-review.ts"; then
+      if ! bun --config=/dev/null --env-file=/dev/null run "$DROID_ACTION_DIR/src/entrypoints/gitlab-post-review.ts"; then
         export DROID_SUCCESS=false
         echo "gitlab-post-review failed to post the review" > /tmp/droid-error.txt
         exit 1
       fi
   after_script:
     - export PATH="$HOME/.local/bin:$PATH"
-    - export DROID_ERROR_DETAILS="$(cat /tmp/droid-error.txt 2>/dev/null || true)"
+    # gitlab-update-comment-link reads /tmp/droid-error.txt itself, refusing
+    # symlinks and capping and redacting the text: the passes can rewrite
+    # anything in /tmp, so a shell `cat` here could publish any file the job
+    # can read into the MR.
     # after_script runs in a fresh shell, so the `export DROID_SUCCESS=false`
     # above never reaches it. The error file is the signal that survives.
     - if [ -s /tmp/droid-error.txt ]; then export DROID_SUCCESS=false; fi
     - export DROID_PASS1_LOG="/tmp/droid-prompts/pass1-output.jsonl"
     - export DROID_PASS2_LOG="/tmp/droid-prompts/pass2-output.jsonl"
     # Stage debug artifacts that live outside CI_PROJECT_DIR so GitLab can
-    # capture them. Failure here must not break the after_script chain.
-    - mkdir -p "$CI_PROJECT_DIR/.droid-debug/prompts" || true
-    - cp -r /tmp/droid-prompts/. "$CI_PROJECT_DIR/.droid-debug/prompts/" 2>/dev/null || true
-    - cp /tmp/droid-error.txt "$CI_PROJECT_DIR/.droid-debug/" 2>/dev/null || true
-    - bun run "$DROID_ACTION_DIR/src/entrypoints/gitlab-update-comment-link.ts" || true
+    # capture them, with the job's credentials redacted: the pass logs hold the
+    # output of every command Droid ran. If staging fails, nothing is uploaded,
+    # and the after_script chain carries on.
+    - bun --config=/dev/null --env-file=/dev/null run "$DROID_ACTION_DIR/src/entrypoints/gitlab-collect-debug-artifacts.ts" || rm -rf "$CI_PROJECT_DIR/.droid-debug"
+    - bun --config=/dev/null --env-file=/dev/null run "$DROID_ACTION_DIR/src/entrypoints/gitlab-update-comment-link.ts" || true
   artifacts:
     when: always
     paths:

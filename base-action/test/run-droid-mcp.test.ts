@@ -186,6 +186,14 @@ describe("MCP Server Registration", () => {
         expect(addCommands.length).toBe(2);
         expect(addCommands[0]).toContain("github_comment");
         expect(addCommands[1]).toContain("github_ci");
+
+        // The servers carry the GitHub token in ~/.factory/mcp.json, so they
+        // must be gone before a later Droid run in the same job starts.
+        const commands = mockExecAsync.mock.calls.map((call) => call[0]);
+        expect(commands.slice(-2)).toEqual([
+          "droid mcp remove github_comment",
+          "droid mcp remove github_ci",
+        ]);
       } finally {
         await cleanupTempDir(tempDir);
       }

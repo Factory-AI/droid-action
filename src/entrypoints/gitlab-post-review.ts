@@ -11,8 +11,10 @@
  * call) exits non-zero so the tracking note reports failure; a single
  * comment that will not anchor is recorded and the step still succeeds.
  *
- * Inputs (env): GITLAB_TOKEN, DROID_STATE_FILE, REVIEW_VALIDATED_PATH,
- * REVIEW_POST_RESULTS_PATH, CI_API_V4_URL.
+ * Inputs (env): GITLAB_TOKEN, CI_PROJECT_ID, CI_MERGE_REQUEST_IID,
+ * DROID_STATE_FILE, REVIEW_VALIDATED_PATH, REVIEW_POST_RESULTS_PATH,
+ * CI_API_V4_URL. The project and MR always come from the CI variables; the
+ * state file is writable by the review passes, so it can only confirm them.
  */
 
 import { createHash } from "crypto";
@@ -20,6 +22,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { setupGitlabToken } from "../gitlab/token";
 import { GitlabClient } from "../gitlab/api/client";
+import { resolvePostTarget } from "../gitlab/operations/post-target";
 import type { GitlabMrDiff, GitlabPosition } from "../gitlab/types";
 import {
   buildFileLineIndex,
@@ -382,10 +385,10 @@ async function run(): Promise<void> {
     return;
   }
 
-  const mrIid = state.mrIid;
-  if (!mrIid) {
+  if (!state.mrIid) {
     throw new Error("gitlab-post-review: state is missing mrIid");
   }
+  const { projectId, mrIid } = resolvePostTarget(state);
 
   const validatedPath = state.validatedPath ?? validatedFilePath();
   let raw: string;
@@ -420,7 +423,7 @@ async function run(): Promise<void> {
 
   const result = await postReview({
     client,
-    projectId: state.projectId,
+    projectId,
     mrIid,
     comments: parsed.approved,
   });
