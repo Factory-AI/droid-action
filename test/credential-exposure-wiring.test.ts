@@ -16,8 +16,6 @@ const ACTIONS = [
   "review/action.yml",
   "security/action.yml",
   "base-action/action.yml",
-  "review-guidelines/action.yml",
-  "review-guidelines/publish/action.yml",
 ];
 
 // Workflow artifacts are downloadable by anyone who can read the repository's
