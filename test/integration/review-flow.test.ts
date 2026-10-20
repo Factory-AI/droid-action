@@ -27,6 +27,7 @@ describe("review command integration", () => {
   const originalAutomaticInputs = {
     AUTOMATIC_REVIEW: process.env.AUTOMATIC_REVIEW,
     AUTOMATIC_SECURITY_REVIEW: process.env.AUTOMATIC_SECURITY_REVIEW,
+    GITHUB_REPOSITORY: process.env.GITHUB_REPOSITORY,
   };
   const originalGitHubContext = {
     eventName: github.context.eventName,
@@ -114,6 +115,7 @@ describe("review command integration", () => {
     tmpDir = await mkdtemp(path.join(os.tmpdir(), "review-int-"));
     process.env.RUNNER_TEMP = tmpDir;
     process.env.DROID_ARGS = "";
+    process.env.GITHUB_REPOSITORY = "test-owner/test-repo";
     delete process.env.SECURITY_REVIEW_ENABLED;
 
     createCommentSpy = spyOn(
