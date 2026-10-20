@@ -35,6 +35,6 @@ jobs:
           persist-credentials: false
 
       - name: Run Droid Exec
-        uses: Factory-AI/droid-action@v5
+        uses: Factory-AI/droid-action@main
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
