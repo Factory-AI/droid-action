@@ -289,6 +289,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: Factory-AI/droid-action@main
         with:
