@@ -41,8 +41,12 @@ export const CREDENTIAL_ENV_NAMES: readonly string[] = [
 const GITHUB_TOKEN_LABEL = "[REDACTED_GITHUB_TOKEN]";
 
 // A token starts at a value boundary, so identifiers that merely contain a
-// prefix (`dfk-...`, `my.glpat-...`) are left alone.
-const TOKEN_START = String.raw`(?<![\w.$-])`;
+// prefix (`dfk-...`, `my.glpat-...`) are left alone. A JSON escape such as
+// `\n` also ends a value: in session transcripts and stream-json output, a
+// token at the start of a line comes right after the escape's letter.
+const AFTER_JSON_ESCAPE = String.raw`(?<=\\[nrt])`;
+const TOKEN_START = String.raw`(?:(?<![\w.$-])|${AFTER_JSON_ESCAPE})`;
+const GITHUB_TOKEN_START = String.raw`(?:\b|${AFTER_JSON_ESCAPE})`;
 
 const FACTORY_API_KEY_PATTERN = new RegExp(
   `${TOKEN_START}fk-[A-Za-z0-9_-]{20,}`,
@@ -62,37 +66,30 @@ const GITLAB_TOKEN_PATTERN = new RegExp(
 const PRIVATE_KEY_PATTERN =
   /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g;
 
-export function redactGitHubTokens(content: string): string {
-  // GitHub Personal Access Tokens (classic): ghp_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX (40 chars)
-  content = content.replace(/\bghp_[A-Za-z0-9]{36}\b/g, GITHUB_TOKEN_LABEL);
-
-  // GitHub OAuth tokens: gho_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX (40 chars)
-  content = content.replace(/\bgho_[A-Za-z0-9]{36}\b/g, GITHUB_TOKEN_LABEL);
-
-  // GitHub App installation tokens: ghs_ followed by 36+ chars. The newer
-  // stateless format is ~520 chars and can include '.', '-' and '_', so the
-  // length must stay open-ended (pattern recommended by GitHub).
-  content = content.replace(/\bghs_[A-Za-z0-9._-]{36,}/g, GITHUB_TOKEN_LABEL);
-
-  // GitHub user-to-server tokens issued to GitHub Apps: ghu_ (40 chars)
-  content = content.replace(/\bghu_[A-Za-z0-9]{36}\b/g, GITHUB_TOKEN_LABEL);
-
-  // GitHub refresh tokens: ghr_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX (40 chars)
-  content = content.replace(/\bghr_[A-Za-z0-9]{36}\b/g, GITHUB_TOKEN_LABEL);
-
-  // GitHub fine-grained personal access tokens: github_pat_XXXXXXXXXX (up to 255 chars)
-  content = content.replace(
-    /\bgithub_pat_[A-Za-z0-9_]{11,221}\b/g,
-    GITHUB_TOKEN_LABEL,
-  );
-
+const GITHUB_TOKEN_PATTERNS = [
+  // Personal access tokens (classic): ghp_ + 36 chars
+  String.raw`ghp_[A-Za-z0-9]{36}\b`,
+  // OAuth tokens: gho_ + 36 chars
+  String.raw`gho_[A-Za-z0-9]{36}\b`,
+  // App installation tokens: ghs_ followed by 36+ chars. The newer stateless
+  // format is ~520 chars and can include '.', '-' and '_', so the length must
+  // stay open-ended (pattern recommended by GitHub).
+  String.raw`ghs_[A-Za-z0-9._-]{36,}`,
+  // User-to-server tokens issued to GitHub Apps: ghu_ + 36 chars
+  String.raw`ghu_[A-Za-z0-9]{36}\b`,
+  // Refresh tokens: ghr_ + 36 chars
+  String.raw`ghr_[A-Za-z0-9]{36}\b`,
+  // Fine-grained personal access tokens: github_pat_ (up to 255 chars)
+  String.raw`github_pat_[A-Za-z0-9_]{11,221}\b`,
   // Any token in the form actions/checkout writes to git's http.extraheader:
   // base64 of `x-access-token:<token>`.
-  content = content.replace(
-    /\beC1hY2Nlc3MtdG9rZW46[A-Za-z0-9+/]+={0,2}/g,
-    GITHUB_TOKEN_LABEL,
-  );
+  String.raw`eC1hY2Nlc3MtdG9rZW46[A-Za-z0-9+/]+={0,2}`,
+].map((pattern) => new RegExp(`${GITHUB_TOKEN_START}${pattern}`, "g"));
 
+export function redactGitHubTokens(content: string): string {
+  for (const pattern of GITHUB_TOKEN_PATTERNS) {
+    content = content.replace(pattern, GITHUB_TOKEN_LABEL);
+  }
   return content;
 }
 
