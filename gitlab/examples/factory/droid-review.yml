@@ -21,7 +21,7 @@ include:
       automatic_review: "true" # run on every MR event; "false" disables
       review_depth: "deep" # "deep" (thorough) or "shallow" (fast)
       include_suggestions: "true" # post code-suggestion blocks for high-confidence fixes
-      automatic_security_review: "false" # enable to flag vulns alongside the regular review
+      automatic_security_review: "true" # flag vulns alongside the regular review; "false" opts out
       security_block_on_critical: "true" # block merge on CRITICAL findings (when security review is on)
       security_block_on_high: "false" # block merge on HIGH findings
       # org_guidelines_source: "my-group/review-guidelines" # org-wide guidelines: file path, raw URL, clone URL, or project path

@@ -48,7 +48,7 @@ include:
     file: "/templates/droid-review.yml"
     inputs:
       automatic_review: "true"
-      automatic_security_review: "false"
+      automatic_security_review: "true"
       review_depth: "deep"
       include_suggestions: "true"
       security_block_on_critical: "true"
@@ -80,7 +80,7 @@ the `droid-review` job. Expect ~5-10 minutes for a typical change.
 | Input                        | Default                  | Description                                                                                                                                                                                                                                           |
 | ---------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `automatic_review`           | `"true"`                 | Run code review automatically on every MR pipeline.                                                                                                                                                                                                   |
-| `automatic_security_review`  | `"false"`                | Run a parallel security-focused subagent on every MR pipeline. Findings are prefixed `[security]` and posted alongside code-review comments.                                                                                                          |
+| `automatic_security_review`  | `"true"`                 | Run a parallel security-focused subagent on every MR pipeline. Findings are prefixed `[security]` and posted alongside code-review comments. Only runs when `automatic_review` is enabled; set `"false"` to opt out.                                  |
 | `review_depth`               | `"deep"`                 | `"deep"` (thorough) or `"shallow"` (fast). Factory keeps each preset on its recommended model, so this is the only model setting most projects need.                                                                                                  |
 | `include_suggestions`        | `"true"`                 | Include code suggestion blocks in review comments when the fix is high-confidence.                                                                                                                                                                    |
 | `security_block_on_critical` | `"true"`                 | Block merge on CRITICAL security findings. (Mirrors GitHub action; surface-level parity.)                                                                                                                                                             |
@@ -89,6 +89,20 @@ the `droid-review` job. Expect ~5-10 minutes for a typical change.
 | `org_guidelines_source`      | `""`                     | Org-wide review guidelines source: a local file path on the runner, an http(s) URL to the raw markdown, a git clone URL ending in `.git`, or a GitLab project path (e.g. `my-group/review-guidelines`) cloned with `$CI_JOB_TOKEN`. Empty = disabled. |
 | `org_guidelines_ref`         | `""`                     | Git sources only: branch or tag of the org guidelines repo. Empty = default branch.                                                                                                                                                                   |
 | `org_guidelines_path`        | `"review-guidelines.md"` | Git sources only: path of the guidelines markdown file inside the org guidelines repo.                                                                                                                                                                |
+
+### Opting out of security review
+
+Security review is on by default whenever `automatic_review` is enabled.
+To keep code-only review, set the input explicitly:
+
+```yaml
+include:
+  - project: "factory-components/droid-action"
+    ref: main
+    file: "/templates/droid-review.yml"
+    inputs:
+      automatic_security_review: "false"
+```
 
 ## Org-wide review guidelines
 
@@ -151,7 +165,7 @@ Each MR pipeline produces:
   tags (`P0`, `P1`, `P2`, `P3`) and `[security]` for security findings.
 - **A sticky tracking note** on the MR with pipeline + job links, telemetry
   (`N turns • Xm Ys`), session IDs, and a security badge when
-  `automatic_security_review` is enabled.
+  `automatic_security_review` is enabled (the default).
 - **Debug artifacts** at `.droid-debug/` (prompts, candidate JSON, raw
   stream-json logs) retained for 1 week.
 - **A custom droid library** copied from

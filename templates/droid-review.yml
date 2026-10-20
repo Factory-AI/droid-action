@@ -62,8 +62,9 @@ spec:
         prefixed with `[security]` and posted alongside code-review
         comments. Mirrors the GitHub action's `automatic_security_review`
         input. The security-review skill is built into the Droid CLI; no
-        plugin install is required.
-      default: "false"
+        plugin install is required. Only runs when `automatic_review` is
+        enabled. Set to "false" to keep code-only review.
+      default: "true"
     security_block_on_critical:
       description: |
         When the security reviewer reports CRITICAL findings, block merge
