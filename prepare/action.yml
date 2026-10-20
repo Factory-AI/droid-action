@@ -19,7 +19,7 @@ inputs:
 
 outputs:
   github_token:
-    description: "GitHub token (from OIDC or input)"
+    description: "GitHub token (from OIDC or input). A Factory Droid App token this action mints is not revoked by it and stays valid until it expires (up to an hour), so pass your own github_token if later steps should not hold a long-lived one."
     value: ${{ steps.prepare.outputs.github_token }}
   comment_id:
     description: "Tracking comment ID"
@@ -57,11 +57,14 @@ runs:
         cd ${{ github.action_path }}/..
         bun install
 
+    # Every `bun run` passes --config=/dev/null --env-file=/dev/null so Bun
+    # does not load bunfig.toml (preload scripts) or .env files from the
+    # caller's checkout into a process holding the job's credentials.
     - name: Prepare
       id: prepare
       shell: bash
       run: |
-        bun run ${{ github.action_path }}/../src/entrypoints/prepare.ts
+        bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../src/entrypoints/prepare.ts
       env:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}

@@ -40,10 +40,7 @@ published=()
 for file in pr-body.md SKILL.md pending.md; do
   if [ -f "$result/$file" ]; then published+=("$result/$file"); fi
 done
-if grep -qE 'gh[pousr]_[A-Za-z0-9]{20,}|github_pat_|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.' -- "${published[@]}"; then
-  reject "The learned guidelines contain a credential."
-fi
-if [ -n "${FACTORY_API_KEY:-}" ] && grep -qF -- "$FACTORY_API_KEY" "${published[@]}"; then
+if contains_credential "${published[@]}"; then
   reject "The learned guidelines contain a credential."
 fi
 
@@ -53,6 +50,7 @@ if [ -z "$GH_TOKEN" ]; then
   exit 0
 fi
 export GH_TOKEN
+trap revoke_github_token EXIT
 
 if [ -f "$result/open-pr" ]; then
   git_with_token fetch -q origin "$branch"

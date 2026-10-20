@@ -3,6 +3,7 @@ import type { GitHubContext } from "../../github/context";
 import { isEntityContext } from "../../github/context";
 import type { Octokits } from "../../github/api/client";
 import { fetchPRBranchData } from "../../github/data/pr-fetcher";
+import { fetchedForkHeadRef } from "../../github/data/pr-checkout";
 import { createPrompt } from "../../create-prompt";
 import type { ReviewArtifacts } from "../../create-prompt/types";
 import {
@@ -47,8 +48,8 @@ export async function prepareReviewValidatorMode(options: {
     prNumber: context.entityNumber,
   });
 
-  // The PR branch is already checked out and review artifacts (diff,
-  // comments, description) were already computed by the generate-review-prompt
+  // The PR head (checked out, or fetched to a ref for a fork) and the review
+  // artifacts (diff, comments, description) were prepared by the candidates
   // step earlier in this job. Reuse them from disk instead of recomputing.
   const tempDir = process.env.RUNNER_TEMP || "/tmp";
   const promptsDir = `${tempDir}/droid-prompts`;
@@ -68,6 +69,10 @@ export async function prepareReviewValidatorMode(options: {
     prBranchData: {
       headRefName: prData.headRefName,
       headRefOid: prData.headRefOid,
+      isFork: prData.isFork,
+      headRevision: prData.isFork
+        ? fetchedForkHeadRef(context.entityNumber)
+        : "HEAD",
     },
     generatePrompt: generateReviewValidatorPrompt,
     reviewArtifacts,
@@ -79,10 +84,12 @@ export async function prepareReviewValidatorMode(options: {
     normalizeDroidArgs(rawUserArgs),
   );
 
-  // Pass 2 only writes review_validated.json. It receives no GitHub mutation
-  // tools, and the action steps that run it withhold GITHUB_TOKEN, so a
-  // prompt-injected diff has neither a tool nor a credential to reach GitHub
-  // through `Execute`. github-post-review.ts performs the sole API write.
+  // Pass 2 only writes review_validated.json; github-post-review.ts performs
+  // the sole API write. Pass 2 gets no GitHub mutation tools, the action
+  // steps that run it withhold GITHUB_TOKEN, and pass 1's MCP servers are
+  // unregistered before it starts. It keeps `Execute` and runs as the job's
+  // user, so this narrows what a prompt-injected diff can reach rather than
+  // isolating it.
   const baseTools = [
     "Read",
     "Grep",

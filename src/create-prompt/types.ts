@@ -106,13 +106,19 @@ export type EventData =
 
 export type ReviewArtifacts = ReviewArtifactPaths;
 
+export type PrBranchPromptData = {
+  headRefName: string;
+  headRefOid: string;
+  /** The PR comes from a fork, so its code is not checked out. */
+  isFork?: boolean;
+  /** Git revision holding a fork PR's head commit, or null if it could not be fetched. */
+  headRevision?: string | null;
+};
+
 export type PreparedContext = CommonFields & {
   eventData: EventData;
   githubContext?: GitHubContext;
-  prBranchData?: {
-    headRefName: string;
-    headRefOid: string;
-  };
+  prBranchData?: PrBranchPromptData;
   reviewArtifacts?: ReviewArtifacts;
   outputFilePath?: string;
   includeSuggestions?: boolean;

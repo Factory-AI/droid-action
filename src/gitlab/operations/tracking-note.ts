@@ -2,7 +2,9 @@
  * Sticky tracking note helpers for GitLab MR pipelines.
  *
  * The tracking note carries a hidden HTML marker so we can find and
- * update the same note across retries instead of creating duplicates.
+ * update the same note across retries instead of creating duplicates. The
+ * marker alone proves nothing (anyone can paste it), so lookups also check
+ * the note's author; see `post-target.ts`.
  *
  * The state machine (running/success/failure), telemetry shape, and
  * formatting helpers are platform-agnostic and live in
@@ -134,10 +136,4 @@ export function buildTrackingNoteBody(options: TrackingNoteOptions): string {
   }
 
   return lines.join("\n").trim() + "\n";
-}
-
-export function findExistingTrackingNote<
-  T extends { id: number; body: string },
->(notes: T[]): T | undefined {
-  return notes.find((n) => n.body && n.body.includes(DROID_TRACKING_MARKER));
 }

@@ -1,3 +1,4 @@
+import { forkPrSourceNote } from "../fork-notice";
 import type { PreparedContext } from "../types";
 
 export function generateSecurityCandidatesPrompt(
@@ -27,6 +28,8 @@ export function generateSecurityCandidatesPrompt(
     process.env.REVIEW_CANDIDATES_PATH ??
     "$RUNNER_TEMP/droid-prompts/review_candidates.json";
 
+  const sourceNote = forkPrSourceNote(context.prBranchData, prBaseRef);
+
   return `You are a senior security engineer performing a security-focused code review.
 
 Your task: Review PR #${prNumber} in ${repoFullName} and generate a JSON file with **high-confidence security vulnerability** findings.
@@ -45,7 +48,7 @@ Precomputed data files:
 - Full PR Diff: \`${diffPath}\`
 - Existing Comments: \`${commentsPath}\`
 </context>
-
+${sourceNote ? `\n${sourceNote}\n` : ""}
 <output_spec>
 Write output to \`${reviewCandidatesPath}\` using this exact schema:
 
