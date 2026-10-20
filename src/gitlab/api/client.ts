@@ -5,7 +5,13 @@ import type {
   GitlabNote,
   GitlabDiscussion,
   GitlabPosition,
+  GitlabUser,
 } from "../types";
+import {
+  redactDeep,
+  redactSecrets,
+  secretValuesFromEnv,
+} from "../../utils/redact-credentials";
 
 /**
  * The interesting part of a GitLab error is the response body (e.g.
@@ -24,12 +30,23 @@ export class GitlabApiError extends Error {
   status: number;
   body: unknown;
 
-  constructor(status: number, message: string, body: unknown) {
-    const detail = describeErrorBody(body);
-    super(`GitLab API ${status}: ${message}${detail ? ` - ${detail}` : ""}`);
+  constructor(
+    status: number,
+    message: string,
+    body: unknown,
+    secrets: readonly string[] = secretValuesFromEnv(),
+  ) {
+    const safeBody = redactDeep(body, secrets);
+    const detail = describeErrorBody(safeBody);
+    super(
+      redactSecrets(
+        `GitLab API ${status}: ${message}${detail ? ` - ${detail}` : ""}`,
+        secrets,
+      ),
+    );
     this.name = "GitlabApiError";
     this.status = status;
-    this.body = body;
+    this.body = safeBody;
   }
 }
 
@@ -44,11 +61,26 @@ export class GitlabClient {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
   }
 
+  private secrets(): string[] {
+    return [...new Set([this.token, ...secretValuesFromEnv()])].sort(
+      (a, b) => b.length - a.length,
+    );
+  }
+
   private async request<T>(
     path: string,
     init: RequestInitWithJson = {},
   ): Promise<T> {
+    // Only API-relative paths: an absolute URL would send PRIVATE-TOKEN to
+    // whatever host it names.
+    if (!path.startsWith("/") || path.startsWith("//")) {
+      throw new Error(
+        `GitlabClient only requests paths relative to its API base URL; refusing "${path.slice(0, 100)}"`,
+      );
+    }
+
     const { json, headers: rawHeaders, ...rest } = init;
+    const secrets = this.secrets();
     const headers: Record<string, string> = {
       "PRIVATE-TOKEN": this.token,
       Accept: "application/json",
@@ -58,14 +90,18 @@ export class GitlabClient {
     let body: string | undefined;
     if (json !== undefined) {
       headers["Content-Type"] = "application/json";
-      body = JSON.stringify(json);
+      // Every string in a request body can carry model output, which can
+      // quote anything a tool printed, so the whole payload is redacted
+      // rather than trusting each caller to.
+      body = JSON.stringify(redactDeep(json, secrets));
     }
 
-    const url = path.startsWith("http") ? path : `${this.baseUrl}${path}`;
-    const response = await fetch(url, {
+    const response = await fetch(`${this.baseUrl}${path}`, {
       ...rest,
       headers,
       body,
+      // A redirect to another host would carry PRIVATE-TOKEN with it.
+      redirect: "error",
     });
 
     if (!response.ok) {
@@ -80,6 +116,7 @@ export class GitlabClient {
         response.status,
         response.statusText || "Request failed",
         parsed,
+        secrets,
       );
     }
 
@@ -112,6 +149,20 @@ export class GitlabClient {
   listNotes(projectId: string | number, mrIid: number): Promise<GitlabNote[]> {
     return this.request<GitlabNote[]>(
       `${this.projectPath(projectId)}/merge_requests/${mrIid}/notes?per_page=100`,
+    );
+  }
+
+  getCurrentUser(): Promise<GitlabUser> {
+    return this.request<GitlabUser>("/user");
+  }
+
+  getNote(
+    projectId: string | number,
+    mrIid: number,
+    noteId: number,
+  ): Promise<GitlabNote> {
+    return this.request<GitlabNote>(
+      `${this.projectPath(projectId)}/merge_requests/${mrIid}/notes/${noteId}`,
     );
   }
 

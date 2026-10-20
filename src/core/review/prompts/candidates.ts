@@ -30,6 +30,7 @@ export function generateCandidatesPrompt(ctx: ReviewPromptContext): string {
     candidatesPath,
     includeSuggestions,
     securityReviewEnabled,
+    sourceNote,
   } = ctx;
 
   const bodyFieldDescription = includeSuggestions
@@ -83,7 +84,7 @@ Precomputed data files:
 - ${t.diffLabel}: \`${diffPath}\`
 - Existing Comments: \`${commentsPath}\`
 </context>
-
+${sourceNote ? `\n${sourceNote}\n` : ""}
 <output_spec>
 Write output to \`${candidatesPath}\` using this exact schema:
 

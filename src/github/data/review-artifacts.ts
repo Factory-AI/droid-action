@@ -3,6 +3,7 @@ import { writeFile, mkdir } from "fs/promises";
 import type { Octokits } from "../api/client";
 import type { ReviewArtifacts } from "../../create-prompt/types";
 import { retryWithBackoff } from "../../utils/retry";
+import { ghAuthenticatedGit } from "./pr-checkout";
 
 const DIFF_MAX_BUFFER = 50 * 1024 * 1024; // 50MB buffer for large diffs
 
@@ -12,26 +13,47 @@ const DIFF_MAX_BUFFER = 50 * 1024 * 1024; // 50MB buffer for large diffs
  * Tries git merge-base first (requires sufficient history). When that
  * fails (e.g. shallow clone without unshallow support) it falls back
  * to `gh pr diff` which always works.
+ *
+ * `headRevision` is the git revision holding the PR head (default `HEAD`).
+ * Null means the head commit is not available locally, so only
+ * `gh pr diff` is tried.
  */
 export async function computeAndStoreDiff(
   baseRef: string,
   tempDir: string,
-  options?: { githubToken?: string; prNumber?: number },
+  options?: {
+    githubToken?: string;
+    prNumber?: number;
+    headRevision?: string | null;
+  },
 ): Promise<string> {
   const promptsDir = `${tempDir}/droid-prompts`;
   await mkdir(promptsDir, { recursive: true });
+  const headRevision =
+    options?.headRevision === undefined ? "HEAD" : options.headRevision;
 
   let diff: string;
   try {
+    if (headRevision === null) {
+      throw new Error("PR head commit is not available locally");
+    }
+    const githubToken = options?.githubToken;
+    const fetchCommand = (args: string) =>
+      githubToken ? ghAuthenticatedGit(args) : `git ${args}`;
+    const fetchEnv = githubToken
+      ? { ...process.env, GH_TOKEN: githubToken }
+      : process.env;
+
     // Unshallow the repo if it's a shallow clone (needed for merge-base)
     try {
       execSync("git rev-parse --is-shallow-repository", {
         encoding: "utf8",
         stdio: "pipe",
       }).trim() === "true" &&
-        execSync("git fetch --unshallow", {
+        execSync(fetchCommand("fetch --unshallow"), {
           encoding: "utf8",
           stdio: "pipe",
+          env: fetchEnv,
         });
       console.log("Unshallowed repository");
     } catch {
@@ -40,21 +62,21 @@ export async function computeAndStoreDiff(
 
     // Fetch the base branch (it may not exist locally yet)
     try {
-      execSync(`git fetch origin ${baseRef}:refs/remotes/origin/${baseRef}`, {
-        encoding: "utf8",
-        stdio: "pipe",
-      });
+      execSync(
+        fetchCommand(`fetch origin ${baseRef}:refs/remotes/origin/${baseRef}`),
+        { encoding: "utf8", stdio: "pipe", env: fetchEnv },
+      );
       console.log(`Fetched base branch: ${baseRef}`);
     } catch {
       console.log(`Base branch fetch skipped (may already exist): ${baseRef}`);
     }
 
     const mergeBase = execSync(
-      `git merge-base HEAD refs/remotes/origin/${baseRef}`,
+      `git merge-base ${headRevision} refs/remotes/origin/${baseRef}`,
       { encoding: "utf8" },
     ).trim();
 
-    diff = execSync(`git --no-pager diff ${mergeBase}..HEAD`, {
+    diff = execSync(`git --no-pager diff ${mergeBase}..${headRevision}`, {
       encoding: "utf8",
       maxBuffer: DIFF_MAX_BUFFER,
     });
@@ -157,11 +179,13 @@ export async function computeReviewArtifacts(opts: {
   title: string;
   body: string;
   githubToken?: string;
+  headRevision?: string | null;
 }): Promise<ReviewArtifacts> {
   const [diffPath, commentsPath, descriptionPath] = await Promise.all([
     computeAndStoreDiff(opts.baseRef, opts.tempDir, {
       githubToken: opts.githubToken,
       prNumber: opts.prNumber,
+      headRevision: opts.headRevision,
     }),
     fetchAndStoreComments(
       opts.octokit,
