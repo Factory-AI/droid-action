@@ -61,7 +61,7 @@ runs:
       id: prepare
       shell: bash
       run: |
-        bun run ${{ github.action_path }}/../src/entrypoints/prepare.ts
+        bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../src/entrypoints/prepare.ts
       env:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
