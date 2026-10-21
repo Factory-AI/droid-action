@@ -165,7 +165,9 @@ droid-review:
     DROID_SUCCESS: "true"
   before_script:
     - apt-get update -qq
-    - apt-get install -y -qq --no-install-recommends git ca-certificates curl
+    # procps provides `ps`, which droid uses to find and stop child
+    # processes (subagents, background commands, MCP servers).
+    - apt-get install -y -qq --no-install-recommends git ca-certificates curl procps
     - git clone --depth 1 --branch "$DROID_ACTION_REF" "$DROID_ACTION_REPO" "$DROID_ACTION_DIR"
     - cd "$DROID_ACTION_DIR" && bun install --frozen-lockfile
     # From here on the working directory is the untrusted MR checkout.
