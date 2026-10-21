@@ -106,11 +106,25 @@ if [ "${DROID_SKIP_DEPENDENCY_INSTALL:-}" != "true" ]; then
 fi
 
 # ---- Preflight -------------------------------------------------------------
-# Both checks run before prepare so a build that cannot review never posts a
+# These checks run before prepare so a build that cannot review never posts a
 # tracking thread on the PR.
+
+# A skipped fork build still passes the build policy, so a Required policy
+# would let fork PRs merge unreviewed; "fail" makes them fail instead.
+FORK_MODE="${FORK_PULL_REQUESTS:-skip}"
+if is_unexpanded "$FORK_MODE"; then FORK_MODE=skip; fi
+FORK_MODE="$(printf '%s' "$FORK_MODE" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+case "$FORK_MODE" in
+  skip | fail) ;;
+  *) fail "FORK_PULL_REQUESTS must be \"skip\" or \"fail\", got \"${FORK_PULL_REQUESTS}\". Nothing was posted to the pull request." ;;
+esac
+
 case "${SYSTEM_PULLREQUEST_ISFORK:-}" in
   [Tt]rue)
-    echo "Skipping Droid review: pull request comes from a fork (Azure Pipelines withholds secrets from fork builds)."
+    if [ "$FORK_MODE" = fail ]; then
+      fail "Droid review cannot run on fork pull requests: Azure Pipelines withholds secrets from fork builds. FORK_PULL_REQUESTS is \"fail\", so this build fails instead of passing unreviewed. Nothing was posted to the pull request."
+    fi
+    echo "Skipping Droid review: pull request comes from a fork (Azure Pipelines withholds secrets from fork builds). Set FORK_PULL_REQUESTS: \"fail\" to fail fork builds instead."
     exit 0
     ;;
 esac

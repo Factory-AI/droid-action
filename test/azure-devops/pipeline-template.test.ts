@@ -51,6 +51,8 @@ describe("azure-devops/droid-review.yml", () => {
       REVIEW_DEPTH: "deep",
       // Off by default; the skill turns it on for blocking policies.
       REVIEW_DRAFTS: "false",
+      // Skip by default; the skill sets "fail" for blocking policies.
+      FORK_PULL_REQUESTS: "skip",
     });
     const script = step.bash as string;
     expect(script).toContain(

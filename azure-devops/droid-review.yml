@@ -48,6 +48,7 @@ steps:
       REVIEW_DEPTH: deep
       INCLUDE_SUGGESTIONS: "true"
       REVIEW_DRAFTS: "false"
+      FORK_PULL_REQUESTS: skip
 
   # Build artifacts work on Services and Server alike; the `publish`
   # shortcut (Pipeline Artifacts) is Services-only.
