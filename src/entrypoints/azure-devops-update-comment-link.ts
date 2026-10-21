@@ -7,13 +7,25 @@
  * Env: DROID_SUCCESS ("false" on failure), DROID_ERROR_FILE (read only
  * if it is a regular file, then capped and redacted: the review passes can
  * rewrite the prompts directory it lives in),
- * DROID_PASS1_LOG / DROID_PASS2_LOG, plus the auth vars.
+ * DROID_PASS1_LOG / DROID_PASS2_LOG, plus the auth vars. The PR comes from
+ * the pipeline's variables, and the thread named in the state file is only
+ * edited after checking that this identity wrote it.
  */
 
 import { AzureDevopsClient } from "../azure-devops/api/client";
 import { azureDevopsApiVersion } from "../azure-devops/api/config";
-import { setupAzureDevopsAuth } from "../azure-devops/token";
-import { buildTrackingCommentBody } from "../azure-devops/operations/tracking-thread";
+import {
+  azureDevopsSecretValues,
+  setupAzureDevopsAuth,
+} from "../azure-devops/token";
+import {
+  buildTrackingCommentBody,
+  createTrackingThread,
+  resolveOwnTrackingThread,
+  resolveTrackingOwner,
+} from "../azure-devops/operations/tracking-thread";
+import { resolvePostTarget } from "../azure-devops/operations/post-target";
+import { redactSecrets } from "../utils/redact-credentials";
 import {
   postResultsFilePath,
   promptsDir,
@@ -43,6 +55,7 @@ export async function run(
     return null;
   }
 
+  const target = resolvePostTarget(state, env);
   const success = env.DROID_SUCCESS !== "false";
   const telemetry = await collectExecTelemetry({
     pass1LogPath:
@@ -68,12 +81,7 @@ export async function run(
     pipelineUrl: state.buildUrl,
     jobUrl: state.jobUrl,
     triggerUsername: state.triggeredBy,
-    errorDetails: success
-      ? null
-      : await readErrorDetails(
-          env.DROID_ERROR_FILE || path.join(promptsDir(env), "droid-error.txt"),
-          env,
-        ),
+    errorDetails: success ? null : await errorDetails(env),
     securityReviewRan: state.securityReviewEnabled,
     telemetry: {
       totalNumTurns: telemetry.totalNumTurns,
@@ -85,23 +93,53 @@ export async function run(
   });
 
   const client = new AzureDevopsClient({
-    collectionUri: state.collectionUri,
-    project: state.project,
-    repositoryId: state.repositoryId,
+    collectionUri: target.collectionUri,
+    project: target.project,
+    repositoryId: target.repositoryId,
     auth: setupAzureDevopsAuth(env),
     apiVersion: azureDevopsApiVersion(env),
     fetch: deps.fetch,
   });
+  const outcome = success ? "success" : "failure";
+  const own = await resolveOwnTrackingThread({
+    client,
+    pullRequestId: target.pullRequestId,
+    ownerId: await resolveTrackingOwner(client),
+    hint: {
+      threadId: state.trackingThreadId,
+      commentId: state.trackingCommentId,
+    },
+  });
+  if (!own) {
+    const created = await createTrackingThread(
+      client,
+      target.pullRequestId,
+      body,
+    );
+    console.log(
+      `Created tracking thread ${created.threadId} (state=${outcome}).`,
+    );
+    return body;
+  }
   await client.updateComment(
-    state.pullRequestId,
-    state.trackingThreadId,
-    state.trackingCommentId,
+    target.pullRequestId,
+    own.threadId,
+    own.commentId,
     body,
   );
-  console.log(
-    `Updated tracking thread ${state.trackingThreadId} (state=${success ? "success" : "failure"}).`,
-  );
+  console.log(`Updated tracking thread ${own.threadId} (state=${outcome}).`);
   return body;
+}
+
+async function errorDetails(env: NodeJS.ProcessEnv): Promise<string | null> {
+  const text = await readErrorDetails(
+    env.DROID_ERROR_FILE || path.join(promptsDir(env), "droid-error.txt"),
+    env,
+  );
+  // readErrorDetails knows the raw env values; this adds the encoded forms.
+  return text === null
+    ? null
+    : redactSecrets(text, azureDevopsSecretValues(env));
 }
 
 if (import.meta.main) {

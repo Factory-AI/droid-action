@@ -263,6 +263,39 @@ describe("AzureDevopsClient credential handling", () => {
     expect(JSON.stringify(error.body)).not.toContain("job-token-value-1234");
   });
 
+  it("redacts a PAT in its Basic-encoded form in errors and posted bodies", async () => {
+    const encoded = Buffer.from(":my-pat-value-5678").toString("base64");
+    const fake = createFakeAdo();
+    fake.on("GET", "/pullRequests/1", () =>
+      json({ message: `bad header Basic ${encoded}` }, 400),
+    );
+    fake.on("POST", "/pullRequests/1/threads", () =>
+      json({ id: 2, comments: [{ id: 1 }] }),
+    );
+    const pat = client(fake, {
+      auth: { kind: "pat", token: "my-pat-value-5678" },
+    });
+    const error = await pat.getPullRequest(1).catch((e) => e);
+    expect(error.message).toContain("bad header Basic [REDACTED]");
+    expect(JSON.stringify(error.body)).not.toContain(encoded);
+
+    await pat.createThread(1, {
+      comments: [
+        { parentCommentId: 0, content: `log: ${encoded}`, commentType: "text" },
+      ],
+    });
+    expect(JSON.stringify(fake.requests.at(-1)!.body)).not.toContain(encoded);
+  });
+
+  it("reads the authenticated identity from the unversioned connectionData endpoint", async () => {
+    const fake = createFakeAdo();
+    fake.on("GET", "/_apis/connectionData", () =>
+      json({ authenticatedUser: { id: "droid-identity" } }),
+    );
+    expect(await client(fake).getAuthenticatedUserId()).toBe("droid-identity");
+    expect(fake.requests[0]!.url).toBe(`${SERVICES}_apis/connectionData`);
+  });
+
   it("refuses to follow redirects, which would carry the Authorization header", async () => {
     const fake = createFakeAdo();
     fake.on("GET", "/pullRequests/1", () => json({ pullRequestId: 1 }));

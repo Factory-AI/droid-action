@@ -60,6 +60,24 @@ describe("azure-devops-collect-debug-artifacts", () => {
     }
   });
 
+  it("redacts the Basic-encoded form of each credential", async () => {
+    const { prompts, debug, env } = setup();
+    const encoded = Buffer.from(`:${SECRETS.AZURE_DEVOPS_PAT}`).toString(
+      "base64",
+    );
+    fs.writeFileSync(
+      path.join(prompts, "pass1-output.jsonl"),
+      `Authorization: Basic ${encoded}\n`,
+    );
+    await collect(env);
+    const copied = fs.readFileSync(
+      path.join(debug, "pass1-output.jsonl"),
+      "utf8",
+    );
+    expect(copied).not.toContain(encoded);
+    expect(copied).toContain("Authorization: Basic [REDACTED]");
+  });
+
   it("skips symlinks the passes planted in the prompts directory", async () => {
     const { root, prompts, debug, env } = setup();
     const outside = path.join(root, "credentials");

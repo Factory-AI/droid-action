@@ -1,10 +1,9 @@
-import { authorizationHeader, type AzureDevopsAuth } from "../token";
 import {
-  AZURE_DEVOPS_CREDENTIAL_ENV_NAMES,
-  redactDeep,
-  redactSecrets,
-  secretValuesFromEnv,
-} from "../../utils/redact-credentials";
+  authorizationHeader,
+  azureDevopsSecretValues,
+  type AzureDevopsAuth,
+} from "../token";
+import { redactDeep, redactSecrets } from "../../utils/redact-credentials";
 import {
   AZURE_DEVOPS_DEFAULT_API_VERSION,
   normalizeCollectionUri,
@@ -12,6 +11,7 @@ import {
 import type {
   AdoCreateThreadRequest,
   AdoComment,
+  AdoConnectionData,
   AdoIteration,
   AdoIterationChange,
   AdoIterationChangesPage,
@@ -47,9 +47,7 @@ export class AzureDevopsApiError extends Error {
     url: string,
     statusText: string,
     body: unknown,
-    secrets: readonly string[] = secretValuesFromEnv(
-      AZURE_DEVOPS_CREDENTIAL_ENV_NAMES,
-    ),
+    secrets: readonly string[] = azureDevopsSecretValues(),
   ) {
     const safeBody = redactDeep(body, secrets);
     const detail = describeErrorBody(safeBody);
@@ -90,6 +88,7 @@ type RequestOptions = {
   method?: string;
   json?: unknown;
   query?: Record<string, string | number | undefined>;
+  withApiVersion?: boolean;
 };
 
 type RawResponse<T> = { data: T; headers: Headers };
@@ -157,22 +156,21 @@ export class AzureDevopsClient {
     return `${this.repositoryApiUrl()}/pullRequests/${pullRequestId}`;
   }
 
-  private buildUrl(base: string, query: RequestOptions["query"] = {}): string {
+  private buildUrl(
+    base: string,
+    query: RequestOptions["query"] = {},
+    withApiVersion = true,
+  ): string {
     const url = new URL(base);
     for (const [key, value] of Object.entries(query)) {
       if (value !== undefined) url.searchParams.set(key, String(value));
     }
-    url.searchParams.set("api-version", this.apiVersion);
+    if (withApiVersion) url.searchParams.set("api-version", this.apiVersion);
     return url.toString();
   }
 
   private secrets(): string[] {
-    return [
-      ...new Set([
-        this.auth.token,
-        ...secretValuesFromEnv(AZURE_DEVOPS_CREDENTIAL_ENV_NAMES),
-      ]),
-    ].sort((a, b) => b.length - a.length);
+    return azureDevopsSecretValues(process.env, [this.auth.token]);
   }
 
   private async send<T>(
@@ -180,7 +178,11 @@ export class AzureDevopsClient {
     options: RequestOptions = {},
   ): Promise<RawResponse<T>> {
     const method = options.method ?? "GET";
-    const url = this.buildUrl(base, options.query);
+    const url = this.buildUrl(
+      base,
+      options.query,
+      options.withApiVersion ?? true,
+    );
     const secrets = this.secrets();
     const headers: Record<string, string> = {
       Authorization: authorizationHeader(this.auth),
@@ -313,6 +315,26 @@ export class AzureDevopsClient {
       top = data.nextTop || top;
     }
     throw new Error(`Azure DevOps pagination did not terminate for ${base}`);
+  }
+
+  /**
+   * The identity this token acts as, which is the author of every thread
+   * the pipeline creates. `connectionData` is unversioned; an api-version
+   * query makes some Server versions reject it.
+   */
+  async getAuthenticatedUserId(): Promise<string | null> {
+    const data = await this.request<AdoConnectionData>(
+      `${this.collectionUri}/_apis/connectionData`,
+      { withApiVersion: false },
+    );
+    const id = data?.authenticatedUser?.id;
+    return typeof id === "string" && id.length > 0 ? id : null;
+  }
+
+  getThread(pullRequestId: number, threadId: number): Promise<AdoThread> {
+    return this.request<AdoThread>(
+      `${this.pullRequestUrl(pullRequestId)}/threads/${threadId}`,
+    );
   }
 
   listThreads(pullRequestId: number): Promise<AdoThread[]> {
