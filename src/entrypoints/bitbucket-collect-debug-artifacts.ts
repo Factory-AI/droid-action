@@ -14,11 +14,8 @@ import {
   collectDebugArtifacts,
   type DebugArtifactSource,
 } from "../utils/debug-artifacts";
-import {
-  BITBUCKET_CREDENTIAL_ENV_NAMES,
-  secretValuesFromEnv,
-} from "../utils/redact-credentials";
 import { promptsDir } from "../bitbucket/state";
+import { bitbucketSecretValues } from "../bitbucket/token";
 
 export function bitbucketDebugArtifactSources(
   prompts: string,
@@ -40,7 +37,7 @@ export async function run(): Promise<void> {
       process.env.DROID_ERROR_FILE,
     ),
     outputDir,
-    secrets: secretValuesFromEnv(BITBUCKET_CREDENTIAL_ENV_NAMES),
+    secrets: bitbucketSecretValues(),
   });
   console.log(
     `Staged ${result.files} debug files with credentials redacted in ${outputDir}.`,

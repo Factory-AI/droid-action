@@ -396,6 +396,44 @@ describe("BitbucketCloudClient", () => {
     }
   });
 
+  it("redacts the Basic-encoded API token from request bodies and errors", async () => {
+    const saved = {
+      user: process.env.DROID_BITBUCKET_USERNAME,
+      token: process.env.DROID_BITBUCKET_API_TOKEN,
+    };
+    process.env.DROID_BITBUCKET_USERNAME = "ada@example.com";
+    process.env.DROID_BITBUCKET_API_TOKEN = "bb-api-secret";
+    const encoded = Buffer.from("ada@example.com:bb-api-secret").toString(
+      "base64",
+    );
+    try {
+      server = startFakeServer(() =>
+        json(
+          { type: "error", error: { message: `echo Basic ${encoded}` } },
+          400,
+        ),
+      );
+      const error = await client()
+        .createComment(`curl -H 'Authorization: Basic ${encoded}'`)
+        .catch((e) => e);
+
+      expect(server.requests[0]!.body.content.raw).toBe(
+        "curl -H 'Authorization: Basic [REDACTED]'",
+      );
+      expect(error).toBeInstanceOf(BitbucketApiError);
+      expect(error.message).toContain("echo Basic [REDACTED]");
+      expect(JSON.stringify(error.body)).not.toContain(encoded);
+    } finally {
+      for (const [name, value] of [
+        ["DROID_BITBUCKET_USERNAME", saved.user],
+        ["DROID_BITBUCKET_API_TOKEN", saved.token],
+      ] as const) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
+
   it("retries rate-limited and transient responses, then gives up", async () => {
     let calls = 0;
     server = startFakeServer(() => {

@@ -1,4 +1,5 @@
 import type { BitbucketAuth } from "./api/http";
+import { secretValuesFromEnv } from "../utils/redact-credentials";
 
 /** Environment variables that hold Bitbucket credentials. */
 export const BITBUCKET_CREDENTIAL_ENV_VARS = [
@@ -69,6 +70,24 @@ export function resolveBitbucketAuth(
     return { header: `Basic ${encoded}` };
   }
   throw new MissingBitbucketCredentialsError();
+}
+
+/**
+ * Every credential value the job holds, for redaction. With an API token the
+ * request carries `Basic base64(username:token)`, which a tool can print and
+ * which is as reusable as the token itself, so that form is redacted too.
+ * Longest first, so no secret is left partly redacted by a shorter one.
+ */
+export function bitbucketSecretValues(
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const values = new Set(secretValuesFromEnv(undefined, env));
+  const username = env.DROID_BITBUCKET_USERNAME?.trim();
+  const apiToken = env.DROID_BITBUCKET_API_TOKEN?.trim();
+  if (username && apiToken) {
+    values.add(Buffer.from(`${username}:${apiToken}`).toString("base64"));
+  }
+  return [...values].sort((a, b) => b.length - a.length);
 }
 
 /** Variables whose value is a secret (the username is not). */

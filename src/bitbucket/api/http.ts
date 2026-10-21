@@ -5,11 +5,8 @@
  * errors that carry the API's own message but never the credentials.
  */
 
-import {
-  redactDeep,
-  redactSecrets,
-  secretValuesFromEnv,
-} from "../../utils/redact-credentials";
+import { redactDeep, redactSecrets } from "../../utils/redact-credentials";
+import { bitbucketSecretValues } from "../token";
 
 export type BitbucketAuth = {
   /** Full `Authorization` header value. Never log it. */
@@ -65,7 +62,7 @@ export class BitbucketApiError extends Error {
     method: string,
     url: string,
     body: unknown,
-    secrets: readonly string[] = secretValuesFromEnv(),
+    secrets: readonly string[] = bitbucketSecretValues(),
   ) {
     const safeBody = redactDeep(body, secrets);
     const detail = describeBitbucketErrorBody(safeBody);
@@ -187,7 +184,7 @@ export class BitbucketHttp {
     const headers: Record<string, string> = {
       Accept: init.accept ?? "application/json",
     };
-    const secrets = secretValuesFromEnv();
+    const secrets = bitbucketSecretValues();
     let body: string | undefined;
     if (init.json !== undefined) {
       headers["Content-Type"] = "application/json";

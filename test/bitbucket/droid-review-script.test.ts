@@ -347,6 +347,27 @@ describe("bitbucket/droid-review.sh", () => {
     expect(await exists(path.join(debug, "stolen.txt"))).toBe(false);
   }, 60_000);
 
+  it("redacts the Basic-encoded API token from the debug files", async () => {
+    const encoded = Buffer.from("ada@example.com:bb-api-secret").toString(
+      "base64",
+    );
+    await fs.writeFile(path.join(tmp, "token.txt"), `Basic ${encoded}`);
+    const { code } = await runScript({
+      DROID_BITBUCKET_TOKEN: "",
+      DROID_BITBUCKET_USERNAME: "ada@example.com",
+      DROID_BITBUCKET_API_TOKEN: "bb-api-secret",
+      FAKE_PLANT: "1",
+    });
+    expect(code).toBe(0);
+
+    const log = await fs.readFile(
+      path.join(tmp, "work/.droid-debug/prompts/pass1-output.jsonl"),
+      "utf8",
+    );
+    expect(log).toContain("printed by a tool: Basic [REDACTED]");
+    expect(log).not.toContain(encoded);
+  }, 60_000);
+
   it("never writes or publishes through a symlinked error file", async () => {
     await fs.writeFile(path.join(tmp, "secret.txt"), "TOP SECRET");
     const { code } = await runScript({ FAKE_LINK_ERROR_FILE: "1" });
