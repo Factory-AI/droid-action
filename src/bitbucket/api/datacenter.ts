@@ -271,6 +271,14 @@ export class BitbucketDataCenterClient implements BitbucketClient {
     }
   }
 
+  async deleteComment(commentId: number): Promise<void> {
+    const url = `${this.prUrl}/comments/${commentId}`;
+    const current = await this.http.json<DcComment>(url);
+    await this.http.json(`${url}?version=${current.version}`, {
+      method: "DELETE",
+    });
+  }
+
   async createInlineComment(
     body: string,
     anchor: BitbucketInlineAnchor,

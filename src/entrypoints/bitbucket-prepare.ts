@@ -32,6 +32,8 @@ import {
 import {
   buildTrackingCommentBody,
   findOwnTrackingComment,
+  isOwnComment,
+  isTrackingComment,
 } from "../bitbucket/operations/tracking-comment";
 import { computeReviewArtifacts } from "../bitbucket/data/review-artifacts";
 import {
@@ -52,6 +54,7 @@ import {
 import type {
   BitbucketBuildStatus,
   BitbucketClient,
+  BitbucketComment,
   BitbucketPullRequest,
 } from "../bitbucket/types";
 import { resolveReviewConfig } from "../utils/review-depth";
@@ -106,6 +109,39 @@ function sameTarget(a: BitbucketTarget, b: BitbucketTarget): boolean {
  * review passes can modify, so the pull request always comes from the CI
  * environment; a different target in state can only come from tampering.
  */
+/**
+ * Without a "who am I" answer (Cloud access tokens cannot call /2.0/user),
+ * the author of the comment just created is the only trustworthy identity:
+ * the server sets it, so no one can fake it with a pasted marker. Earlier
+ * tracking comments by that same author are then removed, keeping one
+ * tracking comment per pull request. Comments with replies stay, so no
+ * conversation is lost.
+ */
+async function deleteStaleTrackingComments(
+  client: BitbucketClient,
+  comments: BitbucketComment[],
+  created: BitbucketComment,
+): Promise<void> {
+  const replied = new Set(comments.map((c) => c.parentId));
+  const stale = comments.filter(
+    (c) =>
+      c.id !== created.id &&
+      !replied.has(c.id) &&
+      isTrackingComment(c) &&
+      isOwnComment(c, created.authorId),
+  );
+  for (const c of stale) {
+    try {
+      await client.deleteComment(c.id);
+      console.log(`Deleted previous tracking comment ${c.id}`);
+    } catch (error) {
+      console.warn(
+        `Could not delete previous tracking comment ${c.id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+}
+
 export function resolvePostTarget(state: {
   target: BitbucketTarget | null;
 }): BitbucketTarget {
@@ -317,11 +353,6 @@ export async function run(
 
   const comments = await client.listComments();
   const currentUserId = await client.getCurrentUserId();
-  if (!currentUserId) {
-    console.warn(
-      "Could not tell which Bitbucket user these credentials post as (Cloud access tokens cannot call /2.0/user); posting a new tracking comment instead of reusing one.",
-    );
-  }
   const existing = findOwnTrackingComment(comments, currentUserId);
   let trackingCommentId: number;
   if (existing) {
@@ -329,8 +360,12 @@ export async function run(
     trackingCommentId = existing.id;
     console.log(`Reused tracking comment ${trackingCommentId}`);
   } else {
-    trackingCommentId = (await client.createComment(runningBody)).id;
+    const created = await client.createComment(runningBody);
+    trackingCommentId = created.id;
     console.log(`Created tracking comment ${trackingCommentId}`);
+    if (!currentUserId) {
+      await deleteStaleTrackingComments(client, comments, created);
+    }
   }
   // Recorded right away so the final step can report a failure that
   // happens anywhere after this point.

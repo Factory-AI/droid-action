@@ -32,7 +32,7 @@ A fixed path such as `/tmp/droid-action` is fine in Bitbucket Pipelines, where e
 
 [`bitbucket/droid-review.sh`](../bitbucket/droid-review.sh) installs the Droid CLI (and bun, if missing), then:
 
-1. `bitbucket-prepare` finds the pull request, creates or updates the tracking comment (before fetching the diff, so any later failure shows on the PR; an existing tracking comment is reused only if the token's own user wrote it, and Cloud access tokens, which cannot look up their user, get a new one each run), and writes the diff, existing comments, and description to disk.
+1. `bitbucket-prepare` finds the pull request, creates or updates the tracking comment (before fetching the diff, so any later failure shows on the PR; an existing tracking comment is reused only if the token's own user wrote it; see the note on Cloud access tokens below), and writes the diff, existing comments, and description to disk.
 2. `droid exec` pass 1 writes candidate findings.
 3. `bitbucket-prepare-validator` builds the validation prompt.
 4. `droid exec` pass 2 writes the approved findings.
@@ -70,6 +70,8 @@ Permissions:
 - **Cloud access token:** `pullrequest:write` (read, comment on, and update pull requests) and `repository` (read commits; the `repository` scope does not cover pull requests, so both are needed). Add `repository:write` when `BUILD_STATUS=true`. Comments appear as the token's bot user.
 - **Cloud API token:** `read:pullrequest:bitbucket`, `write:pullrequest:bitbucket`, `read:repository:bitbucket` (+ `write:repository:bitbucket` for build statuses). Write scopes do not imply the matching read scope, so request both.
 - **Data Center HTTP access token:** Repository read (or Project read for a project-wide token) is enough to read, comment, and post build statuses. Comments appear as the token's bot user.
+
+**Cloud access tokens and the tracking comment.** Droid reuses a tracking comment only when it can prove its own user wrote it, so a marker pasted by someone else is never taken over. Cloud access tokens cannot look up their own user (`GET /2.0/user` rejects them), so with an access token each run posts a fresh tracking comment and then deletes the earlier ones written by the same bot user (the author of the comment it just posted; comments with replies are kept). The PR still shows one tracking comment, but each run sends a new-comment notification. For a single tracking comment that is edited in place, use a Cloud API token with `DROID_BITBUCKET_USERNAME` (your Atlassian account email) and add the `read:user:bitbucket` scope.
 
 The scope needed to post a Cloud build status (`repository:write`) and the Data Center permission for the repository-scoped build status endpoint (Repository read) follow Atlassian's documentation as of this writing; if a build status is refused with 403, grant the write level.
 

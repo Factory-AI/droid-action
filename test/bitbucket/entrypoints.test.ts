@@ -106,9 +106,18 @@ function startCloud(fake: Omit<Fake, "server">): Fake {
     ) {
       const c = { id: nextId++, body: req.body.content.raw, parentId: null };
       state.comments.push(c);
-      return json({ id: c.id, content: { raw: c.body } }, 201);
+      return json(
+        { id: c.id, content: { raw: c.body }, user: { uuid: `{${BOT}}` } },
+        201,
+      );
     }
     const edit = /\/pullrequests\/42\/comments\/(\d+)$/.exec(p);
+    if (edit && req.method === "DELETE") {
+      const i = state.comments.findIndex((x) => x.id === Number(edit[1]));
+      if (i < 0) return notFound();
+      state.comments.splice(i, 1);
+      return new Response(null, { status: 204 });
+    }
     if (edit && req.method === "PUT") {
       const c = state.comments.find((x) => x.id === Number(edit[1]));
       if (!c) return notFound();
@@ -178,7 +187,10 @@ function startDataCenter(fake: Omit<Fake, "server">): Fake {
       const c = { id: nextId++, body: req.body.text, parentId: null };
       state.comments.push(c);
       versions.set(c.id, 0);
-      return json({ id: c.id, version: 0, text: c.body }, 201);
+      return json(
+        { id: c.id, version: 0, text: c.body, author: { name: BOT } },
+        201,
+      );
     }
     const one = new RegExp(`^${pr}/comments/(\\d+)$`).exec(p);
     if (one) {
@@ -187,6 +199,12 @@ function startDataCenter(fake: Omit<Fake, "server">): Fake {
       const version = versions.get(c.id) ?? 0;
       if (req.method === "GET")
         return json({ id: c.id, version, text: c.body });
+      if (req.method === "DELETE") {
+        if (url.searchParams.get("version") !== String(version))
+          return json({ errors: [{ message: "stale" }] }, 409);
+        state.comments.splice(state.comments.indexOf(c), 1);
+        return new Response(null, { status: 204 });
+      }
       if (req.body.version !== version)
         return json({ errors: [{ message: "stale" }] }, 409);
       c.body = req.body.text;
@@ -535,11 +553,19 @@ describe("Bitbucket Cloud review steps", () => {
     expect(f.comments[1]!.body).toContain("Droid finished reviewing");
   });
 
-  it("posts a new tracking comment when the job identity is unknown", async () => {
+  it("keeps one tracking comment when the job identity is unknown, deleting only its own earlier ones", async () => {
+    const tracker = (author?: string) => ({
+      body: `${BITBUCKET_TRACKING_MARKER}\n\nold`,
+      parentId: null,
+      author,
+    });
     const f = useCloud({
       identityUnknown: true,
       comments: [
-        { id: 8, body: `${BITBUCKET_TRACKING_MARKER}\n\nold`, parentId: null },
+        { id: 8, ...tracker() },
+        { id: 9, ...tracker("mallory") },
+        { id: 10, ...tracker() },
+        { id: 11, body: "why?", parentId: 10, author: "ada" },
       ],
     });
 
@@ -547,7 +573,28 @@ describe("Bitbucket Cloud review steps", () => {
 
     expect(state.trackingCommentId).toBe(1000);
     expect(reqs(f, "PUT", "/comments/8")).toHaveLength(0);
-    expect(reqs(f, "POST", "/comments")).toHaveLength(1);
+    expect(reqs(f, "DELETE", "/comments").map((r) => r.path)).toEqual([
+      `${CLOUD_REPO}/pullrequests/42/comments/8`,
+    ]);
+    expect(f.comments.map((c) => c.id)).toEqual([9, 10, 11, 1000]);
+  });
+
+  it("still reviews when an earlier tracking comment cannot be deleted", async () => {
+    const f = useCloud({
+      identityUnknown: true,
+      comments: [
+        { id: 8, body: `${BITBUCKET_TRACKING_MARKER}\nold`, parentId: null },
+      ],
+    });
+    f.override = (req) =>
+      req.method === "DELETE"
+        ? json({ error: { message: "no" } }, 403)
+        : undefined;
+
+    const state = await prepare(deps);
+
+    expect(state.shouldRunReview).toBe(true);
+    expect(state.trackingCommentId).toBe(1000);
   });
 
   it("does not edit another user's comment when the state's tracking comment id is tampered with", async () => {
@@ -1006,6 +1053,24 @@ describe("Bitbucket Data Center review steps (Jenkins)", () => {
     const state = await prepare(deps);
     expect(state.trackingCommentId).toBe(500);
     expect(reqs(f, "PUT", "/comments/3")).toHaveLength(0);
+  });
+
+  it("deletes its own earlier tracking comment with the current version when whoami fails", async () => {
+    const f = useDataCenter({
+      identityUnknown: true,
+      comments: [
+        { id: 3, body: `${BITBUCKET_TRACKING_MARKER}\nold`, parentId: null },
+        {
+          id: 4,
+          body: `${BITBUCKET_TRACKING_MARKER}\nspoofed`,
+          parentId: null,
+          author: "mallory",
+        },
+      ],
+    });
+    const state = await prepare(deps);
+    expect(state.trackingCommentId).toBe(500);
+    expect(f.comments.map((c) => c.id)).toEqual([4, 500]);
   });
 
   it("reports a clear 401 for a bad token", async () => {

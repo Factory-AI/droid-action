@@ -180,6 +180,12 @@ export class BitbucketCloudClient implements BitbucketClient {
     return toComment(updated);
   }
 
+  async deleteComment(commentId: number): Promise<void> {
+    await this.http.json(`${this.prUrl}/comments/${commentId}`, {
+      method: "DELETE",
+    });
+  }
+
   /**
    * `to` addresses the new file (added and context lines), `from` the old
    * file (removed lines). `start_to`/`start_from` make it a range.

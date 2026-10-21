@@ -102,6 +102,7 @@ export interface BitbucketClient {
   listComments(): Promise<BitbucketComment[]>;
   createComment(body: string): Promise<BitbucketComment>;
   updateComment(commentId: number, body: string): Promise<BitbucketComment>;
+  deleteComment(commentId: number): Promise<void>;
   createInlineComment(
     body: string,
     anchor: BitbucketInlineAnchor,
