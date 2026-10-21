@@ -124,3 +124,7 @@ export type AdoCreateThreadRequest = {
 };
 
 export type AdoListResponse<T> = { value: T[]; count?: number };
+
+export type AdoConnectionData = {
+  authenticatedUser?: { id?: string; providerDisplayName?: string };
+};

@@ -12,6 +12,7 @@ import { AzureDevopsClient } from "../azure-devops/api/client";
 import { azureDevopsApiVersion } from "../azure-devops/api/config";
 import { setupAzureDevopsAuth } from "../azure-devops/token";
 import { postReview } from "../azure-devops/operations/post-review";
+import { resolvePostTarget } from "../azure-devops/operations/post-target";
 import {
   postResultsFilePath,
   readState,
@@ -50,9 +51,10 @@ export async function run(
     );
     return null;
   }
-  const pullRequestId = state.pullRequestId;
+  const target = resolvePostTarget(state, env);
+  const pullRequestId = target.pullRequestId;
   const iterationId = state.iterationId;
-  if (!pullRequestId || !iterationId) {
+  if (!state.pullRequestId || !iterationId) {
     throw new Error(
       "azure-devops-post-review: state is missing pullRequestId or iterationId",
     );
@@ -75,9 +77,9 @@ export async function run(
   );
 
   const client = new AzureDevopsClient({
-    collectionUri: state.collectionUri,
-    project: state.project,
-    repositoryId: state.repositoryId,
+    collectionUri: target.collectionUri,
+    project: target.project,
+    repositoryId: target.repositoryId,
     auth: setupAzureDevopsAuth(env),
     apiVersion: azureDevopsApiVersion(env),
     fetch: deps.fetch,

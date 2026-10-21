@@ -7,6 +7,11 @@
  * build service identity.
  */
 
+import {
+  AZURE_DEVOPS_CREDENTIAL_ENV_NAMES,
+  secretValuesFromEnv,
+} from "../utils/redact-credentials";
+
 export type AzureDevopsAuth =
   | { kind: "bearer"; token: string }
   | { kind: "pat"; token: string };
@@ -70,6 +75,27 @@ export function authorizationHeader(auth: AzureDevopsAuth): string {
     return `Bearer ${auth.token}`;
   }
   return `Basic ${Buffer.from(`:${auth.token}`).toString("base64")}`;
+}
+
+/**
+ * Every credential value the job holds, for redaction. Each value also
+ * appears in the Basic `Authorization` form (`base64(":" + PAT)`), which a
+ * tool can print and which is as reusable as the PAT itself. Longest first,
+ * so no secret is left partly redacted by a shorter one it contains.
+ */
+export function azureDevopsSecretValues(
+  env: NodeJS.ProcessEnv = process.env,
+  extraTokens: readonly string[] = [],
+): string[] {
+  const values = new Set<string>();
+  for (const value of [
+    ...secretValuesFromEnv(AZURE_DEVOPS_CREDENTIAL_ENV_NAMES, env),
+    ...extraTokens,
+  ]) {
+    values.add(value);
+    values.add(Buffer.from(`:${value}`).toString("base64"));
+  }
+  return [...values].sort((a, b) => b.length - a.length);
 }
 
 /** Env vars that carry Azure DevOps credentials; never hand these to the model. */

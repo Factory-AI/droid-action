@@ -56,6 +56,13 @@ export function postResultsFilePath(
   );
 }
 
+/** What the pipeline publishes as the `droid-debug-<attempt>` artifact. */
+export function debugArtifactsDir(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return env.DROID_DEBUG_DIR || path.join(tempRoot(env), "droid-debug");
+}
+
 export function resolvedEnvShimPath(
   env: NodeJS.ProcessEnv = process.env,
 ): string {

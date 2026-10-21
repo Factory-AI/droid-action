@@ -29,6 +29,7 @@ import { AzureDevopsClient } from "../azure-devops/api/client";
 import { azureDevopsApiVersion } from "../azure-devops/api/config";
 import {
   buildTrackingCommentBody,
+  resolveTrackingOwner,
   upsertTrackingThread,
 } from "../azure-devops/operations/tracking-thread";
 import {
@@ -202,6 +203,7 @@ export async function run(
     client,
     pullRequestId,
     threads,
+    ownerId: await resolveTrackingOwner(client),
     body: buildTrackingCommentBody({
       state: "running",
       pipelineUrl: ctx.build.url,
