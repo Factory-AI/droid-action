@@ -1,0 +1,61 @@
+# Droid automated code review for Azure Repos pull requests.
+#
+# Copy this file into your repository (e.g. azure-pipelines/droid-review.yml),
+# create a pipeline from it, and add it to the target branch as a Build
+# validation branch policy. Azure Repos ignores `pr:` triggers, so the policy
+# is what runs it on pull requests. See docs/azure-devops-setup.md.
+#
+# Self-hosted agents (always on Azure DevOps Server): replace the pool with
+#   pool:
+#     name: <your agent pool>
+# The agent needs Linux or macOS with bash, git, and curl (plus unzip when
+# bun is not installed).
+trigger: none
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  # Holds the secret FACTORY_API_KEY (and optionally AZURE_DEVOPS_PAT).
+  - group: droid-review
+  - name: DROID_ACTION_REPO
+    value: https://github.com/Factory-AI/droid-action.git
+  - name: DROID_ACTION_REF
+    value: main
+
+steps:
+  - checkout: self
+    fetchDepth: 0
+    persistCredentials: false
+    clean: true
+
+  - bash: |
+      set -euo pipefail
+      # Created first so the artifact step below always has a directory.
+      mkdir -p "$AGENT_TEMPDIRECTORY/droid-debug"
+      DROID_ACTION_DIR="$AGENT_TEMPDIRECTORY/droid-action"
+      rm -rf "$DROID_ACTION_DIR"
+      git clone --quiet --depth 1 --branch "$DROID_ACTION_REF" "$DROID_ACTION_REPO" "$DROID_ACTION_DIR"
+      bash "$DROID_ACTION_DIR/azure-devops/run-review.sh"
+    displayName: Droid code review
+    env:
+      FACTORY_API_KEY: $(FACTORY_API_KEY)
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      AZURE_DEVOPS_PAT: $(AZURE_DEVOPS_PAT)
+      AUTOMATIC_REVIEW: "true"
+      AUTOMATIC_SECURITY_REVIEW: "false"
+      REVIEW_DEPTH: deep
+      INCLUDE_SUGGESTIONS: "true"
+      REVIEW_DRAFTS: "false"
+
+  # Build artifacts work on Services and Server alike; the `publish`
+  # shortcut (Pipeline Artifacts) is Services-only.
+  - task: PublishBuildArtifacts@1
+    displayName: Publish Droid debug artifacts
+    condition: always()
+    continueOnError: true
+    inputs:
+      PathtoPublish: $(Agent.TempDirectory)/droid-debug
+      ArtifactName: droid-debug-$(System.JobAttempt)
+      publishLocation: Container

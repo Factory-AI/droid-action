@@ -122,6 +122,10 @@ include:
 
 Full setup, available inputs, and troubleshooting live in [`docs/gitlab-setup.md`](docs/gitlab-setup.md).
 
+### Azure DevOps
+
+Azure Repos pull requests (Azure DevOps Services and Azure DevOps Server 2020+) are reviewed by an Azure Pipelines job run from a Build validation branch policy. Copy [`azure-devops/droid-review.yml`](azure-devops/droid-review.yml) into your repository and follow [`docs/azure-devops-setup.md`](docs/azure-devops-setup.md).
+
 ### Manual Setup
 
 If you prefer to wire things up by hand:

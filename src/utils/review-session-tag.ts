@@ -11,7 +11,7 @@ export const REVIEW_SESSION_TAG_NAME = "code-review";
 
 export type ReviewPass = "candidates" | "validator";
 export type ReviewType = "code" | "security";
-export type ReviewPlatform = "github" | "gitlab";
+export type ReviewPlatform = "github" | "gitlab" | "azure-devops";
 
 /**
  * Every value is a string: `droid exec` validates `--tag` metadata as a
