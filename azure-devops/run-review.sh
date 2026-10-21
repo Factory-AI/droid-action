@@ -26,7 +26,8 @@ PROMPTS_DIR="$(dirname "$DROID_PROMPT_FILE")"
 export DROID_STATE_FILE="${DROID_STATE_FILE:-$PROMPTS_DIR/.droid-state.json}"
 export DROID_PASS1_LOG="${DROID_PASS1_LOG:-$PROMPTS_DIR/pass1-output.jsonl}"
 export DROID_PASS2_LOG="${DROID_PASS2_LOG:-$PROMPTS_DIR/pass2-output.jsonl}"
-DEBUG_DIR="${DROID_DEBUG_DIR:-$TMP_ROOT/droid-debug}"
+export DROID_DEBUG_DIR="${DROID_DEBUG_DIR:-$TMP_ROOT/droid-debug}"
+DEBUG_DIR="$DROID_DEBUG_DIR"
 ERROR_FILE="$PROMPTS_DIR/droid-error.txt"
 
 mkdir -p "$PROMPTS_DIR" "$DEBUG_DIR"
@@ -37,9 +38,11 @@ export BUILD_SOURCESDIRECTORY="${BUILD_SOURCESDIRECTORY:-$PWD}"
 
 # Bun loads bunfig.toml (including `preload` modules) and .env files from the
 # working directory. The PR checkout is untrusted and these steps hold the
-# Azure DevOps token, so they always run from the droid-action checkout.
+# Azure DevOps token, so they run from the droid-action checkout and tell bun
+# to read neither file.
 run_entrypoint() {
-  (cd "$DROID_ACTION_DIR" && bun run "$DROID_ACTION_DIR/src/entrypoints/$1")
+  (cd "$DROID_ACTION_DIR" &&
+    bun --config=/dev/null --env-file=/dev/null run "$DROID_ACTION_DIR/src/entrypoints/$1")
 }
 
 is_unexpanded() {
@@ -66,12 +69,19 @@ finish() {
     else
       export DROID_SUCCESS=true
     fi
-    DROID_ERROR_DETAILS="$(cat "$ERROR_FILE" 2>/dev/null || true)"
-    export DROID_ERROR_DETAILS
+    # The entrypoint reads the file itself (no symlinks, capped, redacted):
+    # the passes can rewrite anything in the prompts directory.
+    export DROID_ERROR_FILE="$ERROR_FILE"
     run_entrypoint azure-devops-update-comment-link.ts ||
       echo "warning: could not update the tracking thread" >&2
   fi
-  cp -r "$PROMPTS_DIR/." "$DEBUG_DIR/" 2>/dev/null || true
+  # The pass logs hold the output of every command Droid ran, so the published
+  # copy is redacted. If staging fails, nothing is published.
+  if ! command -v bun >/dev/null 2>&1 ||
+    ! run_entrypoint azure-devops-collect-debug-artifacts.ts; then
+    rm -rf "$DEBUG_DIR"
+    mkdir -p "$DEBUG_DIR"
+  fi
   exit "$code"
 }
 trap finish EXIT

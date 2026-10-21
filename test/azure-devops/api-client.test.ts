@@ -14,7 +14,7 @@ function client(fake: ReturnType<typeof createFakeAdo>, overrides = {}) {
     collectionUri: SERVICES,
     project: "Fabrikam Web",
     repositoryId: "repo-guid",
-    auth: { kind: "bearer", token: "job-token" },
+    auth: { kind: "bearer", token: "job-token-value-1234" },
     fetch: fake.fetch,
     sleep: async () => {},
     ...overrides,
@@ -62,7 +62,9 @@ describe("AzureDevopsClient auth headers", () => {
     const fake = createFakeAdo();
     fake.on("GET", "/pullRequests/1", () => json({ pullRequestId: 1 }));
     await client(fake).getPullRequest(1);
-    expect(fake.requests[0]!.headers.Authorization).toBe("Bearer job-token");
+    expect(fake.requests[0]!.headers.Authorization).toBe(
+      "Bearer job-token-value-1234",
+    );
   });
 
   it("sends a PAT as Basic auth with an empty user name", async () => {
@@ -222,6 +224,56 @@ describe("AzureDevopsClient retries", () => {
       .catch((e) => e);
     expect(error.status).toBe(503);
     expect(fake.requests).toHaveLength(1);
+  });
+});
+
+describe("AzureDevopsClient credential handling", () => {
+  it("redacts the token from thread bodies before sending them", async () => {
+    const fake = createFakeAdo();
+    fake.on("POST", "/threads", () => json({ id: 1 }));
+    await client(fake).createThread(1, {
+      comments: [
+        {
+          parentCommentId: 0,
+          content: "The build printed job-token-value-1234 in its log",
+          commentType: "text",
+        },
+      ],
+    });
+    expect(fake.requests[0]!.body).toEqual({
+      comments: [
+        {
+          parentCommentId: 0,
+          content: "The build printed [REDACTED] in its log",
+          commentType: "text",
+        },
+      ],
+    });
+  });
+
+  it("redacts credentials echoed in error bodies", async () => {
+    const fake = createFakeAdo();
+    fake.on("GET", "/pullRequests/1", () =>
+      json({ message: "bad header Bearer job-token-value-1234" }, 400),
+    );
+    const error = await client(fake)
+      .getPullRequest(1)
+      .catch((e) => e);
+    expect(error.message).toContain("bad header Bearer [REDACTED]");
+    expect(JSON.stringify(error.body)).not.toContain("job-token-value-1234");
+  });
+
+  it("refuses to follow redirects, which would carry the Authorization header", async () => {
+    const fake = createFakeAdo();
+    fake.on("GET", "/pullRequests/1", () => json({ pullRequestId: 1 }));
+    const seen: RequestInit[] = [];
+    await client(fake, {
+      fetch: (url: string, init: RequestInit) => {
+        seen.push(init);
+        return fake.fetch(url, init);
+      },
+    }).getPullRequest(1);
+    expect(seen[0]!.redirect).toBe("error");
   });
 });
 

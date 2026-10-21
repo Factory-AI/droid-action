@@ -306,19 +306,44 @@ describe("azure-devops-prepare", () => {
       trackingThreadId: 61,
     });
 
+    const errorFile = path.join(
+      path.dirname(env.DROID_PROMPT_FILE!),
+      "droid-error.txt",
+    );
+    fs.writeFileSync(
+      errorFile,
+      `azure-devops-prepare failed with token ${SERVICES_ENV.SYSTEM_ACCESSTOKEN}\n`,
+    );
     await updateTracking({
-      env: {
-        ...env,
-        DROID_SUCCESS: "false",
-        DROID_ERROR_DETAILS: "azure-devops-prepare failed",
-      },
+      env: { ...env, DROID_SUCCESS: "false", DROID_ERROR_FILE: errorFile },
       fetch: failing.fetch,
     });
     const patch = failing.requests.at(-1)!;
     expect(patch.method).toBe("PATCH");
     const content = (patch.body as { content: string }).content;
     expect(content).toContain("Droid encountered an error");
-    expect(content).toContain("azure-devops-prepare failed");
+    expect(content).toContain(
+      "azure-devops-prepare failed with token [REDACTED]",
+    );
+    expect(content).not.toContain(SERVICES_ENV.SYSTEM_ACCESSTOKEN);
+  });
+
+  it("never publishes an error file the passes swapped for a symlink", async () => {
+    const fake = fakeAdo();
+    const env = envFor();
+    await prepare(deps(env, fake));
+    const dir = path.dirname(env.DROID_PROMPT_FILE!);
+    const secretFile = path.join(dir, "secret.txt");
+    fs.writeFileSync(secretFile, "contents of a credentials file\n");
+    const errorFile = path.join(dir, "droid-error.txt");
+    fs.symlinkSync(secretFile, errorFile);
+    fake.requests.length = 0;
+    const body = await updateTracking({
+      env: { ...env, DROID_SUCCESS: "false", DROID_ERROR_FILE: errorFile },
+      fetch: fake.fetch,
+    });
+    expect(body).toContain("Droid encountered an error");
+    expect(body).not.toContain("contents of a credentials file");
   });
 });
 

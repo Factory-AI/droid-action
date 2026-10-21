@@ -31,7 +31,12 @@ SHIM
     echo "pass1 prompt" > "$DROID_PROMPT_FILE"
     ;;
   *azure-devops-update-comment-link.ts)
-    echo "update success=$DROID_SUCCESS details=$DROID_ERROR_DETAILS token=\${SYSTEM_ACCESSTOKEN:-none}" >> "$STUB_LOG"
+    echo "update success=$DROID_SUCCESS details=$(cat "$DROID_ERROR_FILE" 2>/dev/null) token=\${SYSTEM_ACCESSTOKEN:-none}" >> "$STUB_LOG"
+    ;;
+  *azure-devops-collect-debug-artifacts.ts)
+    echo "collect debug=$DROID_DEBUG_DIR" >> "$STUB_LOG"
+    echo partial > "$DROID_DEBUG_DIR/partial.txt"
+    exit "\${STUB_COLLECT_EXIT:-0}"
     ;;
 esac
 exit 0
@@ -103,13 +108,15 @@ describe("azure-devops/run-review.sh", () => {
       .filter((l) => l.startsWith("bun ") || l === "droid-call")
       .map((l) => l.replace(REPO_ROOT, "<repo>"));
     expect(order).toEqual([
+      // Bun must not read bunfig.toml or .env from any directory.
       "bun install --frozen-lockfile",
-      "bun run <repo>/src/entrypoints/azure-devops-prepare.ts",
+      "bun --config=/dev/null --env-file=/dev/null run <repo>/src/entrypoints/azure-devops-prepare.ts",
       "droid-call",
-      "bun run <repo>/src/entrypoints/azure-devops-prepare-validator.ts",
+      "bun --config=/dev/null --env-file=/dev/null run <repo>/src/entrypoints/azure-devops-prepare-validator.ts",
       "droid-call",
-      "bun run <repo>/src/entrypoints/azure-devops-post-review.ts",
-      "bun run <repo>/src/entrypoints/azure-devops-update-comment-link.ts",
+      "bun --config=/dev/null --env-file=/dev/null run <repo>/src/entrypoints/azure-devops-post-review.ts",
+      "bun --config=/dev/null --env-file=/dev/null run <repo>/src/entrypoints/azure-devops-update-comment-link.ts",
+      "bun --config=/dev/null --env-file=/dev/null run <repo>/src/entrypoints/azure-devops-collect-debug-artifacts.ts",
     ]);
 
     const [pass1, pass2] = droidCalls(run.calls);
@@ -136,9 +143,16 @@ describe("azure-devops/run-review.sh", () => {
 
     // The final step keeps the token: it has to write the tracking thread.
     expect(run.calls).toContain("update success=true details= token=job-token");
-    expect(fs.existsSync(path.join(run.debugDir, "pass1-output.jsonl"))).toBe(
-      true,
-    );
+    // The published directory is staged by the redacting collector only.
+    expect(run.calls).toContain(`collect debug=${run.debugDir}`);
+    expect(fs.readdirSync(run.debugDir)).toEqual(["partial.txt"]);
+  });
+
+  it("publishes an empty debug directory when redacted staging fails", () => {
+    const run = runScript({ STUB_COLLECT_EXIT: "1" });
+    expect(run.status).toBe(0);
+    expect(run.calls).toContain("collect debug=");
+    expect(fs.readdirSync(run.debugDir)).toEqual([]);
   });
 
   it("runs every bun entrypoint from the droid-action checkout, not the PR checkout", () => {
@@ -151,8 +165,8 @@ describe("azure-devops/run-review.sh", () => {
     const run = runScript({}, checkout);
     expect(run.status).toBe(0);
     const cwds = run.calls.split("\n").filter((l) => l.startsWith("cwd="));
-    // install, prepare, validator, post-review, update-comment-link
-    expect(cwds).toHaveLength(5);
+    // install, prepare, validator, post-review, update-comment-link, collect
+    expect(cwds).toHaveLength(6);
     for (const line of cwds) {
       expect(line).toBe(`cwd=${REPO_ROOT} sources=${checkout}`);
     }

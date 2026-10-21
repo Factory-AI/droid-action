@@ -31,10 +31,19 @@ export const GITLAB_CREDENTIAL_ENV_NAMES = [
   "CI_DEPENDENCY_PROXY_PASSWORD",
 ] as const;
 
+/** Variables that can hold a credential in an Azure Pipelines review job. */
+export const AZURE_DEVOPS_CREDENTIAL_ENV_NAMES = [
+  "SYSTEM_ACCESSTOKEN",
+  "AZURE_DEVOPS_PAT",
+  "AZURE_DEVOPS_EXT_PAT",
+  "FACTORY_API_KEY",
+] as const;
+
 export const CREDENTIAL_ENV_NAMES: readonly string[] = [
   ...new Set<string>([
     ...GITHUB_CREDENTIAL_ENV_NAMES,
     ...GITLAB_CREDENTIAL_ENV_NAMES,
+    ...AZURE_DEVOPS_CREDENTIAL_ENV_NAMES,
   ]),
 ];
 

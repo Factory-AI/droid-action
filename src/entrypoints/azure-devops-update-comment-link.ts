@@ -4,7 +4,9 @@
  * Final step: rewrites the sticky tracking thread with the outcome, the
  * posting counts from `review_post_results.json`, and pass telemetry.
  *
- * Env: DROID_SUCCESS ("false" on failure), DROID_ERROR_DETAILS,
+ * Env: DROID_SUCCESS ("false" on failure), DROID_ERROR_FILE (read only
+ * if it is a regular file, then capped and redacted: the review passes can
+ * rewrite the prompts directory it lives in),
  * DROID_PASS1_LOG / DROID_PASS2_LOG, plus the auth vars.
  */
 
@@ -19,6 +21,7 @@ import {
 } from "../azure-devops/paths";
 import { collectExecTelemetry } from "../gitlab/data/exec-telemetry";
 import { readReviewPostOutcome } from "../core/review/tracking/results";
+import { readErrorDetails } from "../gitlab/operations/error-details";
 import * as path from "path";
 
 export async function run(
@@ -65,7 +68,12 @@ export async function run(
     pipelineUrl: state.buildUrl,
     jobUrl: state.jobUrl,
     triggerUsername: state.triggeredBy,
-    errorDetails: env.DROID_ERROR_DETAILS || null,
+    errorDetails: success
+      ? null
+      : await readErrorDetails(
+          env.DROID_ERROR_FILE || path.join(promptsDir(env), "droid-error.txt"),
+          env,
+        ),
     securityReviewRan: state.securityReviewEnabled,
     telemetry: {
       totalNumTurns: telemetry.totalNumTurns,

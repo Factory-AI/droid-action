@@ -1,5 +1,11 @@
 import { authorizationHeader, type AzureDevopsAuth } from "../token";
 import {
+  AZURE_DEVOPS_CREDENTIAL_ENV_NAMES,
+  redactDeep,
+  redactSecrets,
+  secretValuesFromEnv,
+} from "../../utils/redact-credentials";
+import {
   AZURE_DEVOPS_DEFAULT_API_VERSION,
   normalizeCollectionUri,
 } from "./config";
@@ -41,14 +47,21 @@ export class AzureDevopsApiError extends Error {
     url: string,
     statusText: string,
     body: unknown,
+    secrets: readonly string[] = secretValuesFromEnv(
+      AZURE_DEVOPS_CREDENTIAL_ENV_NAMES,
+    ),
   ) {
-    const detail = describeErrorBody(body);
+    const safeBody = redactDeep(body, secrets);
+    const detail = describeErrorBody(safeBody);
     super(
-      `Azure DevOps API ${status} on ${method} ${url}: ${statusText}${detail ? ` - ${detail}` : ""}`,
+      redactSecrets(
+        `Azure DevOps API ${status} on ${method} ${url}: ${statusText}${detail ? ` - ${detail}` : ""}`,
+        secrets,
+      ),
     );
     this.name = "AzureDevopsApiError";
     this.status = status;
-    this.body = body;
+    this.body = safeBody;
     this.method = method;
     this.url = url;
   }
@@ -153,12 +166,22 @@ export class AzureDevopsClient {
     return url.toString();
   }
 
+  private secrets(): string[] {
+    return [
+      ...new Set([
+        this.auth.token,
+        ...secretValuesFromEnv(AZURE_DEVOPS_CREDENTIAL_ENV_NAMES),
+      ]),
+    ].sort((a, b) => b.length - a.length);
+  }
+
   private async send<T>(
     base: string,
     options: RequestOptions = {},
   ): Promise<RawResponse<T>> {
     const method = options.method ?? "GET";
     const url = this.buildUrl(base, options.query);
+    const secrets = this.secrets();
     const headers: Record<string, string> = {
       Authorization: authorizationHeader(this.auth),
       Accept: "application/json",
@@ -166,10 +189,14 @@ export class AzureDevopsClient {
     let body: string | undefined;
     if (options.json !== undefined) {
       headers["Content-Type"] = "application/json";
-      body = JSON.stringify(options.json);
+      // Thread and comment bodies carry model output, which can quote
+      // anything a tool printed.
+      body = JSON.stringify(redactDeep(options.json, secrets));
     }
+    // A redirect to another host would carry the Authorization header.
+    const init: RequestInit = { method, headers, body, redirect: "error" };
 
-    let response = await this.fetchImpl(url, { method, headers, body });
+    let response = await this.fetchImpl(url, init);
     for (
       let attempt = 0;
       attempt < this.maxRetries && isRetryable(method, response.status);
@@ -185,7 +212,7 @@ export class AzureDevopsClient {
         `Azure DevOps API ${response.status} on ${method}; retrying in ${delay}ms (${attempt + 1}/${this.maxRetries})`,
       );
       await this.sleep(delay);
-      response = await this.fetchImpl(url, { method, headers, body });
+      response = await this.fetchImpl(url, init);
     }
     const text = await response.text();
 
@@ -202,6 +229,7 @@ export class AzureDevopsClient {
         url,
         response.statusText || "Request failed",
         parsed,
+        secrets,
       );
     }
 
@@ -221,6 +249,7 @@ export class AzureDevopsClient {
         "Expected a JSON response but got something else (an invalid or expired token " +
           "makes Azure DevOps return its HTML sign-in page)",
         null,
+        secrets,
       );
     }
   }
