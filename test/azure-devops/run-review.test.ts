@@ -222,6 +222,52 @@ describe("azure-devops/run-review.sh", () => {
     expect(run.stdout).toContain("pull request comes from a fork");
   });
 
+  it("fails fork pull requests without posting when FORK_PULL_REQUESTS is fail", () => {
+    const run = runScript({
+      BUILD_REASON: "PullRequest",
+      SYSTEM_PULLREQUEST_ISFORK: "True",
+      FORK_PULL_REQUESTS: "fail",
+      FACTORY_API_KEY: "",
+    });
+    expect(run.status).toBe(1);
+    expect(run.calls).not.toContain("azure-devops-prepare.ts");
+    expect(run.calls).not.toContain("azure-devops-update-comment-link.ts");
+    expect(droidCalls(run.calls)).toHaveLength(0);
+    expect(run.stdout).toContain(
+      "##vso[task.logissue type=error]Droid review cannot run on fork pull requests: Azure Pipelines withholds secrets from fork builds.",
+    );
+    expect(run.stdout).toContain("Nothing was posted to the pull request");
+  });
+
+  it.each(["skip", "$(FORK_PULL_REQUESTS)"])(
+    "skips fork pull requests when FORK_PULL_REQUESTS is %p",
+    (mode) => {
+      const run = runScript({
+        BUILD_REASON: "PullRequest",
+        SYSTEM_PULLREQUEST_ISFORK: "True",
+        FORK_PULL_REQUESTS: mode,
+      });
+      expect(run.status).toBe(0);
+      expect(run.calls).not.toContain("azure-devops-prepare.ts");
+      expect(run.stdout).toContain("pull request comes from a fork");
+    },
+  );
+
+  it("runs non-fork pull requests normally when FORK_PULL_REQUESTS is fail", () => {
+    const run = runScript({ FORK_PULL_REQUESTS: "fail" });
+    expect(run.status).toBe(0);
+    expect(droidCalls(run.calls)).toHaveLength(2);
+  });
+
+  it("rejects an unknown FORK_PULL_REQUESTS value before posting anything", () => {
+    const run = runScript({ FORK_PULL_REQUESTS: "block" });
+    expect(run.status).toBe(1);
+    expect(run.calls).not.toContain("azure-devops-prepare.ts");
+    expect(run.stdout).toContain(
+      'FORK_PULL_REQUESTS must be "skip" or "fail", got "block"',
+    );
+  });
+
   it("ignores a GitLab-style group/repo ORG_GUIDELINES_SOURCE", () => {
     const run = runScript({ ORG_GUIDELINES_SOURCE: "platform/review-rules" });
     expect(run.status).toBe(0);
