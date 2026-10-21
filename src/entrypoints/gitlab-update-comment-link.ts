@@ -86,12 +86,19 @@ async function run(): Promise<void> {
 
   const client = new GitlabClient(token, apiUrl);
 
-  const droidSuccess = process.env.DROID_SUCCESS !== "false";
-  const errorDetails = droidSuccess
-    ? null
-    : await readErrorDetails(
-        process.env.DROID_ERROR_FILE || DEFAULT_ERROR_FILE,
-      );
+  // Pass 1 exiting cleanly without usable candidates means nothing was
+  // validated or posted; the note must not report that as a finished review.
+  const skippedValidation = state.validatorSkippedReason
+    ? `Pass 1 did not produce valid review candidates (${state.validatorSkippedReason}), so no findings were validated or posted.`
+    : null;
+  const jobFailed = process.env.DROID_SUCCESS === "false";
+  const droidSuccess = !jobFailed && !skippedValidation;
+  const errorDetails =
+    (jobFailed
+      ? await readErrorDetails(
+          process.env.DROID_ERROR_FILE || DEFAULT_ERROR_FILE,
+        )
+      : null) ?? skippedValidation;
   const securityReviewRan = process.env.AUTOMATIC_SECURITY_REVIEW === "true";
   const triggerUsername =
     process.env.TRIGGER_USERNAME || process.env.GITLAB_USER_LOGIN || null;

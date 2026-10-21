@@ -81,7 +81,7 @@ droid
 
 The guided flow will:
 
-- Detect whether your repository lives on GitHub or GitLab.
+- Detect whether your repository lives on GitHub, GitLab, or Bitbucket.
 - Help you install the Droid GitHub App (or configure GitLab access).
 - Generate the workflow files (`droid.yml` and `droid-review.yml`) with sensible defaults.
 - Prompt you for `review_depth`, security review options, and other inputs.
@@ -121,6 +121,27 @@ include:
 ```
 
 Full setup, available inputs, and troubleshooting live in [`docs/gitlab-setup.md`](docs/gitlab-setup.md).
+
+### Bitbucket
+
+Bitbucket Cloud and Bitbucket Data Center get the same automated review: inline PR comments, a sticky tracking comment, optional security review, and review depth presets. One CI-agnostic script, [`bitbucket/droid-review.sh`](bitbucket/droid-review.sh), runs the review from Bitbucket Pipelines (Cloud), Jenkins, or Bamboo (Data Center).
+
+Bitbucket Cloud `bitbucket-pipelines.yml` (secured variables `FACTORY_API_KEY` and `DROID_BITBUCKET_TOKEN`):
+
+```yaml
+pipelines:
+  pull-requests:
+    "**":
+      - step:
+          name: Droid code review
+          image: oven/bun:1.2.11
+          script:
+            - apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates curl
+            - git clone --depth 1 --branch "${DROID_ACTION_REF:-main}" https://github.com/Factory-AI/droid-action.git /tmp/droid-action
+            - bash /tmp/droid-action/bitbucket/droid-review.sh
+```
+
+Workspace-wide rollout, Data Center CI examples, enforcement, and troubleshooting live in [`docs/bitbucket-setup.md`](docs/bitbucket-setup.md).
 
 ### Azure DevOps
 

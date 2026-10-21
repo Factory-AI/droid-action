@@ -188,6 +188,10 @@ droid-review:
     - bash "$DROID_ACTION_DIR/gitlab/install-org-guidelines.sh"
   script:
     - export PATH="$HOME/.local/bin:$PATH"
+    # Every `bun run` passes --config=/dev/null --env-file=/dev/null: the
+    # working directory is the MR checkout, and Bun would otherwise load its
+    # `bunfig.toml` (including `preload` scripts) and `.env` while
+    # GITLAB_TOKEN and FACTORY_API_KEY are in the environment.
     - |
       if ! bun --config=/dev/null --env-file=/dev/null run "$DROID_ACTION_DIR/src/entrypoints/gitlab-prepare.ts"; then
         export DROID_SUCCESS=false

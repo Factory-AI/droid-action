@@ -1,0 +1,65 @@
+// Droid code review for Bitbucket Data Center pull requests on Jenkins.
+//
+// Requires the Bitbucket Branch Source plugin with a Multibranch Pipeline
+// (or a "Bitbucket Team/Project" organization folder) pointing at your
+// Bitbucket Data Center server and "Discover pull requests" enabled. The
+// plugin builds each PR as `PR-<id>` and sets CHANGE_URL, which the review
+// parses for the server URL, project key, repository slug and PR id.
+//
+// Credentials (Jenkins "Secret text"):
+//   factory-api-key        Factory API key
+//   bitbucket-droid-token  Bitbucket HTTP access token (Repository read)
+//
+// The oven/bun image has no git or curl, so the container runs as root to
+// apt-get them; the container is thrown away after the stage. Running as
+// root leaves root-owned files in the bind-mounted workspace, so the script
+// hands them back to the workspace owner on exit. With your own image that
+// already has bash, git, curl and bun, drop `args '-u root'`, the apt-get
+// line, and the chown trap.
+pipeline {
+  agent {
+    docker {
+      image 'oven/bun:1.2.11'
+      args '-u root'
+    }
+  }
+  options {
+    timeout(time: 60, unit: 'MINUTES')
+  }
+  environment {
+    DROID_ACTION_REF = 'main'
+    REVIEW_DEPTH = 'deep'
+    AUTOMATIC_SECURITY_REVIEW = 'false'
+    // Set to 'true' and require the `droid-review` build in Bitbucket to
+    // enforce the review through a Required builds merge check.
+    BUILD_STATUS = 'false'
+  }
+  stages {
+    stage('Droid code review') {
+      when { changeRequest() }
+      steps {
+        withCredentials([
+          string(credentialsId: 'factory-api-key', variable: 'FACTORY_API_KEY'),
+          string(credentialsId: 'bitbucket-droid-token', variable: 'DROID_BITBUCKET_TOKEN'),
+        ]) {
+          // WORKSPACE@tmp is Jenkins' per-workspace scratch directory: outside
+          // the checkout under review, and never shared by concurrent builds.
+          sh '''
+            OWNER="$(stat -c %u:%g "$WORKSPACE")"
+            trap 'chown -R "$OWNER" "$WORKSPACE" "$WORKSPACE@tmp" 2>/dev/null || true' EXIT
+            apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates curl
+            DROID_ACTION_DIR="$WORKSPACE@tmp/droid-action"
+            rm -rf "$DROID_ACTION_DIR"
+            git clone --depth 1 --branch "$DROID_ACTION_REF" https://github.com/Factory-AI/droid-action.git "$DROID_ACTION_DIR"
+            bash "$DROID_ACTION_DIR/bitbucket/droid-review.sh"
+          '''
+        }
+      }
+    }
+  }
+  post {
+    always {
+      archiveArtifacts artifacts: '.droid-debug/**', allowEmptyArchive: true
+    }
+  }
+}
