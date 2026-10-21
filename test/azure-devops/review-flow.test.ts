@@ -28,6 +28,13 @@ afterAll(() => {
 // The runtime addresses the project by id, which never needs escaping.
 const PR_PATH =
   "/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/17";
+const DROID_IDENTITY = { id: "9a3f0c2e-0000-4000-8000-00000000d01d" };
+
+function answerConnectionData(fake: ReturnType<typeof createFakeAdo>) {
+  fake.on("GET", "/contoso/_apis/connectionData", () =>
+    json({ authenticatedUser: DROID_IDENTITY }),
+  );
+}
 
 function envFor(extra: Record<string, string> = {}) {
   const prompts = tempDir("ado-prompts-");
@@ -82,14 +89,28 @@ function fakeAdo(pr = pullRequest()) {
       count: 1,
     }),
   );
-  // Echo the thread back the way Azure DevOps does: same fields plus ids.
+  answerConnectionData(fake);
+  // Echo the thread back the way Azure DevOps does: same fields plus ids
+  // and the token's identity as author.
+  const created = new Map<number, object>();
   fake.on("POST", `${PR_PATH}/threads`, (req) => {
     const sent = req.body as { comments: object[] };
-    return json({
+    const id = 51 + created.size;
+    const thread = {
       ...sent,
-      id: 50 + fake.requests.length,
-      comments: sent.comments.map((c, i) => ({ ...c, id: i + 1 })),
-    });
+      id,
+      comments: sent.comments.map((c, i) => ({
+        ...c,
+        id: i + 1,
+        author: DROID_IDENTITY,
+      })),
+    };
+    created.set(id, thread);
+    return json(thread);
+  });
+  fake.on("GET", /\/threads\/\d+$/, (_req, url) => {
+    const thread = created.get(Number(url.pathname.split("/").at(-1)));
+    return thread ? json(thread) : json({ message: "not found" }, 404);
   });
   fake.on("GET", `${PR_PATH}/iterations`, () =>
     json({
@@ -253,13 +274,20 @@ describe("azure-devops-prepare", () => {
   it("reuses an existing tracking thread on re-runs", async () => {
     const env = envFor();
     const existing = createFakeAdo();
+    answerConnectionData(existing);
     existing.on("GET", `${PR_PATH}`, () => json(pullRequest()));
     existing.on("GET", `${PR_PATH}/threads`, () =>
       json({
         value: [
           {
             id: 40,
-            comments: [{ id: 1, content: "<!-- droid-tracking-note -->\nold" }],
+            comments: [
+              {
+                id: 1,
+                content: "<!-- droid-tracking-note -->\nold",
+                author: DROID_IDENTITY,
+              },
+            ],
           },
         ],
       }),
@@ -286,11 +314,16 @@ describe("azure-devops-prepare", () => {
 
   it("leaves a state that lets the final step mark the thread failed when prepare dies midway", async () => {
     const failing = createFakeAdo();
+    answerConnectionData(failing);
+    const tracking = {
+      id: 61,
+      properties: { [DROID_TRACKING_PROPERTY]: { $value: "1" } },
+      comments: [{ id: 1, author: DROID_IDENTITY }],
+    };
     failing.on("GET", `${PR_PATH}`, () => json(pullRequest()));
     failing.on("GET", `${PR_PATH}/threads`, () => json({ value: [] }));
-    failing.on("POST", `${PR_PATH}/threads`, () =>
-      json({ id: 61, comments: [{ id: 1 }] }),
-    );
+    failing.on("POST", `${PR_PATH}/threads`, () => json(tracking));
+    failing.on("GET", `${PR_PATH}/threads/61`, () => json(tracking));
     failing.on("GET", `${PR_PATH}/iterations`, () =>
       json({ message: "boom" }, 404),
     );
@@ -306,19 +339,44 @@ describe("azure-devops-prepare", () => {
       trackingThreadId: 61,
     });
 
+    const errorFile = path.join(
+      path.dirname(env.DROID_PROMPT_FILE!),
+      "droid-error.txt",
+    );
+    fs.writeFileSync(
+      errorFile,
+      `azure-devops-prepare failed with token ${SERVICES_ENV.SYSTEM_ACCESSTOKEN}\n`,
+    );
     await updateTracking({
-      env: {
-        ...env,
-        DROID_SUCCESS: "false",
-        DROID_ERROR_DETAILS: "azure-devops-prepare failed",
-      },
+      env: { ...env, DROID_SUCCESS: "false", DROID_ERROR_FILE: errorFile },
       fetch: failing.fetch,
     });
     const patch = failing.requests.at(-1)!;
     expect(patch.method).toBe("PATCH");
     const content = (patch.body as { content: string }).content;
     expect(content).toContain("Droid encountered an error");
-    expect(content).toContain("azure-devops-prepare failed");
+    expect(content).toContain(
+      "azure-devops-prepare failed with token [REDACTED]",
+    );
+    expect(content).not.toContain(SERVICES_ENV.SYSTEM_ACCESSTOKEN);
+  });
+
+  it("never publishes an error file the passes swapped for a symlink", async () => {
+    const fake = fakeAdo();
+    const env = envFor();
+    await prepare(deps(env, fake));
+    const dir = path.dirname(env.DROID_PROMPT_FILE!);
+    const secretFile = path.join(dir, "secret.txt");
+    fs.writeFileSync(secretFile, "contents of a credentials file\n");
+    const errorFile = path.join(dir, "droid-error.txt");
+    fs.symlinkSync(secretFile, errorFile);
+    fake.requests.length = 0;
+    const body = await updateTracking({
+      env: { ...env, DROID_SUCCESS: "false", DROID_ERROR_FILE: errorFile },
+      fetch: fake.fetch,
+    });
+    expect(body).toContain("Droid encountered an error");
+    expect(body).not.toContain("contents of a credentials file");
   });
 });
 
@@ -427,8 +485,10 @@ describe("validator + posting + tracking update", () => {
       env: { ...env, DROID_SUCCESS: "true" },
       fetch: fake.fetch,
     });
-    expect(fake.requests).toHaveLength(1);
-    expect(fake.requests[0]!.url).toContain(
+    const writes = fake.requests.filter((r) => r.method !== "GET");
+    expect(writes).toHaveLength(1);
+    expect(writes[0]!.method).toBe("PATCH");
+    expect(writes[0]!.url).toContain(
       `/pullRequests/17/threads/${state.trackingThreadId}/comments/1`,
     );
     expect(body).toContain("Droid finished reviewing this pull request");
@@ -513,8 +573,72 @@ describe("validator + posting + tracking update", () => {
       env: { ...env, DROID_SUCCESS: "true" },
       fetch: fake.fetch,
     });
-    expect(fake.requests.map((r) => r.method)).toEqual(["PATCH"]);
+    expect(fake.requests.filter((r) => r.method !== "GET")).toHaveLength(1);
+    expect(fake.requests.at(-1)!.method).toBe("PATCH");
     expect(body).toContain("Droid finished reviewing this pull request");
+  });
+
+  it("never edits a thread the state file points at unless this identity wrote it", async () => {
+    const fake = fakeAdo();
+    fake.on("GET", `${PR_PATH}/threads/3`, () =>
+      json({
+        id: 3,
+        properties: { [DROID_TRACKING_PROPERTY]: { $value: "1" } },
+        comments: [
+          {
+            id: 1,
+            content: "<!-- droid-tracking-note -->",
+            author: { id: "u2" },
+          },
+        ],
+      }),
+    );
+    const env = envFor();
+    await prepare(deps(env, fake));
+    const statePath = path.join(
+      path.dirname(env.DROID_PROMPT_FILE!),
+      ".droid-state.json",
+    );
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({ ...readState(env), trackingThreadId: 3 }),
+    );
+    fake.requests.length = 0;
+    await updateTracking({
+      env: { ...env, DROID_SUCCESS: "true" },
+      fetch: fake.fetch,
+    });
+    const writes = fake.requests.filter((r) => r.method !== "GET");
+    // The fake's thread list has no Droid-authored thread, so a fresh one is created.
+    expect(writes).toHaveLength(1);
+    expect(writes[0]!.method).toBe("POST");
+    expect(writes[0]!.url).toContain(`${PR_PATH}/threads?`);
+    expect(writes[0]!.body).toHaveProperty([
+      "properties",
+      DROID_TRACKING_PROPERTY,
+    ]);
+  });
+
+  it("refuses to post when the state file names another pull request", async () => {
+    const fake = fakeAdo();
+    const env = envFor();
+    await prepare(deps(env, fake));
+    const statePath = path.join(
+      path.dirname(env.DROID_PROMPT_FILE!),
+      ".droid-state.json",
+    );
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({ ...readState(env), pullRequestId: 99 }),
+    );
+    fake.requests.length = 0;
+    await expect(
+      updateTracking({
+        env: { ...env, DROID_SUCCESS: "true" },
+        fetch: fake.fetch,
+      }),
+    ).rejects.toThrow("refusing to post");
+    expect(fake.requests).toHaveLength(0);
   });
 
   it("fails when Pass 2 never wrote the validated file", async () => {

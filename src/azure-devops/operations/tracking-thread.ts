@@ -6,6 +6,11 @@
  * thread property, with the hidden marker in the body as a fallback for
  * threads whose properties were stripped. It is created without a status
  * so it never counts against the "Check for comment resolution" policy.
+ *
+ * Neither tag proves anything: anyone who can comment can paste the marker
+ * or set the property through the REST API. A thread is only adopted when
+ * its first comment was written by the identity this token acts as, and
+ * when that identity is unknown a new thread is created instead.
  */
 
 import {
@@ -103,19 +108,84 @@ export function buildTrackingCommentBody(
   return lines.join("\n").trim() + "\n";
 }
 
+type TrackingRef = { threadId: number; commentId: number };
+
+/** The thread's first live comment when `ownerId` wrote it and it is tagged. */
+export function ownTrackingComment(
+  thread: AdoThread | null | undefined,
+  ownerId: string | null,
+): TrackingRef | null {
+  if (!thread || thread.isDeleted || !ownerId) return null;
+  const first = (thread.comments ?? []).find((c) => !c.isDeleted);
+  if (!first) return null;
+  if (first.author?.id?.toLowerCase() !== ownerId.toLowerCase()) return null;
+  const tagged =
+    thread.properties?.[DROID_TRACKING_PROPERTY] !== undefined ||
+    (first.content ?? "").includes(DROID_TRACKING_MARKER);
+  return tagged ? { threadId: thread.id, commentId: first.id } : null;
+}
+
 export function findTrackingThread(
   threads: AdoThread[],
-): { threadId: number; commentId: number } | null {
+  ownerId: string | null,
+): TrackingRef | null {
   for (const thread of threads) {
-    if (thread.isDeleted) continue;
-    const first = (thread.comments ?? []).find((c) => !c.isDeleted);
-    if (!first) continue;
-    const tagged =
-      thread.properties?.[DROID_TRACKING_PROPERTY] !== undefined ||
-      (first.content ?? "").includes(DROID_TRACKING_MARKER);
-    if (tagged) return { threadId: thread.id, commentId: first.id };
+    const own = ownTrackingComment(thread, ownerId);
+    if (own) return own;
   }
   return null;
+}
+
+/** The identity this token posts as, or null (callers then never adopt a thread). */
+export async function resolveTrackingOwner(
+  client: AzureDevopsClient,
+): Promise<string | null> {
+  try {
+    const id = await client.getAuthenticatedUserId();
+    if (id) return id;
+    console.warn(
+      "Azure DevOps did not report the authenticated identity; a new tracking thread will be created.",
+    );
+  } catch (error) {
+    console.warn(
+      "Could not resolve the authenticated Azure DevOps identity; a new tracking thread will be created:",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+  return null;
+}
+
+/**
+ * The tracking thread to edit at the end of the run: the one named in the
+ * state file (which the review passes can rewrite) only if it checks out,
+ * else any thread this identity owns on the PR.
+ */
+export async function resolveOwnTrackingThread(opts: {
+  client: AzureDevopsClient;
+  pullRequestId: number;
+  ownerId: string | null;
+  hint: { threadId: unknown; commentId: unknown };
+}): Promise<TrackingRef | null> {
+  const { client, pullRequestId, ownerId, hint } = opts;
+  if (!ownerId) return null;
+  if (Number.isInteger(hint.threadId) && (hint.threadId as number) > 0) {
+    try {
+      const own = ownTrackingComment(
+        await client.getThread(pullRequestId, hint.threadId as number),
+        ownerId,
+      );
+      if (own) return own;
+      console.warn(
+        `Thread ${hint.threadId} is not a Droid tracking thread written by this identity; not editing it.`,
+      );
+    } catch (error) {
+      console.warn(
+        `Could not load thread ${hint.threadId}:`,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+  return findTrackingThread(await client.listThreads(pullRequestId), ownerId);
 }
 
 export function trackingThreadRequest(body: string): AdoCreateThreadRequest {
@@ -127,14 +197,33 @@ export function trackingThreadRequest(body: string): AdoCreateThreadRequest {
   };
 }
 
-/** Updates the existing tracking thread, or creates one. */
+export async function createTrackingThread(
+  client: AzureDevopsClient,
+  pullRequestId: number,
+  body: string,
+): Promise<TrackingRef> {
+  const thread = await client.createThread(
+    pullRequestId,
+    trackingThreadRequest(body),
+  );
+  const commentId = thread.comments?.[0]?.id;
+  if (typeof thread.id !== "number" || typeof commentId !== "number") {
+    throw new Error(
+      "Azure DevOps returned a thread without an id or first comment",
+    );
+  }
+  return { threadId: thread.id, commentId };
+}
+
+/** Updates this identity's tracking thread, or creates one. */
 export async function upsertTrackingThread(opts: {
   client: AzureDevopsClient;
   pullRequestId: number;
   threads: AdoThread[];
+  ownerId: string | null;
   body: string;
 }): Promise<{ threadId: number; commentId: number; created: boolean }> {
-  const existing = findTrackingThread(opts.threads);
+  const existing = findTrackingThread(opts.threads, opts.ownerId);
   if (existing) {
     await opts.client.updateComment(
       opts.pullRequestId,
@@ -144,15 +233,10 @@ export async function upsertTrackingThread(opts: {
     );
     return { ...existing, created: false };
   }
-  const thread = await opts.client.createThread(
+  const created = await createTrackingThread(
+    opts.client,
     opts.pullRequestId,
-    trackingThreadRequest(opts.body),
+    opts.body,
   );
-  const commentId = thread.comments?.[0]?.id;
-  if (typeof thread.id !== "number" || typeof commentId !== "number") {
-    throw new Error(
-      "Azure DevOps returned a thread without an id or first comment",
-    );
-  }
-  return { threadId: thread.id, commentId, created: true };
+  return { ...created, created: true };
 }

@@ -27,14 +27,36 @@ Azure Repos ignores the YAML `pr:` trigger, so PR runs come from a
 
 1. Skips anything that is not a PR build, draft PRs (unless
    `REVIEW_DRAFTS` is `"true"`), and PRs that are not active.
-2. Creates (or reuses) the tracking comment on the PR.
+2. Creates the tracking comment on the PR, or reuses the one from an
+   earlier run. A thread is only reused when its first comment was written
+   by the identity the token acts as (read from `_apis/connectionData`);
+   a pasted marker or a thread property set by someone else is ignored, and
+   if the identity cannot be read a new thread is created.
 3. Builds the diff locally from the PR iteration's merge base and source
    commit, and checks out the source commit.
-4. Runs `droid exec` twice (candidates, then validator). Both passes run
+4. Runs `droid exec` twice (candidates, then validator). Both passes start
    without any Azure DevOps credential in their environment and without
-   any tool that can write to the PR.
+   any tool that can write to the PR. That is hygiene, not isolation: the
+   passes keep `Execute`, run as the same OS user as the job, and could
+   read the job's variables from their parent processes. Treat the job like
+   any other job that runs untrusted code, and scope its credentials.
 5. Posts the approved findings as PR threads through the REST API, then
    updates the tracking comment with the outcome.
+
+The steps that hold the Azure DevOps token run bun from the droid-action
+checkout with `--config=/dev/null --env-file=/dev/null`, so a PR's
+`bunfig.toml` or `.env` never runs with the token. Everything that leaves
+the job is redacted of `System.AccessToken`, `AZURE_DEVOPS_PAT`,
+`AZURE_DEVOPS_EXT_PAT`, and `FACTORY_API_KEY`, including their Basic
+`Authorization` encoding (`base64(":" + token)`), and of credentials
+recognizable by format: PR threads, the tracking comment's error details,
+API error messages, and the debug artifact.
+
+The review passes can rewrite the state file the later steps read, so the
+post steps take the collection, project, repository, and pull request from
+the pipeline's own variables and stop if the state file disagrees. The final
+step re-checks that the tracking thread named in the state file was written
+by the token's identity before editing it.
 
 ## 1. Add the pipeline file
 
@@ -211,7 +233,9 @@ Set these in the review step's `env:`:
   blocks comment resolution) that shows progress, the build link, posting
   counts, turns, duration, and session IDs.
 - **A build artifact** `droid-debug-<attempt>` (PublishBuildArtifacts, so it works on Server too) with prompts, the
-  candidate and validated JSON, and the raw `droid exec` logs.
+  candidate and validated JSON, and the `droid exec` logs. It is a redacted
+  copy with symlinks skipped; if redaction fails, the artifact is empty.
+  Anyone who can view the build can download it.
 
 Fork pull requests are skipped before anything is posted: Azure Pipelines
 withholds secrets from fork builds, and the job should not run fork code
