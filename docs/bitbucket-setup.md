@@ -32,7 +32,7 @@ A fixed path such as `/tmp/droid-action` is fine in Bitbucket Pipelines, where e
 
 [`bitbucket/droid-review.sh`](../bitbucket/droid-review.sh) installs the Droid CLI (and bun, if missing), then:
 
-1. `bitbucket-prepare` finds the pull request, creates or updates the tracking comment (before fetching the diff, so any later failure shows on the PR), and writes the diff, existing comments, and description to disk.
+1. `bitbucket-prepare` finds the pull request, creates or updates the tracking comment (before fetching the diff, so any later failure shows on the PR; an existing tracking comment is reused only if the token's own user wrote it, and Cloud access tokens, which cannot look up their user, get a new one each run), and writes the diff, existing comments, and description to disk.
 2. `droid exec` pass 1 writes candidate findings.
 3. `bitbucket-prepare-validator` builds the validation prompt.
 4. `droid exec` pass 2 writes the approved findings.
