@@ -5,7 +5,7 @@ import * as path from "path";
 import { parseAllDocuments } from "yaml";
 
 /**
- * Runs every `bun run` step of templates/droid-review.yml with real bun,
+ * Runs every bun step of templates/droid-review.yml with real bun,
  * from an MR checkout that plants a `bunfig.toml` preload. The preload would
  * copy GITLAB_TOKEN to disk if bun picked up the checkout's config.
  */
@@ -88,9 +88,9 @@ describe("templates/droid-review.yml", () => {
   it("never starts bun in the MR checkout", async () => {
     const job = await loadJob();
     const steps = [...job.script, ...job.after_script].filter((s) =>
-      s.includes("bun run"),
+      /\bbun\b.*\brun\b/.test(s),
     );
-    expect(steps).toHaveLength(4);
+    expect(steps).toHaveLength(5);
 
     for (const step of steps) {
       await runStep(step);

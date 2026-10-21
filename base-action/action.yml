@@ -115,7 +115,9 @@ runs:
           echo "Changing directory to DROID_WORKING_DIR: $DROID_WORKING_DIR"
           cd "$DROID_WORKING_DIR"
         fi
-        bun run ${GITHUB_ACTION_PATH}/src/index.ts
+        # The flags keep Bun from loading bunfig.toml (preload scripts) or .env
+        # files from the working directory into a process holding credentials.
+        bun --config=/dev/null --env-file=/dev/null run ${GITHUB_ACTION_PATH}/src/index.ts
       env:
         # Model configuration
         INPUT_PROMPT: ${{ inputs.prompt }}

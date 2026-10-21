@@ -47,13 +47,16 @@ rm -f "$ERROR_FILE" "$DROID_STATE_FILE" "$DROID_PASS1_LOG" "$DROID_PASS2_LOG" \
 
 # Bun loads .env files and bunfig.toml (including its preload scripts) from
 # the current directory. Steps that hold the Bitbucket credentials must not
-# run in the pull request's checkout, where a PR could add those files to
-# redirect API calls or run code; they run from the action checkout instead.
-in_action_dir() {
-  (cd "$DROID_ACTION_DIR" && "$@")
+# pick up those files from the pull request's checkout, where a PR could add
+# them to redirect API calls or run code: they run from the action checkout
+# with both explicitly disabled.
+bun_run() {
+  (cd "$DROID_ACTION_DIR" && bun --config=/dev/null --env-file=/dev/null run "$@")
 }
 
 fail() {
+  # The passes can replace this path with a symlink; never write through one.
+  rm -f "$ERROR_FILE"
   echo "$1" >"$ERROR_FILE"
   echo "ERROR: $1" >&2
   exit 1
@@ -63,6 +66,7 @@ finish() {
   local rc=$?
   set +e
   if [ "$rc" -ne 0 ] && [ ! -s "$ERROR_FILE" ]; then
+    rm -f "$ERROR_FILE"
     echo "Droid review exited with status $rc; see the CI log." >"$ERROR_FILE"
   fi
   if [ -s "$ERROR_FILE" ]; then
@@ -70,15 +74,20 @@ finish() {
   else
     export DROID_SUCCESS=true
   fi
-  DROID_ERROR_DETAILS="$(cat "$ERROR_FILE" 2>/dev/null || true)"
-  export DROID_ERROR_DETAILS
-  mkdir -p "$WORK_DIR/.droid-debug/prompts"
-  cp -r "$PROMPTS_DIR/." "$WORK_DIR/.droid-debug/prompts/" 2>/dev/null
-  cp "$ERROR_FILE" "$WORK_DIR/.droid-debug/" 2>/dev/null
+  # The TypeScript steps read the error file themselves (regular files only,
+  # capped and redacted), and the debug artifact is a redacted copy: the pass
+  # logs hold the output of every command Droid ran. If staging fails,
+  # nothing is uploaded.
+  export DROID_ERROR_FILE="$ERROR_FILE"
+  export DROID_DEBUG_DIR="$WORK_DIR/.droid-debug"
+  if command -v bun >/dev/null 2>&1; then
+    bun_run "$DROID_ACTION_DIR/src/entrypoints/bitbucket-collect-debug-artifacts.ts" ||
+      rm -rf "$DROID_DEBUG_DIR"
+  fi
   if [ -f "$DROID_STATE_FILE" ] && command -v bun >/dev/null 2>&1; then
     # A tracking comment stuck on "reviewing" (or a droid-review status
     # stuck in progress) must not pass as a successful job.
-    if ! in_action_dir bun run "$DROID_ACTION_DIR/src/entrypoints/bitbucket-update-comment-link.ts"; then
+    if ! bun_run "$DROID_ACTION_DIR/src/entrypoints/bitbucket-update-comment-link.ts"; then
       echo "ERROR: could not update the tracking comment with the final result" >&2
       [ "$rc" -eq 0 ] && rc=1
     fi
@@ -133,7 +142,7 @@ fi
 cd "$WORK_DIR" || fail "cannot cd into $WORK_DIR"
 
 # ---- Prepare --------------------------------------------------------------
-in_action_dir bun run "$DROID_ACTION_DIR/src/entrypoints/bitbucket-prepare.ts" ||
+bun_run "$DROID_ACTION_DIR/src/entrypoints/bitbucket-prepare.ts" ||
   fail "bitbucket-prepare failed; see the CI log for the cause"
 
 if ! grep -q '"shouldRunReview": true' "$DROID_STATE_FILE"; then
@@ -180,7 +189,7 @@ run_pass "Read,Grep,Glob,LS,Execute,Edit,Create,ApplyPatch,Task,Skill,FetchUrl" 
   "$DROID_PASS1_LOG" "${DROID_SESSION_TAG_CANDIDATES:-code-review}" ||
   fail "droid exec pass 1 (candidates) failed"
 
-in_action_dir bun run "$DROID_ACTION_DIR/src/entrypoints/bitbucket-prepare-validator.ts" ||
+bun_run "$DROID_ACTION_DIR/src/entrypoints/bitbucket-prepare-validator.ts" ||
   fail "bitbucket-prepare-validator failed"
 
 # ---- Pass 2: validator ----------------------------------------------------
@@ -189,5 +198,5 @@ run_pass "Read,Grep,Glob,LS,Execute,Edit,Create,ApplyPatch,Skill" \
   fail "droid exec pass 2 (validator) failed"
 
 # ---- Post the approved findings ------------------------------------------
-in_action_dir bun run "$DROID_ACTION_DIR/src/entrypoints/bitbucket-post-review.ts" ||
+bun_run "$DROID_ACTION_DIR/src/entrypoints/bitbucket-post-review.ts" ||
   fail "bitbucket-post-review failed to post the review"

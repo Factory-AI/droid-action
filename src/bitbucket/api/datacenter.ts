@@ -111,6 +111,7 @@ function toComment(
     id: c.id,
     body: c.text ?? "",
     author: c.author?.name ?? c.author?.displayName ?? null,
+    authorId: c.author?.name ?? null,
     createdAt: c.createdDate ? new Date(c.createdDate).toISOString() : null,
     path: anchor?.path ?? c.anchor?.path ?? null,
     line: anchor?.line ?? c.anchor?.line ?? null,
@@ -127,6 +128,7 @@ export class BitbucketDataCenterClient implements BitbucketClient {
   readonly supportsMultiLineComments = false;
   readonly pinsAnchorsToCommits = true;
   private readonly http: BitbucketHttp;
+  private readonly serverUrl: string;
   private readonly repoUrl: string;
   private readonly prUrl: string;
 
@@ -140,8 +142,23 @@ export class BitbucketDataCenterClient implements BitbucketClient {
   ) {
     this.http = new BitbucketHttp(options);
     const server = options.serverUrl.replace(/\/+$/, "");
+    this.serverUrl = server;
     this.repoUrl = `${server}/rest/api/1.0/projects/${encodeURIComponent(options.projectKey)}/repos/${encodeURIComponent(options.repoSlug)}`;
     this.prUrl = `${this.repoUrl}/pull-requests/${options.prId}`;
+  }
+
+  /** The username behind the credentials, from the applinks whoami servlet. */
+  async getCurrentUserId(): Promise<string | null> {
+    try {
+      const name = (
+        await this.http.text(
+          `${this.serverUrl}/plugins/servlet/applinks/whoami`,
+        )
+      ).trim();
+      return name || null;
+    } catch {
+      return null;
+    }
   }
 
   private async paged<T>(url: string): Promise<T[]> {

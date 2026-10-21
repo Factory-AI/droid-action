@@ -3,6 +3,7 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 import { run } from "../../src/entrypoints/gitlab-update-comment-link";
+import { DROID_TRACKING_MARKER } from "../../src/gitlab/operations/tracking-note";
 import {
   json,
   notFound,
@@ -22,6 +23,9 @@ const ENV_KEYS = [
   "OVERRIDE_GITLAB_TOKEN",
   "CI_API_V4_URL",
   "GITLAB_API_URL",
+  "CI_PROJECT_ID",
+  "CI_MERGE_REQUEST_IID",
+  "DROID_ERROR_FILE",
 ] as const;
 
 let tmp: string;
@@ -32,15 +36,22 @@ beforeEach(async () => {
   saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
   for (const k of ENV_KEYS) delete process.env[k];
   tmp = await fs.mkdtemp(path.join(os.tmpdir(), "droid-gl-ucl-"));
-  server = startFakeServer((req) =>
-    req.method === "PUT" ? json({ id: 99 }) : notFound(),
-  );
+  server = startFakeServer((req, url) => {
+    if (req.method === "PUT") return json({ id: 99 });
+    if (url.pathname === "/api/v4/user")
+      return json({ id: 1, username: "droid" });
+    if (url.pathname.endsWith("/notes/99"))
+      return json({ id: 99, body: DROID_TRACKING_MARKER, author: { id: 1 } });
+    return notFound();
+  });
   process.env.DROID_STATE_FILE = path.join(tmp, ".droid-state.json");
   process.env.DROID_PROMPT_FILE = path.join(tmp, "droid-prompt.txt");
   process.env.DROID_PASS1_LOG = path.join(tmp, "pass1.jsonl");
   process.env.DROID_PASS2_LOG = path.join(tmp, "pass2.jsonl");
   process.env.GITLAB_TOKEN = "gl-test";
   process.env.CI_API_V4_URL = `${server.url}/api/v4`;
+  process.env.CI_PROJECT_ID = "4242";
+  process.env.CI_MERGE_REQUEST_IID = "7";
 });
 
 afterEach(async () => {

@@ -31,7 +31,7 @@ import {
 } from "../bitbucket/api/client";
 import {
   buildTrackingCommentBody,
-  findExistingTrackingComment,
+  findOwnTrackingComment,
 } from "../bitbucket/operations/tracking-comment";
 import { computeReviewArtifacts } from "../bitbucket/data/review-artifacts";
 import {
@@ -91,6 +91,37 @@ export function targetFromContext(
         repoSlug: ctx.repoSlug,
         prId,
       };
+}
+
+function sameTarget(a: BitbucketTarget, b: BitbucketTarget): boolean {
+  const key = (t: BitbucketTarget) =>
+    t.variant === "cloud"
+      ? ["cloud", t.apiUrl, t.workspace, t.repoSlug, t.prId]
+      : ["datacenter", t.serverUrl, t.projectKey, t.repoSlug, t.prId];
+  return JSON.stringify(key(a)) === JSON.stringify(key(b));
+}
+
+/**
+ * Where the post steps may write. The state file sits in a directory the
+ * review passes can modify, so the pull request always comes from the CI
+ * environment; a different target in state can only come from tampering.
+ */
+export function resolvePostTarget(state: {
+  target: BitbucketTarget | null;
+}): BitbucketTarget {
+  const ctx = parseBitbucketContext();
+  if (ctx.prId === null) {
+    throw new Error(
+      "The CI environment names no pull request; refusing to post.",
+    );
+  }
+  const target = targetFromContext(ctx, ctx.prId);
+  if (state.target && !sameTarget(state.target, target)) {
+    throw new Error(
+      `The state file names a different pull request than this build (${ctx.repoFullName ?? "unknown repo"} #${ctx.prId}); refusing to post.`,
+    );
+  }
+  return target;
 }
 
 /**
@@ -285,7 +316,13 @@ export async function run(
   });
 
   const comments = await client.listComments();
-  const existing = findExistingTrackingComment(comments);
+  const currentUserId = await client.getCurrentUserId();
+  if (!currentUserId) {
+    console.warn(
+      "Could not tell which Bitbucket user these credentials post as (Cloud access tokens cannot call /2.0/user); posting a new tracking comment instead of reusing one.",
+    );
+  }
+  const existing = findOwnTrackingComment(comments, currentUserId);
   let trackingCommentId: number;
   if (existing) {
     await client.updateComment(existing.id, runningBody);

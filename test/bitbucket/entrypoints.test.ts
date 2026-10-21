@@ -11,6 +11,7 @@ import {
   TRUNCATED_DIFF_NOTICE,
 } from "../../src/bitbucket/operations/tracking-comment";
 import { TRUNCATED_DIFF_NOTE } from "../../src/bitbucket/prompts";
+import { stateFilePath } from "../../src/bitbucket/state";
 import {
   APP_TS_DC_DIFF,
   APP_TS_DIFF,
@@ -27,8 +28,16 @@ import {
  */
 type Fake = {
   server: FakeServer;
-  comments: Array<{ id: number; body: string; parentId: number | null }>;
+  /** `author` defaults to the job identity (BOT). */
+  comments: Array<{
+    id: number;
+    body: string;
+    parentId: number | null;
+    author?: string;
+  }>;
   draft: boolean;
+  /** Make the "who am I" endpoint fail, like a Cloud access token. */
+  identityUnknown?: boolean;
   /** Data Center only: mark the diff as truncated. */
   diffTruncated?: boolean;
   /** Return a Response to override the default for a request. */
@@ -38,6 +47,7 @@ type Fake = {
 const CLOUD_REPO = "/2.0/repositories/acme/web-app";
 const DC_REPO = "/bitbucket/rest/api/1.0/projects/PLAT/repos/billing";
 const FULL_SHA = "abcdef123456" + "0".repeat(28);
+const BOT = "droid-bot";
 
 function startCloud(fake: Omit<Fake, "server">): Fake {
   const state = fake as Fake;
@@ -47,6 +57,11 @@ function startCloud(fake: Omit<Fake, "server">): Fake {
     if (override) return override;
     const p = url.pathname;
     if (p === "/api/organization/managed-settings") return json({}, 404);
+    if (p === "/2.0/user") {
+      return state.identityUnknown
+        ? json({ type: "error", error: { message: "Token is invalid" } }, 401)
+        : json({ uuid: `{${BOT}}` });
+    }
     if (p === `${CLOUD_REPO}/pullrequests/42`) {
       return json({
         id: 42,
@@ -80,6 +95,7 @@ function startCloud(fake: Omit<Fake, "server">): Fake {
         values: state.comments.map((c) => ({
           id: c.id,
           content: { raw: c.body },
+          user: { uuid: `{${c.author ?? BOT}}` },
           ...(c.parentId ? { parent: { id: c.parentId } } : {}),
         })),
       });
@@ -115,6 +131,9 @@ function startDataCenter(fake: Omit<Fake, "server">): Fake {
     const p = url.pathname;
     const pr = `${DC_REPO}/pull-requests/12`;
     if (p === "/api/organization/managed-settings") return json({}, 404);
+    if (p === "/bitbucket/plugins/servlet/applinks/whoami") {
+      return state.identityUnknown ? notFound() : new Response(BOT);
+    }
     if (p === pr) {
       return json({
         id: 12,
@@ -146,7 +165,12 @@ function startDataCenter(fake: Omit<Fake, "server">): Fake {
         values: state.comments.map((c) => ({
           action: "COMMENTED",
           commentAction: "ADDED",
-          comment: { id: c.id, version: versions.get(c.id) ?? 0, text: c.body },
+          comment: {
+            id: c.id,
+            version: versions.get(c.id) ?? 0,
+            text: c.body,
+            author: { name: c.author ?? BOT },
+          },
         })),
       });
     }
@@ -222,7 +246,7 @@ const ENV_KEYS = [
   "REVIEW_POST_RESULTS_PATH",
   "DROID_RESOLVED_ENV_FILE",
   "DROID_SUCCESS",
-  "DROID_ERROR_DETAILS",
+  "DROID_ERROR_FILE",
   "DROID_PASS1_LOG",
   "DROID_PASS2_LOG",
 ];
@@ -248,6 +272,12 @@ beforeEach(async () => {
   process.env.FACTORY_API_KEY = "fk-test";
   process.env.DROID_BITBUCKET_TOKEN = "bb-secret";
 });
+
+async function writeErrorFile(text: string) {
+  const file = path.join(tmp, "droid-error.txt");
+  await fs.writeFile(file, text);
+  process.env.DROID_ERROR_FILE = file;
+}
 
 afterEach(async () => {
   fake?.server.stop();
@@ -482,6 +512,91 @@ describe("Bitbucket Cloud review steps", () => {
     expect(reqs(f, "POST", "/statuses/build")).toHaveLength(0);
   });
 
+  it("does not adopt a tracking marker pasted by another user", async () => {
+    const f = useCloud({
+      comments: [
+        {
+          id: 8,
+          body: `${BITBUCKET_TRACKING_MARKER}\n\nspoofed`,
+          parentId: null,
+          author: "mallory",
+        },
+      ],
+    });
+
+    const state = await prepare(deps);
+
+    expect(state.trackingCommentId).toBe(1000);
+    expect(reqs(f, "PUT", "/comments/8")).toHaveLength(0);
+    expect(f.comments[0]!.body).toContain("spoofed");
+
+    await updateComment({ retryDelayMs: 0 });
+    expect(reqs(f, "PUT", "/comments/8")).toHaveLength(0);
+    expect(f.comments[1]!.body).toContain("Droid finished reviewing");
+  });
+
+  it("posts a new tracking comment when the job identity is unknown", async () => {
+    const f = useCloud({
+      identityUnknown: true,
+      comments: [
+        { id: 8, body: `${BITBUCKET_TRACKING_MARKER}\n\nold`, parentId: null },
+      ],
+    });
+
+    const state = await prepare(deps);
+
+    expect(state.trackingCommentId).toBe(1000);
+    expect(reqs(f, "PUT", "/comments/8")).toHaveLength(0);
+    expect(reqs(f, "POST", "/comments")).toHaveLength(1);
+  });
+
+  it("does not edit another user's comment when the state's tracking comment id is tampered with", async () => {
+    const f = useCloud({
+      comments: [
+        {
+          id: 8,
+          body: `${BITBUCKET_TRACKING_MARKER}\n\nmallory's`,
+          parentId: null,
+          author: "mallory",
+        },
+      ],
+    });
+    const state = await prepare(deps);
+    const statePath = stateFilePath();
+    await fs.writeFile(
+      statePath,
+      JSON.stringify({ ...state, trackingCommentId: 8 }),
+    );
+
+    await updateComment({ retryDelayMs: 0 });
+
+    expect(reqs(f, "PUT", "/comments/8")).toHaveLength(0);
+    expect(f.comments[0]!.body).toContain("mallory's");
+    expect(reqs(f, "POST", "/comments")).toHaveLength(2);
+  });
+
+  it("refuses to post when the state targets a different pull request", async () => {
+    const f = useCloud();
+    const state = await prepare(deps);
+    const statePath = stateFilePath();
+    await fs.writeFile(
+      statePath,
+      JSON.stringify({ ...state, target: { ...state.target, prId: 43 } }),
+    );
+
+    await expect(updateComment({ retryDelayMs: 0 })).rejects.toThrow(
+      /different pull request/,
+    );
+    await writeValidated([]);
+    await expect(postReview({ retryDelayMs: 0 })).rejects.toThrow(
+      /different pull request/,
+    );
+    expect(reqs(f, "PUT", "/pullrequests/43")).toHaveLength(0);
+    expect(
+      f.server.requests.some((r) => r.path.includes("/pullrequests/43")),
+    ).toBe(false);
+  });
+
   it("skips draft pull requests unless REVIEW_DRAFTS is set", async () => {
     const f = useCloud({ draft: true });
     process.env.BUILD_STATUS = "true";
@@ -579,7 +694,7 @@ describe("Bitbucket Cloud review steps", () => {
     expect(f.comments[0]!.body).toContain("Droid is reviewing");
 
     process.env.DROID_SUCCESS = "false";
-    process.env.DROID_ERROR_DETAILS = "bitbucket-prepare failed";
+    await writeErrorFile("bitbucket-prepare failed");
     await updateComment({ retryDelayMs: 0 });
     expect(f.comments[0]!.body).toContain("Droid encountered an error");
     expect(f.comments[0]!.body).toContain("bitbucket-prepare failed");
@@ -609,7 +724,7 @@ describe("Bitbucket Cloud review steps", () => {
     await prepare(deps);
 
     process.env.DROID_SUCCESS = "false";
-    process.env.DROID_ERROR_DETAILS = "droid exec pass 1 (candidates) failed";
+    await writeErrorFile("droid exec pass 1 (candidates) failed");
     await updateComment({ retryDelayMs: 0 });
 
     expect(f.comments[0]!.body).toContain("**Error details**");
@@ -619,6 +734,37 @@ describe("Bitbucket Cloud review steps", () => {
     expect(reqs(f, "POST", "/statuses/build").at(-1)!.body.state).toBe(
       "FAILED",
     );
+  });
+
+  it("never publishes a file the error path was symlinked to", async () => {
+    const f = useCloud();
+    await prepare(deps);
+    // The review passes can write to the scratch directory.
+    const secretFile = path.join(tmp, "credentials");
+    await fs.writeFile(secretFile, "TOP SECRET CONTENTS");
+    const errorFile = path.join(tmp, "droid-error.txt");
+    await fs.symlink(secretFile, errorFile);
+    process.env.DROID_ERROR_FILE = errorFile;
+    process.env.DROID_SUCCESS = "false";
+
+    await updateComment({ retryDelayMs: 0 });
+
+    expect(f.comments[0]!.body).toContain("Droid encountered an error");
+    expect(f.comments[0]!.body).not.toContain("TOP SECRET");
+  });
+
+  it("redacts credentials from the error details and every comment it posts", async () => {
+    const f = useCloud();
+    await prepare(deps);
+    process.env.DROID_SUCCESS = "false";
+    await writeErrorFile("curl failed: Authorization: Bearer bb-secret");
+
+    await updateComment({ retryDelayMs: 0 });
+
+    expect(f.comments[0]!.body).toContain("Bearer [REDACTED]");
+    for (const r of f.server.requests) {
+      expect(JSON.stringify(r.body ?? "")).not.toContain("bb-secret");
+    }
   });
 
   it("fails the posting step when no approved comment reaches the PR", async () => {
@@ -844,6 +990,22 @@ describe("Bitbucket Data Center review steps (Jenkins)", () => {
     expect(reqs(f, "PUT", "/comments/3")[0]!.body).toMatchObject({
       version: 0,
     });
+  });
+
+  it("does not adopt a tracking comment another Data Center user wrote", async () => {
+    const f = useDataCenter({
+      comments: [
+        {
+          id: 3,
+          body: `${BITBUCKET_TRACKING_MARKER}\nspoofed`,
+          parentId: null,
+          author: "mallory",
+        },
+      ],
+    });
+    const state = await prepare(deps);
+    expect(state.trackingCommentId).toBe(500);
+    expect(reqs(f, "PUT", "/comments/3")).toHaveLength(0);
   });
 
   it("reports a clear 401 for a bad token", async () => {

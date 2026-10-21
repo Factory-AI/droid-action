@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   BITBUCKET_TRACKING_MARKER,
   buildTrackingCommentBody,
-  findExistingTrackingComment,
+  findOwnTrackingComment,
 } from "../../src/bitbucket/operations/tracking-comment";
 
 describe("buildTrackingCommentBody", () => {
@@ -82,28 +82,53 @@ describe("buildTrackingCommentBody", () => {
   });
 });
 
-describe("findExistingTrackingComment", () => {
+describe("findOwnTrackingComment", () => {
   const body = buildTrackingCommentBody({ state: "running" });
 
-  it("finds the top-level comment carrying the marker", () => {
+  it("finds the top-level marker comment written by the job identity", () => {
     expect(
-      findExistingTrackingComment([
-        { id: 1, body: "LGTM", parentId: null },
-        { id: 2, body, parentId: null },
-      ])?.id,
+      findOwnTrackingComment(
+        [
+          { id: 1, body: "LGTM", parentId: null, authorId: "{me}" },
+          { id: 2, body, parentId: null, authorId: "{ME}" },
+        ],
+        "{me}",
+      )?.id,
     ).toBe(2);
+  });
+
+  it("ignores a marker comment written by someone else", () => {
+    expect(
+      findOwnTrackingComment(
+        [{ id: 2, body, parentId: null, authorId: "mallory" }],
+        "droid-bot",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("reuses nothing when the job identity is unknown", () => {
+    expect(
+      findOwnTrackingComment(
+        [{ id: 2, body, parentId: null, authorId: "droid-bot" }],
+        null,
+      ),
+    ).toBeUndefined();
   });
 
   it("ignores replies and comments that only mention the marker inline", () => {
     expect(
-      findExistingTrackingComment([
-        { id: 3, body, parentId: 2 },
-        {
-          id: 4,
-          body: `see ${BITBUCKET_TRACKING_MARKER} above`,
-          parentId: null,
-        },
-      ]),
+      findOwnTrackingComment(
+        [
+          { id: 3, body, parentId: 2, authorId: "me" },
+          {
+            id: 4,
+            body: `see ${BITBUCKET_TRACKING_MARKER} above`,
+            parentId: null,
+            authorId: "me",
+          },
+        ],
+        "me",
+      ),
     ).toBeUndefined();
   });
 });

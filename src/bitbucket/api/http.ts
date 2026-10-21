@@ -5,6 +5,12 @@
  * errors that carry the API's own message but never the credentials.
  */
 
+import {
+  redactDeep,
+  redactSecrets,
+  secretValuesFromEnv,
+} from "../../utils/redact-credentials";
+
 export type BitbucketAuth = {
   /** Full `Authorization` header value. Never log it. */
   header: string;
@@ -59,16 +65,21 @@ export class BitbucketApiError extends Error {
     method: string,
     url: string,
     body: unknown,
+    secrets: readonly string[] = secretValuesFromEnv(),
   ) {
-    const detail = describeBitbucketErrorBody(body);
+    const safeBody = redactDeep(body, secrets);
+    const detail = describeBitbucketErrorBody(safeBody);
     // Drop the query string: it can be long and never holds anything useful.
     const where = `${method} ${url.split("?")[0]}`;
     super(
-      `Bitbucket API ${status}: ${statusText || "Request failed"} (${where})${detail ? ` - ${detail}` : ""}`,
+      redactSecrets(
+        `Bitbucket API ${status}: ${statusText || "Request failed"} (${where})${detail ? ` - ${detail}` : ""}`,
+        secrets,
+      ),
     );
     this.name = "BitbucketApiError";
     this.status = status;
-    this.body = body;
+    this.body = safeBody;
   }
 }
 
@@ -176,10 +187,13 @@ export class BitbucketHttp {
     const headers: Record<string, string> = {
       Accept: init.accept ?? "application/json",
     };
+    const secrets = secretValuesFromEnv();
     let body: string | undefined;
     if (init.json !== undefined) {
       headers["Content-Type"] = "application/json";
-      body = JSON.stringify(init.json);
+      // Comment bodies carry model output, which can quote anything a tool
+      // printed, so every payload is redacted here rather than per caller.
+      body = JSON.stringify(redactDeep(init.json, secrets));
     }
 
     for (let attempt = 0; ; attempt++) {
@@ -218,6 +232,7 @@ export class BitbucketHttp {
         method,
         finalUrl,
         parsed,
+        secrets,
       );
     }
   }

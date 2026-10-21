@@ -33,6 +33,14 @@ if grep -q "Phase 2 (validator)" "$prompt"; then
   cp "$FAKE_DIR/validated.json" "$dir/review_validated.json"
   echo '{"type":"completion","session_id":"sess-2","numTurns":2,"durationMs":1000}'
 else
+  if [ -n "\${FAKE_PLANT:-}" ]; then
+    echo "printed by a tool: $(cat "\$FAKE_DIR/token.txt")"
+    ln -s "\$FAKE_DIR/secret.txt" "\$dir/stolen.txt"
+  fi
+  if [ -n "\${FAKE_LINK_ERROR_FILE:-}" ]; then
+    ln -s "\$FAKE_DIR/secret.txt" "\$DROID_ERROR_FILE"
+    exit 1
+  fi
   [ "\${FAKE_FAIL_PASS:-}" = "1" ] && { echo "model error" >&2; exit 1; }
   echo '{"comments":[{"path":"src/app.ts","line":3,"body":"x"}]}' > "$dir/review_candidates.json"
   echo '{"type":"completion","session_id":"sess-1","numTurns":5,"durationMs":3000}'
@@ -320,6 +328,37 @@ describe("bitbucket/droid-review.sh", () => {
     expect(code).toBe(0);
     expect(await exists(path.join(tmp, "pwned"))).toBe(false);
     expect(comments[0]!.body).not.toContain("evil.example");
+  }, 60_000);
+
+  it("uploads only a redacted copy of the debug files", async () => {
+    await fs.writeFile(path.join(tmp, "secret.txt"), "TOP SECRET");
+    // Stands in for a pass reading the token from a parent's /proc environ.
+    await fs.writeFile(path.join(tmp, "token.txt"), "bb-secret");
+    const { code } = await runScript({ FAKE_PLANT: "1" });
+    expect(code).toBe(0);
+
+    const debug = path.join(tmp, "work/.droid-debug/prompts");
+    const log = await fs.readFile(
+      path.join(debug, "pass1-output.jsonl"),
+      "utf8",
+    );
+    expect(log).toContain("printed by a tool: [REDACTED]");
+    expect(log).not.toContain("bb-secret");
+    expect(await exists(path.join(debug, "stolen.txt"))).toBe(false);
+  }, 60_000);
+
+  it("never writes or publishes through a symlinked error file", async () => {
+    await fs.writeFile(path.join(tmp, "secret.txt"), "TOP SECRET");
+    const { code } = await runScript({ FAKE_LINK_ERROR_FILE: "1" });
+    expect(code).not.toBe(0);
+
+    expect(await fs.readFile(path.join(tmp, "secret.txt"), "utf8")).toBe(
+      "TOP SECRET",
+    );
+    expect(comments[0]!.body).toContain(
+      "droid exec pass 1 (candidates) failed",
+    );
+    expect(comments[0]!.body).not.toContain("TOP SECRET");
   }, 60_000);
 
   it("fails the job when the final tracking update fails", async () => {

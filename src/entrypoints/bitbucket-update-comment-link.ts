@@ -5,17 +5,52 @@
  * tracking comment (status, summary, counts, telemetry) and, when enabled,
  * the final `droid-review` build status.
  *
- * Env: DROID_SUCCESS ("false" on failure), DROID_ERROR_DETAILS,
+ * Env: DROID_SUCCESS ("false" on failure), DROID_ERROR_FILE (read only if
+ * it is a regular file, capped and redacted),
  * DROID_PASS1_LOG / DROID_PASS2_LOG, plus the credentials.
  */
 
 import { createBitbucketClient } from "../bitbucket/api/client";
 import { resolveBitbucketAuth } from "../bitbucket/token";
-import { buildTrackingCommentBody } from "../bitbucket/operations/tracking-comment";
+import {
+  buildTrackingCommentBody,
+  isOwnComment,
+  isTrackingComment,
+} from "../bitbucket/operations/tracking-comment";
 import { postResultsFilePath, readState } from "../bitbucket/state";
 import { collectExecTelemetry } from "../gitlab/data/exec-telemetry";
+import { readErrorDetails } from "../gitlab/operations/error-details";
 import { readReviewPostOutcome } from "../core/review/tracking/results";
-import { reportBuildStatus } from "./bitbucket-prepare";
+import { reportBuildStatus, resolvePostTarget } from "./bitbucket-prepare";
+import type { BitbucketClient } from "../bitbucket/types";
+
+/**
+ * The tracking comment to edit. The ID in state is only a hint, since the
+ * review passes can rewrite the state file: it must be a top-level tracking
+ * comment on this pull request, written by these credentials when the
+ * server says who they are. Otherwise a new comment is posted.
+ */
+async function ownTrackingCommentId(
+  client: BitbucketClient,
+  hintedId: number,
+): Promise<number | null> {
+  const [comments, currentUserId] = await Promise.all([
+    client.listComments(),
+    client.getCurrentUserId(),
+  ]);
+  const hinted = comments.find((c) => c.id === hintedId);
+  if (
+    hinted &&
+    isTrackingComment(hinted) &&
+    (currentUserId === null || isOwnComment(hinted, currentUserId))
+  ) {
+    return hinted.id;
+  }
+  console.warn(
+    `Comment ${hintedId} is not a Droid tracking comment these credentials wrote on this pull request; posting a new one instead.`,
+  );
+  return null;
+}
 
 export async function run(
   options: { retryDelayMs?: number } = {},
@@ -41,8 +76,11 @@ export async function run(
     process.env.DROID_SUCCESS !== "false" &&
     state.shouldRunReview &&
     !skippedValidation;
+  const jobFailed = process.env.DROID_SUCCESS === "false";
   const errorDetails =
-    process.env.DROID_ERROR_DETAILS ||
+    (jobFailed && process.env.DROID_ERROR_FILE
+      ? await readErrorDetails(process.env.DROID_ERROR_FILE)
+      : null) ??
     (state.shouldRunReview
       ? skippedValidation
       : "The prepare step did not finish.");
@@ -76,15 +114,20 @@ export async function run(
     },
   });
 
-  const client = createBitbucketClient(
-    state.target,
-    resolveBitbucketAuth(),
-    options,
-  );
-  await client.updateComment(state.trackingCommentId, body);
-  console.log(
-    `Updated tracking comment ${state.trackingCommentId} on PR #${state.prId} (${success ? "success" : "failure"}).`,
-  );
+  const target = resolvePostTarget(state);
+  const client = createBitbucketClient(target, resolveBitbucketAuth(), options);
+  const commentId = await ownTrackingCommentId(client, state.trackingCommentId);
+  if (commentId === null) {
+    const created = await client.createComment(body);
+    console.log(
+      `Posted tracking comment ${created.id} on PR #${target.prId} (${success ? "success" : "failure"}).`,
+    );
+  } else {
+    await client.updateComment(commentId, body);
+    console.log(
+      `Updated tracking comment ${commentId} on PR #${target.prId} (${success ? "success" : "failure"}).`,
+    );
+  }
 
   if (state.buildStatus) {
     await reportBuildStatus(

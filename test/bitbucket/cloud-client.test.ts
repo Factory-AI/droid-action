@@ -214,7 +214,7 @@ describe("BitbucketCloudClient", () => {
             {
               id: 3,
               content: { raw: "inline note" },
-              user: { nickname: "bob" },
+              user: { nickname: "bob", uuid: "{b0b}" },
               inline: { path: "src/app.ts", from: null, to: 3 },
               parent: { id: 1 },
               created_on: "2026-01-02T00:00:00Z",
@@ -244,6 +244,7 @@ describe("BitbucketCloudClient", () => {
       id: 3,
       body: "inline note",
       author: "bob",
+      authorId: "{b0b}",
       createdAt: "2026-01-02T00:00:00Z",
       path: "src/app.ts",
       line: 3,
@@ -362,6 +363,37 @@ describe("BitbucketCloudClient", () => {
     );
     expect(error.message).toContain(`POST ${server.url}${PR_PATH}/comments`);
     expect(error.message).not.toContain("cloud-secret");
+  });
+
+  it("redacts the job's credentials from every request body and error", async () => {
+    const saved = process.env.DROID_BITBUCKET_TOKEN;
+    process.env.DROID_BITBUCKET_TOKEN = "cloud-secret-token";
+    try {
+      server = startFakeServer((req) =>
+        json(
+          {
+            type: "error",
+            error: {
+              message: `rejected ${JSON.stringify(req.body)} cloud-secret-token`,
+            },
+          },
+          400,
+        ),
+      );
+      const error = await client()
+        .createComment("model quoted cloud-secret-token from a tool")
+        .catch((e) => e);
+
+      expect(server.requests[0]!.body.content.raw).toBe(
+        "model quoted [REDACTED] from a tool",
+      );
+      expect(error).toBeInstanceOf(BitbucketApiError);
+      expect(error.message).not.toContain("cloud-secret-token");
+      expect(JSON.stringify(error.body)).not.toContain("cloud-secret-token");
+    } finally {
+      if (saved === undefined) delete process.env.DROID_BITBUCKET_TOKEN;
+      else process.env.DROID_BITBUCKET_TOKEN = saved;
+    }
   });
 
   it("retries rate-limited and transient responses, then gives up", async () => {

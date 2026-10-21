@@ -5,10 +5,10 @@
  */
 
 import * as core from "@actions/core";
-import { execSync } from "child_process";
 import { createOctokit } from "../github/api/client";
 import { parseGitHubContext, isEntityContext } from "../github/context";
 import { fetchPRBranchData } from "../github/data/pr-fetcher";
+import { preparePullRequestHead } from "../github/data/pr-checkout";
 import { computeReviewArtifacts } from "../github/data/review-artifacts";
 import { createPrompt } from "../create-prompt";
 import { prepareMcpTools } from "../mcp/install-mcp-server";
@@ -17,7 +17,6 @@ import { generateSecurityCandidatesPrompt } from "../create-prompt/templates/sec
 import { normalizeDroidArgs, parseAllowedTools } from "../utils/parse-tools";
 import { resolveReviewConfig } from "../utils/review-depth";
 import { applyModelPolicyFallback } from "../utils/model-policy";
-import { retryWithBackoff } from "../utils/retry";
 import { DroidRunType, setDroidRunType } from "../run-type";
 import { githubReviewSessionTagArg } from "../utils/review-session-tag";
 
@@ -63,35 +62,11 @@ async function run() {
     // so the Droid can read them directly instead of fetching via gh CLI
     const tempDir = process.env.RUNNER_TEMP || "/tmp";
 
-    // Checkout the PR branch before computing diff to ensure HEAD points
-    // to the PR head commit, not the merge commit
-    console.log(
-      `Checking out PR #${context.entityNumber} branch for diff computation...`,
-    );
-    try {
-      await retryWithBackoff(
-        async () => {
-          execSync("git reset --hard HEAD", {
-            encoding: "utf8",
-            stdio: "pipe",
-          });
-          execSync(`gh pr checkout ${context.entityNumber}`, {
-            encoding: "utf8",
-            stdio: "pipe",
-            env: { ...process.env, GH_TOKEN: githubToken },
-          });
-          console.log(
-            `Successfully checked out PR branch: ${execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf8" }).trim()}`,
-          );
-        },
-        { maxAttempts: 3, initialDelayMs: 3000, maxDelayMs: 15000 },
-      );
-    } catch (e) {
-      console.error(`Failed to checkout PR branch after retries: ${e}`);
-      throw new Error(
-        `Failed to checkout PR #${context.entityNumber} branch for review`,
-      );
-    }
+    const headRevision = await preparePullRequestHead({
+      prNumber: context.entityNumber,
+      isFork: prData.isFork,
+      githubToken,
+    });
 
     const reviewArtifacts = await computeReviewArtifacts({
       baseRef: prData.baseRefName,
@@ -103,6 +78,7 @@ async function run() {
       title: prData.title,
       body: prData.body,
       githubToken,
+      headRevision,
     });
 
     // Select prompt generator based on review type
@@ -123,6 +99,8 @@ async function run() {
       prBranchData: {
         headRefName: prData.headRefName,
         headRefOid: prData.headRefOid,
+        isFork: prData.isFork,
+        headRevision,
       },
       generatePrompt,
       reviewArtifacts,

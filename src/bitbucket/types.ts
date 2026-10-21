@@ -28,6 +28,11 @@ export type BitbucketComment = {
   id: number;
   body: string;
   author: string | null;
+  /**
+   * Stable id of the author, comparable with `getCurrentUserId()`: the
+   * account UUID on Cloud, the username on Data Center.
+   */
+  authorId: string | null;
   createdAt: string | null;
   /** Inline location, when the comment is anchored to the diff. */
   path: string | null;
@@ -86,6 +91,11 @@ export interface BitbucketClient {
    * the pull request's current diff.
    */
   readonly pinsAnchorsToCommits: boolean;
+  /**
+   * Id of the identity these credentials post as (see
+   * `BitbucketComment.authorId`), or null when the server will not say.
+   */
+  getCurrentUserId(): Promise<string | null>;
   getPullRequest(): Promise<BitbucketPullRequest>;
   getDiff(): Promise<BitbucketDiff>;
   /** Every non-deleted comment on the pull request, replies included. */

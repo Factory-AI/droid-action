@@ -9,9 +9,11 @@
 #
 #   * FACTORY_API_KEY — masked variable. Get one at
 #     https://app.factory.ai/settings/api-keys
-#   * GITLAB_TOKEN    — masked variable. A personal access token with
-#     `api` scope, owned by whichever GitLab account should post review
-#     comments. The token owner IS the poster.
+#   * GITLAB_TOKEN    — masked variable. An access token with `api` scope,
+#     owned by whichever GitLab account should post review comments. The
+#     token owner IS the poster. Prefer a project access token with the
+#     Reporter role and a short expiry: see "Credential scope" in
+#     docs/gitlab-setup.md.
 
 include:
   - project: "factory-components/droid-action"

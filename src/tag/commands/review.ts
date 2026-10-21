@@ -1,7 +1,7 @@
 import * as core from "@actions/core";
-import { execSync } from "child_process";
 import type { GitHubContext } from "../../github/context";
 import { fetchPRBranchData } from "../../github/data/pr-fetcher";
+import { preparePullRequestHead } from "../../github/data/pr-checkout";
 import { computeReviewArtifacts } from "../../github/data/review-artifacts";
 import { createPrompt } from "../../create-prompt";
 import { prepareMcpTools } from "../../mcp/install-mcp-server";
@@ -13,7 +13,6 @@ import type { Octokits } from "../../github/api/client";
 import type { PrepareResult } from "../../prepare/types";
 import { resolveReviewConfig } from "../../utils/review-depth";
 import { applyModelPolicyFallback } from "../../utils/model-policy";
-import { retryWithBackoff } from "../../utils/retry";
 import { assertDroidRunType, DroidRunType } from "../../run-type";
 import { githubReviewSessionTagArg } from "../../utils/review-session-tag";
 
@@ -61,33 +60,11 @@ export async function prepareReviewMode({
     currentBranch: prData.headRefName,
   };
 
-  // Checkout the PR branch before computing diff
-  // This ensures HEAD points to the PR head commit, not the merge commit or default branch
-  console.log(
-    `Checking out PR #${context.entityNumber} branch for diff computation...`,
-  );
-  try {
-    await retryWithBackoff(
-      async () => {
-        execSync("git reset --hard HEAD", { encoding: "utf8", stdio: "pipe" });
-        execSync(`gh pr checkout ${context.entityNumber}`, {
-          encoding: "utf8",
-          stdio: "pipe",
-          env: { ...process.env, GH_TOKEN: githubToken },
-        });
-        const branchName = execSync("git rev-parse --abbrev-ref HEAD", {
-          encoding: "utf8",
-        }).trim();
-        console.log(`Successfully checked out PR branch: ${branchName}`);
-      },
-      { maxAttempts: 3, initialDelayMs: 3000, maxDelayMs: 15000 },
-    );
-  } catch (e) {
-    console.error(`Failed to checkout PR branch after retries: ${e}`);
-    throw new Error(
-      `Failed to checkout PR #${context.entityNumber} branch for review`,
-    );
-  }
+  const headRevision = await preparePullRequestHead({
+    prNumber: context.entityNumber,
+    isFork: prData.isFork,
+    githubToken,
+  });
 
   // Pre-compute review artifacts (diff, existing comments, and PR description)
   const tempDir = process.env.RUNNER_TEMP || "/tmp";
@@ -101,6 +78,7 @@ export async function prepareReviewMode({
     title: prData.title,
     body: prData.body,
     githubToken,
+    headRevision,
   });
 
   const includeSuggestions = process.env.INCLUDE_SUGGESTIONS !== "false";
@@ -113,6 +91,8 @@ export async function prepareReviewMode({
     prBranchData: {
       headRefName: prData.headRefName,
       headRefOid: prData.headRefOid,
+      isFork: prData.isFork,
+      headRevision,
     },
     generatePrompt: generateReviewCandidatesPrompt,
     reviewArtifacts,

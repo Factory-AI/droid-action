@@ -112,6 +112,24 @@ describe("Bitbucket Data Center CI examples", () => {
 describe("droid-review.sh", () => {
   const script = read("bitbucket/droid-review.sh");
 
+  it("runs every bun entrypoint without the working directory's bunfig.toml or .env", () => {
+    const code = script
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith("#"));
+    const entrypointCalls = code.filter((l) => l.includes("src/entrypoints/"));
+    expect(entrypointCalls.length).toBeGreaterThanOrEqual(5);
+    for (const line of entrypointCalls) {
+      expect(line).toMatch(
+        /^(if ! )?bun_run "\$DROID_ACTION_DIR\/src\/entrypoints\//,
+      );
+    }
+    expect(code).toContain(
+      '(cd "$DROID_ACTION_DIR" && bun --config=/dev/null --env-file=/dev/null run "$@")',
+    );
+    expect(code.filter((l) => /\bbun run\b/.test(l))).toEqual([]);
+  });
+
   it("calls entrypoints that exist", () => {
     const entrypoints = [
       ...script.matchAll(/src\/entrypoints\/([\w-]+\.ts)/g),
@@ -122,6 +140,7 @@ describe("droid-review.sh", () => {
         "bitbucket-prepare.ts",
         "bitbucket-prepare-validator.ts",
         "bitbucket-post-review.ts",
+        "bitbucket-collect-debug-artifacts.ts",
       ]),
     );
     for (const e of entrypoints) {

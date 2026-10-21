@@ -29,7 +29,7 @@ export type CloudComment = {
   content: { raw: string };
   deleted?: boolean;
   created_on?: string;
-  user?: { display_name?: string; nickname?: string } | null;
+  user?: { display_name?: string; nickname?: string; uuid?: string } | null;
   inline?: { path: string; from?: number | null; to?: number | null };
   parent?: { id: number };
 };
@@ -39,6 +39,7 @@ function toComment(c: CloudComment): BitbucketComment {
     id: c.id,
     body: c.content?.raw ?? "",
     author: c.user?.nickname ?? c.user?.display_name ?? null,
+    authorId: c.user?.uuid ?? null,
     createdAt: c.created_on ?? null,
     path: c.inline?.path ?? null,
     line: c.inline?.to ?? c.inline?.from ?? null,
@@ -54,6 +55,7 @@ export class BitbucketCloudClient implements BitbucketClient {
   readonly supportsMultiLineComments = true;
   readonly pinsAnchorsToCommits = false;
   private readonly http: BitbucketHttp;
+  private readonly apiUrl: string;
   private readonly repoUrl: string;
   private readonly prUrl: string;
 
@@ -70,8 +72,24 @@ export class BitbucketCloudClient implements BitbucketClient {
       /\/+$/,
       "",
     );
+    this.apiUrl = base;
     this.repoUrl = `${base}/repositories/${encodeURIComponent(options.workspace)}/${encodeURIComponent(options.repoSlug)}`;
     this.prUrl = `${this.repoUrl}/pullrequests/${options.prId}`;
+  }
+
+  /**
+   * Access tokens cannot call /2.0/user ("Token is invalid or not supported
+   * for this endpoint"), so their bot identity stays unknown.
+   */
+  async getCurrentUserId(): Promise<string | null> {
+    try {
+      const user = await this.http.json<{ uuid?: string }>(
+        `${this.apiUrl}/user`,
+      );
+      return user?.uuid ?? null;
+    } catch {
+      return null;
+    }
   }
 
   async getPullRequest(): Promise<BitbucketPullRequest> {

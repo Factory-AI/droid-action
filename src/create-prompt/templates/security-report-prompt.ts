@@ -93,7 +93,7 @@ For each file:
 \`\`\`bash
 git add .
 git commit -m "fix(security): Security scan report - ${date}"
-git push origin ${branchName}
+git -c credential.helper= -c "credential.helper=!gh auth git-credential" push origin ${branchName}
 gh pr create --title "fix(security): Security scan report - ${date} (N findings)" \\
   --body "## Security Scan Report
 

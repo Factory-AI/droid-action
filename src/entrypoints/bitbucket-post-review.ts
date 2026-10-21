@@ -10,6 +10,7 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import { createBitbucketClient } from "../bitbucket/api/client";
+import { resolvePostTarget } from "./bitbucket-prepare";
 import { resolveBitbucketAuth } from "../bitbucket/token";
 import { postReview } from "../bitbucket/operations/post-review";
 import type { BitbucketClient } from "../bitbucket/types";
@@ -110,7 +111,7 @@ export async function run(
   }
 
   const client = createBitbucketClient(
-    state.target,
+    resolvePostTarget(state),
     resolveBitbucketAuth(),
     options,
   );

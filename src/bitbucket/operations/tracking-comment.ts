@@ -119,14 +119,34 @@ export function buildTrackingCommentBody(
 }
 
 /** Top-level comments only: a reply quoting the marker is not the tracker. */
-export function findExistingTrackingComment<
-  T extends { body: string; parentId: number | null },
->(comments: T[]): T | undefined {
-  return comments.find(
-    (c) =>
-      c.parentId === null &&
-      c.body
-        .split("\n")
-        .some((line) => line.trim() === BITBUCKET_TRACKING_MARKER),
+export function isTrackingComment(c: {
+  body: string;
+  parentId: number | null;
+}): boolean {
+  return (
+    c.parentId === null &&
+    c.body.split("\n").some((line) => line.trim() === BITBUCKET_TRACKING_MARKER)
   );
+}
+
+export function isOwnComment(
+  c: { authorId: string | null },
+  userId: string | null,
+): boolean {
+  return (
+    userId !== null &&
+    c.authorId !== null &&
+    c.authorId.toLowerCase() === userId.toLowerCase()
+  );
+}
+
+/**
+ * The tracking comment these credentials wrote, if any. The marker alone
+ * proves nothing (anyone can paste it), so the author must match too; with
+ * an unknown identity nothing is reused.
+ */
+export function findOwnTrackingComment<
+  T extends { body: string; parentId: number | null; authorId: string | null },
+>(comments: T[], userId: string | null): T | undefined {
+  return comments.find((c) => isTrackingComment(c) && isOwnComment(c, userId));
 }

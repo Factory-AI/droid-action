@@ -39,7 +39,7 @@ A fixed path such as `/tmp/droid-action` is fine in Bitbucket Pipelines, where e
 5. `bitbucket-post-review` posts the approved findings through the Bitbucket REST API.
 6. `bitbucket-update-comment-link` always runs last and renders the final tracking comment (and build status).
 
-Both `droid exec` passes run without the Bitbucket credentials in their environment (including any other variable holding the same secret, such as Bamboo's `bamboo_..._SECRET`) and without any tool that can post to the pull request. The steps that hold the credentials run from the action checkout, so `.env` or `bunfig.toml` files in the pull request are never loaded. They keep `Execute` for investigating the code, so treat the review job like any CI job that builds untrusted code.
+Both `droid exec` passes run without the Bitbucket credentials in their environment (including any other variable holding the same secret, such as Bamboo's `bamboo_..._SECRET`) and without any tool that can post to the pull request. The steps that hold the credentials run from the action checkout with `bun --config=/dev/null --env-file=/dev/null`, so `.env` or `bunfig.toml` files in the pull request are never loaded. Everything they publish (comments, error details, build statuses) has the job's credentials redacted. They keep `Execute` for investigating the code, so treat the review job like any CI job that builds untrusted code.
 
 The agent needs `bash`, `git`, `curl`, and `bun` 1.2.x (the script installs bun if `unzip` is available). It needs outbound HTTPS to:
 
@@ -180,4 +180,4 @@ Run the review with `BUILD_STATUS=true` so it posts a build status with the fixe
 | `Bitbucket API 404`                                             | Wrong workspace, project, repository, or PR, or the token cannot see the repository.                                                                                                                                     |
 | `bitbucket-post-review: all N approved comments failed to post` | Every inline and fallback comment was refused; check the token's permissions.                                                                                                                                            |
 
-Debug output (prompts, state, pass logs) is copied to `.droid-debug/` in the working directory; the templates keep it as a build artifact.
+Debug output (prompts, state, pass logs) is staged in `.droid-debug/` in the working directory, with the Bitbucket and Factory credentials redacted and symlinks left out; the templates keep it as a build artifact. If staging fails, the directory is removed rather than uploaded unredacted. The pass logs hold the output of every command Droid ran, so treat the artifact as sensitive anyway.
