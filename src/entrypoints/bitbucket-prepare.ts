@@ -311,17 +311,10 @@ export async function run(
   base.sourceBranch = pr.sourceBranch;
   base.targetBranch = pr.targetBranch;
 
+  // No build status for a skipped draft: marking it ready pushes no commit,
+  // so a SUCCESSFUL status here would satisfy a required-builds check for a
+  // pull request that was never reviewed.
   if (pr.draft && !ctx.inputs.reviewDrafts) {
-    if (ctx.inputs.buildStatus) {
-      await reportBuildStatus(
-        client,
-        headSha,
-        statusUrl,
-        "SUCCESSFUL",
-        "Skipped: draft pull request",
-        pr.sourceBranch || null,
-      );
-    }
     return skip(
       "draft",
       `Pull request #${pr.id} is a draft; skipping Droid review.`,

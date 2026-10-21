@@ -656,12 +656,8 @@ describe("Bitbucket Cloud review steps", () => {
       trackingCommentId: null,
     });
     expect(reqs(f, "POST", "/comments")).toHaveLength(0);
-    expect(
-      reqs(f, "POST", "/statuses/build").map((r) => [
-        r.body.state,
-        r.body.description,
-      ]),
-    ).toEqual([["SUCCESSFUL", "Skipped: draft pull request"]]);
+    // A SUCCESSFUL status would still count once the draft is marked ready.
+    expect(reqs(f, "POST", "/statuses/build")).toHaveLength(0);
 
     process.env.REVIEW_DRAFTS = "true";
     expect((await prepare(deps)).shouldRunReview).toBe(true);
@@ -1019,6 +1015,14 @@ describe("Bitbucket Data Center review steps (Jenkins)", () => {
     );
     await updateComment({ retryDelayMs: 0 });
     expect(f.comments[0]!.body).not.toContain(TRUNCATED_DIFF_NOTICE);
+  });
+
+  it("posts no build status for a skipped draft", async () => {
+    const f = useDataCenter({ draft: true });
+    process.env.BUILD_STATUS = "true";
+
+    expect(await prepare(deps)).toMatchObject({ reason: "draft" });
+    expect(reqs(f, "POST", "/builds")).toHaveLength(0);
   });
 
   it("reuses the tracking comment found in the activity feed", async () => {
