@@ -14,7 +14,7 @@ What you get, matching the GitLab and GitHub integrations:
 - One sticky tracking comment that shows progress, the review summary, comment counts, and run telemetry.
 - An optional security reviewer running in parallel (`AUTOMATIC_SECURITY_REVIEW=true`); its findings are prefixed `[security]`.
 - `REVIEW_DEPTH=deep` (default) or `shallow`.
-- Draft pull requests are skipped unless `REVIEW_DRAFTS=true`.
+- Draft pull requests are skipped unless `REVIEW_DRAFTS=true`. A skipped draft gets no `droid-review` build status.
 - An optional `droid-review` commit build status for merge enforcement (`BUILD_STATUS=true`).
 
 `@droid` mentions in PR comments are not supported on Bitbucket.
@@ -141,6 +141,8 @@ Add a branch restriction that requires passing builds: Repository settings → B
 
 **Enforcement requires the Bitbucket Cloud Premium plan.** Only Premium can turn on "Prevent a merge with unresolved merge checks"; on Free and Standard, a failed or missing build only shows a warning and the PR can still be merged. Enforcement proves the review ran successfully; it does not block on findings.
 
+Set `REVIEW_DRAFTS=true` when you enforce the review. A skipped draft posts no `droid-review` status and its step still succeeds, and this merge check counts any successful build, so the skipping step would count once the draft is marked ready (which pushes no new commit).
+
 ## Bitbucket Data Center
 
 ### Jenkins
@@ -165,6 +167,8 @@ Export the context variables from [Pull request context](#pull-request-context) 
 ### Enforcement
 
 Run the review with `BUILD_STATUS=true` so it posts a build status with the fixed key `droid-review`, then add a **Required builds** merge check (Data Center 7.14+) for that key in repository or project settings. The `Minimum successful builds` merge check also works but counts any build. Enforcement proves the review ran successfully; it does not block on findings.
+
+Set `REVIEW_DRAFTS=true` when you enforce the review. A skipped draft posts no `droid-review` status, so Required builds stays unsatisfied when the draft is marked ready until the build runs again; with `Minimum successful builds`, the skipping build itself would count.
 
 ## Troubleshooting
 
