@@ -3,6 +3,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { parse, parseAllDocuments } from "yaml";
 import { GITHUB_CREDENTIAL_ENV_NAMES } from "../src/utils/redact-credentials";
+import { parseAppTokenPermissions } from "../src/github/token-permissions";
 
 const root = join(import.meta.dir, "..");
 const loadAction = (relativePath: string): any =>
@@ -88,6 +89,29 @@ describe("credential exposure wiring", () => {
       expect(last.env.OVERRIDE_GITHUB_TOKEN).toBe("${{ inputs.github_token }}");
     });
   }
+
+  it("narrows the App token the full action mints to the flow it runs", () => {
+    const prepare = stepById(loadAction("action.yml"), "prepare");
+    expect(prepare.run).toContain("src/entrypoints/prepare.ts");
+    expect(prepare.env.SCOPE_APP_TOKEN).toBe("true");
+  });
+
+  for (const relativePath of ["review/action.yml", "security/action.yml"]) {
+    it(`narrows the App token ${relativePath} mints to reviewing`, () => {
+      const token = stepById(loadAction(relativePath), "token");
+      expect(token.run).toContain("src/entrypoints/get-token.ts");
+      expect(parseAppTokenPermissions(token.env.APP_TOKEN_PERMISSIONS)).toEqual(
+        { contents: "read", pull_requests: "write" },
+      );
+    });
+  }
+
+  // Its token is an output the caller's later steps use, for example to push
+  // or merge, so narrowing it here would break those workflows.
+  it("leaves the prepare sub-action's App token unnarrowed", () => {
+    const prepare = stepById(loadAction("prepare/action.yml"), "prepare");
+    expect(prepare.env.SCOPE_APP_TOKEN).toBeUndefined();
+  });
 
   it("stages the GitLab debug artifact through the redacting collector", () => {
     const [, jobs] = parseAllDocuments(

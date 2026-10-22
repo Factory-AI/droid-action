@@ -88,6 +88,8 @@ runs:
       env:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+        # Enough to check out the PR, read it, and post the review and comments.
+        APP_TOKEN_PERMISSIONS: '{"contents":"read","pull_requests":"write"}'
 
     - name: Generate Review Prompt
       id: prompt

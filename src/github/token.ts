@@ -3,6 +3,10 @@
 import * as core from "@actions/core";
 import { GITHUB_API_URL } from "./api/config";
 import { retryWithBackoff } from "../utils/retry";
+import {
+  describeAppTokenPermissions,
+  type AppTokenPermissions,
+} from "./token-permissions";
 
 async function getOidcToken(): Promise<string> {
   try {
@@ -16,14 +20,21 @@ async function getOidcToken(): Promise<string> {
   }
 }
 
-async function exchangeForAppToken(oidcToken: string): Promise<string> {
+async function exchangeForAppToken(
+  oidcToken: string,
+  permissions?: AppTokenPermissions,
+): Promise<string> {
+  // Without a body the endpoint mints a token with every permission the app
+  // holds. An endpoint that predates narrowing ignores the body the same way.
   const response = await fetch(
     "https://app.factory.ai/api/github/token-exchange",
     {
       method: "POST",
       headers: {
         Authorization: `Bearer ${oidcToken}`,
+        ...(permissions && { "Content-Type": "application/json" }),
       },
+      ...(permissions && { body: JSON.stringify({ permissions }) }),
     },
   );
 
@@ -150,7 +161,14 @@ export async function revokeGitHubAppToken(token: string): Promise<void> {
   );
 }
 
-export async function setupGitHubToken(): Promise<string> {
+/**
+ * Returns the provided override token, or exchanges the job's OIDC token for a
+ * Factory Droid App token narrowed to `permissions` (the app's full set when
+ * omitted).
+ */
+export async function setupGitHubToken(
+  permissions?: AppTokenPermissions,
+): Promise<string> {
   try {
     // Check if GitHub token was provided as override
     const providedToken = process.env.OVERRIDE_GITHUB_TOKEN;
@@ -166,9 +184,13 @@ export async function setupGitHubToken(): Promise<string> {
     const oidcToken = await retryWithBackoff(() => getOidcToken());
     console.log("OIDC token successfully obtained");
 
-    console.log("Exchanging OIDC token for app token...");
+    console.log(
+      permissions
+        ? `Exchanging OIDC token for an app token limited to ${describeAppTokenPermissions(permissions)}...`
+        : "Exchanging OIDC token for app token...",
+    );
     const appToken = await retryWithBackoff(() =>
-      exchangeForAppToken(oidcToken),
+      exchangeForAppToken(oidcToken, permissions),
     );
     console.log("App token successfully obtained");
 
