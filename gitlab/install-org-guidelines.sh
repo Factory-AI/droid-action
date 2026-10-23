@@ -3,10 +3,13 @@
 #
 # Reads (all optional; no-op when ORG_GUIDELINES_SOURCE is empty):
 #   ORG_GUIDELINES_SOURCE Where the guidelines markdown lives. One of:
-#                         - a local file path on the runner (e.g. a
-#                           group-level file-type CI/CD variable)
-#                         - an http(s) URL to the raw markdown
-#                         - a git source: a clone URL ending in `.git`,
+#                         - an absolute local file path on the runner
+#                           (e.g. a group-level file-type CI/CD variable).
+#                           Relative paths are never read as files: the
+#                           working directory is the MR checkout.
+#                         - an https URL to the raw markdown (http:// is
+#                           refused)
+#                         - a git source: an https clone URL ending in `.git`,
 #                           an ssh:// / git@ URL, or a GitLab project
 #                           path ("group/repo") cloned from
 #                           $CI_SERVER_HOST with $CI_JOB_TOKEN
@@ -34,12 +37,18 @@ GUIDELINES_FILE=""
 
 fetch_from_git() {
   local clone_url="$1"
+  local carries_token="${2:-}"
+  local -a git_config=()
   local -a clone_args=(--depth 1 --quiet)
+  if [ -n "$carries_token" ]; then
+    # The URL embeds the job token; never follow a redirect to another host.
+    git_config=(-c http.followRedirects=false)
+  fi
   if [ -n "${ORG_GUIDELINES_REF:-}" ]; then
     clone_args+=(--branch "$ORG_GUIDELINES_REF")
   fi
   # Never echo clone_url: it may embed the job token.
-  if ! git clone "${clone_args[@]}" "$clone_url" "$WORK_DIR/repo"; then
+  if ! git ${git_config[@]+"${git_config[@]}"} clone "${clone_args[@]}" "$clone_url" "$WORK_DIR/repo"; then
     echo "WARNING: could not clone org guidelines repo '$ORG_GUIDELINES_SOURCE'" \
       "(ref: '${ORG_GUIDELINES_REF:-default}'); skipping org review guidelines." >&2
     exit 0
@@ -54,41 +63,58 @@ fetch_from_git() {
 
 fetch_from_url() {
   local url="$1"
-  local -a curl_args=(--retry 3 --retry-delay 2 -fsSL)
+  local -a curl_args=(--retry 3 --retry-delay 2 -fsS --proto "=https")
+  local http_code
   # Same-instance URLs (e.g. the /projects/:id/repository/files/.../raw
-  # API) authenticate with the job token; other hosts get a plain fetch.
+  # API) authenticate with the job token, and never follow redirects so the
+  # token cannot be carried to another host. Other hosts get a plain fetch
+  # that may follow https-only redirects.
   case "$url" in
-    "https://${CI_SERVER_HOST:-}/"* | "http://${CI_SERVER_HOST:-}/"*)
+    "https://${CI_SERVER_HOST:-gitlab.com}/"*)
       curl_args+=(--header "JOB-TOKEN: ${CI_JOB_TOKEN:-}")
       ;;
+    *)
+      curl_args+=(-L --proto-redir "=https")
+      ;;
   esac
-  if ! curl "${curl_args[@]}" "$url" -o "$WORK_DIR/guidelines.md"; then
-    echo "WARNING: could not fetch org guidelines from '$url';" \
-      "skipping org review guidelines." >&2
+  if ! http_code="$(curl "${curl_args[@]}" -w '%{http_code}' "$url" -o "$WORK_DIR/guidelines.md")" ||
+    [ "${http_code#2}" = "$http_code" ]; then
+    echo "WARNING: could not fetch org guidelines from '$url'" \
+      "(HTTP ${http_code:-error}); skipping org review guidelines." >&2
     exit 0
   fi
   GUIDELINES_FILE="$WORK_DIR/guidelines.md"
 }
 
 case "$ORG_GUIDELINES_SOURCE" in
-  *.git | ssh://* | git@*)
+  http://*)
+    echo "WARNING: refusing plain-http org guidelines source '$ORG_GUIDELINES_SOURCE';" \
+      "use https. Skipping org review guidelines." >&2
+    exit 0
+    ;;
+  https://*.git | ssh://* | git@*)
     fetch_from_git "$ORG_GUIDELINES_SOURCE"
     ;;
-  http://* | https://*)
+  https://*)
     fetch_from_url "$ORG_GUIDELINES_SOURCE"
     ;;
   file://*)
     fetch_from_git "$ORG_GUIDELINES_SOURCE"
     ;;
-  *)
-    if [ -f "$ORG_GUIDELINES_SOURCE" ]; then
-      # Local file already on the runner (e.g. file-type CI/CD variable).
-      GUIDELINES_FILE="$ORG_GUIDELINES_SOURCE"
-    else
-      # Treat as a GitLab project path on the current instance; the
-      # guidelines repo must allowlist this project for job-token access.
-      fetch_from_git "https://gitlab-ci-token:${CI_JOB_TOKEN:-}@${CI_SERVER_HOST:-gitlab.com}/${ORG_GUIDELINES_SOURCE}.git"
+  /*)
+    # Local file already on the runner (e.g. file-type CI/CD variable).
+    if [ ! -f "$ORG_GUIDELINES_SOURCE" ]; then
+      echo "WARNING: org guidelines file '$ORG_GUIDELINES_SOURCE' does not exist;" \
+        "skipping org review guidelines." >&2
+      exit 0
     fi
+    GUIDELINES_FILE="$ORG_GUIDELINES_SOURCE"
+    ;;
+  *)
+    # A GitLab project path on the current instance; the guidelines repo
+    # must allowlist this project for job-token access. Never a relative
+    # file: those would resolve inside the MR checkout.
+    fetch_from_git "https://gitlab-ci-token:${CI_JOB_TOKEN:-}@${CI_SERVER_HOST:-gitlab.com}/${ORG_GUIDELINES_SOURCE}.git" carries-token
     ;;
 esac
 

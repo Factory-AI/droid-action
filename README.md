@@ -81,7 +81,7 @@ droid
 
 The guided flow will:
 
-- Detect whether your repository lives on GitHub or GitLab.
+- Detect whether your repository lives on GitHub, GitLab, or Bitbucket.
 - Help you install the Droid GitHub App (or configure GitLab access).
 - Generate the workflow files (`droid.yml` and `droid-review.yml`) with sensible defaults.
 - Prompt you for `review_depth`, security review options, and other inputs.
@@ -121,6 +121,31 @@ include:
 ```
 
 Full setup, available inputs, and troubleshooting live in [`docs/gitlab-setup.md`](docs/gitlab-setup.md).
+
+### Bitbucket
+
+Bitbucket Cloud and Bitbucket Data Center get the same automated review: inline PR comments, a sticky tracking comment, optional security review, and review depth presets. One CI-agnostic script, [`bitbucket/droid-review.sh`](bitbucket/droid-review.sh), runs the review from Bitbucket Pipelines (Cloud), Jenkins, or Bamboo (Data Center).
+
+Bitbucket Cloud `bitbucket-pipelines.yml` (secured variables `FACTORY_API_KEY` and `DROID_BITBUCKET_TOKEN`):
+
+```yaml
+pipelines:
+  pull-requests:
+    "**":
+      - step:
+          name: Droid code review
+          image: oven/bun:1.2.11
+          script:
+            - apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates curl
+            - git clone --depth 1 --branch "${DROID_ACTION_REF:-main}" https://github.com/Factory-AI/droid-action.git /tmp/droid-action
+            - bash /tmp/droid-action/bitbucket/droid-review.sh
+```
+
+Workspace-wide rollout, Data Center CI examples, enforcement, and troubleshooting live in [`docs/bitbucket-setup.md`](docs/bitbucket-setup.md).
+
+### Azure DevOps
+
+Azure Repos pull requests (Azure DevOps Services and Azure DevOps Server 2020+) are reviewed by an Azure Pipelines job run from a Build validation branch policy. Copy [`azure-devops/droid-review.yml`](azure-devops/droid-review.yml) into your repository and follow [`docs/azure-devops-setup.md`](docs/azure-devops-setup.md).
 
 ### Manual Setup
 
@@ -172,6 +197,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Run Droid Exec
         uses: Factory-AI/droid-action@main
@@ -209,6 +235,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Run Droid Auto Review
         uses: Factory-AI/droid-action@main
@@ -221,6 +248,10 @@ jobs:
 
 Set `automatic_review: true` to run code reviews automatically on non-draft PRs. Set `automatic_security_review: true` to additionally run a STRIDE-based security review concurrently on every non-draft PR.
 The example allows reviews triggered by `factory-droid[bot]`. `allowed_bots` checks the event actor, not the PR author, so PRs opened by other bots can also be reviewed when a human triggers the workflow.
+
+Both examples set `persist-credentials: false` so the workflow's `GITHUB_TOKEN` is not left in `.git/config`, where any command Droid runs could read it. The action authenticates its own git commands through `gh`.
+
+Pull requests from forks are reviewed without checking out their code. The action fetches the fork's commits to a separate ref and reviews the diff, so files from the fork, such as `.factory` hooks and MCP servers, `bunfig.toml` and `.env`, are never loaded in a job that holds your secrets. Droid is told it is reviewing a fork and reads the fork's files from that ref.
 
 ## Using the Commands
 
@@ -285,6 +316,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: Factory-AI/droid-action@main
         with:
@@ -323,6 +355,8 @@ To leave comments and approvals on your PRs, Droid needs a GitHub token. There a
     id-token: write # required for GitHub App auth
   ```
 
+  The action revokes this app token when it finishes, so later steps in your job cannot use its `github_token` output.
+
 - **Your own token (override).** If you'd rather use a personal access token or your own GitHub App — for example on GitHub Enterprise, or to control which account posts comments — pass it as `github_token`. When set, Droid uses it directly and skips the app. The token needs write access to pull requests and repository contents.
 
   ```yaml
@@ -338,10 +372,11 @@ To leave comments and approvals on your PRs, Droid needs a GitHub token. There a
 
 ### Core Inputs
 
-| Input             | Purpose                                                                                                |
-| ----------------- | ------------------------------------------------------------------------------------------------------ |
-| `factory_api_key` | **Required.** Grants Droid Exec permission to run via Factory.                                         |
-| `github_token`    | Optional override if you prefer a custom GitHub App/token. By default the installed app token is used. |
+| Input                    | Purpose                                                                                                                                                                                                                                       |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `factory_api_key`        | **Required.** Grants Droid Exec permission to run via Factory.                                                                                                                                                                                |
+| `github_token`           | Optional override if you prefer a custom GitHub App/token. By default the installed app token is used.                                                                                                                                        |
+| `upload_debug_artifacts` | Default `false`. Uploads a `droid-review-debug-<run_id>` artifact with Droid's logs, sessions and review prompts. Credentials are redacted, but anyone who can read the repository's Actions runs can download it, including on public repos. |
 
 ### Review Configuration
 

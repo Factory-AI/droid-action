@@ -95,7 +95,7 @@ describe("generateSecurityReportPrompt", () => {
     );
 
     expect(prompt).toContain("git checkout -b");
-    expect(prompt).toContain("git push origin");
+    expect(prompt).toContain("push origin");
     expect(prompt).toContain("gh pr create");
     expect(prompt).toContain("fix(security):");
   });

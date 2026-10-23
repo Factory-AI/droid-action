@@ -25,11 +25,36 @@ project(s).
 
 ### 1. Prerequisites
 
-| Requirement                           | How to get it                                                                                                                                                                                            |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GitLab Maintainer role on the project | Repo admin grants you Maintainer (40)                                                                                                                                                                    |
-| `FACTORY_API_KEY` CI/CD variable      | Generate at <https://app.factory.ai/settings/api-keys>; add as **masked**, **unprotected** variable at the project, subgroup, or top-level group level                                                   |
-| `GITLAB_TOKEN` CI/CD variable         | A personal access token with the `api` scope, owned by whichever account should post review comments. The token owner is the poster — there is no API impersonation. Add as **masked**, **unprotected**. |
+| Requirement                           | How to get it                                                                                                                                                                                                                                                   |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GitLab Maintainer role on the project | Repo admin grants you Maintainer (40)                                                                                                                                                                                                                           |
+| `FACTORY_API_KEY` CI/CD variable      | Generate at <https://app.factory.ai/settings/api-keys>; add as **masked**, **unprotected** variable at the project, subgroup, or top-level group level                                                                                                          |
+| `GITLAB_TOKEN` CI/CD variable         | An access token with the `api` scope, owned by whichever account should post review comments. The token owner is the poster — there is no API impersonation. Add as **masked**, **unprotected**. See [Credential scope](#credential-scope) before choosing one. |
+
+### Credential scope
+
+The review passes run Droid with an `Execute` tool so it can investigate
+the code, and a prompt injection in the MR (in the diff, the description,
+or a comment) can steer it. The job unsets `GITLAB_TOKEN` before starting
+each pass, but that is not a security boundary: the pass runs as the same
+OS user as the job shell and can read every CI/CD variable the job holds,
+including `GITLAB_TOKEN`, `FACTORY_API_KEY`, and `CI_JOB_TOKEN`, from
+its parent processes. Comments the job posts are redacted for these
+credentials, but a compromised pass can still send them over the network.
+Scope them so that a leak costs as little as possible:
+
+- Prefer a **project access token** (a bot user limited to one project) over
+  a personal access token, which can act on everything its owner can reach.
+  Give it the lowest role that can comment on merge requests (Reporter), the
+  `api` scope, and a short expiry that you rotate.
+- Add both variables as **masked** (and **hidden** where available) so they
+  stay out of job logs. They must stay **unprotected** for MR pipelines on
+  unprotected branches to receive them, which also means anyone who can push
+  a branch to the project can run a pipeline that reads them, with or
+  without Droid.
+- Pipelines for MRs from forks run in the fork's project and do not receive
+  your project's variables unless you opt in to running them in the parent
+  project. Only do that for forks you trust.
 
 ### 2. Add the CI/CD Component
 
@@ -77,18 +102,18 @@ the `droid-review` job. Expect ~5-10 minutes for a typical change.
 
 ## Inputs
 
-| Input                        | Default                  | Description                                                                                                                                                                                                                                           |
-| ---------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `automatic_review`           | `"true"`                 | Run code review automatically on every MR pipeline.                                                                                                                                                                                                   |
-| `automatic_security_review`  | `"true"`                 | Run a parallel security-focused subagent on every MR pipeline. Findings are prefixed `[security]` and posted alongside code-review comments. Only runs when `automatic_review` is enabled; set `"false"` to opt out.                                  |
-| `review_depth`               | `"deep"`                 | `"deep"` (thorough) or `"shallow"` (fast). Factory keeps each preset on its recommended model, so this is the only model setting most projects need.                                                                                                  |
-| `include_suggestions`        | `"true"`                 | Include code suggestion blocks in review comments when the fix is high-confidence.                                                                                                                                                                    |
-| `security_block_on_critical` | `"true"`                 | Block merge on CRITICAL security findings. (Mirrors GitHub action; surface-level parity.)                                                                                                                                                             |
-| `security_block_on_high`     | `"false"`                | Block merge on HIGH security findings. (Mirrors GitHub action; surface-level parity.)                                                                                                                                                                 |
-| `settings`                   | `""`                     | Droid Exec settings as a JSON string or a path to a JSON file. Merged into `~/.factory/droid/settings.json` before each `droid exec` call.                                                                                                            |
-| `org_guidelines_source`      | `""`                     | Org-wide review guidelines source: a local file path on the runner, an http(s) URL to the raw markdown, a git clone URL ending in `.git`, or a GitLab project path (e.g. `my-group/review-guidelines`) cloned with `$CI_JOB_TOKEN`. Empty = disabled. |
-| `org_guidelines_ref`         | `""`                     | Git sources only: branch or tag of the org guidelines repo. Empty = default branch.                                                                                                                                                                   |
-| `org_guidelines_path`        | `"review-guidelines.md"` | Git sources only: path of the guidelines markdown file inside the org guidelines repo.                                                                                                                                                                |
+| Input                        | Default                  | Description                                                                                                                                                                                                                                                |
+| ---------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `automatic_review`           | `"true"`                 | Run code review automatically on every MR pipeline.                                                                                                                                                                                                        |
+| `automatic_security_review`  | `"true"`                 | Run a parallel security-focused subagent on every MR pipeline. Findings are prefixed `[security]` and posted alongside code-review comments. Only runs when `automatic_review` is enabled; set `"false"` to opt out.                                       |
+| `review_depth`               | `"deep"`                 | `"deep"` (thorough) or `"shallow"` (fast). Factory keeps each preset on its recommended model, so this is the only model setting most projects need.                                                                                                       |
+| `include_suggestions`        | `"true"`                 | Include code suggestion blocks in review comments when the fix is high-confidence.                                                                                                                                                                         |
+| `security_block_on_critical` | `"true"`                 | Block merge on CRITICAL security findings. (Mirrors GitHub action; surface-level parity.)                                                                                                                                                                  |
+| `security_block_on_high`     | `"false"`                | Block merge on HIGH security findings. (Mirrors GitHub action; surface-level parity.)                                                                                                                                                                      |
+| `settings`                   | `""`                     | Droid Exec settings as a JSON string or a path to a JSON file. Merged into `~/.factory/droid/settings.json` before each `droid exec` call.                                                                                                                 |
+| `org_guidelines_source`      | `""`                     | Org-wide review guidelines source: an absolute file path on the runner, an https URL to the raw markdown, an https clone URL ending in `.git`, or a GitLab project path (e.g. `my-group/review-guidelines`) cloned with `$CI_JOB_TOKEN`. Empty = disabled. |
+| `org_guidelines_ref`         | `""`                     | Git sources only: branch or tag of the org guidelines repo. Empty = default branch.                                                                                                                                                                        |
+| `org_guidelines_path`        | `"review-guidelines.md"` | Git sources only: path of the guidelines markdown file inside the org guidelines repo.                                                                                                                                                                     |
 
 ### Opting out of security review
 
@@ -123,19 +148,23 @@ include:
 
 `org_guidelines_source` accepts, in order of lookup:
 
-- **A git clone URL** (ending in `.git`, or `ssh://` / `git@` form). Cloned
-  as-is; `org_guidelines_ref` / `org_guidelines_path` select the file.
-- **An http(s) URL** to the raw markdown. Fetched with `curl`; URLs on the
-  same GitLab instance get a `JOB-TOKEN` header, so the repository files
-  API works for private repos, e.g.
+- **A git clone URL** (an `https://` URL ending in `.git`, or `ssh://` /
+  `git@` form). Cloned as-is; `org_guidelines_ref` / `org_guidelines_path`
+  select the file.
+- **An https URL** to the raw markdown. Fetched with `curl`; URLs on the
+  same GitLab instance (`https://$CI_SERVER_HOST/...`) get a `JOB-TOKEN`
+  header, so the repository files API works for private repos, e.g.
   `https://gitlab.com/api/v4/projects/<id>/repository/files/review-guidelines.md/raw?ref=main`.
-  Any other public URL works too.
-- **A local file path** on the runner. Useful with a group-level
+  Those requests do not follow redirects, so the job token never reaches
+  another host. Any other public https URL works too. Plain `http://` URLs
+  are refused.
+- **An absolute file path** on the runner. Useful with a group-level
   **file-type CI/CD variable**: define `DROID_ORG_GUIDELINES` (type: File)
   on the group and set `org_guidelines_source: "$DROID_ORG_GUIDELINES"`.
-  No network access or allowlisting needed.
+  No network access or allowlisting needed. Relative paths are never read as
+  files, because the job's working directory is the MR checkout.
 - **A GitLab project path** (e.g. `my-group/review-guidelines`, anything
-  that is not a URL or an existing file). Cloned from `$CI_SERVER_HOST`
+  that is not a URL or an absolute path). Cloned from `$CI_SERVER_HOST`
   with `$CI_JOB_TOKEN`; add your projects (or the parent group) to the
   guidelines repo's **job token allowlist** (guidelines repo → Settings →
   CI/CD → Job token permissions).
@@ -167,7 +196,11 @@ Each MR pipeline produces:
   (`N turns • Xm Ys`), session IDs, and a security badge when
   `automatic_security_review` is enabled (the default).
 - **Debug artifacts** at `.droid-debug/` (prompts, candidate JSON, raw
-  stream-json logs) retained for 1 week.
+  stream-json logs) retained for 1 week. The job's credentials
+  (`FACTORY_API_KEY`, `GITLAB_TOKEN`, the CI job token) are redacted before
+  upload, but the logs still contain MR content and the output of commands
+  Droid ran. On a public project, anyone who can view the pipeline can
+  download them.
 - **A custom droid library** copied from
   `$DROID_ACTION_DIR/.factory/droids` into `~/.factory/droids` on the
   runner, so subagents like `security-reviewer` are reachable.

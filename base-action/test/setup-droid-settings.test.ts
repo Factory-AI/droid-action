@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach, spyOn } from "bun:test";
 import { setupDroidSettings } from "../src/setup-droid-settings";
 import { tmpdir } from "os";
-import { mkdir, writeFile, readFile, rm } from "fs/promises";
+import { mkdir, writeFile, readFile, rm, stat } from "fs/promises";
 import { join } from "path";
 
 const testHomeDir = join(
@@ -14,6 +14,10 @@ const testHomeDir = join(
 const settingsPath = join(testHomeDir, ".factory", "droid", "settings.json");
 const testSettingsDir = join(testHomeDir, ".factory-test");
 const testSettingsPath = join(testSettingsDir, "test-settings.json");
+
+async function readSettings(): Promise<Record<string, unknown>> {
+  return JSON.parse(await readFile(settingsPath, "utf-8"));
+}
 
 describe("setupDroidSettings", () => {
   beforeEach(async () => {
@@ -27,13 +31,11 @@ describe("setupDroidSettings", () => {
     await rm(testHomeDir, { recursive: true, force: true });
   });
 
-  test("should always set enableAllProjectMcpServers to true when no input", async () => {
+  test("writes an empty owner-only settings file when no input", async () => {
     await setupDroidSettings(undefined, testHomeDir);
 
-    const settingsContent = await readFile(settingsPath, "utf-8");
-    const settings = JSON.parse(settingsContent);
-
-    expect(settings.enableAllProjectMcpServers).toBe(true);
+    expect(await readSettings()).toEqual({});
+    expect((await stat(settingsPath)).mode & 0o777).toBe(0o600);
   });
 
   test("should merge settings from JSON string input", async () => {
@@ -44,10 +46,7 @@ describe("setupDroidSettings", () => {
 
     await setupDroidSettings(inputSettings, testHomeDir);
 
-    const settingsContent = await readFile(settingsPath, "utf-8");
-    const settings = JSON.parse(settingsContent);
-
-    expect(settings.enableAllProjectMcpServers).toBe(true);
+    const settings = await readSettings();
     expect(settings.model).toBe("gpt-5-codex");
     expect(settings.env).toEqual({ API_KEY: "test-key" });
   });
@@ -71,27 +70,64 @@ describe("setupDroidSettings", () => {
 
     await setupDroidSettings(testSettingsPath, testHomeDir);
 
-    const settingsContent = await readFile(settingsPath, "utf-8");
-    const settings = JSON.parse(settingsContent);
-
-    expect(settings.enableAllProjectMcpServers).toBe(true);
+    const settings = await readSettings();
     expect(settings.hooks).toEqual(testSettings.hooks);
     expect(settings.permissions).toEqual(testSettings.permissions);
   });
 
-  test("should override enableAllProjectMcpServers even if false in input", async () => {
-    const inputSettings = JSON.stringify({
-      enableAllProjectMcpServers: false,
-      model: "test-model",
-    });
+  test("does not force enableAllProjectMcpServers on", async () => {
+    await setupDroidSettings(
+      JSON.stringify({ enableAllProjectMcpServers: false, model: "m" }),
+      testHomeDir,
+    );
 
-    await setupDroidSettings(inputSettings, testHomeDir);
+    const settings = await readSettings();
+    expect(settings.enableAllProjectMcpServers).toBe(false);
+    expect(settings.model).toBe("m");
+  });
 
-    const settingsContent = await readFile(settingsPath, "utf-8");
-    const settings = JSON.parse(settingsContent);
+  test("never logs setting values", async () => {
+    const logSpy = spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const secret = "settings-secret-value-123456";
+      await setupDroidSettings(
+        JSON.stringify({ env: { API_KEY: secret } }),
+        testHomeDir,
+      );
+      // The second run finds the first run's file and reports on it.
+      await setupDroidSettings(undefined, testHomeDir);
 
-    expect(settings.enableAllProjectMcpServers).toBe(true);
-    expect(settings.model).toBe("test-model");
+      const logged = logSpy.mock.calls.flat().map(String).join("\n");
+      expect(logged).toContain("env");
+      expect(logged).not.toContain(secret);
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  test("does not echo a malformed JSON value", async () => {
+    const logSpy = spyOn(console, "log").mockImplementation(() => {});
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const secret = "settings-secret-value-123456";
+      await expect(
+        setupDroidSettings(`{ "env": { "KEY": "${secret}" ,}`, testHomeDir),
+      ).rejects.toThrow();
+
+      const logged = [...logSpy.mock.calls, ...errorSpy.mock.calls]
+        .flat()
+        .map(String)
+        .join("\n");
+      expect(logged).not.toContain(secret);
+      const error = await setupDroidSettings(
+        `{ "env": { "KEY": "${secret}" ,}`,
+        testHomeDir,
+      ).catch((e: unknown) => e);
+      expect(String(error)).not.toContain(secret);
+    } finally {
+      logSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
   });
 
   test("should throw error for invalid JSON string", async () => {
@@ -107,19 +143,13 @@ describe("setupDroidSettings", () => {
   test("should handle empty string input", async () => {
     await setupDroidSettings("", testHomeDir);
 
-    const settingsContent = await readFile(settingsPath, "utf-8");
-    const settings = JSON.parse(settingsContent);
-
-    expect(settings.enableAllProjectMcpServers).toBe(true);
+    expect(await readSettings()).toEqual({});
   });
 
   test("should handle whitespace-only input", async () => {
     await setupDroidSettings("   \n\t  ", testHomeDir);
 
-    const settingsContent = await readFile(settingsPath, "utf-8");
-    const settings = JSON.parse(settingsContent);
-
-    expect(settings.enableAllProjectMcpServers).toBe(true);
+    expect(await readSettings()).toEqual({});
   });
 
   test("should merge with existing settings", async () => {
@@ -137,10 +167,7 @@ describe("setupDroidSettings", () => {
 
     await setupDroidSettings(newSettings, testHomeDir);
 
-    const settingsContent = await readFile(settingsPath, "utf-8");
-    const settings = JSON.parse(settingsContent);
-
-    expect(settings.enableAllProjectMcpServers).toBe(true);
+    const settings = await readSettings();
     expect(settings.existingKey).toBe("existingValue");
     expect(settings.newKey).toBe("newValue");
     expect(settings.model).toBe("gpt-5-codex");

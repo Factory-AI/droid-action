@@ -10,9 +10,12 @@
  *
  * Inputs (env):
  *   GITLAB_TOKEN           - access token (api scope)
+ *   CI_PROJECT_ID / CI_MERGE_REQUEST_IID - the only source of the target MR
  *   DROID_STATE_FILE       - JSON state written by gitlab-prepare
  *   DROID_SUCCESS          - "true" | "false" set by the CI job
- *   DROID_ERROR_DETAILS    - optional error blob to embed on failure
+ *   DROID_ERROR_FILE       - error file to embed on failure (default
+ *                            /tmp/droid-error.txt); read only if it is a
+ *                            regular file, capped and redacted
  *   AUTOMATIC_SECURITY_REVIEW - "true" to render the security badge
  *   TRIGGER_USERNAME       - optional, e.g. GITLAB_USER_LOGIN
  *   CI_PIPELINE_URL / CI_JOB_URL - used to keep links fresh
@@ -23,6 +26,14 @@ import * as fs from "fs/promises";
 import { setupGitlabToken } from "../gitlab/token";
 import { GitlabClient } from "../gitlab/api/client";
 import { buildTrackingNoteBody } from "../gitlab/operations/tracking-note";
+import {
+  resolveOwnTrackingNoteId,
+  resolvePostTarget,
+} from "../gitlab/operations/post-target";
+import {
+  DEFAULT_ERROR_FILE,
+  readErrorDetails,
+} from "../gitlab/operations/error-details";
 import { collectExecTelemetry } from "../gitlab/data/exec-telemetry";
 import { readReviewPostOutcome } from "../core/review/tracking/results";
 import { postResultsFilePath } from "./gitlab-post-review";
@@ -65,6 +76,8 @@ async function run(): Promise<void> {
     return;
   }
 
+  const target = resolvePostTarget(state);
+
   const token = setupGitlabToken();
   const apiUrl =
     process.env.CI_API_V4_URL ||
@@ -73,8 +86,19 @@ async function run(): Promise<void> {
 
   const client = new GitlabClient(token, apiUrl);
 
-  const droidSuccess = process.env.DROID_SUCCESS !== "false";
-  const errorDetails = process.env.DROID_ERROR_DETAILS || null;
+  // Pass 1 exiting cleanly without usable candidates means nothing was
+  // validated or posted; the note must not report that as a finished review.
+  const skippedValidation = state.validatorSkippedReason
+    ? `Pass 1 did not produce valid review candidates (${state.validatorSkippedReason}), so no findings were validated or posted.`
+    : null;
+  const jobFailed = process.env.DROID_SUCCESS === "false";
+  const droidSuccess = !jobFailed && !skippedValidation;
+  const errorDetails =
+    (jobFailed
+      ? await readErrorDetails(
+          process.env.DROID_ERROR_FILE || DEFAULT_ERROR_FILE,
+        )
+      : null) ?? skippedValidation;
   const securityReviewRan = process.env.AUTOMATIC_SECURITY_REVIEW === "true";
   const triggerUsername =
     process.env.TRIGGER_USERNAME || process.env.GITLAB_USER_LOGIN || null;
@@ -108,16 +132,27 @@ async function run(): Promise<void> {
     },
   });
 
-  await client.updateNote(
-    state.projectId,
-    state.mrIid,
+  const noteId = await resolveOwnTrackingNoteId(
+    client,
+    target,
     state.trackingNoteId,
-    body,
   );
+  const outcome = droidSuccess ? "success" : "failure";
+  if (noteId === null) {
+    const created = await client.createNote(
+      target.projectId,
+      target.mrIid,
+      body,
+    );
+    console.log(
+      `Created tracking note ${created.id} on MR !${target.mrIid} (state=${outcome}).`,
+    );
+    return;
+  }
 
+  await client.updateNote(target.projectId, target.mrIid, noteId, body);
   console.log(
-    `Updated tracking note ${state.trackingNoteId} on MR !${state.mrIid} ` +
-      `(state=${droidSuccess ? "success" : "failure"}).`,
+    `Updated tracking note ${noteId} on MR !${target.mrIid} (state=${outcome}).`,
   );
 }
 

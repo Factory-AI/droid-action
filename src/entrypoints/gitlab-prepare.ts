@@ -33,10 +33,8 @@ import {
   UnexpandedGitlabTokenError,
 } from "../gitlab/token";
 import { GitlabClient } from "../gitlab/api/client";
-import {
-  buildTrackingNoteBody,
-  findExistingTrackingNote,
-} from "../gitlab/operations/tracking-note";
+import { buildTrackingNoteBody } from "../gitlab/operations/tracking-note";
+import { findOwnTrackingNote } from "../gitlab/operations/post-target";
 import { computeReviewArtifacts } from "../gitlab/data/review-artifacts";
 import { generateGitlabReviewCandidatesPrompt } from "../gitlab/prompts/candidates";
 import type { GitlabReviewPromptContext } from "../gitlab/prompts/types";
@@ -54,8 +52,10 @@ import {
 
 /**
  * `droid exec` runs in the untrusted MR checkout and starts project MCP
- * servers, so it must never see GitLab credentials. Mirrors the
- * `env -u GITLAB_TOKEN -u OVERRIDE_GITLAB_TOKEN` passes in the CI template.
+ * servers, so it is not handed the GitLab token. Like the
+ * `env -u GITLAB_TOKEN -u OVERRIDE_GITLAB_TOKEN` passes in the CI template,
+ * this is not isolation: a child running as the same user can still read the
+ * token from its parent's /proc/<pid>/environ.
  */
 export function withoutGitlabTokens(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const {
@@ -267,8 +267,7 @@ async function run(): Promise<void> {
 
   // Write ~/.factory/droid/settings.json. Accepts either a raw JSON string
   // or a path to a JSON file (matching the GitHub action's `settings`
-  // input). Always sets enableAllProjectMcpServers=true so project-scope
-  // MCP servers (if any) are trusted without prompting.
+  // input).
   try {
     await setupDroidSettings(context.inputs.settings || undefined);
   } catch (err) {
@@ -282,8 +281,13 @@ async function run(): Promise<void> {
   const mrIid = context.mr.iid;
   const projectId = context.project.id;
 
-  const existingNotes = await client.listNotes(projectId, mrIid);
-  const existing = findExistingTrackingNote(existingNotes);
+  // Anyone who can comment on the MR can paste the tracking marker, so only
+  // a note this token's user wrote is reused.
+  const [currentUser, existingNotes] = await Promise.all([
+    client.getCurrentUser(),
+    client.listNotes(projectId, mrIid),
+  ]);
+  const existing = findOwnTrackingNote(existingNotes, currentUser.id);
 
   const includeSuggestions =
     (process.env.INCLUDE_SUGGESTIONS ?? "true").toLowerCase() !== "false";

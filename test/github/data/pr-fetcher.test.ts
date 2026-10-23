@@ -56,6 +56,7 @@ const VALID_PR = {
   baseRefName: "dev",
   headRefName: "ross/app-1930-session-nav",
   headRefOid: "abc123",
+  isCrossRepository: false,
 };
 
 const REPOSITORY = { owner: "Factory-AI", repo: "factory-mono" };
@@ -90,10 +91,38 @@ describe("pr-fetcher", () => {
         baseRefName: "dev",
         headRefName: "ross/app-1930-session-nav",
         headRefOid: "abc123",
+        isFork: false,
         title: "fix(frontend): stabilize session navigation",
         body: "description",
       });
       expect(requestCount()).toBe(1);
+    });
+
+    it("flags a PR from another repository as a fork", async () => {
+      const { octokits } = createStubOctokits([
+        prEnvelope({ ...VALID_PR, isCrossRepository: true }),
+      ]);
+
+      const result = await fetchPRBranchData({
+        octokits,
+        repository: REPOSITORY,
+        prNumber: 19051,
+      });
+
+      expect(result.isFork).toBe(true);
+    });
+
+    it("treats a PR as a fork when the response does not say otherwise", async () => {
+      const { isCrossRepository: _omitted, ...withoutField } = VALID_PR;
+      const { octokits } = createStubOctokits([prEnvelope(withoutField)]);
+
+      const result = await fetchPRBranchData({
+        octokits,
+        repository: REPOSITORY,
+        prNumber: 19051,
+      });
+
+      expect(result.isFork).toBe(true);
     });
 
     it("defaults a null PR body to an empty string", async () => {

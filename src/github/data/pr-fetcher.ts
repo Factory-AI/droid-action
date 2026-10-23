@@ -10,6 +10,11 @@ export type PRBranchData = {
   baseRefName: string;
   headRefName: string;
   headRefOid: string;
+  /**
+   * The head branch lives in another repository, so its author may have no
+   * write access and its code must never run in this job.
+   */
+  isFork: boolean;
   title: string;
   body: string;
 };
@@ -176,6 +181,8 @@ export async function fetchPRBranchData({
       baseRefName: pullRequest.baseRefName,
       headRefName: pullRequest.headRefName,
       headRefOid: pullRequest.headRefOid,
+      // Anything but an explicit same-repository answer is treated as a fork.
+      isFork: pullRequest.isCrossRepository !== false,
       title: pullRequest.title,
       body: pullRequest.body ?? "",
     };
