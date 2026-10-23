@@ -6,7 +6,7 @@ export enum ReviewDepth {
 // Tier aliases are resolved by the Droid CLI (installed fresh on every run),
 // so presets follow Factory's current recommendation without a new release.
 const SHALLOW_DEFAULTS = {
-  model: "oss-latest-balanced",
+  model: "oss-latest-premium",
   reasoningEffort: undefined as string | undefined,
 };
 
