@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import path from "node:path";
 import os from "node:os";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { parse } from "yaml";
 import { prepareTagExecution } from "../../src/tag";
+import { shouldTriggerTag } from "../../src/tag";
+import { prepare } from "../../src/prepare";
 import { createMockContext } from "../mockContext";
 import * as createInitial from "../../src/github/operations/comments/create-initial";
 import * as mcpInstaller from "../../src/mcp/install-mcp-server";
@@ -10,7 +14,9 @@ import * as actorValidation from "../../src/github/validation/actor";
 import * as promptModule from "../../src/create-prompt";
 import * as reviewArtifactsModule from "../../src/github/data/review-artifacts";
 import * as core from "@actions/core";
+import * as github from "@actions/github";
 import * as childProcess from "node:child_process";
+import { parseGitHubContext } from "../../src/github/context";
 import { DroidRunType } from "../../src/run-type";
 import { parseSessionTagFromDroidArgs } from "../utils/session-tag-helpers";
 
@@ -18,6 +24,16 @@ describe("review command integration", () => {
   const originalRunnerTemp = process.env.RUNNER_TEMP;
   const originalDroidArgs = process.env.DROID_ARGS;
   const originalSecurityReviewEnabled = process.env.SECURITY_REVIEW_ENABLED;
+  const originalAutomaticInputs = {
+    AUTOMATIC_REVIEW: process.env.AUTOMATIC_REVIEW,
+    AUTOMATIC_SECURITY_REVIEW: process.env.AUTOMATIC_SECURITY_REVIEW,
+    GITHUB_REPOSITORY: process.env.GITHUB_REPOSITORY,
+  };
+  const originalGitHubContext = {
+    eventName: github.context.eventName,
+    payload: github.context.payload,
+    actor: github.context.actor,
+  };
   let tmpDir: string;
   let graphqlSpy: ReturnType<typeof spyOn>;
   let createCommentSpy: ReturnType<typeof spyOn>;
@@ -29,27 +45,26 @@ describe("review command integration", () => {
   let computeArtifactsSpy: ReturnType<typeof spyOn>;
   let execSyncSpy: ReturnType<typeof spyOn>;
 
-  function createAutomaticReviewContext(automaticReview: boolean) {
-    return createMockContext({
-      eventName: "issue_comment",
-      isPR: true,
-      inputs: {
-        automaticReview,
-        automaticSecurityReview: true,
+  function createAutomaticReviewContext(
+    automaticReview: boolean,
+    automaticSecurityReview: string | undefined,
+  ) {
+    process.env.AUTOMATIC_REVIEW = String(automaticReview);
+    if (automaticSecurityReview === undefined) {
+      delete process.env.AUTOMATIC_SECURITY_REVIEW;
+    } else {
+      process.env.AUTOMATIC_SECURITY_REVIEW = automaticSecurityReview;
+    }
+    github.context.eventName = "pull_request";
+    github.context.actor = "human-reviewer";
+    github.context.payload = {
+      repository: {
+        name: "test-repo",
+        owner: { login: "test-owner" },
       },
-      payload: {
-        comment: {
-          id: 888,
-          body: "",
-          user: { login: "human-reviewer" },
-          created_at: "2024-02-02T00:00:00Z",
-        },
-        issue: {
-          number: 7,
-          pull_request: {},
-        },
-      } as any,
-    });
+      pull_request: { number: 7, body: "" },
+    };
+    return parseGitHubContext();
   }
 
   function createAutomaticReviewOctokit(
@@ -100,6 +115,7 @@ describe("review command integration", () => {
     tmpDir = await mkdtemp(path.join(os.tmpdir(), "review-int-"));
     process.env.RUNNER_TEMP = tmpDir;
     process.env.DROID_ARGS = "";
+    process.env.GITHUB_REPOSITORY = "test-owner/test-repo";
     delete process.env.SECURITY_REVIEW_ENABLED;
 
     createCommentSpy = spyOn(
@@ -119,7 +135,12 @@ describe("review command integration", () => {
       descriptionPath: `${tmpDir}/droid-prompts/pr_description.txt`,
     });
     setOutputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
-    exportVarSpy = spyOn(core, "exportVariable").mockImplementation(() => {});
+    exportVarSpy = spyOn(core, "exportVariable").mockImplementation(
+      (name, value) => {
+        if (name === "SECURITY_REVIEW_ENABLED")
+          process.env[name] = String(value);
+      },
+    );
 
     execSyncSpy = spyOn(childProcess, "execSync").mockImplementation(((
       cmd: string,
@@ -163,6 +184,15 @@ describe("review command integration", () => {
       process.env.SECURITY_REVIEW_ENABLED = originalSecurityReviewEnabled;
     } else {
       delete process.env.SECURITY_REVIEW_ENABLED;
+    }
+
+    Object.assign(github.context, originalGitHubContext);
+    for (const [name, value] of Object.entries(originalAutomaticInputs)) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
     }
   });
 
@@ -429,8 +459,49 @@ describe("review command integration", () => {
     expect(runSecurityReviewCall?.[1]).toBe("true");
   });
 
+  for (const { name, input } of [
+    { name: "explicitly false", input: "false" },
+  ]) {
+    it(`keeps automatic security off when its input is ${name}`, async () => {
+      const context = createAutomaticReviewContext(true, input);
+      const octokit = createAutomaticReviewOctokit(false);
+
+      const result = await prepareTagExecution({
+        context,
+        octokit,
+        githubToken: "token",
+      });
+
+      expect(result.skipped).toBeFalsy();
+      expect(createCommentSpy).toHaveBeenCalledWith(
+        octokit.rest,
+        context,
+        "default",
+        DroidRunType.Review,
+      );
+      expect(setOutputSpy).toHaveBeenCalledWith("run_code_review", "true");
+      expect(setOutputSpy).toHaveBeenCalledWith("run_security_review", "false");
+      expect(setOutputSpy).not.toHaveBeenCalledWith(
+        "install_security_skills",
+        "true",
+      );
+      expect(exportVarSpy).not.toHaveBeenCalledWith(
+        "SECURITY_REVIEW_ENABLED",
+        "true",
+      );
+      expect(candidatesSessionTag()).toEqual({
+        name: "code-review",
+        metadata: expect.objectContaining({
+          pass: "candidates",
+          reviewType: "code",
+          securityReview: "false",
+        }),
+      });
+    });
+  }
+
   it("does not create a comment when automatic security review is skipped", async () => {
-    const context = createAutomaticReviewContext(false);
+    const context = createAutomaticReviewContext(false, "true");
     const octokit = createAutomaticReviewOctokit(true);
 
     const result = await prepareTagExecution({
@@ -454,7 +525,7 @@ describe("review command integration", () => {
   });
 
   it("does not let Claude's security summary suppress Droid's review", async () => {
-    const context = createAutomaticReviewContext(false);
+    const context = createAutomaticReviewContext(false, "true");
     const octokit = createAutomaticReviewOctokit(true, 209825114);
 
     const result = await prepareTagExecution({
@@ -473,74 +544,200 @@ describe("review command integration", () => {
     expect(setOutputSpy).toHaveBeenCalledWith("run_security_review", "true");
   });
 
-  it("creates a review-only comment when automatic security is skipped", async () => {
-    const context = createAutomaticReviewContext(true);
-    const octokit = createAutomaticReviewOctokit(true);
+  it.each([
+    ["explicit true", "true"],
+    ["omitted", undefined],
+    ["empty", ""],
+  ] as const)(
+    "creates a review-only comment when security (%s) is deduplicated",
+    async (_name, input) => {
+      const context = createAutomaticReviewContext(true, input);
+      const octokit = createAutomaticReviewOctokit(true);
 
-    const result = await prepareTagExecution({
-      context,
-      octokit,
-      githubToken: "token",
-    });
+      const result = await prepareTagExecution({
+        context,
+        octokit,
+        githubToken: "token",
+      });
 
-    expect(result.skipped).toBeFalsy();
-    expect(createCommentSpy).toHaveBeenCalledWith(
-      octokit.rest,
-      context,
-      "default",
-      DroidRunType.Review,
+      expect(result.skipped).toBeFalsy();
+      expect(createCommentSpy).toHaveBeenCalledWith(
+        octokit.rest,
+        context,
+        "default",
+        DroidRunType.Review,
+      );
+      expect(setOutputSpy).toHaveBeenCalledWith("run_code_review", "true");
+      expect(setOutputSpy).toHaveBeenCalledWith("run_security_review", "false");
+      expect(exportVarSpy).not.toHaveBeenCalledWith(
+        "SECURITY_REVIEW_ENABLED",
+        "true",
+      );
+      expect(candidatesSessionTag()).toEqual({
+        name: "code-review",
+        metadata: expect.objectContaining({
+          pass: "candidates",
+          reviewType: "code",
+          securityReview: "false",
+        }),
+      });
+    },
+  );
+
+  it.each([
+    ["explicit true", "true"],
+    ["omitted", undefined],
+    ["empty", ""],
+  ] as const)(
+    "creates a combined comment for automatic security (%s)",
+    async (_name, input) => {
+      const context = createAutomaticReviewContext(true, input);
+      const octokit = createAutomaticReviewOctokit(false);
+
+      const result = await prepareTagExecution({
+        context,
+        octokit,
+        githubToken: "token",
+      });
+
+      expect(result.skipped).toBeFalsy();
+      expect(createCommentSpy).toHaveBeenCalledWith(
+        octokit.rest,
+        context,
+        "review_and_security",
+        DroidRunType.Review,
+      );
+      expect(setOutputSpy).toHaveBeenCalledWith("run_code_review", "true");
+      expect(setOutputSpy).toHaveBeenCalledWith("run_security_review", "true");
+      expect(exportVarSpy).toHaveBeenCalledWith(
+        "SECURITY_REVIEW_ENABLED",
+        "true",
+      );
+      expect(candidatesSessionTag()).toEqual({
+        name: "code-review",
+        metadata: expect.objectContaining({
+          pass: "candidates",
+          reviewType: "code",
+          securityReview: "true",
+        }),
+      });
+    },
+  );
+
+  for (const manifest of ["action.yml", "prepare/action.yml"]) {
+    it.each([
+      ["inherited", undefined, false, true],
+      ["empty", "", false, true],
+      ["opted out", "false", false, false],
+      ["explicitly enabled", "true", false, true],
+      ["deduplicated", undefined, true, false],
+    ] as const)(
+      `runs ${manifest} inputs through preparation to the written prompt: %s`,
+      async (_name, securityInput, hasSummary, expectedSecurity) => {
+        const action = parse(
+          readFileSync(path.join(import.meta.dir, "../..", manifest), "utf8"),
+        );
+        const context = createAutomaticReviewContext(
+          true,
+          securityInput ??
+            action.inputs.automatic_security_review.default ??
+            "",
+        );
+        const octokit = createAutomaticReviewOctokit(hasSummary);
+        // Exercise the real prompt builder and filesystem. Only remote APIs,
+        // checkout and MCP installation remain mocked by this suite.
+        promptSpy.mockRestore();
+        const logSpy = spyOn(console, "log").mockImplementation(() => {});
+        try {
+          expect(shouldTriggerTag(context)).toBe(true);
+          const result = await prepare({
+            context,
+            octokit,
+            githubToken: "token",
+          });
+          expect(result.skipped).toBeFalsy();
+          expect(setOutputSpy).toHaveBeenCalledWith("run_code_review", "true");
+          expect(setOutputSpy).toHaveBeenCalledWith(
+            "run_security_review",
+            String(expectedSecurity),
+          );
+          const prompt = await readFile(
+            path.join(tmpDir, "droid-prompts/droid-prompt.txt"),
+            "utf8",
+          );
+          expect(prompt).toContain("test-owner/test-repo");
+          expect(prompt.includes("## Security Review (run concurrently)")).toBe(
+            expectedSecurity,
+          );
+          expect(candidatesSessionTag()).toEqual({
+            name: "code-review",
+            metadata: expect.objectContaining({
+              securityReview: String(expectedSecurity),
+            }),
+          });
+        } finally {
+          logSpy.mockRestore();
+        }
+      },
     );
-    expect(setOutputSpy).toHaveBeenCalledWith("run_code_review", "true");
-    expect(setOutputSpy).toHaveBeenCalledWith("run_security_review", "false");
-    expect(exportVarSpy).not.toHaveBeenCalledWith(
-      "SECURITY_REVIEW_ENABLED",
-      "true",
-    );
-    expect(candidatesSessionTag()).toEqual({
-      name: "code-review",
-      metadata: expect.objectContaining({
-        pass: "candidates",
-        reviewType: "code",
-        securityReview: "false",
-      }),
-    });
-  });
+  }
 
-  it("creates a combined comment when both automatic reviews will run", async () => {
-    // The real exportVariable also sets process.env for the current step,
-    // which is how the candidates prompt and tag see the flag.
-    exportVarSpy.mockImplementation((name: string, value: unknown) => {
-      process.env[name] = String(value);
-    });
-    const context = createAutomaticReviewContext(true);
-    const octokit = createAutomaticReviewOctokit(false);
-
-    const result = await prepareTagExecution({
-      context,
-      octokit,
-      githubToken: "token",
-    });
-
-    expect(result.skipped).toBeFalsy();
-    expect(createCommentSpy).toHaveBeenCalledWith(
-      octokit.rest,
-      context,
-      "review_and_security",
-      DroidRunType.Review,
-    );
-    expect(setOutputSpy).toHaveBeenCalledWith("run_code_review", "true");
-    expect(setOutputSpy).toHaveBeenCalledWith("run_security_review", "true");
-    expect(exportVarSpy).toHaveBeenCalledWith(
-      "SECURITY_REVIEW_ENABLED",
-      "true",
-    );
-    expect(candidatesSessionTag()).toEqual({
-      name: "code-review",
-      metadata: expect.objectContaining({
-        pass: "candidates",
-        reviewType: "code",
-        securityReview: "true",
-      }),
-    });
-  });
+  it.each([
+    ["@droid", DroidRunType.Default, "default", "run_code_review"],
+    ["@droid review", DroidRunType.Review, "default", "run_code_review"],
+    ["@droid fill", DroidRunType.Fill, "default", "droid_args"],
+    [
+      "@droid security",
+      DroidRunType.SecurityReview,
+      "security",
+      "run_security_review",
+    ],
+  ] as const)(
+    "does not hijack %s when both automatic inputs are omitted",
+    async (body, runType, commentType, expectedOutput) => {
+      createAutomaticReviewContext(false, undefined);
+      delete process.env.AUTOMATIC_REVIEW;
+      github.context.eventName = "issue_comment";
+      github.context.payload = {
+        repository: { name: "test-repo", owner: { login: "test-owner" } },
+        issue: { number: 7, pull_request: {} },
+        comment: { id: 888, body, user: { login: "human-reviewer" } },
+      };
+      const context = parseGitHubContext();
+      // A prior security summary must not suppress a manual command.
+      const octokit = createAutomaticReviewOctokit(true);
+      promptSpy.mockRestore();
+      const logSpy = spyOn(console, "log").mockImplementation(() => {});
+      try {
+        expect(shouldTriggerTag(context)).toBe(true);
+        const result = await prepare({
+          context,
+          octokit,
+          githubToken: "token",
+        });
+        expect(result.skipped).toBeFalsy();
+        expect(createCommentSpy).toHaveBeenCalledWith(
+          octokit.rest,
+          context,
+          commentType,
+          runType,
+        );
+        expect(setOutputSpy).toHaveBeenCalledWith(
+          expectedOutput,
+          expect.any(String),
+        );
+        const prompt = await readFile(
+          path.join(tmpDir, "droid-prompts/droid-prompt.txt"),
+          "utf8",
+        );
+        expect(prompt).toContain("test-owner/test-repo");
+        expect(prompt).not.toContain("## Security Review (run concurrently)");
+        expect(prompt.includes("senior security engineer")).toBe(
+          runType === DroidRunType.SecurityReview,
+        );
+      } finally {
+        logSpy.mockRestore();
+      }
+    },
+  );
 });

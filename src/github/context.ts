@@ -157,7 +157,9 @@ export function parseGitHubContext(): GitHubContext {
       allowedNonWriteUsers: process.env.ALLOWED_NON_WRITE_USERS ?? "",
       trackProgress: process.env.TRACK_PROGRESS === "true",
       automaticReview: process.env.AUTOMATIC_REVIEW === "true",
-      automaticSecurityReview: process.env.AUTOMATIC_SECURITY_REVIEW === "true",
+      automaticSecurityReview:
+        (process.env.AUTOMATIC_SECURITY_REVIEW ||
+          process.env.AUTOMATIC_REVIEW) === "true",
       securityModel: process.env.SECURITY_MODEL ?? "",
       securitySeverityThreshold:
         process.env.SECURITY_SEVERITY_THRESHOLD ?? "medium",
