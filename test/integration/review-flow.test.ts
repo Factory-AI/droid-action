@@ -200,6 +200,7 @@ describe("review command integration", () => {
 
     const octokit = {
       rest: {
+        paginate: () => Promise.resolve([]),
         issues: {
           listComments: () => Promise.resolve({ data: [] }),
         },

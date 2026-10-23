@@ -122,13 +122,13 @@ export async function fetchAndStoreComments(
   await mkdir(promptsDir, { recursive: true });
 
   const [issueComments, reviewComments] = await Promise.all([
-    octokit.rest.issues.listComments({
+    octokit.rest.paginate(octokit.rest.issues.listComments, {
       owner,
       repo,
       issue_number: prNumber,
       per_page: 100,
     }),
-    octokit.rest.pulls.listReviewComments({
+    octokit.rest.paginate(octokit.rest.pulls.listReviewComments, {
       owner,
       repo,
       pull_number: prNumber,
@@ -137,14 +137,14 @@ export async function fetchAndStoreComments(
   ]);
 
   const comments = {
-    issueComments: issueComments.data,
-    reviewComments: reviewComments.data,
+    issueComments,
+    reviewComments,
   };
 
   const commentsPath = `${promptsDir}/existing_comments.json`;
   await writeFile(commentsPath, JSON.stringify(comments, null, 2));
   console.log(
-    `Stored existing comments (${issueComments.data.length} issue, ${reviewComments.data.length} review) at ${commentsPath}`,
+    `Stored existing comments (${issueComments.length} issue, ${reviewComments.length} review) at ${commentsPath}`,
   );
   return commentsPath;
 }

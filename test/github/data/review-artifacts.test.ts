@@ -7,6 +7,8 @@ import {
 } from "../../../src/github/data/review-artifacts";
 import * as childProcess from "child_process";
 import * as fsPromises from "fs/promises";
+import { Octokit } from "@octokit/rest";
+import type { Octokits } from "../../../src/github/api/client";
 
 describe("review-artifacts", () => {
   let execSyncSpy: ReturnType<typeof spyOn>;
@@ -125,42 +127,103 @@ describe("review-artifacts", () => {
   });
 
   describe("fetchAndStoreComments", () => {
-    it("fetches issue and review comments and writes JSON", async () => {
-      const mockOctokit = {
-        rest: {
-          issues: {
-            listComments: () =>
-              Promise.resolve({
-                data: [{ id: 1, body: "issue comment" }],
-              }),
-          },
-          pulls: {
-            listReviewComments: () =>
-              Promise.resolve({
-                data: [{ id: 2, body: "review comment" }],
-              }),
+    function commentClient(
+      issueCount: number,
+      reviewCount: number,
+      failPage = 0,
+    ) {
+      const issueComments = Array.from({ length: issueCount }, (_, i) => ({
+        id: i + 1,
+        body: `Discussion ${i + 1}`,
+        user: { login: "author" },
+      }));
+      const reviewComments = Array.from({ length: reviewCount }, (_, i) => ({
+        id: i + 1,
+        body: i === 102 ? "Declined: this is intentional" : `Finding ${i + 1}`,
+        user: { login: i === 102 ? "author" : "factory-droid[bot]" },
+        ...(i === 102 ? { in_reply_to_id: 101 } : {}),
+      }));
+      const requests: string[] = [];
+      const rest = new Octokit({
+        request: {
+          fetch: async (input: Request | string | URL) => {
+            const url = new URL(
+              input instanceof Request ? input.url : String(input),
+            );
+            requests.push(url.pathname + url.search);
+            const isReview =
+              url.pathname === "/repos/owner/repo/pulls/42/comments";
+            expect([
+              "/repos/owner/repo/issues/42/comments",
+              "/repos/owner/repo/pulls/42/comments",
+            ]).toContain(url.pathname);
+            expect(url.searchParams.get("per_page")).toBe("100");
+            const page = Number(url.searchParams.get("page") ?? 1);
+            if (isReview && page === failPage) {
+              return Response.json({ message: "Forbidden" }, { status: 403 });
+            }
+            const comments = isReview ? reviewComments : issueComments;
+            const headers: Record<string, string> = {};
+            if (page * 100 < comments.length) {
+              url.searchParams.set("page", String(page + 1));
+              headers.link = `<${url}>; rel="next"`;
+            }
+            return Response.json(comments.slice((page - 1) * 100, page * 100), {
+              headers,
+            });
           },
         },
-      } as any;
+      });
+      return {
+        octokit: { rest } as Octokits,
+        issueComments,
+        reviewComments,
+        requests,
+      };
+    }
 
-      const result = await fetchAndStoreComments(
-        mockOctokit,
-        "owner",
-        "repo",
-        42,
-        "/tmp/test",
-      );
+    it.each([
+      [0, 0],
+      [1, 1],
+      [100, 100],
+      [205, 103],
+    ])(
+      "stores all %i discussion and %i inline comments, including later replies",
+      async (issueCount, reviewCount) => {
+        const { octokit, issueComments, reviewComments, requests } =
+          commentClient(issueCount, reviewCount);
 
-      expect(result).toBe("/tmp/test/droid-prompts/existing_comments.json");
-      const writeCall = writeFileSpy.mock.calls.find(
-        (c: unknown[]) =>
-          typeof c[0] === "string" &&
-          (c[0] as string).includes("existing_comments.json"),
-      );
-      expect(writeCall).toBeDefined();
-      const written = JSON.parse(writeCall![1] as string);
-      expect(written.issueComments).toHaveLength(1);
-      expect(written.reviewComments).toHaveLength(1);
+        const result = await fetchAndStoreComments(
+          octokit,
+          "owner",
+          "repo",
+          42,
+          "/tmp/test",
+        );
+
+        expect(result).toBe("/tmp/test/droid-prompts/existing_comments.json");
+        const writeCall = writeFileSpy.mock.calls.find(
+          (c: unknown[]) =>
+            typeof c[0] === "string" &&
+            (c[0] as string).includes("existing_comments.json"),
+        );
+        expect(writeCall).toBeDefined();
+        const written = JSON.parse(writeCall![1] as string);
+        expect(written.issueComments).toEqual(issueComments);
+        expect(written.reviewComments).toEqual(reviewComments);
+        expect(requests).toHaveLength(
+          Math.max(1, Math.ceil(issueCount / 100)) +
+            Math.max(1, Math.ceil(reviewCount / 100)),
+        );
+      },
+    );
+
+    it("does not write a partial history when a later page fails", async () => {
+      const { octokit } = commentClient(1, 103, 2);
+      await expect(
+        fetchAndStoreComments(octokit, "owner", "repo", 42, "/tmp/test"),
+      ).rejects.toThrow("Forbidden");
+      expect(writeFileSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -207,6 +270,7 @@ describe("review-artifacts", () => {
 
       const mockOctokit = {
         rest: {
+          paginate: () => Promise.resolve([]),
           issues: {
             listComments: () => Promise.resolve({ data: [] }),
           },
