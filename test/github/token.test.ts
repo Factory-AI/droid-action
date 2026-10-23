@@ -54,7 +54,7 @@ describe("setupGitHubToken", () => {
   test("fetches token via OIDC exchange when override is absent", async () => {
     delete process.env.OVERRIDE_GITHUB_TOKEN;
 
-    const fetchMock = mock(async () => ({
+    const fetchMock = mock(async (_url: string, _init?: RequestInit) => ({
       ok: true,
       json: async () => ({ token: "app-token" }),
     }));
@@ -74,9 +74,44 @@ describe("setupGitHubToken", () => {
     expect(result).toBe("app-token");
     expect(getIdTokenSpy).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBeUndefined();
     expect(setSecretSpy).toHaveBeenCalledWith("app-token");
     expect(setOutputSpy).toHaveBeenCalledWith("GITHUB_TOKEN", "app-token");
     expect(retrySpy).toHaveBeenCalledTimes(2);
+
+    setOutputSpy.mockRestore();
+    setSecretSpy.mockRestore();
+    getIdTokenSpy.mockRestore();
+    retrySpy.mockRestore();
+  });
+  test("asks the exchange for the requested permissions", async () => {
+    delete process.env.OVERRIDE_GITHUB_TOKEN;
+
+    const fetchMock = mock(async (_url: string, _init?: RequestInit) => ({
+      ok: true,
+      json: async () => ({ token: "app-token" }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const setOutputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
+    const setSecretSpy = spyOn(core, "setSecret").mockImplementation(() => {});
+    const getIdTokenSpy = spyOn(core, "getIDToken").mockResolvedValue(
+      "oidc-token",
+    );
+    const retrySpy = spyOn(retryModule, "retryWithBackoff").mockImplementation(
+      <T>(operation: () => Promise<T>) => operation(),
+    );
+
+    await setupGitHubToken({ contents: "read", pull_requests: "write" });
+
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect(init?.headers).toMatchObject({
+      Authorization: "Bearer oidc-token",
+      "Content-Type": "application/json",
+    });
+    expect(JSON.parse(String(init?.body))).toEqual({
+      permissions: { contents: "read", pull_requests: "write" },
+    });
 
     setOutputSpy.mockRestore();
     setSecretSpy.mockRestore();

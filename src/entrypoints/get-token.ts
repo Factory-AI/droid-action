@@ -7,6 +7,7 @@
 import * as core from "@actions/core";
 import { writeFileSync } from "fs";
 import { setupGitHubToken } from "../github/token";
+import { parseAppTokenPermissions } from "../github/token-permissions";
 
 async function run() {
   try {
@@ -18,8 +19,11 @@ async function run() {
       core.setSecret(overrideToken);
       token = overrideToken;
     } else {
+      const permissions = parseAppTokenPermissions(
+        process.env.APP_TOKEN_PERMISSIONS,
+      );
       console.log("Requesting OIDC token...");
-      token = await setupGitHubToken();
+      token = await setupGitHubToken(permissions);
       console.log("GitHub token obtained via OIDC");
     }
 

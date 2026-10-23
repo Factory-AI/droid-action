@@ -7,6 +7,7 @@
 
 import * as core from "@actions/core";
 import { setupGitHubToken } from "../github/token";
+import { appTokenPermissionsFor } from "../github/token-permissions";
 import { checkWritePermissions } from "../github/validation/permissions";
 import { createOctokit } from "../github/api/client";
 import { parseGitHubContext, isEntityContext } from "../github/context";
@@ -21,8 +22,13 @@ async function run() {
     // Parse GitHub context first to enable mode detection
     const context = parseGitHubContext();
 
-    // Setup GitHub token
-    const githubToken = await setupGitHubToken();
+    // Only the full action narrows its token. The prepare sub-action hands the
+    // token to the caller's later steps, which may push or merge with it.
+    const githubToken = await setupGitHubToken(
+      process.env.SCOPE_APP_TOKEN === "true"
+        ? appTokenPermissionsFor(context)
+        : undefined,
+    );
     const octokit = createOctokit(githubToken);
 
     // Step 3: Check write permissions (only for entity contexts)
