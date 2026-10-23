@@ -10,7 +10,10 @@ import {
   mockPullRequestOpenedContext,
 } from "../mockContext";
 import type { ParsedGitHubContext } from "../../src/github/context";
-import type { IssueCommentEvent } from "@octokit/webhooks-types";
+import type {
+  IssueCommentEvent,
+  PullRequestOpenedEvent,
+} from "@octokit/webhooks-types";
 
 function withComment(
   context: ParsedGitHubContext,
@@ -20,6 +23,17 @@ function withComment(
   return {
     ...context,
     payload: { ...payload, comment: { ...payload.comment, body } },
+  };
+}
+
+function withPullRequestBody(
+  context: ParsedGitHubContext,
+  body: string,
+): ParsedGitHubContext {
+  const payload = context.payload as PullRequestOpenedEvent;
+  return {
+    ...context,
+    payload: { ...payload, pull_request: { ...payload.pull_request, body } },
   };
 }
 
@@ -46,6 +60,25 @@ describe("appTokenPermissionsFor", () => {
         withComment(mockPullRequestCommentContext, "@droid security --full"),
       ),
     ).toEqual({ contents: "write", pull_requests: "write" });
+  });
+
+  test("automatic reviews stay read-only even when the PR body asks for a full scan", () => {
+    const fullScanBody = withPullRequestBody(
+      mockPullRequestOpenedContext,
+      "@droid security --full",
+    );
+    for (const flag of ["automaticReview", "automaticSecurityReview"]) {
+      expect(
+        appTokenPermissionsFor({
+          ...fullScanBody,
+          inputs: { ...fullScanBody.inputs, [flag]: true },
+        }),
+      ).toEqual({ contents: "read", pull_requests: "write" });
+    }
+    expect(appTokenPermissionsFor(fullScanBody)).toEqual({
+      contents: "write",
+      pull_requests: "write",
+    });
   });
 
   test("an issue gets issue write and no pull request access", () => {

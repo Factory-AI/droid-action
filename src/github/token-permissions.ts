@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DroidRunType, resolveTagRunType } from "../run-type";
 import { isEntityContext, type GitHubContext } from "./context";
 import { extractCommandFromContext } from "./utils/command-parser";
 
@@ -39,7 +40,11 @@ export function appTokenPermissionsFor(
 
   // A full scan pushes a report branch and opens a pull request for it.
   const fullScan =
-    extractCommandFromContext(context)?.command === "security-full";
+    resolveTagRunType({
+      automaticReview: context.inputs.automaticReview,
+      automaticSecurityReview: context.inputs.automaticSecurityReview,
+      command: extractCommandFromContext(context)?.command ?? null,
+    }) === DroidRunType.SecurityScan;
   if (context.isPR) {
     return { contents: fullScan ? "write" : "read", pull_requests: "write" };
   }
