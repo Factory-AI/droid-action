@@ -1,7 +1,7 @@
 import * as core from "@actions/core";
-import { execSync } from "child_process";
 import type { GitHubContext } from "../../github/context";
 import { fetchPRBranchData } from "../../github/data/pr-fetcher";
+import { preparePullRequestHead } from "../../github/data/pr-checkout";
 import { computeReviewArtifacts } from "../../github/data/review-artifacts";
 import { createPrompt } from "../../create-prompt";
 import { prepareMcpTools } from "../../mcp/install-mcp-server";
@@ -58,26 +58,11 @@ export async function prepareSecurityReviewMode({
     currentBranch: prData.headRefName,
   };
 
-  // Checkout the PR branch before computing diff
-  console.log(
-    `Checking out PR #${context.entityNumber} branch for diff computation...`,
-  );
-  try {
-    execSync("git reset --hard HEAD", { encoding: "utf8", stdio: "pipe" });
-    execSync(`gh pr checkout ${context.entityNumber}`, {
-      encoding: "utf8",
-      stdio: "pipe",
-      env: { ...process.env, GH_TOKEN: githubToken },
-    });
-    console.log(
-      `Successfully checked out PR branch: ${execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf8" }).trim()}`,
-    );
-  } catch (e) {
-    console.error(`Failed to checkout PR branch: ${e}`);
-    throw new Error(
-      `Failed to checkout PR #${context.entityNumber} branch for security review`,
-    );
-  }
+  const headRevision = await preparePullRequestHead({
+    prNumber: context.entityNumber,
+    isFork: prData.isFork,
+    githubToken,
+  });
 
   // Pre-compute review artifacts (diff, existing comments, and PR description)
   const tempDir = process.env.RUNNER_TEMP || "/tmp";
@@ -91,6 +76,7 @@ export async function prepareSecurityReviewMode({
     title: prData.title,
     body: prData.body,
     githubToken,
+    headRevision,
   });
 
   await createPrompt({
@@ -101,6 +87,8 @@ export async function prepareSecurityReviewMode({
     prBranchData: {
       headRefName: prData.headRefName,
       headRefOid: prData.headRefOid,
+      isFork: prData.isFork,
+      headRevision,
     },
     generatePrompt: generateSecurityCandidatesPrompt,
     reviewArtifacts,

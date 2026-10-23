@@ -135,6 +135,7 @@ describe("prepareReviewMode", () => {
               baseRefName: MOCK_PR_DATA.baseRefName,
               headRefName: MOCK_PR_DATA.headRefName,
               headRefOid: MOCK_PR_DATA.headRefOid,
+              isCrossRepository: false,
               title: MOCK_PR_DATA.title,
               body: MOCK_PR_DATA.body,
             },
@@ -148,6 +149,7 @@ describe("prepareReviewMode", () => {
           baseRefName: MOCK_PR_DATA.baseRefName,
           headRefName: MOCK_PR_DATA.headRefName,
           headRefOid: MOCK_PR_DATA.headRefOid,
+          isCrossRepository: false,
           title: MOCK_PR_DATA.title,
           body: MOCK_PR_DATA.body,
         },
@@ -207,6 +209,147 @@ describe("prepareReviewMode", () => {
     });
   });
 
+  it("checks out a same-repository PR", async () => {
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: { comment: { id: 103, body: "@droid review" } } as any,
+      entityNumber: 26,
+    });
+    const octokit = {
+      rest: {
+        issues: { listComments: () => Promise.resolve({ data: [] }) },
+        pulls: { listReviewComments: () => Promise.resolve({ data: [] }) },
+      },
+      graphql: () =>
+        Promise.resolve({
+          repository: {
+            pullRequest: { ...MOCK_PR_DATA, isCrossRepository: false },
+          },
+        }),
+    } as any;
+
+    await prepareReviewMode({
+      context,
+      octokit,
+      githubToken: "token",
+      trackingCommentId: 555,
+    });
+
+    const commands = execSyncSpy.mock.calls.map((call: unknown[]) =>
+      String(call[0]),
+    );
+    expect(commands).toContain("gh pr checkout 26");
+    expect(commands.some((cmd: string) => cmd.includes("refs/pull/"))).toBe(
+      false,
+    );
+    expect(promptSpy.mock.calls[0]?.[0]?.prBranchData).toMatchObject({
+      isFork: false,
+      headRevision: "HEAD",
+    });
+  });
+
+  // The job holds the workflow's secrets, and a checked-out fork could plant
+  // files that tools in the job load and run (bunfig.toml, .env, .factory).
+  it("never checks out a fork PR and diffs its fetched head instead", async () => {
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: { comment: { id: 104, body: "@droid review" } } as any,
+      entityNumber: 27,
+    });
+    const octokit = {
+      rest: {
+        issues: { listComments: () => Promise.resolve({ data: [] }) },
+        pulls: { listReviewComments: () => Promise.resolve({ data: [] }) },
+      },
+      graphql: () =>
+        Promise.resolve({
+          repository: {
+            pullRequest: { ...MOCK_PR_DATA, isCrossRepository: true },
+          },
+        }),
+    } as any;
+
+    await prepareReviewMode({
+      context,
+      octokit,
+      githubToken: "token",
+      trackingCommentId: 555,
+    });
+
+    const commands = execSyncSpy.mock.calls.map((call: unknown[]) =>
+      String(call[0]),
+    );
+    expect(
+      commands.some(
+        (cmd: string) =>
+          cmd.includes("gh pr checkout") ||
+          cmd.includes("git reset") ||
+          /git (checkout|switch)\b/.test(cmd),
+      ),
+    ).toBe(false);
+    const forkRef = "refs/remotes/droid/pr-27-head";
+    expect(
+      commands.some((cmd: string) =>
+        cmd.endsWith(`fetch --no-tags origin +refs/pull/27/head:${forkRef}`),
+      ),
+    ).toBe(true);
+    expect(commands).toContain(
+      `git merge-base ${forkRef} refs/remotes/origin/main`,
+    );
+    expect(commands).toContain(`git --no-pager diff abc123def456..${forkRef}`);
+    expect(promptSpy.mock.calls[0]?.[0]?.prBranchData).toMatchObject({
+      isFork: true,
+      headRevision: forkRef,
+    });
+  });
+
+  it("falls back to the API diff when a fork PR's commits cannot be fetched", async () => {
+    execSyncSpy.mockImplementation(((cmd: string) => {
+      if (cmd.includes("refs/pull/")) throw new Error("fetch failed");
+      if (cmd.startsWith("gh pr diff")) return "diff from api\n";
+      return "";
+    }) as typeof childProcess.execSync);
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: { comment: { id: 105, body: "@droid review" } } as any,
+      entityNumber: 28,
+    });
+    const octokit = {
+      rest: {
+        issues: { listComments: () => Promise.resolve({ data: [] }) },
+        pulls: { listReviewComments: () => Promise.resolve({ data: [] }) },
+      },
+      graphql: () =>
+        Promise.resolve({
+          repository: {
+            pullRequest: { ...MOCK_PR_DATA, isCrossRepository: true },
+          },
+        }),
+    } as any;
+
+    await prepareReviewMode({
+      context,
+      octokit,
+      githubToken: "token",
+      trackingCommentId: 555,
+    });
+
+    const commands = execSyncSpy.mock.calls.map((call: unknown[]) =>
+      String(call[0]),
+    );
+    expect(commands).toContain("gh pr diff 28");
+    expect(commands.some((cmd: string) => cmd.includes("merge-base"))).toBe(
+      false,
+    );
+    expect(promptSpy.mock.calls[0]?.[0]?.prBranchData).toMatchObject({
+      isFork: true,
+      headRevision: null,
+    });
+  });
+
   it("creates tracking comment when not provided", async () => {
     const context = createMockContext({
       eventName: "issue_comment",
@@ -236,6 +379,7 @@ describe("prepareReviewMode", () => {
               baseRefName: MOCK_PR_DATA.baseRefName,
               headRefName: MOCK_PR_DATA.headRefName,
               headRefOid: MOCK_PR_DATA.headRefOid,
+              isCrossRepository: false,
               title: MOCK_PR_DATA.title,
               body: MOCK_PR_DATA.body,
             },
@@ -249,6 +393,7 @@ describe("prepareReviewMode", () => {
           baseRefName: MOCK_PR_DATA.baseRefName,
           headRefName: MOCK_PR_DATA.headRefName,
           headRefOid: MOCK_PR_DATA.headRefOid,
+          isCrossRepository: false,
           title: MOCK_PR_DATA.title,
           body: MOCK_PR_DATA.body,
         },
@@ -313,6 +458,7 @@ describe("prepareReviewMode", () => {
               baseRefName: MOCK_PR_DATA.baseRefName,
               headRefName: MOCK_PR_DATA.headRefName,
               headRefOid: MOCK_PR_DATA.headRefOid,
+              isCrossRepository: false,
               title: MOCK_PR_DATA.title,
               body: MOCK_PR_DATA.body,
             },
@@ -326,6 +472,7 @@ describe("prepareReviewMode", () => {
           baseRefName: MOCK_PR_DATA.baseRefName,
           headRefName: MOCK_PR_DATA.headRefName,
           headRefOid: MOCK_PR_DATA.headRefOid,
+          isCrossRepository: false,
           title: MOCK_PR_DATA.title,
           body: MOCK_PR_DATA.body,
         },
@@ -379,6 +526,7 @@ describe("prepareReviewMode", () => {
               baseRefName: MOCK_PR_DATA.baseRefName,
               headRefName: MOCK_PR_DATA.headRefName,
               headRefOid: MOCK_PR_DATA.headRefOid,
+              isCrossRepository: false,
               title: MOCK_PR_DATA.title,
               body: MOCK_PR_DATA.body,
             },
@@ -392,6 +540,7 @@ describe("prepareReviewMode", () => {
           baseRefName: MOCK_PR_DATA.baseRefName,
           headRefName: MOCK_PR_DATA.headRefName,
           headRefOid: MOCK_PR_DATA.headRefOid,
+          isCrossRepository: false,
           title: MOCK_PR_DATA.title,
           body: MOCK_PR_DATA.body,
         },
@@ -444,6 +593,7 @@ describe("prepareReviewMode", () => {
           baseRefName: MOCK_PR_DATA.baseRefName,
           headRefName: MOCK_PR_DATA.headRefName,
           headRefOid: MOCK_PR_DATA.headRefOid,
+          isCrossRepository: false,
           title: "Add new feature",
           body: "This PR adds a new feature\n\nFixes: https://linear.app/team/PROJ-123",
         },
@@ -500,6 +650,7 @@ describe("prepareReviewMode", () => {
           baseRefName: MOCK_PR_DATA.baseRefName,
           headRefName: MOCK_PR_DATA.headRefName,
           headRefOid: MOCK_PR_DATA.headRefOid,
+          isCrossRepository: false,
           title: "Quick fix",
           body: null,
         },
@@ -554,6 +705,7 @@ describe("prepareReviewMode", () => {
           baseRefName: MOCK_PR_DATA.baseRefName,
           headRefName: MOCK_PR_DATA.headRefName,
           headRefOid: MOCK_PR_DATA.headRefOid,
+          isCrossRepository: false,
           title: MOCK_PR_DATA.title,
           body: MOCK_PR_DATA.body,
         },
@@ -607,6 +759,7 @@ describe("prepareReviewMode", () => {
           baseRefName: MOCK_PR_DATA.baseRefName,
           headRefName: MOCK_PR_DATA.headRefName,
           headRefOid: MOCK_PR_DATA.headRefOid,
+          isCrossRepository: false,
           title: MOCK_PR_DATA.title,
           body: MOCK_PR_DATA.body,
         },

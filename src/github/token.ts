@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import * as core from "@actions/core";
+import { GITHUB_API_URL } from "./api/config";
 import { retryWithBackoff } from "../utils/retry";
 
 async function getOidcToken(): Promise<string> {
@@ -122,6 +123,31 @@ async function exchangeForAppToken(oidcToken: string): Promise<string> {
   core.setSecret(appTokenData.token);
 
   return appTokenData.token;
+}
+
+/**
+ * Ends an installation token's life now rather than at its one-hour expiry.
+ * A 401 means it is already expired or revoked, which is the goal anyway.
+ */
+export async function revokeGitHubAppToken(token: string): Promise<void> {
+  await retryWithBackoff(
+    async () => {
+      const response = await fetch(`${GITHUB_API_URL}/installation/token`, {
+        method: "DELETE",
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${token}`,
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+      });
+      if (response.status !== 204 && response.status !== 401) {
+        throw new Error(
+          `Token revocation failed with status ${response.status}`,
+        );
+      }
+    },
+    { maxAttempts: 3, initialDelayMs: 1000, maxDelayMs: 4000 },
+  );
 }
 
 export async function setupGitHubToken(): Promise<string> {

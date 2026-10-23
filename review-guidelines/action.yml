@@ -45,9 +45,9 @@ runs:
       env:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
 
-    # Gets its own token and deletes it before the step ends, so the distill
-    # step cannot find it. The miner classifies each comment with `droid exec`,
-    # which needs the Factory API key.
+    # Gets its own token and revokes it before the step ends, so the distill
+    # step cannot find or use it. The miner classifies each comment with
+    # `droid exec`, which needs the Factory API key.
     - name: Mine review comments
       id: mine
       shell: bash
@@ -72,6 +72,9 @@ runs:
       id: stage
       shell: bash
       run: bash ${{ github.action_path }}/stage.sh
+      env:
+        # Only to check that the staged files do not contain it.
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
 
     - name: Upload the guidelines
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
