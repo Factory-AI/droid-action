@@ -81,10 +81,11 @@ droid
 
 The guided flow will:
 
-- Detect whether your repository lives on GitHub or GitLab.
+- Detect whether your repository lives on GitHub, GitLab, or Bitbucket.
 - Help you install the Droid GitHub App (or configure GitLab access).
 - Generate the workflow files (`droid.yml` and `droid-review.yml`) with sensible defaults.
 - Prompt you for `review_depth`, security review options, and other inputs.
+- Recommend security review for new GitHub setups, while retaining an explicit opt-out.
 - Open a PR/MR containing the new workflow files for you to review and merge.
 
 For GitHub-only setups you can also run `/install-github-app`. See the [Automated Code Review guide](https://docs.factory.ai/guides/droid-exec/code-review) and the [GitHub App installation guide](https://docs.factory.ai/cli/features/install-github-app) for full details.
@@ -121,6 +122,31 @@ include:
 ```
 
 Full setup, available inputs, and troubleshooting live in [`docs/gitlab-setup.md`](docs/gitlab-setup.md).
+
+### Bitbucket
+
+Bitbucket Cloud and Bitbucket Data Center get the same automated review: inline PR comments, a sticky tracking comment, optional security review, and review depth presets. One CI-agnostic script, [`bitbucket/droid-review.sh`](bitbucket/droid-review.sh), runs the review from Bitbucket Pipelines (Cloud), Jenkins, or Bamboo (Data Center).
+
+Bitbucket Cloud `bitbucket-pipelines.yml` (secured variables `FACTORY_API_KEY` and `DROID_BITBUCKET_TOKEN`):
+
+```yaml
+pipelines:
+  pull-requests:
+    "**":
+      - step:
+          name: Droid code review
+          image: oven/bun:1.2.11
+          script:
+            - apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates curl
+            - git clone --depth 1 --branch "${DROID_ACTION_REF:-main}" https://github.com/Factory-AI/droid-action.git /tmp/droid-action
+            - bash /tmp/droid-action/bitbucket/droid-review.sh
+```
+
+Workspace-wide rollout, Data Center CI examples, enforcement, and troubleshooting live in [`docs/bitbucket-setup.md`](docs/bitbucket-setup.md).
+
+### Azure DevOps
+
+Azure Repos pull requests (Azure DevOps Services and Azure DevOps Server 2020+) are reviewed by an Azure Pipelines job run from a Build validation branch policy. Copy [`azure-devops/droid-review.yml`](azure-devops/droid-review.yml) into your repository and follow [`docs/azure-devops-setup.md`](docs/azure-devops-setup.md).
 
 ### Manual Setup
 
@@ -224,6 +250,8 @@ jobs:
 Set `automatic_review: true` to run code reviews automatically on non-draft PRs. Set `automatic_security_review: true` to additionally run a STRIDE-based security review concurrently on every non-draft PR.
 The example allows reviews triggered by `factory-droid[bot]`. `allowed_bots` checks the event actor, not the PR author, so PRs opened by other bots can also be reviewed when a human triggers the workflow.
 
+On GitHub, omitting `automatic_security_review` (or leaving it empty) follows `automatic_review`. Existing workflows with `automatic_review: true` therefore also run security review unless they explicitly set `automatic_security_review: false`. New GitHub setup tooling writes your choice explicitly. Workflows that omit both inputs remain mention-driven, and explicit `@droid security` commands remain available.
+
 Both examples set `persist-credentials: false` so the workflow's `GITHUB_TOKEN` is not left in `.git/config`, where any command Droid runs could read it. The action authenticates its own git commands through `gh`.
 
 Pull requests from forks are reviewed without checking out their code. The action fetches the fork's commits to a separate ref and reviews the diff, so files from the fork, such as `.factory` hooks and MCP servers, `bunfig.toml` and `.env`, are never loaded in a job that holds your secrets. Droid is told it is reviewing a fork and reads the fork's files from that ref.
@@ -257,7 +285,7 @@ Pull requests from forks are reviewed without checking out their code. The actio
 
 #### Enabling automatic security review
 
-To run the security review on every non-draft PR (alongside the regular code review), add `automatic_security_review: true` to your `droid-review.yml`:
+Security review is enabled by default in GitHub workflows with `automatic_review: true`. You can also set it explicitly in your `droid-review.yml`:
 
 ```yaml
 - name: Run Droid Auto Review
@@ -377,12 +405,14 @@ To leave comments and approvals on your PRs, Droid needs a GitHub token. There a
   with:
     factory_api_key: ${{ secrets.FACTORY_API_KEY }}
     automatic_review: true
+    automatic_security_review: true
 
 # Shallow review for faster feedback
 - uses: Factory-AI/droid-action@main
   with:
     factory_api_key: ${{ secrets.FACTORY_API_KEY }}
     automatic_review: true
+    automatic_security_review: true
     review_depth: shallow
 ```
 
@@ -392,15 +422,15 @@ We recommend using one of these presets rather than choosing a model yourself. I
 
 ### Security Configuration
 
-| Input                         | Default  | Purpose                                                                                                           |
-| ----------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------- |
-| `automatic_security_review`   | `false`  | Automatically run security review on PRs without requiring `@droid security`.                                     |
-| `security_severity_threshold` | `medium` | Minimum severity to report (`critical`, `high`, `medium`, `low`). Findings below this threshold are filtered out. |
-| `security_block_on_critical`  | `true`   | Submit `REQUEST_CHANGES` review when critical severity findings are detected.                                     |
-| `security_block_on_high`      | `false`  | Submit `REQUEST_CHANGES` review when high severity findings are detected.                                         |
-| `security_notify_team`        | `""`     | GitHub team to @mention on critical findings (e.g., `@org/security-team`).                                        |
-| `security_scan_schedule`      | `false`  | Configuration for scheduled security scans (when invoked from scheduled workflows).                               |
-| `security_scan_days`          | `7`      | Number of days of commits to scan for scheduled security scans.                                                   |
+| Input                         | Default                    | Purpose                                                                                                           |
+| ----------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `automatic_security_review`   | Follows `automatic_review` | Automatically run security review on PRs without requiring `@droid security`. Set `false` to opt out.             |
+| `security_severity_threshold` | `medium`                   | Minimum severity to report (`critical`, `high`, `medium`, `low`). Findings below this threshold are filtered out. |
+| `security_block_on_critical`  | `true`                     | Submit `REQUEST_CHANGES` review when critical severity findings are detected.                                     |
+| `security_block_on_high`      | `false`                    | Submit `REQUEST_CHANGES` review when high severity findings are detected.                                         |
+| `security_notify_team`        | `""`                       | GitHub team to @mention on critical findings (e.g., `@org/security-team`).                                        |
+| `security_scan_schedule`      | `false`                    | Configuration for scheduled security scans (when invoked from scheduled workflows).                               |
+| `security_scan_days`          | `7`                        | Number of days of commits to scan for scheduled security scans.                                                   |
 
 ## Custom Review Guidelines
 
@@ -511,6 +541,7 @@ If you set a model, use a provider tier alias. Factory keeps each alias on its r
   with:
     factory_api_key: ${{ secrets.FACTORY_API_KEY }}
     automatic_review: true
+    automatic_security_review: true
     review_model: openai-latest-premium # or anthropic-latest-balanced
 ```
 
