@@ -446,6 +446,10 @@ runs:
         DROID_POST_ERROR_MESSAGE: ${{ steps.post_review.outputs.error_message || '' }}
         REVIEW_POST_RESULTS_PATH: ${{ runner.temp }}/droid-prompts/review_post_results.json
         MODEL_FALLBACK_NOTE: ${{ steps.prepare.outputs.model_fallback_note || steps.prepare_validator.outputs.model_fallback_note || steps.droid.outputs.model_fallback_note || steps.droid_validator.outputs.model_fallback_note || '' }}
+        DROID_REQUESTED_MODEL: ${{ steps.droid.outputs.requested_model || '' }}
+        DROID_OBSERVED_MODEL: ${{ steps.droid.outputs.observed_model || '' }}
+        DROID_VALIDATOR_REQUESTED_MODEL: ${{ steps.droid_validator.outputs.requested_model || '' }}
+        DROID_VALIDATOR_OBSERVED_MODEL: ${{ steps.droid_validator.outputs.observed_model || '' }}
         USE_STICKY_COMMENT: ${{ inputs.use_sticky_comment }}
         TRACK_PROGRESS: ${{ inputs.track_progress }}
         AUTOMATIC_REVIEW: ${{ inputs.automatic_review }}

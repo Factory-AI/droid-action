@@ -182,6 +182,18 @@ async function run() {
       triggerUsername,
       errorDetails,
       notice: process.env.MODEL_FALLBACK_NOTE?.trim() || undefined,
+      models: {
+        generation: {
+          requested: process.env.DROID_REQUESTED_MODEL?.trim() || undefined,
+          observed: process.env.DROID_OBSERVED_MODEL?.trim() || undefined,
+        },
+        validation: {
+          requested:
+            process.env.DROID_VALIDATOR_REQUESTED_MODEL?.trim() || undefined,
+          observed:
+            process.env.DROID_VALIDATOR_OBSERVED_MODEL?.trim() || undefined,
+        },
+      },
       securityReviewRan: process.env.AUTOMATIC_SECURITY_REVIEW === "true",
       review,
       prCommentRunType: parsePrValidationRunType(

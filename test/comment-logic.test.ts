@@ -741,4 +741,85 @@ describe("updateCommentBody", () => {
       expect(secondPass).toContain("Review summary content");
     });
   });
+
+  describe("Models subheader", () => {
+    it("renders requested and observed ids for both stages when they differ", () => {
+      const result = updateCommentBody({
+        ...baseInput,
+        models: {
+          generation: {
+            requested: "openai-latest-premium",
+            observed: "gpt-5.2",
+          },
+          validation: {
+            requested: "openai-latest-balanced",
+            observed: "gpt-5.1",
+          },
+        },
+      });
+      expect(result).toContain(
+        "**Models** — generation `openai-latest-premium` → `gpt-5.2` • " +
+          "validation `openai-latest-balanced` → `gpt-5.1` " +
+          "*(requested → session-reported)*",
+      );
+    });
+
+    it("shows one id when the session reported the requested model", () => {
+      const result = updateCommentBody({
+        ...baseInput,
+        models: {
+          generation: { requested: "gpt-5.2", observed: "gpt-5.2" },
+        },
+      });
+      expect(result).toContain("**Models** — generation `gpt-5.2`");
+      expect(result).not.toContain("`gpt-5.2` →");
+    });
+
+    it("never substitutes the requested id when the session reported none", () => {
+      const result = updateCommentBody({
+        ...baseInput,
+        models: {
+          generation: { requested: "openai-latest-balanced" },
+          validation: { observed: "gpt-5.2" },
+        },
+      });
+      expect(result).toContain(
+        "generation `openai-latest-balanced` (not reported)",
+      );
+      expect(result).toContain("validation `gpt-5.2` (observed only)");
+      expect(result).not.toContain("→ `openai-latest-balanced`");
+    });
+
+    it("omits the subheader when there is no model evidence", () => {
+      const result = updateCommentBody({ ...baseInput, models: {} });
+      expect(result).not.toContain("**Models**");
+      const noMetadata = updateCommentBody({ ...baseInput });
+      expect(noMetadata).not.toContain("**Models**");
+    });
+
+    it("omits stages whose metadata is empty or undefined", () => {
+      // The entrypoint always passes both stage objects, often with no
+      // values; they must not render as `undefined` rows.
+      const result = updateCommentBody({
+        ...baseInput,
+        models: {
+          generation: { requested: undefined, observed: undefined },
+          validation: {},
+        },
+      });
+      expect(result).not.toContain("**Models**");
+      expect(result).not.toContain("undefined");
+    });
+
+    it("replaces a stale Models subheader from a previous run", () => {
+      const result = updateCommentBody({
+        ...baseInput,
+        currentBody:
+          "Droid is working…\n\n**Models** — generation `old-model` *(",
+        models: { generation: { observed: "new-model" } },
+      });
+      expect(result).toContain("generation `new-model` (observed only)");
+      expect(result).not.toContain("old-model");
+    });
+  });
 });

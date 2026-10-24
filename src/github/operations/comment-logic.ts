@@ -13,6 +13,25 @@ export type ExecutionDetails = {
   duration_api_ms?: number;
 };
 
+/**
+ * Model metadata for one execution stage, as two distinct kinds of evidence:
+ * - `requested`: the model id the workflow resolved and passed to Droid Exec
+ *   via `--model` (empty when none was requested).
+ * - `observed`: the model id the Droid CLI session itself reported in its
+ *   stream output.
+ * Neither is a verified provider backend; when the session does not report a
+ * model it stays unknown and must never be substituted with the requested id.
+ */
+export type ModelStageMetadata = {
+  requested?: string;
+  observed?: string;
+};
+
+export type ModelMetadata = {
+  generation?: ModelStageMetadata;
+  validation?: ModelStageMetadata;
+};
+
 export type CommentUpdateInput = {
   currentBody: string;
   actionFailed: boolean;
@@ -28,6 +47,7 @@ export type CommentUpdateInput = {
   review?: ReviewPostOutcome | null;
   prCommentRunType?: PrCommentRunType;
   prCommentKind?: PrCommentKind;
+  models?: ModelMetadata;
 };
 
 const MODEL_POLICY_ERROR_PATTERN =
@@ -55,6 +75,43 @@ const INVALID_MODEL_HINT =
 
 export const SECURITY_REVIEW_BADGE =
   "![Security Review](https://img.shields.io/badge/security%20review-ran-blue)";
+
+const MODELS_LEGEND = "requested → session-reported";
+
+function describeModelStage(stage: ModelStageMetadata): string | null {
+  const requested = stage.requested?.trim();
+  const observed = stage.observed?.trim();
+  if (!requested && !observed) return null;
+  if (requested && observed) {
+    return observed === requested
+      ? `\`${observed}\``
+      : `\`${requested}\` → \`${observed}\``;
+  }
+  if (requested) {
+    // The session did not report a model; never pass the requested id off
+    // as what ran.
+    return `\`${requested}\` (not reported)`;
+  }
+  return `\`${observed}\` (observed only)`;
+}
+
+/**
+ * Renders the compact Models subheader shown inside the tracking comment:
+ * one cell per execution stage with any model evidence. Returns null when
+ * there is nothing to show.
+ */
+export function renderModelsSubheader(
+  models: ModelMetadata | undefined | null,
+): string | null {
+  const cells: string[] = [];
+  for (const [stage, metadata] of Object.entries(models ?? {})) {
+    if (!metadata) continue;
+    const cell = describeModelStage(metadata);
+    if (cell) cells.push(`${stage} ${cell}`);
+  }
+  if (cells.length === 0) return null;
+  return `**Models** — ${cells.join(" • ")} *(${MODELS_LEGEND})*`;
+}
 
 export function ensureProperlyEncodedUrl(url: string): string | null {
   try {
@@ -139,6 +196,8 @@ export function updateCommentBody(input: CommentUpdateInput): string {
     /^\*\*(?:Droid finished [^\n]*|Droid encountered an error[^\n]*)\*\*.*$/gim,
     "",
   );
+  // Strip a previous Models subheader so re-runs do not stack duplicates.
+  bodyContent = bodyContent.replace(/^\*\*Models\*\*.*$/gim, "");
   bodyContent = bodyContent.trim();
 
   // Check if there's a PR link in the content
@@ -237,6 +296,13 @@ export function updateCommentBody(input: CommentUpdateInput): string {
 
   // Build the new body with blank line between header and separator
   let newBody = `${header}${links}`;
+
+  // Compact Models subheader inside the summary: requested and
+  // session-reported model ids per execution stage.
+  const modelsLine = renderModelsSubheader(input.models);
+  if (modelsLine) {
+    newBody += `\n\n${modelsLine}`;
+  }
 
   // Add error details if available
   if (actionFailed && errorDetails) {

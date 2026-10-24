@@ -193,6 +193,10 @@ runs:
         DROID_POST_ERROR_MESSAGE: ${{ steps.post_review.outputs.error_message || '' }}
         REVIEW_POST_RESULTS_PATH: ${{ runner.temp }}/droid-prompts/review_post_results.json
         MODEL_FALLBACK_NOTE: ${{ steps.prompt.outputs.model_fallback_note || steps.prepare_validator.outputs.model_fallback_note || steps.review.outputs.model_fallback_note || steps.validator.outputs.model_fallback_note || '' }}
+        DROID_REQUESTED_MODEL: ${{ steps.review.outputs.requested_model || '' }}
+        DROID_OBSERVED_MODEL: ${{ steps.review.outputs.observed_model || '' }}
+        DROID_VALIDATOR_REQUESTED_MODEL: ${{ steps.validator.outputs.requested_model || '' }}
+        DROID_VALIDATOR_OBSERVED_MODEL: ${{ steps.validator.outputs.observed_model || '' }}
 
     # Must stay the last step: everything above may still call GitHub with the
     # token. A provided github_token belongs to the caller and is left alone.

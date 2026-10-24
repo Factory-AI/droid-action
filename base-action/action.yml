@@ -61,6 +61,12 @@ outputs:
   conclusion:
     description: "Execution status of Droid Exec ('success' or 'failure')"
     value: ${{ steps.run_droid.outputs.conclusion }}
+  requested_model:
+    description: "Model id requested for this run, parsed from the resolved --model argument. Empty when no model was requested."
+    value: ${{ steps.run_droid.outputs.requested_model }}
+  observed_model:
+    description: "Model id the Droid session itself reported in its stream output. Empty when the CLI did not report one; never a verified provider backend."
+    value: ${{ steps.run_droid.outputs.observed_model }}
 
 runs:
   using: "composite"

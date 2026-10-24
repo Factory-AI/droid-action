@@ -184,6 +184,11 @@ export function parseMaxTurns(value: string | undefined): number | null {
   return parsed;
 }
 
+// Model id the Droid CLI itself reports for the session, extracted from its
+// stream output; re-exported for standalone base-action consumers.
+import { extractObservedModel } from "./utils/observed-model";
+export { extractObservedModel };
+
 /**
  * Counts assistant turns in `droid exec --output-format stream-json` output.
  *
@@ -436,10 +441,15 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
   const getLastResultEvent = (): ResultEvent | null => lastResultEvent;
   const getStderrTail = (): string => stderrTail;
   const getLastAgentLoopError = (): string | null => lastAgentLoopError;
+  let observedModel: string | null = null;
+  const getObservedModel = (): string | null => observedModel;
 
   const runDroidOnce = (): Promise<number> => {
     stderrTail = "";
     lastAgentLoopError = null;
+    // Each attempt's stream is its own evidence; a model reported by an
+    // earlier attempt must not survive into the retry's result.
+    observedModel = null;
     const turns = createTurnCounter();
     let turnLimitHit = false;
     const droidProcess = spawn(droidExecutable, currentDroidArgs, {
@@ -511,6 +521,10 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
             sessionId = detectedSessionId;
             console.log(`Detected Droid session: ${sessionId}`);
           }
+        }
+        const detectedModel = extractObservedModel(parsed);
+        if (detectedModel) {
+          observedModel = detectedModel;
         }
         if (
           typeof parsed === "object" &&
@@ -685,6 +699,8 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
     );
     await unregisterMcpServers(registeredMcpServers);
     core.setOutput("conclusion", "success");
+    core.setOutput("requested_model", requestedModel ?? "");
+    core.setOutput("observed_model", getObservedModel() ?? "");
     return;
   } catch (_) {
     await unregisterMcpServers(registeredMcpServers);
@@ -722,6 +738,8 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
     console.error(`Droid Exec failed: ${errorMessage}`);
     core.setOutput("error_message", errorMessage);
     core.setOutput("conclusion", "failure");
+    core.setOutput("requested_model", requestedModel ?? "");
+    core.setOutput("observed_model", getObservedModel() ?? "");
     process.exit(lastExitCode);
   }
 }
