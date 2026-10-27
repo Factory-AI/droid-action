@@ -358,7 +358,7 @@ To leave comments and approvals on your PRs, Droid needs a GitHub token. There a
     id-token: write # required for GitHub App auth
   ```
 
-  The action revokes this app token when it finishes, so later steps in your job cannot use its `github_token` output.
+  The app token only carries what the run needs: a review can read code and write to pull requests, but not change workflows, checks, or repository settings. The action revokes it when it finishes, so later steps in your job cannot use its `github_token` output.
 
 - **Your own token (override).** If you'd rather use a personal access token or your own GitHub App — for example on GitHub Enterprise, or to control which account posts comments — pass it as `github_token`. When set, Droid uses it directly and skips the app. The token needs write access to pull requests and repository contents.
 
