@@ -63,7 +63,7 @@ fetch_from_git() {
 
 fetch_from_url() {
   local url="$1"
-  local -a curl_args=(--retry 3 --retry-delay 2 -fsS --proto =https)
+  local -a curl_args=(--retry 3 --retry-delay 2 -fsS --proto "=https")
   local http_code
   # Same-instance URLs (e.g. the /projects/:id/repository/files/.../raw
   # API) authenticate with the job token, and never follow redirects so the
@@ -74,7 +74,7 @@ fetch_from_url() {
       curl_args+=(--header "JOB-TOKEN: ${CI_JOB_TOKEN:-}")
       ;;
     *)
-      curl_args+=(-L --proto-redir =https)
+      curl_args+=(-L --proto-redir "=https")
       ;;
   esac
   if ! http_code="$(curl "${curl_args[@]}" -w '%{http_code}' "$url" -o "$WORK_DIR/guidelines.md")" ||

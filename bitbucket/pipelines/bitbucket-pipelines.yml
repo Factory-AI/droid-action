@@ -1,0 +1,26 @@
+# Droid code review for Bitbucket Cloud pull requests.
+#
+# Copy this file to the root of your repository as `bitbucket-pipelines.yml`
+# (or merge the step into your existing `pull-requests:` section), then add
+# these secured repository or workspace variables:
+#
+#   FACTORY_API_KEY        Factory API key
+#   DROID_BITBUCKET_TOKEN  Repository/project/workspace access token with
+#                          `pullrequest:write` and `repository` scopes
+#
+# Optional variables: AUTOMATIC_SECURITY_REVIEW, REVIEW_DEPTH, REVIEW_DRAFTS,
+# INCLUDE_SUGGESTIONS, BUILD_STATUS, DROID_ACTION_REF. See
+# https://github.com/Factory-AI/droid-action/blob/main/docs/bitbucket-setup.md
+pipelines:
+  pull-requests:
+    "**":
+      - step:
+          name: Droid code review
+          image: oven/bun:1.2.11
+          max-time: 60
+          script:
+            - apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates curl
+            - git clone --depth 1 --branch "${DROID_ACTION_REF:-main}" https://github.com/Factory-AI/droid-action.git /tmp/droid-action
+            - bash /tmp/droid-action/bitbucket/droid-review.sh
+          artifacts:
+            - .droid-debug/**
