@@ -3,15 +3,23 @@ import * as core from "@actions/core";
 /**
  * Subset of the Factory org model policy returned by
  * GET /api/organization/managed-settings. Unknown fields are ignored.
+ *
+ * `customModelIds` are the org-managed BYOK custom model ids (from
+ * `settings.customModels`), carried so a custom model can be recognized and
+ * gated on `allowCustomModels` instead of the Factory-model allow list, which
+ * is what the server does.
  */
 export type ModelPolicy = {
   allowedModelIds?: string[];
   blockedModelIds?: string[];
   allowAllFactoryModels?: boolean;
+  allowCustomModels?: boolean;
+  customModelIds?: string[];
 };
 
 const DEFAULT_FACTORY_API_BASE_URL = "https://app.factory.ai";
 const FETCH_TIMEOUT_MS = 10_000;
+const CUSTOM_MODEL_PREFIX = "custom:";
 
 /**
  * Matches the 403 error returned by the Factory API when a request uses a
@@ -25,6 +33,35 @@ export function isModelPolicyError(text: string | undefined | null): boolean {
     return false;
   }
   return MODEL_POLICY_ERROR_PATTERN.test(text);
+}
+
+/**
+ * Collect the ids a custom model can be addressed by. The CLI accepts the
+ * canonical `custom:<name>-<index>` id, the same id without the `custom:`
+ * prefix, and (legacy) the provider model name, so all three are kept.
+ */
+function collectCustomModelIds(customModels: unknown): string[] {
+  if (!Array.isArray(customModels)) {
+    return [];
+  }
+  const ids = new Set<string>();
+  for (const entry of customModels) {
+    if (typeof entry !== "object" || entry === null) {
+      continue;
+    }
+    const { id, model } = entry as { id?: unknown; model?: unknown };
+    if (typeof id === "string" && id) {
+      ids.add(id);
+      if (id.startsWith(CUSTOM_MODEL_PREFIX)) {
+        ids.add(id.slice(CUSTOM_MODEL_PREFIX.length));
+      }
+    }
+    if (typeof model === "string" && model) {
+      ids.add(model);
+      ids.add(`${CUSTOM_MODEL_PREFIX}${model}`);
+    }
+  }
+  return [...ids];
 }
 
 /**
@@ -94,6 +131,13 @@ export async function fetchModelPolicy(
         typeof policy.allowAllFactoryModels === "boolean"
           ? policy.allowAllFactoryModels
           : undefined,
+      allowCustomModels:
+        typeof policy.allowCustomModels === "boolean"
+          ? policy.allowCustomModels
+          : undefined,
+      customModelIds: collectCustomModelIds(
+        (settings as { customModels?: unknown }).customModels,
+      ),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -114,6 +158,21 @@ export function isModelTierAlias(modelId: string): boolean {
 }
 
 /**
+ * Whether the id names a BYOK custom model rather than a Factory model: an
+ * explicit `custom:` id, or an id that matches one of the org-managed custom
+ * models (the CLI also resolves unprefixed ids against them).
+ */
+export function isCustomModel(
+  modelId: string,
+  policy: ModelPolicy | null | undefined,
+): boolean {
+  return (
+    modelId.startsWith(CUSTOM_MODEL_PREFIX) ||
+    (policy?.customModelIds?.includes(modelId) ?? false)
+  );
+}
+
+/**
  * Conservative client-side mirror of the server-side model policy check.
  * Only returns false when the policy definitively disallows the model;
  * any ambiguity resolves to allowed (the server remains the enforcer).
@@ -124,6 +183,12 @@ export function isModelAllowedByPolicy(
 ): boolean {
   if (!policy || isModelTierAlias(modelId)) {
     return true;
+  }
+  // Custom models are governed only by the custom-model toggle; the Factory
+  // allow/block lists never name them, so checking them there would reject
+  // every custom model in an org that uses an allow list.
+  if (isCustomModel(modelId, policy)) {
+    return policy.allowCustomModels !== false;
   }
   if (policy.blockedModelIds?.includes(modelId)) {
     return false;
