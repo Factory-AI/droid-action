@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import {
   applyModelPolicyFallback,
   fetchModelPolicy,
+  isCustomModel,
   isModelAllowedByPolicy,
   isModelPolicyError,
 } from "../src/utils/model-policy";
@@ -15,9 +16,12 @@ function mockFetch(handler: () => Promise<Response> | Response) {
   }) as unknown as typeof fetch;
 }
 
-function managedSettingsResponse(modelPolicy: unknown): Response {
+function managedSettingsResponse(
+  modelPolicy: unknown,
+  customModels?: unknown,
+): Response {
   return new Response(
-    JSON.stringify({ success: true, settings: { modelPolicy } }),
+    JSON.stringify({ success: true, settings: { modelPolicy, customModels } }),
     { status: 200, headers: { "Content-Type": "application/json" } },
   );
 }
@@ -102,6 +106,70 @@ describe("isModelAllowedByPolicy", () => {
       true,
     );
   });
+
+  it("allows an org custom model that is absent from the allow list", () => {
+    const policy = {
+      allowedModelIds: ["claude-opus-5"],
+      customModelIds: ["custom:bedrock-sonnet-5-5", "bedrock-sonnet-5-5"],
+    };
+    expect(isModelAllowedByPolicy("bedrock-sonnet-5-5", policy)).toBe(true);
+    expect(isModelAllowedByPolicy("custom:bedrock-sonnet-5-5", policy)).toBe(
+      true,
+    );
+  });
+
+  it("allows a custom: id even when the org lists no custom models", () => {
+    expect(
+      isModelAllowedByPolicy("custom:my-model", {
+        allowedModelIds: ["claude-opus-5"],
+      }),
+    ).toBe(true);
+  });
+
+  it("denies custom models only when allowCustomModels is false", () => {
+    const policy = {
+      allowedModelIds: ["claude-opus-5"],
+      allowCustomModels: false,
+      customModelIds: ["bedrock-sonnet-5-5"],
+    };
+    expect(isModelAllowedByPolicy("bedrock-sonnet-5-5", policy)).toBe(false);
+    expect(isModelAllowedByPolicy("custom:other", policy)).toBe(false);
+    expect(isModelAllowedByPolicy("claude-opus-5", policy)).toBe(true);
+  });
+
+  it("keeps an allowed Factory model whose id a BYOK entry also uses", () => {
+    // A proxy entry { id: "custom:openai-proxy-0", model: "gpt-5.2" } puts
+    // "gpt-5.2" in customModelIds; with custom models disabled the Factory
+    // allow list must still decide.
+    const policy = {
+      allowedModelIds: ["gpt-5.2"],
+      allowCustomModels: false,
+      customModelIds: ["custom:openai-proxy-0", "openai-proxy-0", "gpt-5.2"],
+    };
+    expect(isModelAllowedByPolicy("gpt-5.2", policy)).toBe(true);
+    expect(isModelAllowedByPolicy("custom:openai-proxy-0", policy)).toBe(false);
+  });
+
+  it("still enforces the allow list on unknown non-custom ids", () => {
+    const policy = {
+      allowedModelIds: ["claude-opus-5"],
+      customModelIds: ["bedrock-sonnet-5-5"],
+    };
+    expect(isModelAllowedByPolicy("bedrock-haiku-9", policy)).toBe(false);
+  });
+});
+
+describe("isCustomModel", () => {
+  it("recognizes the custom: prefix without a policy", () => {
+    expect(isCustomModel("custom:foo", null)).toBe(true);
+    expect(isCustomModel("foo", null)).toBe(false);
+  });
+
+  it("recognizes org custom model ids from the policy", () => {
+    const policy = { customModelIds: ["bedrock-sonnet-5-5"] };
+    expect(isCustomModel("bedrock-sonnet-5-5", policy)).toBe(true);
+    expect(isCustomModel("gpt-5.2", policy)).toBe(false);
+  });
 });
 
 describe("fetchModelPolicy", () => {
@@ -118,7 +186,48 @@ describe("fetchModelPolicy", () => {
       allowedModelIds: ["claude-opus-5"],
       blockedModelIds: undefined,
       allowAllFactoryModels: false,
+      allowCustomModels: undefined,
+      customModelIds: [],
     });
+  });
+
+  it("collects every id a managed custom model can be addressed by", async () => {
+    mockFetch(() =>
+      managedSettingsResponse({ allowedModelIds: ["claude-opus-5"] }, [
+        {
+          id: "custom:bedrock-sonnet-5-5-0",
+          model: "us.anthropic.claude-sonnet-5-5",
+          displayName: "Bedrock Sonnet 5.5",
+          apiKey: "[REDACTED]",
+        },
+        { model: "legacy-model" },
+        "not-a-model",
+        null,
+      ]),
+    );
+
+    const policy = await fetchModelPolicy("fk-test");
+    expect(policy?.customModelIds?.sort()).toEqual(
+      [
+        "custom:bedrock-sonnet-5-5-0",
+        "bedrock-sonnet-5-5-0",
+        "us.anthropic.claude-sonnet-5-5",
+        "custom:us.anthropic.claude-sonnet-5-5",
+        "legacy-model",
+        "custom:legacy-model",
+      ].sort(),
+    );
+  });
+
+  it("parses allowCustomModels", async () => {
+    mockFetch(() =>
+      managedSettingsResponse({
+        allowedModelIds: ["claude-opus-5"],
+        allowCustomModels: false,
+      }),
+    );
+
+    expect((await fetchModelPolicy("fk-test"))?.allowCustomModels).toBe(false);
   });
 
   it("returns null when the org has no model policy", async () => {
@@ -178,6 +287,56 @@ describe("applyModelPolicyFallback", () => {
     expect(result.reasoningEffort).toBeUndefined();
     expect(result.fallbackNote).toContain("`gpt-5.2`");
     expect(result.fallbackNote).toContain("`review_model`");
+  });
+
+  it("keeps an org custom model under an allow list that omits it", async () => {
+    process.env.FACTORY_API_KEY = "fk-test";
+    mockFetch(() =>
+      managedSettingsResponse({ allowedModelIds: ["claude-opus-5"] }, [
+        { id: "custom:bedrock-sonnet-5-5", model: "anthropic.claude-sonnet" },
+      ]),
+    );
+
+    const result = await applyModelPolicyFallback(
+      { model: "bedrock-sonnet-5-5", reasoningEffort: "high" },
+      options,
+    );
+    expect(result).toEqual({
+      model: "bedrock-sonnet-5-5",
+      reasoningEffort: "high",
+    });
+  });
+
+  it("drops a custom: model when the org disables custom models", async () => {
+    process.env.FACTORY_API_KEY = "fk-test";
+    mockFetch(() =>
+      managedSettingsResponse({ allowCustomModels: false }, [
+        { id: "custom:bedrock-sonnet-5-5" },
+      ]),
+    );
+
+    const result = await applyModelPolicyFallback(
+      { model: "custom:bedrock-sonnet-5-5" },
+      options,
+    );
+    expect(result.model).toBeUndefined();
+    expect(result.fallbackNote).toContain("`custom:bedrock-sonnet-5-5`");
+  });
+
+  it("drops an unprefixed custom model under an allow list when custom models are disabled", async () => {
+    process.env.FACTORY_API_KEY = "fk-test";
+    mockFetch(() =>
+      managedSettingsResponse(
+        { allowedModelIds: ["claude-opus-5"], allowCustomModels: false },
+        [{ id: "custom:bedrock-sonnet-5-5" }],
+      ),
+    );
+
+    const result = await applyModelPolicyFallback(
+      { model: "bedrock-sonnet-5-5" },
+      options,
+    );
+    expect(result.model).toBeUndefined();
   });
 
   it("keeps the model when the policy lookup fails", async () => {
