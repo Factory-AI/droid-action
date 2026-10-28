@@ -6,11 +6,15 @@ import type { ParsedGitHubContext } from "../context";
 import { DROID_APP_BOT_ID } from "../bot-identity";
 import { GITHUB_SERVER_URL } from "../api/config";
 import {
+  decodeFindingMarker,
   decodeReviewState,
+  encodeReviewState,
   findReviewSummaryRange,
   hasSummaryMarker,
+  SUMMARY_MARKER,
   type ReviewState,
 } from "../../core/review/markers";
+import { planIncrementalReview } from "../../core/review/incremental";
 import {
   renderCheckRun,
   renderReviewSummary,
@@ -21,6 +25,8 @@ import type {
   CheckRunInput,
   ReviewRenderInput,
 } from "../../core/review/render/types";
+import type { ReviewFinding } from "../../core/review/validated/types";
+import { normalizeFinding } from "../../core/review/validated/finding";
 import { redactCredentials } from "../../utils/redact-credentials";
 import {
   createReviewCheck,
@@ -31,6 +37,18 @@ import {
 import { reviewConfigFromEnvironment } from "../../core/review/config";
 import { fitReviewOutput } from "../../core/review/render/budget";
 
+export type DroidReviewThread = {
+  id: string;
+  nodeId: string;
+  commentId: number;
+  body: string;
+  path: string;
+  line: number | null;
+  resolved: boolean;
+  url: string;
+  findingId: string;
+  comments: Array<{ id: number; body: string; author?: string }>;
+};
 export type ReviewLifecycleRun = {
   owner: string;
   repo: string;
@@ -46,6 +64,8 @@ export type ReviewLifecycleRun = {
   checkId?: number;
   warned?: boolean;
   skipReason?: string;
+  incrementalBaseSha?: string;
+  eligibleFixedIds?: string[];
   reaction?: {
     id: number;
     targetId: number;
@@ -55,8 +75,10 @@ export type ReviewLifecycleRun = {
   renderInput?: ReviewRenderInput;
   completed?: boolean;
   superseded?: boolean;
+  pendingDiffHash?: string;
   pullRequest?: { title: string; body: string; baseSha: string };
   previousState?: ReviewState;
+  full?: boolean;
 };
 
 export function reviewLifecycleFilePath(): string {
@@ -145,13 +167,17 @@ export async function loadBoundReviewLifecycle(
     completed: false,
     base: process.env.REVIEW_BASE_SHA,
     startedAt: process.env.REVIEW_STARTED_AT || new Date().toISOString(),
+    incrementalBaseSha: process.env.REVIEW_INCREMENTAL_BASE_SHA || undefined,
     automatic: process.env.REVIEW_AUTOMATIC === "true",
     securityOnly: process.env.REVIEW_SECURITY_ONLY === "true",
     renderInput: undefined,
+    eligibleFixedIds: undefined,
+    pendingDiffHash: undefined,
     skipReason: undefined,
     superseded: false,
     previousState: undefined,
     pullRequest: undefined,
+    full: undefined,
     steps: Array.isArray(cached?.steps)
       ? cached.steps
           .filter(
@@ -268,6 +294,8 @@ export async function loadBoundReviewLifecycle(
       baseSha: pr.data.base.sha,
     };
   } else run.pullRequest = undefined;
+  if (run.incrementalBaseSha !== run.state.head)
+    run.incrementalBaseSha = undefined;
   return run;
 }
 /** Fetch a diff between immutable commits, never trust the model-writable on-disk artifact for resolution decisions. */
@@ -347,6 +375,185 @@ export async function findReviewSummary(options: {
     if (comment || response.data.length < 100) return comment;
   }
 }
+export async function listDroidThreads(options: {
+  octokit: Octokits;
+  owner: string;
+  repo: string;
+  prNumber: number;
+}): Promise<DroidReviewThread[]> {
+  const viewer = await viewerLogin(options.octokit);
+  type ThreadNode = {
+    id: string;
+    isResolved: boolean;
+    path: string;
+    line: number | null;
+    comments: {
+      nodes: Array<{
+        databaseId: number;
+        body: string;
+        url: string;
+        author: { login: string; databaseId?: number } | null;
+      }>;
+    };
+  };
+  const threads: DroidReviewThread[] = [];
+  let cursor: string | null = null;
+  do {
+    const result: {
+      repository: {
+        pullRequest: {
+          reviewThreads: {
+            nodes: ThreadNode[];
+            pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          };
+        };
+      };
+    } = await options.octokit.graphql(
+      `query DroidReviewThreads($owner:String!,$repo:String!,$number:Int!,$cursor:String) {
+        repository(owner:$owner,name:$repo) { pullRequest(number:$number) {
+          reviewThreads(first:100,after:$cursor) { nodes { id isResolved path line comments(first:100) {
+            nodes { databaseId body url author { login ... on User { databaseId } ... on Bot { databaseId } } }
+          } } pageInfo { hasNextPage endCursor } }
+        } }
+      }`,
+      {
+        owner: options.owner,
+        repo: options.repo,
+        number: options.prNumber,
+        cursor,
+      },
+    );
+    const page = result.repository.pullRequest.reviewThreads;
+    for (const node of page.nodes) {
+      const root = node.comments.nodes[0];
+      if (
+        !root ||
+        !trustedAuthor(
+          root.author
+            ? { id: root.author.databaseId, login: root.author.login }
+            : null,
+          viewer,
+        )
+      )
+        continue;
+      const marker = decodeFindingMarker(root.body);
+      if (!marker) continue;
+      threads.push({
+        id: node.id,
+        nodeId: node.id,
+        commentId: root.databaseId,
+        body: root.body,
+        path: node.path,
+        line: node.line,
+        resolved: node.isResolved,
+        url: root.url,
+        findingId: marker.id,
+        comments: node.comments.nodes.map((comment) => ({
+          id: comment.databaseId,
+          body: comment.body,
+          author: comment.author?.login,
+        })),
+      });
+    }
+    cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
+  } while (cursor);
+  return threads;
+}
+export async function resolveDroidThread(options: {
+  octokit: Octokits;
+  owner: string;
+  repo: string;
+  prNumber: number;
+  thread: DroidReviewThread;
+  head?: string;
+}): Promise<void> {
+  if (options.thread.resolved) return;
+  const reply = options.head
+    ? `✅ Fixed in ${options.head.slice(0, 7)}.`
+    : undefined;
+  if (
+    reply &&
+    !options.thread.comments.some((comment) => comment.body === reply)
+  ) {
+    const response =
+      await options.octokit.rest.pulls.createReplyForReviewComment({
+        owner: options.owner,
+        repo: options.repo,
+        pull_number: options.prNumber,
+        comment_id: options.thread.commentId,
+        body: reply,
+      });
+    options.thread.comments.push({ id: response.data.id, body: reply });
+  }
+  await options.octokit.graphql(
+    "mutation DroidResolveThread($id:ID!) { resolveReviewThread(input:{threadId:$id}) { thread { id isResolved } } }",
+    { id: options.thread.nodeId },
+  );
+  options.thread.resolved = true;
+}
+export async function resolveAllDroidThreads(options: {
+  octokit: Octokits;
+  owner: string;
+  repo: string;
+  prNumber: number;
+}): Promise<number> {
+  const threads = await listDroidThreads(options);
+  let resolved = 0;
+  for (const thread of threads.filter((t) => !t.resolved)) {
+    await resolveDroidThread({ ...options, thread });
+    resolved++;
+  }
+  const summary = await findReviewSummary(options);
+  if (summary?.body) {
+    const state = decodeReviewState(summary.body);
+    if (state) {
+      state.findings = state.findings.map((finding) => ({
+        ...finding,
+        state: "dismissed",
+      }));
+      await options.octokit.rest.issues.updateComment({
+        owner: options.owner,
+        repo: options.repo,
+        comment_id: summary.id,
+        body: replaceState(summary.body, state),
+      });
+    }
+  }
+  return resolved;
+}
+function replaceState(body: string, state: ReviewState): string {
+  return `${body.replace(/<!--\s*droid-review-state:v1[\s\S]*?-->/g, "").trim()}\n\n${encodeReviewState(state)}`;
+}
+export async function setReviewPaused(options: {
+  octokit: Octokits;
+  owner: string;
+  repo: string;
+  prNumber: number;
+  paused: boolean;
+}): Promise<void> {
+  const comment = await findReviewSummary(options);
+  const state = decodeReviewState(comment?.body || "") ?? {
+    head: "",
+    findings: [],
+  };
+  state.paused = options.paused;
+  if (!options.paused) state.autoRunCount = 0;
+  const body = replaceState(comment?.body || SUMMARY_MARKER, state);
+  if (comment)
+    await options.octokit.rest.issues.updateComment({
+      owner: options.owner,
+      repo: options.repo,
+      comment_id: comment.id,
+      body,
+    });
+  else
+    await options.octokit.rest.issues.createComment({
+      owner: options.owner,
+      repo: options.repo,
+      issue_number: options.prNumber,
+      body,
+    });
+}
 async function createEyes(
   octokit: Octokits,
   context: ParsedGitHubContext,
@@ -395,11 +602,13 @@ export async function prepareReviewLifecycle(options: {
   headSha: string;
   baseSha?: string;
   securityOnly?: boolean;
+  full?: boolean;
   trackingCommentId?: number;
   skipReason?: string | null;
 }): Promise<{
   commentId: number;
   state: ReviewState;
+  incrementalBaseSha?: string;
   skipReason?: string;
   run: ReviewLifecycleRun;
 }> {
@@ -423,6 +632,14 @@ export async function prepareReviewLifecycle(options: {
   const config =
     options.context.inputs.reviewConfig ?? reviewConfigFromEnvironment();
   const automatic = options.context.eventName === "pull_request";
+  const plan = planIncrementalReview({
+    state,
+    head: options.headSha,
+    full: options.full,
+    automatic,
+    incremental: config.review_incremental,
+    maxAutoRuns: config.review_max_auto_runs,
+  });
   const run: ReviewLifecycleRun = {
     owner,
     repo,
@@ -434,8 +651,10 @@ export async function prepareReviewLifecycle(options: {
     previousBody: existing?.body || undefined,
     automatic,
     securityOnly: !!options.securityOnly,
+    full: options.full,
     startedAt: new Date().toISOString(),
     steps: [],
+    ...plan,
     ...(options.skipReason ? { skipReason: options.skipReason } : {}),
   };
   const warn = lifecycleWarning(run);
@@ -500,6 +719,7 @@ export async function prepareReviewLifecycle(options: {
     review_comment_id: run.commentId,
     review_check_id: run.checkId || "",
     review_started_at: run.startedAt,
+    review_incremental_base_sha: run.incrementalBaseSha || "",
     review_reaction_id: run.reaction?.id || "",
     review_reaction_target: run.reaction?.targetId || "",
     review_reaction_kind: run.reaction?.kind || "",
@@ -520,6 +740,7 @@ export async function prepareReviewLifecycle(options: {
   return {
     commentId: run.commentId,
     state,
+    incrementalBaseSha: run.incrementalBaseSha,
     skipReason: run.skipReason,
     run,
   };
@@ -737,6 +958,30 @@ export async function finishReviewLifecycle(options: {
   run.renderInput = input;
   await saveReviewLifecycle(run);
 }
+export function stateFindings(state: ReviewState): ReviewFinding[] {
+  return state.findings.flatMap((item) => {
+    const finding =
+      item.finding ??
+      (item.path && (item.body || item.title)
+        ? normalizeFinding({
+            ...item,
+            severity: item.sev,
+            body: item.body || item.title,
+          })
+        : undefined);
+    return finding
+      ? [
+          {
+            ...finding,
+            state: item.state,
+            threadUrl: item.url || finding.threadUrl,
+            threadId: item.threadId || item.thread,
+          },
+        ]
+      : [];
+  });
+}
+
 const DESCRIPTION_START = "<!-- droid-review-summary:start -->";
 const DESCRIPTION_END = "<!-- droid-review-summary:end -->";
 /** Only exact top-level marker pairs own description text. */
