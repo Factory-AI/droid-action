@@ -1,7 +1,7 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import * as core from "@actions/core";
-import type { Octokits } from "../api/client";
+import { createOctokit, type Octokits } from "../api/client";
 import type { ParsedGitHubContext } from "../context";
 import { DROID_APP_BOT_ID } from "../bot-identity";
 import { GITHUB_SERVER_URL } from "../api/config";
@@ -12,6 +12,7 @@ import {
   type ReviewState,
 } from "../../core/review/markers";
 import {
+  renderCheckRun,
   renderReviewSummary,
   renderReviewStateNote,
   renderStepSummary,
@@ -21,8 +22,14 @@ import type {
   ReviewRenderInput,
 } from "../../core/review/render/types";
 import { redactCredentials } from "../../utils/redact-credentials";
-import { optionalGitHubOperation } from "./review-checks";
+import {
+  createReviewCheck,
+  optionalGitHubOperation,
+  reviewCheckConclusion,
+  updateReviewCheck,
+} from "./review-checks";
 import { reviewConfigFromEnvironment } from "../../core/review/config";
+import { fitReviewOutput } from "../../core/review/render/budget";
 
 export type ReviewLifecycleRun = {
   owner: string;
@@ -36,8 +43,14 @@ export type ReviewLifecycleRun = {
   automatic: boolean;
   securityOnly: boolean;
   startedAt: string;
+  checkId?: number;
   warned?: boolean;
   skipReason?: string;
+  reaction?: {
+    id: number;
+    targetId: number;
+    kind: "issue" | "issue_comment" | "review_comment";
+  };
   steps: NonNullable<CheckRunInput["steps"]>;
   renderInput?: ReviewRenderInput;
   completed?: boolean;
@@ -126,6 +139,8 @@ export async function loadBoundReviewLifecycle(
     ...cached,
     ...target,
     commentId: 0,
+    checkId: undefined,
+    reaction: undefined,
     state: { head: "", findings: [] },
     completed: false,
     base: process.env.REVIEW_BASE_SHA,
@@ -190,6 +205,52 @@ export async function loadBoundReviewLifecycle(
       }
     }
   }
+  const checkId = Number(process.env.REVIEW_CHECK_ID);
+  if (
+    Number.isSafeInteger(checkId) &&
+    checkId > 0 &&
+    reviewConfigFromEnvironment().review_check_run
+  ) {
+    const check = await optionalGitHubOperation(
+      () =>
+        checkClient(octokit).rest.checks.get({
+          owner: target.owner,
+          repo: target.repo,
+          check_run_id: checkId,
+        }),
+      warn,
+    );
+    if (
+      check &&
+      (check.data.head_sha !== target.head ||
+        !["Droid Review", "Droid Security Review"].includes(check.data.name))
+    )
+      throw new Error(
+        "The prepared check run does not belong to this reviewed commit.",
+      );
+    if (check) {
+      run.checkId = checkId;
+      run.securityOnly = check.data.name === "Droid Security Review";
+      if (check.data.status === "completed") run.completed = true;
+    }
+  }
+  const reactionId = Number(process.env.REVIEW_REACTION_ID);
+  const reactionTarget = Number(process.env.REVIEW_REACTION_TARGET);
+  const reactionKind = process.env.REVIEW_REACTION_KIND;
+  if (
+    Number.isSafeInteger(reactionId) &&
+    reactionId > 0 &&
+    Number.isSafeInteger(reactionTarget) &&
+    reactionTarget > 0 &&
+    (reactionKind === "issue" ||
+      reactionKind === "issue_comment" ||
+      reactionKind === "review_comment")
+  )
+    run.reaction = {
+      id: reactionId,
+      targetId: reactionTarget,
+      kind: reactionKind,
+    };
   const pr = await optionalGitHubOperation(
     () =>
       octokit.rest.pulls.get({
@@ -240,6 +301,11 @@ export function lifecycleWarning(
     }
   };
 }
+function checkClient(octokit: Octokits): Octokits {
+  return process.env.WORKFLOW_GITHUB_TOKEN
+    ? createOctokit(process.env.WORKFLOW_GITHUB_TOKEN)
+    : octokit;
+}
 type CommentAuthor = { id?: number; login?: string } | null | undefined;
 function trustedAuthor(author: CommentAuthor, viewer?: string): boolean {
   return (
@@ -280,6 +346,48 @@ export async function findReviewSummary(options: {
     );
     if (comment || response.data.length < 100) return comment;
   }
+}
+async function createEyes(
+  octokit: Octokits,
+  context: ParsedGitHubContext,
+  run: ReviewLifecycleRun,
+): Promise<void> {
+  if (!reviewConfigFromEnvironment().review_reactions) return;
+  const target =
+    "comment" in context.payload
+      ? context.payload.comment.id
+      : context.entityNumber;
+  const kind =
+    context.eventName === "pull_request_review_comment"
+      ? "review_comment"
+      : context.eventName === "issue_comment"
+        ? "issue_comment"
+        : "issue";
+  const response = await optionalGitHubOperation(
+    () =>
+      kind === "review_comment"
+        ? octokit.rest.reactions.createForPullRequestReviewComment({
+            owner: run.owner,
+            repo: run.repo,
+            comment_id: target,
+            content: "eyes",
+          })
+        : kind === "issue_comment"
+          ? octokit.rest.reactions.createForIssueComment({
+              owner: run.owner,
+              repo: run.repo,
+              comment_id: target,
+              content: "eyes",
+            })
+          : octokit.rest.reactions.createForIssue({
+              owner: run.owner,
+              repo: run.repo,
+              issue_number: target,
+              content: "eyes",
+            }),
+    lifecycleWarning(run),
+  );
+  if (response) run.reaction = { id: response.data.id, kind, targetId: target };
 }
 export async function prepareReviewLifecycle(options: {
   octokit: Octokits;
@@ -336,6 +444,17 @@ export async function prepareReviewLifecycle(options: {
       "Droid could not read review metadata. Check pull-requests: write permissions; this review will continue without incremental memory.",
     );
   const jobUrl = `${GITHUB_SERVER_URL}/${owner}/${repo}/actions/runs/${options.context.runId}`;
+  run.checkId = await createReviewCheck({
+    octokit: checkClient(options.octokit),
+    owner,
+    repo,
+    head: run.head,
+    securityOnly: run.securityOnly,
+    enabled: config.review_check_run,
+    jobUrl,
+    warn,
+  });
+  await createEyes(options.octokit, options.context, run);
   const input: ReviewRenderInput = {
     state: run.skipReason ? "skipped" : "in_progress",
     head: run.head,
@@ -379,7 +498,11 @@ export async function prepareReviewLifecycle(options: {
     pr_number: run.prNumber,
     review_head_sha: run.head,
     review_comment_id: run.commentId,
+    review_check_id: run.checkId || "",
     review_started_at: run.startedAt,
+    review_reaction_id: run.reaction?.id || "",
+    review_reaction_target: run.reaction?.targetId || "",
+    review_reaction_kind: run.reaction?.kind || "",
     review_automatic: String(run.automatic),
     review_security_only: String(run.securityOnly),
     review_skipped: String(!!run.skipReason),
@@ -426,6 +549,21 @@ export async function advanceReviewLifecycle(options: {
     );
   }
   run.steps.push({ name: options.name, status: "running" });
+  const output = renderCheckRun({
+    state: "in_progress",
+    phase: "in_progress",
+    head: run.head,
+    steps: run.steps,
+  });
+  await updateReviewCheck({
+    octokit: checkClient(options.octokit),
+    owner: run.owner,
+    repo: run.repo,
+    checkId: run.checkId,
+    status: "in_progress",
+    ...output,
+    warn: lifecycleWarning(run),
+  });
   await saveReviewLifecycle(run);
 }
 export async function finishReviewLifecycle(options: {
@@ -498,6 +636,97 @@ export async function finishReviewLifecycle(options: {
           .slice(0, -1)
           .reduce((sum, step) => sum + (step.durationSeconds || 0), 0),
     );
+  }
+  const conclusion = reviewCheckConclusion(
+    input.findings || [],
+    {
+      failOnSeverity: config.fail_on_severity,
+      securityBlockOnCritical: config.security_block_on_critical,
+      securityBlockOnHigh: config.security_block_on_high,
+    },
+    failed || input.state === "failed",
+  );
+  const output = renderCheckRun({
+    ...input,
+    phase: "completed",
+    steps: run.steps,
+  });
+  if (
+    config.review_summary === "off" &&
+    input.findings?.some((finding) => finding.outside_diff)
+  )
+    output.text = fitReviewOutput(
+      { ...input, reviewState: undefined, previousBody: undefined },
+      (candidate) =>
+        `${renderReviewSummary(candidate)}\n\n${renderCheckRun({ ...candidate, phase: "completed" }).text}`,
+    );
+  await updateReviewCheck({
+    octokit: checkClient(options.octokit),
+    owner: run.owner,
+    repo: run.repo,
+    checkId: run.checkId,
+    status: "completed",
+    conclusion: input.state === "skipped" ? "neutral" : conclusion,
+    ...output,
+    warn,
+  });
+  if (run.reaction) {
+    const { id, targetId, kind } = run.reaction;
+    await optionalGitHubOperation(
+      () =>
+        kind === "review_comment"
+          ? options.octokit.rest.reactions.deleteForPullRequestComment({
+              owner: run.owner,
+              repo: run.repo,
+              comment_id: targetId,
+              reaction_id: id,
+            })
+          : kind === "issue_comment"
+            ? options.octokit.rest.reactions.deleteForIssueComment({
+                owner: run.owner,
+                repo: run.repo,
+                comment_id: targetId,
+                reaction_id: id,
+              })
+            : options.octokit.rest.reactions.deleteForIssue({
+                owner: run.owner,
+                repo: run.repo,
+                issue_number: targetId,
+                reaction_id: id,
+              }),
+      warn,
+    );
+    const content =
+      failed || input.state === "failed"
+        ? "confused"
+        : input.state === "clean"
+          ? "hooray"
+          : undefined;
+    if (content)
+      await optionalGitHubOperation(
+        () =>
+          kind === "review_comment"
+            ? options.octokit.rest.reactions.createForPullRequestReviewComment({
+                owner: run.owner,
+                repo: run.repo,
+                comment_id: targetId,
+                content,
+              })
+            : kind === "issue_comment"
+              ? options.octokit.rest.reactions.createForIssueComment({
+                  owner: run.owner,
+                  repo: run.repo,
+                  comment_id: targetId,
+                  content,
+                })
+              : options.octokit.rest.reactions.createForIssue({
+                  owner: run.owner,
+                  repo: run.repo,
+                  issue_number: targetId,
+                  content,
+                }),
+        warn,
+      );
   }
   if (process.env.GITHUB_STEP_SUMMARY)
     await fs.appendFile(

@@ -65,6 +65,7 @@ import {
 import {
   isPermissionError,
   optionalGitHubOperation,
+  reviewCheckConclusion,
 } from "../github/operations/review-checks";
 import { redactCredentials } from "../utils/redact-credentials";
 import { GITHUB_SERVER_URL } from "../github/api/config";
@@ -644,6 +645,12 @@ export async function run(
       candidatesConsidered: parsed.approvedCount + parsed.rejectedCount,
       postedCount: posted.posted + posted.fallbackPosted,
       skippedCount: parsed.skipped.length,
+      blocked:
+        reviewCheckConclusion(findings, {
+          failOnSeverity: config.fail_on_severity,
+          securityBlockOnCritical: config.security_block_on_critical,
+          securityBlockOnHigh: config.security_block_on_high,
+        }) === "failure",
       error: posted.failures[0]?.error,
       previousBody: lifecycle.previousBody,
       previousHead,
