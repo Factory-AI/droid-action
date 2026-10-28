@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "meta": { "headSha": "9ea6c830123456789abcdef0123456789abcdef012" },
+  "results": [
+    {
+      "status": "approved",
+      "comment": {
+        "id": "f-reconnect",
+        "title": "Redis clients never reconnect after a disconnect",
+        "severity": "P1",
+        "category": "correctness",
+        "security": false,
+        "path": "src/storage/cacheStore.ts",
+        "line": 40,
+        "startLine": 27,
+        "side": "RIGHT",
+        "body": "Disabling retries leaves the cached client disconnected, so later requests fail until restart. Return a capped backoff instead.",
+        "why": "The reconnect callback returns null and no replacement client is created.",
+        "verification": "Traced CacheStore.get to client.get and confirmed the error path has no reconnect.",
+        "suggestion": "retryStrategy: (times) => Math.min(times * 200, 5_000),",
+        "also_at": [{ "path": "src/storage/budgetTracker.ts", "startLine": 451, "line": 465 }],
+        "agent_prompt": "Verify the reconnect behavior, restore capped retry backoff, and add a disconnect regression test.",
+        "outside_diff": false,
+        "source_guideline": { "path": "AGENTS.md", "startLine": 12, "line": 18 }
+      }
+    },
+    {
+      "status": "approved",
+      "comment": {
+        "id": "f-signature",
+        "title": "Legacy webhooks accept signatures from a different tenant",
+        "severity": "P1",
+        "category": "security",
+        "security": true,
+        "securitySeverity": "high",
+        "cwe": "CWE-347",
+        "path": "src/api/legacy/hooks.ts",
+        "line": 88,
+        "side": "RIGHT",
+        "body": "The legacy route verifies the global key rather than the tenant key, allowing a signed payload to cross tenant boundaries.",
+        "why": "The lookup ignores the authenticated tenant.",
+        "verification": "Send a tenant A signature to a tenant B webhook and confirm rejection after the fix.",
+        "also_at": [],
+        "agent_prompt": "Check the legacy webhook key lookup, bind verification to the current tenant, and cover cross-tenant rejection.",
+        "outside_diff": true
+      }
+    },
+    {
+      "status": "rejected",
+      "candidate": { "path": "src/net/retry.ts", "title": "Retries can run without a bound" },
+      "reason": "The caller already enforces a maximum attempt count."
+    }
+  ],
+  "reviewSummary": {
+    "body": "Two issues affect recovery and tenant isolation.",
+    "whatChanged": "Adds a Redis-backed cache and updates webhook verification.",
+    "changes": [
+      { "area": "Storage", "files": ["src/storage/cacheStore.ts"], "summary": "Adds a shared client and recovery policy." },
+      { "area": "API", "files": ["src/api/hooks.ts"], "summary": "Moves webhook verification into the tenant context." }
+    ],
+    "risk": { "level": "High", "reason": "The change touches cache recovery and signature verification." },
+    "diagram": "sequenceDiagram\n  API->>Cache: Read tenant value\n  Cache-->>API: Cached value",
+    "effort": { "score": 3, "minutes": 20 },
+    "suggestedReviewers": ["storage-team"],
+    "preMergeChecks": [{ "name": "Linked issue", "passed": true, "reason": "The description links the tracking issue." }],
+    "filesReviewed": 12,
+    "filesSkipped": [{ "path": "dist/index.js", "reason": "generated" }],
+    "guidelines": [{ "path": "AGENTS.md", "startLine": 12, "line": 18 }],
+    "security": { "enabled": true, "threshold": "medium" }
+  }
+}
