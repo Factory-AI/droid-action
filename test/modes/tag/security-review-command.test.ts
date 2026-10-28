@@ -18,6 +18,7 @@ import * as mcpInstaller from "../../../src/mcp/install-mcp-server";
 import * as comments from "../../../src/github/operations/comments/create-initial";
 import { DroidRunType } from "../../../src/run-type";
 import { parseSessionTagFromDroidArgs } from "../../utils/session-tag-helpers";
+import * as policy from "../../../src/utils/model-policy";
 
 const MOCK_PR_DATA = {
   baseRefName: "main",
@@ -44,8 +45,12 @@ describe("prepareSecurityReviewMode", () => {
   let setOutputSpy: ReturnType<typeof spyOn>;
   let createInitialSpy: ReturnType<typeof spyOn>;
   let exportVariableSpy: ReturnType<typeof spyOn>;
+  let policySpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
+    policySpy = spyOn(policy, "applyModelPolicyFallback").mockImplementation(
+      async (config) => config,
+    );
     process.env.DROID_ARGS = "";
     delete process.env.REVIEW_MODEL;
     delete process.env.SECURITY_MODEL;
@@ -89,6 +94,7 @@ describe("prepareSecurityReviewMode", () => {
   });
 
   afterEach(() => {
+    policySpy.mockRestore();
     fetchPRSpy.mockRestore();
     computeArtifactsSpy.mockRestore();
     promptSpy.mockRestore();

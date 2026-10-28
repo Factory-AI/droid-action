@@ -30,6 +30,11 @@ beforeEach(async () => {
   tmp = await fs.mkdtemp(path.join(os.tmpdir(), "droid-gl-tpl-"));
   work = path.join(tmp, "work");
   await fs.mkdir(work);
+  const bin = path.join(tmp, "bin");
+  await fs.mkdir(bin);
+  // npm's Bun 1.2.11 package names its executable bun.exe. Expose that exact
+  // running binary as bun, rather than relying on its directory's filename.
+  await fs.symlink(process.execPath, path.join(bin, "bun"));
   await fs.writeFile(
     path.join(work, "bunfig.toml"),
     'preload = ["./evil.ts"]\n',
@@ -37,6 +42,10 @@ beforeEach(async () => {
   await fs.writeFile(
     path.join(work, "evil.ts"),
     `require("fs").appendFileSync(${JSON.stringify(path.join(tmp, "pwned"))}, String(process.env.GITLAB_TOKEN) + "\\n");\n`,
+  );
+  await fs.writeFile(
+    path.join(work, "probe.ts"),
+    'console.log("probe complete");\n',
   );
 });
 
@@ -48,7 +57,7 @@ async function runStep(step: string) {
   const proc = Bun.spawn(["bash", "-c", step], {
     cwd: work,
     env: {
-      PATH: `${path.dirname(process.execPath)}:/usr/local/bin:/usr/bin:/bin`,
+      PATH: `${path.join(tmp, "bin")}:/usr/local/bin:/usr/bin:/bin`,
       HOME: path.join(tmp, "home"),
       CI_PROJECT_DIR: work,
       DROID_ACTION_DIR: ROOT,
@@ -62,11 +71,12 @@ async function runStep(step: string) {
     stdout: "pipe",
     stderr: "pipe",
   });
-  await Promise.all([
+  const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
     proc.exited,
   ]);
+  return { stdout, stderr, exitCode };
 }
 
 const exists = (p: string) =>
@@ -83,6 +93,26 @@ describe("templates/droid-review.yml", () => {
     expect(await fs.readFile(path.join(tmp, "pwned"), "utf8")).toContain(
       "gl-secret",
     );
+  }, 30_000);
+
+  it("the planted bunfig.toml runs its preload for a script in the checkout", async () => {
+    // A successful minimal script makes startup failures visible rather than
+    // allowing a missing executable to masquerade as config isolation.
+    const result = await runStep('bun run "./probe.ts"');
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("probe complete");
+    expect(await fs.readFile(path.join(tmp, "pwned"), "utf8")).toContain(
+      "gl-secret",
+    );
+  }, 30_000);
+
+  it("the template's isolation flags block the same planted preload", async () => {
+    const result = await runStep(
+      'bun --config=/dev/null --env-file=/dev/null run "./probe.ts"',
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("probe complete");
+    expect(await exists(path.join(tmp, "pwned"))).toBe(false);
   }, 30_000);
 
   it("never starts bun in the MR checkout", async () => {
