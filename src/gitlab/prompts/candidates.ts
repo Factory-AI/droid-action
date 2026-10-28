@@ -20,6 +20,7 @@ export function generateGitlabReviewCandidatesPrompt(
   ctx: GitlabReviewPromptContext,
 ): string {
   return generateCandidatesPrompt({
+    reviewSettings: ctx.reviewSettings,
     terminology: GITLAB_TERMINOLOGY,
     entityNumber: ctx.mrIid,
     repoOrProject: ctx.projectPath,

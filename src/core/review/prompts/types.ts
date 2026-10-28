@@ -76,6 +76,19 @@ export interface ReviewTerminology {
  */
 export type ReviewPostingMode = "tool" | "file";
 
+export type ReviewPromptSettings = {
+  depth: "deep" | "shallow";
+  diagram: "auto" | "off";
+  effort: boolean;
+  suggestReviewers: boolean;
+  preMergeChecks: Array<"title" | "description" | "linked_issue">;
+  ignorePaths: string[];
+  severityThreshold: "P0" | "P1" | "P2";
+  securitySeverityThreshold: "critical" | "high" | "medium" | "low";
+  securityBlockOnCritical: boolean;
+  securityBlockOnHigh: boolean;
+};
+
 export interface ReviewPromptContext {
   terminology: ReviewTerminology;
   /** PR number / MR IID */
@@ -105,4 +118,8 @@ export interface ReviewPromptContext {
   securityReviewEnabled: boolean;
   /** Where the change's code is (or is not) available, e.g. for a fork PR that is not checked out */
   sourceNote?: string;
+  /** Effective trusted config, resolved before model execution. */
+  reviewSettings?: ReviewPromptSettings;
+  /** Optional trusted prior-review manifest; absence is valid on the first run. */
+  priorFindingsPath?: string;
 }

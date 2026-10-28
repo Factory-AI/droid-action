@@ -11,6 +11,7 @@
  */
 
 export type GitlabReviewPromptContext = {
+  reviewSettings?: import("../../core/review/prompts/types").ReviewPromptSettings;
   projectPath: string;
   mrIid: number;
   mrTitle: string;
