@@ -1,0 +1,73 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "c902990f32bcf66f7f09ef3b3708983ea943f838",
+  "prompts": {
+    "b21091ad433f027c": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "d9555fd9-b3ce-4bfb-86ce-beacf95ea552",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "b9d6b8533a389d19": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "2fcf97cf-9d0c-4729-bcbe-b000b0e799b7",
+        "model": "claude-opus-4-8-fast"
+      },
+      "human_author": "eric-factory",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    },
+    "e59b6789caf4a509": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "2ecb0b06-8ef1-48af-b512-4ec6701ddd1d",
+        "model": "claude-fable-5.1"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "e83ae5b0447d1242": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "60be7b8a-aeb2-4065-b76a-71b05403a381",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    },
+    "fc999ed2425dd9ad": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "0f691cd9-43df-4679-afed-5d34ded96ec2",
+        "model": "claude-fable-5.1"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}
