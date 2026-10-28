@@ -38,7 +38,10 @@ export function isModelPolicyError(text: string | undefined | null): boolean {
 /**
  * Collect the ids a custom model can be addressed by. The CLI accepts the
  * canonical `custom:<name>-<index>` id, the same id without the `custom:`
- * prefix, and (legacy) the provider model name, so all three are kept.
+ * prefix, and (legacy) the provider model name, so all three are kept. The
+ * unprefixed forms can collide with Factory model ids (a BYOK proxy for
+ * `gpt-5.2` has `model: "gpt-5.2"`), so {@link isModelAllowedByPolicy} only
+ * uses them to admit a model, never to reject one.
  */
 function collectCustomModelIds(customModels: unknown): string[] {
   if (!Array.isArray(customModels)) {
@@ -158,9 +161,11 @@ export function isModelTierAlias(modelId: string): boolean {
 }
 
 /**
- * Whether the id names a BYOK custom model rather than a Factory model: an
+ * Whether the id may name a BYOK custom model rather than a Factory model: an
  * explicit `custom:` id, or an id that matches one of the org-managed custom
- * models (the CLI also resolves unprefixed ids against them).
+ * models (the CLI also resolves unprefixed ids against them). Only the
+ * `custom:` form is unambiguous; an unprefixed match may equally be a
+ * Factory model that a BYOK entry proxies.
  */
 export function isCustomModel(
   modelId: string,
@@ -187,8 +192,17 @@ export function isModelAllowedByPolicy(
   // Custom models are governed only by the custom-model toggle; the Factory
   // allow/block lists never name them, so checking them there would reject
   // every custom model in an org that uses an allow list.
-  if (isCustomModel(modelId, policy)) {
+  if (modelId.startsWith(CUSTOM_MODEL_PREFIX)) {
     return policy.allowCustomModels !== false;
+  }
+  if (isCustomModel(modelId, policy)) {
+    // An unprefixed match may also be a Factory model (a BYOK proxy for
+    // `gpt-5.2` has `model: "gpt-5.2"`). While custom models are enabled the
+    // CLI will resolve it, so admit it; when they are disabled, fall through
+    // and let the Factory lists decide so an allowed Factory model survives.
+    if (policy.allowCustomModels !== false) {
+      return true;
+    }
   }
   if (policy.blockedModelIds?.includes(modelId)) {
     return false;

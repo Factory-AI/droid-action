@@ -137,6 +137,19 @@ describe("isModelAllowedByPolicy", () => {
     expect(isModelAllowedByPolicy("claude-opus-5", policy)).toBe(true);
   });
 
+  it("keeps an allowed Factory model whose id a BYOK entry also uses", () => {
+    // A proxy entry { id: "custom:openai-proxy-0", model: "gpt-5.2" } puts
+    // "gpt-5.2" in customModelIds; with custom models disabled the Factory
+    // allow list must still decide.
+    const policy = {
+      allowedModelIds: ["gpt-5.2"],
+      allowCustomModels: false,
+      customModelIds: ["custom:openai-proxy-0", "openai-proxy-0", "gpt-5.2"],
+    };
+    expect(isModelAllowedByPolicy("gpt-5.2", policy)).toBe(true);
+    expect(isModelAllowedByPolicy("custom:openai-proxy-0", policy)).toBe(false);
+  });
+
   it("still enforces the allow list on unknown non-custom ids", () => {
     const policy = {
       allowedModelIds: ["claude-opus-5"],
@@ -294,7 +307,7 @@ describe("applyModelPolicyFallback", () => {
     });
   });
 
-  it("drops a custom model when the org disables custom models", async () => {
+  it("drops a custom: model when the org disables custom models", async () => {
     process.env.FACTORY_API_KEY = "fk-test";
     mockFetch(() =>
       managedSettingsResponse({ allowCustomModels: false }, [
@@ -303,11 +316,27 @@ describe("applyModelPolicyFallback", () => {
     );
 
     const result = await applyModelPolicyFallback(
+      { model: "custom:bedrock-sonnet-5-5" },
+      options,
+    );
+    expect(result.model).toBeUndefined();
+    expect(result.fallbackNote).toContain("`custom:bedrock-sonnet-5-5`");
+  });
+
+  it("drops an unprefixed custom model under an allow list when custom models are disabled", async () => {
+    process.env.FACTORY_API_KEY = "fk-test";
+    mockFetch(() =>
+      managedSettingsResponse(
+        { allowedModelIds: ["claude-opus-5"], allowCustomModels: false },
+        [{ id: "custom:bedrock-sonnet-5-5" }],
+      ),
+    );
+
+    const result = await applyModelPolicyFallback(
       { model: "bedrock-sonnet-5-5" },
       options,
     );
     expect(result.model).toBeUndefined();
-    expect(result.fallbackNote).toContain("`bedrock-sonnet-5-5`");
   });
 
   it("keeps the model when the policy lookup fails", async () => {
