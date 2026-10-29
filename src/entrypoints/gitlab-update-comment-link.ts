@@ -38,6 +38,15 @@ import { collectExecTelemetry } from "../gitlab/data/exec-telemetry";
 import { readReviewPostOutcome } from "../core/review/tracking/results";
 import { postResultsFilePath } from "./gitlab-post-review";
 import { stateFilePath, type PrepareState } from "./gitlab-prepare";
+import type { PostResults } from "./gitlab-post-review";
+import {
+  descriptionWithReview,
+  renderGitlabSummary,
+  stateOnlyNote,
+  updateLifecycleAward,
+  updateReviewStatus,
+} from "../gitlab/operations/review-ux";
+import { loadGitlabReviewConfig } from "../gitlab/operations/review-config";
 
 async function readPostResults() {
   const filePath = postResultsFilePath();
@@ -114,6 +123,96 @@ async function run(): Promise<void> {
   });
 
   const review = await readPostResults();
+
+  if (process.env.REVIEW_UX_V2 === "true") {
+    const mr = await client.getMr(target.projectId, target.mrIid);
+    const config = await loadGitlabReviewConfig(client, target.projectId, mr);
+    let posted: PostResults | null = null;
+    try {
+      posted = JSON.parse(
+        await fs.readFile(postResultsFilePath(), "utf8"),
+      ) as PostResults;
+    } catch {
+      /* Failure before posting still renders a friendly error. */
+    }
+    const input = {
+      ...(posted?.renderInput ?? {
+        head: mr.diff_refs.head_sha,
+        reviewState: state.previousReviewState ?? undefined,
+        previousBody: state.summaryBody,
+      }),
+      platform: "gitlab" as const,
+      state:
+        droidSuccess && posted?.renderInput
+          ? posted.renderInput.state
+          : ("failed" as const),
+      ...(droidSuccess && posted?.renderInput
+        ? {}
+        : {
+            error: errorDetails ?? "Review did not produce validated results",
+          }),
+      durationSeconds: telemetry.totalDurationMs
+        ? telemetry.totalDurationMs / 1000
+        : undefined,
+      jobUrl: jobUrl ?? undefined,
+    };
+    const rendered = renderGitlabSummary(input);
+    const noteId = await resolveOwnTrackingNoteId(
+      client,
+      target,
+      state.trackingNoteId,
+    );
+    if (config.review_summary === "description")
+      await client.updateMrDescription(
+        target.projectId,
+        target.mrIid,
+        descriptionWithReview(mr.description ?? "", rendered),
+      );
+    const body =
+      config.review_summary === "comment" ? rendered : stateOnlyNote(input);
+    if (noteId === null)
+      await client.createNote(target.projectId, target.mrIid, body);
+    else await client.updateNote(target.projectId, target.mrIid, noteId, body);
+    const reviewedHead = process.env.DROID_REVIEW_HEAD_SHA;
+    if (
+      reviewedHead &&
+      /^[a-f0-9]{40}$/i.test(reviewedHead) &&
+      mr.diff_refs.head_sha === reviewedHead &&
+      (posted?.renderInput == null || posted.renderInput.head === reviewedHead)
+    )
+      await updateReviewStatus(
+        client,
+        target.projectId,
+        reviewedHead,
+        input,
+        config.review_check_run,
+      );
+    else
+      console.warn(
+        "Skipping review status: trusted review head is missing or does not match the live head and posted results.",
+      );
+    let lifecycleAward;
+    try {
+      lifecycleAward = JSON.parse(
+        process.env.DROID_LIFECYCLE_AWARD_CONTEXT ?? "null",
+      );
+    } catch {
+      /* Never trust model-writable state for award IDs. */
+    }
+    await updateLifecycleAward(
+      client,
+      target.projectId,
+      target.mrIid,
+      input.state === "failed"
+        ? "failed"
+        : input.state === "clean"
+          ? "clean"
+          : "done",
+      config.review_reactions,
+      lifecycleAward,
+    );
+    return;
+  }
 
   const body = buildTrackingNoteBody({
     state: droidSuccess ? "success" : "failure",
