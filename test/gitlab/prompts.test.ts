@@ -106,10 +106,14 @@ describe("generateGitlabReviewValidatorPrompt", () => {
     expect(prompt).not.toContain("submit_review");
     expect(prompt).not.toContain("gitlab_mr___");
     expect(prompt).not.toContain("update_tracking_note");
-    // An approved comment with no anchor is silently unpostable.
-    expect(prompt).toContain("without a usable line anchor");
-    // Anchors outside the diff degrade to a plain note; the validator is
-    // told to prefer re-anchoring onto a changed line.
+    // Approved findings are structured data; valid unanchorable findings
+    // remain in the summary rather than being silently discarded.
+    expect(prompt).toContain('"title":');
+    expect(prompt).toContain('"severity": "P1"');
+    expect(prompt).toContain('"verification":');
+    expect(prompt).toContain("TypeScript owns layout and counts");
+    expect(prompt).toContain("set `outside_diff: true`");
+    expect(prompt).toContain("preserve the finding for the summary");
     expect(prompt).toContain("not part of the diff");
   });
 
