@@ -6,6 +6,7 @@ This GitHub Action powers the Factory **Droid** app. It watches your pull reques
 - `@droid review` — performs an automated code review, surfaces potential bugs, and leaves inline comments directly on the diff.
 - `@droid security` — performs an automated security review using STRIDE methodology, identifying vulnerabilities and suggesting fixes.
 - `@droid security --full` — performs a full repository security scan and creates a PR with the report.
+- `@droid fix` — verifies open findings and publishes focused fixes to an authorized PR branch, or opens a stacked PR.
 
 Everything runs inside GitHub Actions using your Factory API key, so the bot never leaves your repository and operates with the permissions you grant.
 
@@ -188,11 +189,12 @@ jobs:
       (github.event_name == 'pull_request' && (contains(github.event.pull_request.body, '@droid') || contains(github.event.pull_request.title, '@droid')))
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write # needed for @droid fix; use read with fix_mode: off
       pull-requests: write
       issues: write
       id-token: write
       actions: read
+      checks: write # caller token publishes the Droid Review check
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -215,7 +217,7 @@ name: Droid Auto Review
 
 on:
   pull_request:
-    types: [opened, ready_for_review, reopened]
+    types: [opened, synchronize, ready_for_review, reopened]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -231,6 +233,7 @@ jobs:
       issues: write
       id-token: write
       actions: read
+      checks: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -258,17 +261,54 @@ Pull requests from forks are reviewed without checking out their code. The actio
 
 ## Using the Commands
 
+| Command                                       | Behavior                                                                         |
+| --------------------------------------------- | -------------------------------------------------------------------------------- |
+| `@droid help`                                 | Show commands and effective review settings.                                     |
+| `@droid review`                               | Review changes since the last successful review, full review on first use.       |
+| `@droid review --full`                        | Review the full diff, bypassing identical-diff skips.                            |
+| `@droid review <focus text>`                  | Focus on the requested behavior or area.                                         |
+| `@droid security`, `@droid review security`   | Run a security-focused review.                                                   |
+| `@droid security --full`                      | Run a full repository security audit and create a report PR/MR.                  |
+| `@droid fix`                                  | In a Droid finding thread, fix that finding; at PR level, fix all open findings. |
+| `@droid resolve`                              | Resolve open Droid threads as dismissed, without claiming the code was fixed.    |
+| `@droid pause`, `@droid resume`               | Pause automatic reviews; resume resets the automatic-run budget.                 |
+| `@droid fill`                                 | Replace only Droid's marked description block, preserving author text.           |
+| `@droid <question>` in a Droid finding thread | Answer in that thread, without starting a review.                                |
+
+Unknown top-level commands show help. Mentions inside fenced or inline code do not trigger commands.
+GitLab commands require an [authenticated note-to-pipeline bridge](docs/gitlab-setup.md#commands-and-the-pipeline-bridge); ordinary MR pipelines do not react to new notes.
+
 ### `@droid fill`
 
 - Place the command in the PR description or in a top-level comment.
 - Droid searches for common PR template locations (`.github/pull_request_template.md`, etc.). When a template exists, it fills the sections; otherwise it writes a structured summary (overview, changes, testing, rollout).
-- The original request is replaced with the generated description so reviewers can merge immediately.
+- Generated content is wrapped in `droid-fill:start` / `droid-fill:end` markers. Re-running replaces that block only, with a commit provenance line; author text outside it stays untouched.
 
 ### `@droid review`
 
 - Mention `@droid review` in a PR comment.
 - Droid inspects the diff, prioritizes potential bugs or high-impact issues, and leaves inline comments directly on the changed lines.
-- A short summary comment is posted in the original thread highlighting the findings and linking to any inline feedback.
+- One sticky summary comment holds the verdict, linked findings, resolved findings, outside-diff findings, validator counts, and review details.
+
+### `@droid fix`
+
+The default `fix_mode: commit` verifies open findings and commits a focused fix when the actor and token can write to the source branch. Protected branches and writable forks use an authorized stacked PR/MR. `fix_mode: pr` always uses a stacked change; `off` disables publishing. Forks without source-repository write permission receive an explicit refusal.
+
+Droid never pushes to a repository's default branch and never force-pushes. The publisher checks the live source head, source-repository permissions, paths, credentials, and concurrent updates after the file-only model step. It reports the commit or stacked-change link, a collapsed diff preview, and actual validation limitations. The next review resolves threads only after the validator confirms the fixes, not merely because code moved.
+
+### Review UX and visible defaults
+
+Review output is rendered by TypeScript from the two-pass validator's structured JSON. The model supplies evidence and prose, not layout, counts, badges, or links.
+
+- A sticky issue comment is the default summary location. Running and failed states preserve the previous review below a clear banner.
+- Findings include severity badges with alt text, verification, related locations, optional complete suggestions, guideline permalinks, a stable hidden finding marker, and a copyable AI-agent prompt with an untrusted-data warning.
+- Clean reviews explicitly say no issues were found. Droid does not submit an empty review object.
+- Lifecycle reactions are eyes while running, hooray when clean, and confused on failure. Eyes are removed at completion. Droid does not request, read, or learn from thumbs feedback.
+- Re-reviews use stored state to avoid duplicates, honor human-dismissed threads, and resolve only confirmed fixes. Unchanged optional suggestions are suppressed only when explicitly classified as optional, never merely because they are P2.
+- The `Droid Review` check is successful when clean, neutral for nonblocking findings or review errors, and fails only at a configured priority/security threshold. Droid never approves or requests changes.
+- Generated/lock files are excluded by default and listed with reasons. Unknown `review_depth` values warn and use `deep`. The legacy `label_trigger` input is unsupported and has no default trigger.
+
+See [rendered fixture examples](docs/review-ux-preview.md), [all inputs and permissions](docs/setup.md), and [GitLab differences](docs/gitlab-setup.md#platform-differences).
 
 ### `@droid security`
 
@@ -346,7 +386,7 @@ This input is required.
 
 ### 2. GitHub access (post reviews)
 
-To leave comments and approvals on your PRs, Droid needs a GitHub token. There are two ways to provide one:
+To leave comments and reviews on your PRs, Droid needs a GitHub token. Droid never approves. There are two ways to provide one:
 
 - **Factory Droid GitHub App (default, recommended).** If you don't pass a token, the action securely requests one for the installed Factory Droid GitHub App. For most teams this is all you need: install the app on your repositories from [app.factory.ai/settings/organization](https://app.factory.ai/settings/organization). It requires the `id-token: write` permission so the action can request the token:
 
@@ -358,7 +398,7 @@ To leave comments and approvals on your PRs, Droid needs a GitHub token. There a
     id-token: write # required for GitHub App auth
   ```
 
-  The app token only carries what the run needs: a review can read code and write to pull requests, but not change workflows, checks, or repository settings. The action revokes it when it finishes, so later steps in your job cannot use its `github_token` output.
+  The app token only carries what the run needs. Review posting can read code and write to pull requests; fix publishing separately requires contents write. Check runs use the caller workflow token with `checks: write`, not a broadened Factory App token. Missing check permission produces one warning and does not fail the review. The action revokes its App token when it finishes, so later steps cannot use its `github_token` output.
 
 - **Your own token (override).** If you'd rather use a personal access token or your own GitHub App — for example on GitHub Enterprise, or to control which account posts comments — pass it as `github_token`. When set, Droid uses it directly and skips the app. The token needs write access to pull requests and repository contents.
 
@@ -389,6 +429,69 @@ To leave comments and approvals on your PRs, Droid needs a GitHub token. There a
 | `review_depth`                | `deep`  | Review depth preset: `shallow` (fast) or `deep` (thorough). See [Review Depth](#review-depth) below. |
 | `review_candidates_max_turns` | `100`   | Stop candidate generation after this many assistant turns.                                           |
 | `review_validator_max_turns`  | `40`    | Stop validation after this many assistant turns.                                                     |
+
+### Review UX Inputs
+
+These are **effective defaults**. Config-enabled action inputs use an empty-string inheritance sentinel, not an explicit default override. Set a nonempty input to override the base-branch file, including `false` and `0`. Use `off` to clear `fail_on_severity`; use `[]` to clear a list. GitLab exposes the same settings as component inputs, with automatic code and security review effectively enabled by default.
+
+| Input                       | Effective default                              | Purpose                                                                               |
+| --------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `review_summary`            | `comment`                                      | `comment`, `description`, or `off`. Description mode owns only its marked block.      |
+| `review_summary_sections`   | `verdict,findings,changes,details`             | Visible sections; also accepts `diagram`, `risk`, `effort`.                           |
+| `review_badges`             | `image`                                        | Shields.io images with meaningful alt text; `emoji` or `text` avoids external images. |
+| `review_reactions`          | `true`                                         | Running/clean/failure lifecycle reactions, never feedback reactions.                  |
+| `review_check_run`          | `true`                                         | GitHub check run; GitLab commit status.                                               |
+| `fail_on_severity`          | `""`                                           | Fail only when an open finding meets `P0`, `P1`, or `P2` or a higher priority.        |
+| `review_incremental`        | `true`                                         | Review only new changes after a successful review; full-review commands override it.  |
+| `review_auto_resolve`       | `true`                                         | Resolve only validator-confirmed fixed threads.                                       |
+| `review_max_auto_runs`      | `0`                                            | Automatic-run budget; `0` means unlimited.                                            |
+| `show_dropped_findings`     | `false`                                        | Show dropped candidate details/reasons. Aggregate counts always remain visible.       |
+| `include_agent_prompts`     | `true`                                         | Per-finding and fix-all prompts with an untrusted-data preamble.                      |
+| `fix_mode`                  | `commit`                                       | `commit`, `pr` (stacked PR/MR), or `off`.                                             |
+| `review_diagram`            | `auto`                                         | Include an evidenced passive Mermaid diagram, or `off`.                               |
+| `review_severity_threshold` | `P2`                                           | Report P0/P1/P2 by default; choose `P0` or `P1` for a stricter reporting floor.       |
+| `review_ignore_paths`       | Generated/build/lock files                     | Comma/newline-separated glob patterns. See the base-config example below.             |
+| `review_auto_triggers`      | `opened,reopened,synchronize,ready_for_review` | Automatic event actions. The workflow must subscribe to those events too.             |
+| `review_drafts`             | `false`                                        | Review drafts automatically; explicit review commands still work.                     |
+| `review_effort`             | `false`                                        | Include an evidence-backed effort estimate.                                           |
+| `review_category_chips`     | `false`                                        | Show correctness/security/performance/maintainability labels.                         |
+| `review_suggest_reviewers`  | `false`                                        | Suggest reviewers from base-branch CODEOWNERS, never assign them.                     |
+| `review_pre_merge_checks`   | None                                           | Opt-in `title,description,linked_issue` checks.                                       |
+
+### Base-branch repository configuration
+
+Precedence is built-in defaults, then `.factory/review.yaml` fetched at an immutable **base-branch** SHA, then explicit nonempty action/component inputs. A PR cannot weaken its own review by changing the head checkout's configuration. Invalid configuration fails explicitly instead of silently loading head-branch files.
+
+```yaml
+# .factory/review.yaml, merged to the base branch
+review_depth: deep
+review_badges: image
+review_summary: comment
+review_summary_sections: [verdict, findings, changes, details, risk]
+review_incremental: true
+review_auto_resolve: true
+review_max_auto_runs: 0
+review_severity_threshold: P2
+review_ignore_paths:
+  - "**/*.lock"
+  - "**/*.lockb"
+  - "**/package-lock.json"
+  - "**/pnpm-lock.yaml"
+  - "**/go.sum"
+  - "**/dist/**"
+  - "**/build/**"
+  - "**/coverage/**"
+  - "**/*.generated.*"
+  - "**/generated/**"
+auto_review:
+  enabled: true
+  security: true
+  triggers: [opened, reopened, synchronize, ready_for_review]
+  drafts: false
+fix_mode: commit
+```
+
+The shorter aliases `depth`, `severity_threshold`, `ignore_paths`, `summary_sections`, `badges`, `incremental`, `auto_resolve`, and `max_auto_runs` are accepted. Do not specify an alias and its full key together. Model and reasoning inputs still override the selected depth preset.
 
 ### Review Depth
 
@@ -426,8 +529,8 @@ We recommend using one of these presets rather than choosing a model yourself. I
 | ----------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `automatic_security_review`   | Follows `automatic_review` | Automatically run security review on PRs without requiring `@droid security`. Set `false` to opt out.             |
 | `security_severity_threshold` | `medium`                   | Minimum severity to report (`critical`, `high`, `medium`, `low`). Findings below this threshold are filtered out. |
-| `security_block_on_critical`  | `true`                     | Submit `REQUEST_CHANGES` review when critical severity findings are detected.                                     |
-| `security_block_on_high`      | `false`                    | Submit `REQUEST_CHANGES` review when high severity findings are detected.                                         |
+| `security_block_on_critical`  | `true`                     | Fail the check/status for critical security findings; never request changes.                                      |
+| `security_block_on_high`      | `false`                    | Fail the check/status for high or critical security findings; never request changes.                              |
 | `security_notify_team`        | `""`                       | GitHub team to @mention on critical findings (e.g., `@org/security-team`).                                        |
 | `security_scan_schedule`      | `false`                    | Configuration for scheduled security scans (when invoked from scheduled workflows).                               |
 | `security_scan_days`          | `7`                        | Number of days of commits to scan for scheduled security scans.                                                   |
