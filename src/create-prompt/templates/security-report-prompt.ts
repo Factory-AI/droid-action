@@ -88,6 +88,7 @@ For each file:
 ### Step 6: Generate Report
 - Create directory: \`mkdir -p .factory/security/reports\`
 - Write report to: \`.factory/security/reports/security-report-${date}.md\`
+- Also write the validator's structured results to \`$RUNNER_TEMP/droid-prompts/security_report_validated.json\`. Use the review validator format: \`{"version":1,"results":[{"status":"approved","comment":{"id":"VULN-001","title":"Outcome title","severity":"P1","security":true,"securitySeverity":"high","path":"src/file.ts","line":10,"body":"Verified impact","why":"Reachability and guards","verification":"Exact regression check","agent_prompt":"Verify and fix this issue","outside_diff":true}}],"reviewSummary":{"body":"Assessment"}}\`. Include only independently validated findings; rejected findings must have status \`"rejected"\` and a reason.
 
 ### Step 7: Create PR
 \`\`\`bash
@@ -95,20 +96,9 @@ git add .
 git commit -m "fix(security): Security scan report - ${date}"
 git -c credential.helper= -c "credential.helper=!gh auth git-credential" push origin ${branchName}
 gh pr create --title "fix(security): Security scan report - ${date} (N findings)" \\
-  --body "## Security Scan Report
-
-See \`.factory/security/reports/security-report-${date}.md\` for details.
-
-### Summary
-| Severity | Count | Auto-fixed | Manual Required |
-|----------|-------|------------|-----------------|
-| CRITICAL | X | X | X |
-| HIGH | X | X | X |
-| MEDIUM | X | X | X |
-| LOW | X | X | X |
-
-${notifyTeam ? `cc ${notifyTeam}` : ""}"
+  --body "Droid is preparing the validated security report.${notifyTeam ? ` cc ${notifyTeam}` : ""}"
 \`\`\`
+- Read the structured validator JSON, then call \`github_pr___update_pr_description\` with \`mode: "security-report"\`, the new report PR's number, and the exact JSON string as \`body\`. The TypeScript renderer produces the findings index linked to report anchors and a How to verify checklist for every finding. Do not write a free-form PR findings index or submit a review event.
 
 ## Report Format
 

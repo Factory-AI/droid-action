@@ -71,6 +71,7 @@ export async function prepareSecurityScanMode({
     "LS",
     "Execute",
     "github_comment___update_droid_comment",
+    "github_pr___update_pr_description",
   ];
 
   const allowedTools = Array.from(

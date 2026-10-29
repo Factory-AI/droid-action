@@ -9,6 +9,9 @@ import { withRequestRedaction } from "../github/api/client";
 import { updateGeneratedDescription } from "../core/review/fill";
 import { retryWithBackoff } from "../utils/retry";
 import { redactCredentials } from "../utils/redact-credentials";
+import { parseValidatedReview } from "../core/review/validated/parse";
+import { renderSecurityReport } from "../core/review/render";
+import { GITHUB_SERVER_URL } from "../github/api/config";
 import {
   createGitHubCommentReview,
   type GitHubReviewCommentPayload,
@@ -22,7 +25,7 @@ const PLACEHOLDER_REGEX = /@droid\s+fill(?:\s+description)?/gi;
 const PLACEHOLDER_LINE_REGEX =
   /^[^\S\r\n]*@droid\s+fill(?:\s+description)?[^\S\r\n]*\r?\n?/gim;
 
-export type UpdateMode = "replace" | "merge" | "generated";
+export type UpdateMode = "replace" | "merge" | "generated" | "security-report";
 
 export interface UpdateDescriptionParams {
   owner: string;
@@ -148,6 +151,24 @@ export async function handleUpdatePRDescription({
       redactCredentials(body),
       existing.data.head?.sha ?? "",
     );
+  } else if (mode === "security-report") {
+    if (process.env.DROID_EXEC_RUN_TYPE !== "droid-security-scan") {
+      throw new Error(
+        "Security report descriptions are available only during a full security scan",
+      );
+    }
+    const validated = parseValidatedReview(body);
+    const existing = await retryWithBackoff(
+      () => octokit.rest.pulls.get({ owner, repo, pull_number: prNumber }),
+      { initialDelayMs: 1000 },
+    );
+    finalBody = renderSecurityReport({
+      state: validated.findings.length ? "findings" : "clean",
+      findings: validated.findings,
+      summary: validated.summary,
+      head: existing.data.head?.sha,
+      repositoryUrl: `${GITHUB_SERVER_URL}/${owner}/${repo}`,
+    });
   } else if (mode === "merge") {
     const existing = await octokit.rest.pulls.get({
       owner,
@@ -679,7 +700,7 @@ export function createGitHubPRServer({
     {
       body: z.string().min(1).describe("The new PR description in markdown"),
       mode: z
-        .enum(["replace", "merge", "generated"])
+        .enum(["replace", "merge", "generated", "security-report"])
         .optional()
         .default("replace")
         .describe(
