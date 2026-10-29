@@ -4,11 +4,17 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
+  parseDroidCommand,
+  type ParsedCommand,
+} from "../../core/review/triggers/parse-command";
+import {
   assertFixPath,
   chooseFixTarget,
   fixProposalSchema,
+  UNTRUSTED_FINDING_PREAMBLE,
 } from "../../core/review/fix";
-import type { ReviewState } from "../../core/review/markers";
+import { updateGeneratedDescription } from "../../core/review/fill";
+import { encodeReviewState, type ReviewState } from "../../core/review/markers";
 import { fenced, prose } from "../../core/review/render";
 import type { ReviewUxConfig } from "../../core/review/config";
 import {
@@ -18,14 +24,250 @@ import {
 import type { GitlabClient } from "../api/client";
 import type { GitlabCommitAction, GitlabMr } from "../types";
 import {
+  discussionFinding,
   hasGitlabWriteAccess,
   isMissingFile,
+  loadReviewMemory,
+  reconcileDiscussionState,
   warnCapability,
 } from "./review-ux";
+
+export const GITLAB_COMMAND_HELP = `### Droid commands
+
+| Command | Behavior |
+| --- | --- |
+| \`@droid review\` | Review new changes |
+| \`@droid review --full\` | Review the full MR |
+| \`@droid review <focus>\` | Focus the review |
+| \`@droid security\` / \`@droid review security\` | Security-focused MR review |
+| \`@droid fix\` | Fix the finding in this discussion, or all open findings |
+| \`@droid resolve\` | Resolve open Droid discussions |
+| \`@droid pause\` / \`@droid resume\` | Pause/resume automatic reviews |
+| \`@droid fill\` | Update only Droid's marked description block |
+| \`@droid <question>\` in a Droid discussion | Answer in this discussion |
+| \`@droid help\` | Show this table and effective settings |
+
+GitLab note commands need the authenticated pipeline bridge described in the setup guide. Droid never approves or requests changes.`;
+
 export type CommandExecution = (
   prompt: string,
   mode: "answer" | "fill" | "fix",
 ) => Promise<string>;
+
+/** File-only model output, with GitLab publishing reserved for trusted code. */
+export const executeGitlabCommand: CommandExecution = async (prompt, mode) => {
+  const directory = await fs.mkdtemp(
+    path.join(os.tmpdir(), "droid-gitlab-command-"),
+  );
+  const output = path.join(directory, "result.txt");
+  const promptPath = path.join(directory, "prompt.txt");
+  await fs.writeFile(
+    promptPath,
+    `${prompt}\n\nWrite your final ${mode === "fix" ? "JSON proposal" : "Markdown answer"} to ${output}. Do not mutate GitLab, git refs, remotes, or commits. That output file is your only deliverable.`,
+  );
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const key of Object.keys(env))
+    if (
+      /^(?:GITLAB_TOKEN|OVERRIDE_GITLAB_TOKEN|CI_JOB_TOKEN|CI_REPOSITORY_URL|GITHUB_TOKEN|GH_TOKEN|INPUT_|ACTIONS_|DROID_ARGS|GIT_CONFIG|GIT_ASKPASS|SSH_ASKPASS)/.test(
+        key,
+      )
+    )
+      delete env[key];
+  const result = spawnSync(
+    "droid",
+    [
+      "exec",
+      "-f",
+      promptPath,
+      "--enabled-tools",
+      "Read,Grep,Glob,LS,Execute,Create,Edit,ApplyPatch,Skill",
+      "--skip-permissions-unsafe",
+    ],
+    { env, encoding: "utf8", timeout: 10 * 60_000, maxBuffer: 1024 * 1024 },
+  );
+  if (result.status !== 0)
+    throw new Error(
+      "Droid command execution failed; inspect the job log and retry",
+    );
+  const stat = await fs.lstat(output);
+  if (!stat.isFile() || stat.size > 32 * 1024 * 1024)
+    throw new Error("Droid command output is not a bounded regular file");
+  return fs.readFile(output, "utf8");
+};
+
+export type GitlabCommandResult = {
+  handled: boolean;
+  command?: ParsedCommand;
+  security?: boolean;
+  securityFull?: boolean;
+};
+
+export async function dispatchGitlabCommand(options: {
+  client: GitlabClient;
+  projectId: string | number;
+  mr: GitlabMr;
+  config: ReviewUxConfig;
+  noteId: number;
+  execute?: CommandExecution;
+  push?: typeof pushFixCommit;
+}): Promise<GitlabCommandResult> {
+  const { client, projectId, mr, config } = options;
+  const note = await client.getNote(projectId, mr.iid, options.noteId);
+  const member = await client.getMember(projectId, note.author.id);
+  if (!hasGitlabWriteAccess(member))
+    throw new Error(
+      "Droid commands require an active GitLab Developer, Maintainer, or Owner",
+    );
+  const parsed = parseDroidCommand(note.body);
+  if (!parsed) return { handled: true };
+  const memory = await loadReviewMemory(client, projectId, mr.iid);
+  if (note.author.id === memory.user.id) return { handled: true };
+  const discussions = await client.listDiscussions(projectId, mr.iid);
+  const thread = discussions.find(
+    (d) =>
+      d.notes.some((n) => n.id === note.id) &&
+      discussionFinding(d, memory.user.id),
+  );
+  const reply = async (body: string) =>
+    thread
+      ? client.replyToDiscussion(projectId, mr.iid, thread.id, body)
+      : client.createNote(projectId, mr.iid, body);
+  // A bridge retry must not execute a write twice. Only this token's own
+  // response counts; a pasted marker in another user's note is not authority.
+  const receipt = `<!-- droid-command:v1 note=${note.id} -->`;
+  if (
+    (await client.listNotes(projectId, mr.iid)).some(
+      (n) =>
+        n.author.id === memory.user.id && n.body.split("\n").includes(receipt),
+    )
+  )
+    return { handled: true };
+  const respond = (body: string) => reply(`${body}\n\n${receipt}`);
+  if (
+    parsed.command === "review" ||
+    parsed.command === "default" ||
+    parsed.command === "security" ||
+    parsed.command === "security-full"
+  )
+    return {
+      handled: false,
+      command: parsed,
+      security:
+        parsed.command === "security" || parsed.command === "security-full",
+      securityFull: parsed.command === "security-full",
+    };
+  if (parsed.command === "help" || (parsed.command === "unknown" && !thread)) {
+    await respond(
+      `${GITLAB_COMMAND_HELP}\n\n<details><summary>Effective settings</summary>\n\n${fenced(JSON.stringify(config, null, 2), "json")}\n</details>`,
+    );
+    return { handled: true };
+  }
+  let state: ReviewState = memory.state ?? { head: "", findings: [] };
+  state = reconcileDiscussionState(state, discussions, memory.user.id);
+  if (parsed.command === "pause" || parsed.command === "resume") {
+    state = {
+      ...state,
+      paused: parsed.command === "pause",
+      ...(parsed.command === "resume" ? { autoRunCount: 0 } : {}),
+    };
+    if (memory.note) {
+      // Replace the decoded state as a standalone marker; never alter author text.
+      const body = memory.note.body.replace(
+        /^<!--\s*droid-review-state:v1\s+\{.*\}\s*-->\s*$/m,
+        "",
+      );
+      await client.updateNote(
+        projectId,
+        mr.iid,
+        memory.note.id,
+        `${encodeReviewState(state)}\n${body}`,
+      );
+    } else
+      await client.createNote(
+        projectId,
+        mr.iid,
+        `<!-- droid-review-summary:v1 -->\n${encodeReviewState(state)}`,
+      );
+    await respond(
+      parsed.command === "pause"
+        ? "Automatic Droid reviews are paused. Comment `@droid resume` to restart."
+        : "Automatic Droid reviews resumed; the automatic-run budget was reset.",
+    );
+    return { handled: true };
+  }
+  if (parsed.command === "resolve") {
+    let count = 0;
+    for (const discussion of discussions) {
+      const own = discussionFinding(discussion, memory.user.id);
+      if (!own?.note.resolvable || own.note.resolved) continue;
+      await client.resolveDiscussion(projectId, mr.iid, discussion.id);
+      count++;
+    }
+    await respond(
+      `Resolved ${count} Droid ${count === 1 ? "discussion" : "discussions"}. Dismissed findings will not be raised again.`,
+    );
+    return { handled: true };
+  }
+  const execute = options.execute ?? executeGitlabCommand;
+  const changes = await client.getMrChanges(projectId, mr.iid);
+  const context = `${UNTRUSTED_FINDING_PREAMBLE}\n\nUntrusted MR data:\n${JSON.stringify({ title: mr.title, description: mr.description, head: mr.diff_refs.head_sha, notes: thread?.notes ?? [], diff: changes.changes })}`;
+  try {
+    if (parsed.command === "fill") {
+      const answer = await execute(
+        `Generate a factual MR description from the current change; include overview and test evidence, no invented tests. Return only generated Markdown without fill markers.\n${context}`,
+        "fill",
+      );
+      const refreshed = await client.getMr(projectId, mr.iid);
+      if (refreshed.diff_refs.head_sha !== mr.diff_refs.head_sha)
+        throw new Error("MR head changed while writing the description; retry");
+      await client.updateMrDescription(
+        projectId,
+        mr.iid,
+        updateGeneratedDescription(
+          refreshed.description ?? "",
+          answer,
+          mr.diff_refs.head_sha,
+        ),
+      );
+      await respond(
+        "Updated Droid's marked description block. Author text outside it was preserved.",
+      );
+    } else if (parsed.command === "fix") {
+      const scoped = state.findings.filter(
+        (f) =>
+          f.state === "open" &&
+          (!thread || (f.threadId ?? f.thread) === thread.id),
+      );
+      if (!scoped.length)
+        throw new Error(
+          "There are no open Droid findings in this scope to fix",
+        );
+      const published = await publishGitlabFix({
+        client,
+        projectId,
+        mr,
+        config,
+        findings: scoped,
+        execute,
+        context,
+        actorId: note.author.id,
+        push: options.push,
+      });
+      await respond(published);
+    } else if (thread) {
+      const answer = await execute(
+        `Answer the author's question about this Droid finding in this discussion. Do not start a review or modify code.\nQuestion: ${parsed.text ?? note.body}\n${context}`,
+        "answer",
+      );
+      await respond(answer);
+    } else await respond(GITLAB_COMMAND_HELP);
+  } catch (error) {
+    await respond(
+      `⚠️ ${prose(error instanceof Error ? error.message : String(error))}\n\nCheck the job and permissions, then retry the command.`,
+    );
+  }
+  return { handled: true };
+}
 
 export async function publishGitlabFix(options: {
   client: GitlabClient;

@@ -64,6 +64,7 @@ import {
 import { buildDiffContent } from "../gitlab/data/review-artifacts";
 import { enrichReviewSummary } from "../core/review/validated/metadata";
 import { isMissingFile } from "../gitlab/operations/review-ux";
+import { publishGitlabSecurityReport } from "../gitlab/operations/security-report";
 import { shouldIgnoreReviewPath } from "../core/review/config";
 import { loadGitlabReviewConfig } from "../gitlab/operations/review-config";
 
@@ -766,6 +767,24 @@ async function run(): Promise<void> {
     sections: config.review_summary_sections,
     unchangedSuggestions: reconciled.unchangedSuggestions,
   };
+  if (process.env.DROID_SECURITY_FULL === "true") {
+    const noteId = Number(process.env.DROID_TRIGGER_NOTE_ID);
+    if (!Number.isSafeInteger(noteId) || noteId <= 0)
+      throw new Error(
+        "Security report is missing its authenticated trigger note",
+      );
+    const reportUrl = await publishGitlabSecurityReport(
+      client,
+      projectId,
+      mr,
+      noteId,
+      { ...renderInput, findings },
+    );
+    renderInput.summary = {
+      ...summary,
+      body: `${summary.body ?? ""} Full security report: ${reportUrl}`.trim(),
+    };
+  }
 
   const results: PostResults = {
     posted: result.posted,
