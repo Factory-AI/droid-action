@@ -8,6 +8,7 @@ export type DroidCommand =
   | "resolve"
   | "pause"
   | "resume"
+  | "question"
   | "unknown"
   | "default";
 

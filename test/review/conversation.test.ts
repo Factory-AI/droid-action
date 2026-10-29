@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, test, spyOn } from "bun:test";
 import * as core from "@actions/core";
 import * as lifecycle from "../../src/github/operations/review-lifecycle";
 import { prepareConversationCommand } from "../../src/tag/commands/conversation";
+import { postCommand } from "../../src/entrypoints/github-post-command";
 import { createMockContext } from "../mockContext";
-import { mkdtemp, rm } from "fs/promises";
+import { mkdtemp, readFile, rm, writeFile, symlink } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
+import { createHash } from "crypto";
 import type { Octokits } from "../../src/github/api/client";
 import { prepareTagExecution } from "../../src/tag";
 import * as actors from "../../src/github/validation/actor";
@@ -168,5 +170,84 @@ describe("command execution isolation and replies", () => {
     ).toEqual([true, false]);
     expect(resolveSpy).toHaveBeenCalledTimes(1);
     expect(issueComments[2].body).toBe("Resolved 1 Droid finding thread.");
+  });
+  test("a question prepares file-only output and freezes the publisher/runtime digests", async () => {
+    await prepareConversationCommand({
+      context: context(true),
+      octokit: client,
+      command: {
+        command: "question",
+        text: "Why is this unsafe?",
+        raw: "@droid why?",
+        location: "comment",
+      },
+    });
+    expect(output("command_mode")).toBe("question");
+    expect(output("command_root_comment_id")).toBe("100");
+    expect(output("run_code_review")).toBe("false");
+    expect(output("mcp_tools")).toBe('{"mcpServers":{}}');
+    expect(output("droid_args")).not.toContain("Execute");
+    expect(output("droid_args")).not.toContain("malicious");
+    const publisher = await readFile(output("command_publisher_path"));
+    expect(createHash("sha256").update(publisher).digest("hex")).toBe(
+      output("command_publisher_sha256"),
+    );
+    expect(output("command_runtime_sha256")).toMatch(/^[0-9a-f]{64}$/);
+    const code = publisher.toString("utf8");
+    expect(code).not.toMatch(/^\s*import[^;\n]*from\s+["'](?:@|\.|\/)/m);
+    expect(replies).toHaveLength(0);
+  });
+  test("publisher answers only the verified root thread, without review or top-level comments", async () => {
+    const outputPath = path.join(dir, "answer.txt");
+    await writeFile(
+      outputPath,
+      "This guard cannot protect the concurrent request.",
+    );
+    await postCommand(client, {
+      owner: "org",
+      repo: "repo",
+      prNumber: 12,
+      actor: "maintainer",
+      mode: "question",
+      expectedHead: head,
+      outputPath,
+      rootCommentId: 100,
+      success: true,
+    });
+    expect(replies).toEqual([
+      {
+        owner: "org",
+        repo: "repo",
+        pull_number: 12,
+        comment_id: 100,
+        body: "This guard cannot protect the concurrent request.",
+      },
+    ]);
+    expect(issueComments).toHaveLength(0);
+  });
+  test("publisher refuses forged root comments and symlink output", async () => {
+    const outputPath = path.join(dir, "answer.txt");
+    await writeFile(outputPath, "answer");
+    const options = {
+      owner: "org",
+      repo: "repo",
+      prNumber: 12,
+      actor: "maintainer",
+      mode: "question" as const,
+      expectedHead: head,
+      outputPath,
+      rootCommentId: 999,
+      success: true,
+    };
+    await expect(postCommand(client, options)).rejects.toThrow(
+      "verified Droid",
+    );
+    expect(replies).toHaveLength(0);
+    const link = path.join(dir, "symlink");
+    await symlink(outputPath, link);
+    await expect(
+      postCommand(client, { ...options, rootCommentId: 100, outputPath: link }),
+    ).rejects.toThrow("regular file");
+    expect(replies[0].body).toContain("could not answer");
   });
 });
