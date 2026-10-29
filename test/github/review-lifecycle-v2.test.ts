@@ -24,6 +24,7 @@ import {
   authoritativeReviewTarget,
   findReviewSummary,
   finishReviewLifecycle,
+  listDroidThreads,
   loadBoundReviewLifecycle,
   prepareReviewLifecycle,
   readReviewLifecycle,
@@ -33,6 +34,12 @@ import {
 import { reviewCheckConclusion } from "../../src/github/operations/review-checks";
 import { run as postReview } from "../../src/entrypoints/github-post-review-v2";
 import { run as lifecyclePhase } from "../../src/entrypoints/github-review-lifecycle";
+import {
+  changedFindingCandidates,
+  identicalReviewDiffSkipReason,
+  planIncrementalReview,
+  reconcileFindings,
+} from "../../src/core/review/incremental";
 import { retryWithBackoff } from "../../src/utils/retry";
 
 const HEAD = "a".repeat(40);
@@ -367,6 +374,53 @@ describe("review lifecycle production boundaries", () => {
       "Looks good to merge",
     );
   });
+  it("never resolves an absent finding and does not trust cached fixed eligibility", async () => {
+    const f = fixture();
+    f.setThreads(false);
+    await f.prepare();
+    const cache = (await readReviewLifecycle())!;
+    cache.eligibleFixedIds = ["f-known"];
+    await saveReviewLifecycle(cache);
+    await f.post([]);
+    expect(f.calls.some((call) => call.method === "reply")).toBe(false);
+    expect(decodeReviewState(f.body())?.findings[0]?.state).toBe("open");
+    expect(
+      f.calls.filter((call) => call.method === "checkUpdate").at(-1)?.input
+        .conclusion,
+    ).toBe("neutral");
+  });
+  it("resolves only an explicit fixed decision grounded in authenticated changed code", async () => {
+    const f = fixture();
+    f.setThreads(false);
+    await f.prepare();
+    await f.post(
+      [],
+      [
+        {
+          id: "f-known",
+          status: "fixed",
+          evidence: "The new timeout guard handles every request.",
+        },
+      ],
+    );
+    expect(
+      f.calls.find((call) => call.method === "reply")?.input,
+    ).toMatchObject({ comment_id: 81, body: "✅ Fixed in aaaaaaa." });
+    expect(
+      f.calls
+        .filter((call) => call.method === "graphql")
+        .some((call) => call.input.query.includes("DroidResolveThread")),
+    ).toBe(true);
+    expect(decodeReviewState(f.body())?.findings[0]?.state).toBe("resolved");
+  });
+  it("treats a trusted human-resolved thread as authoritative without cached state", async () => {
+    const f = fixture([]);
+    f.setThreads(true);
+    await f.prepare();
+    await f.post([{ status: "approved", comment: finding() }]);
+    expect(f.calls.some((call) => call.method === "createReview")).toBe(false);
+    expect(decodeReviewState(f.body())?.findings[0]?.state).toBe("dismissed");
+  });
   it("rejects model-cached cross-PR targets before metadata mutations", async () => {
     const f = fixture();
     await f.prepare();
@@ -400,6 +454,18 @@ describe("review lifecycle production boundaries", () => {
       f.calls.filter((call) => call.method === "reactionCreate").at(-1)?.input
         .content,
     ).toBe("confused");
+  });
+  it("does not let marker-shaped human thread roots authorize resolution", async () => {
+    const f = fixture();
+    f.setThreads(false, 99);
+    expect(
+      await listDroidThreads({
+        octokit: f.octokit,
+        owner: "o",
+        repo: "r",
+        prNumber: 7,
+      }),
+    ).toEqual([]);
   });
   it("binds optional CODEOWNERS metadata to the immutable base and never assigns", async () => {
     process.env.REVIEW_SUGGEST_REVIEWERS = "true";
@@ -512,6 +578,64 @@ describe("review lifecycle production boundaries", () => {
 });
 
 describe("GitHub v2 invariants", () => {
+  it("keeps fresh severity and security metadata without reposting old ids", () => {
+    const prior = finding({ severity: "P2" });
+    const current = finding({
+      severity: "P0",
+      security: true,
+      securitySeverity: "critical",
+    });
+    const result = reconcileFindings({
+      previous: [prior],
+      current: [current],
+      head: HEAD,
+    });
+    expect(result.newFindings).toEqual([]);
+    expect(result.findings[0]?.securitySeverity).toBe("critical");
+    expect(reviewCheckConclusion(result.findings)).toBe("failure");
+  });
+  it("suppresses only explicit non-security optional suggestions on unchanged code", () => {
+    const suggestions = [
+      finding({ id: "optional", severity: "P2", optionalSuggestion: true }),
+      finding({
+        id: "security",
+        severity: "P2",
+        security: true,
+        optionalSuggestion: true,
+      }),
+      finding({ id: "correctness", severity: "P2" }),
+    ];
+    const result = reconcileFindings({
+      previous: [],
+      current: suggestions,
+      incremental: true,
+      changedPaths: new Set(),
+      head: HEAD,
+    });
+    expect(result.unchangedSuggestions).toBe(1);
+    expect(result.newFindings.map((f) => f.id)).toEqual([
+      "security",
+      "correctness",
+    ]);
+  });
+  it("uses removed old-side lines, not hunk context, and decodes quoted Git paths", () => {
+    expect(changedFindingCandidates([finding({ line: 2 })], DIFF)).toEqual([]);
+    const quoted =
+      'diff --git "a/a\\tb.ts" "b/a\\tb.ts"\n--- "a/a\\tb.ts"\n+++ "b/a\\tb.ts"\n@@ -1 +1 @@\n-a\n+b\n';
+    expect(
+      changedFindingCandidates([finding({ path: "a\tb.ts", line: 1 })], quoted),
+    ).toHaveLength(1);
+  });
+  it("does not treat removed SQL comments inside a hunk as file headers", () => {
+    const sqlDiff =
+      "diff --git a/query.sql b/query.sql\n--- a/query.sql\n+++ b/query.sql\n@@ -1,2 +1,2 @@\n--- unsafe comment\n-SELECT unsafe_value;\n+-- safe comment\n+SELECT safe_value;\n";
+    expect(
+      changedFindingCandidates(
+        [finding({ path: "query.sql", line: 2 })],
+        sqlDiff,
+      ),
+    ).toHaveLength(1);
+  });
   it("does not infer security taxonomy from P priority and only blocks configured levels", () => {
     expect(
       reviewCheckConclusion([finding({ severity: "P0", security: true })]),
@@ -527,6 +651,48 @@ describe("GitHub v2 invariants", () => {
       }),
     ).toBe("failure");
     expect(reviewCheckConclusion([], {}, true)).toBe("neutral");
+  });
+  it("handles first/full/identical/pause/automatic-budget plans", () => {
+    expect(planIncrementalReview({ head: HEAD })).toEqual({});
+    expect(planIncrementalReview({ state: { head: OLD }, head: HEAD })).toEqual(
+      { incrementalBaseSha: OLD },
+    );
+    expect(
+      planIncrementalReview({ state: { head: HEAD }, head: HEAD, full: true }),
+    ).toEqual({});
+    expect(
+      planIncrementalReview({ state: { head: HEAD }, head: HEAD }).skipReason,
+    ).toContain("No new changes");
+    expect(
+      planIncrementalReview({
+        state: { head: OLD, paused: true },
+        head: HEAD,
+        automatic: true,
+      }).skipReason,
+    ).toContain("paused");
+    expect(
+      planIncrementalReview({
+        state: { head: OLD, autoRunCount: 2 },
+        maxAutoRuns: 2,
+        head: HEAD,
+        automatic: true,
+      }).skipReason,
+    ).toContain("limit");
+  });
+  it("does not skip a requested full review when the full diff hash is unchanged", () => {
+    const input = {
+      hash: "same-hash",
+      previousHash: "same-hash",
+      previousHead: OLD,
+      incrementalUsed: false,
+      empty: false,
+    };
+    expect(identicalReviewDiffSkipReason(input)).toBe(
+      "No new changes since bbbbbbb",
+    );
+    expect(
+      identicalReviewDiffSkipReason({ ...input, full: true }),
+    ).toBeUndefined();
   });
   it("redacts retry diagnostics without changing the thrown error or retry policy", async () => {
     const error = Object.assign(new Error(`Denied fk-${"x".repeat(32)}`), {

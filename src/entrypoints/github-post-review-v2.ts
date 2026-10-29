@@ -54,13 +54,21 @@ import type {
   ReviewRenderInput,
 } from "../core/review/render/types";
 import {
+  changedFindingCandidates,
+  changedReviewLines,
+  reconcileFindings,
+} from "../core/review/incremental";
+import {
   advanceReviewLifecycle,
   authoritativeReviewTarget,
   fetchImmutableReviewDiff,
   finishReviewLifecycle,
   lifecycleWarning,
+  listDroidThreads,
   loadBoundReviewLifecycle,
+  resolveDroidThread,
   saveReviewLifecycle,
+  stateFindings,
 } from "../github/operations/review-lifecycle";
 import {
   isPermissionError,
@@ -472,13 +480,54 @@ export async function run(
         : "Below the configured severity threshold",
     })),
   ];
-  const newFindings = findings;
+  let newFindings = findings;
+  let resolved: ReviewFinding[] = [];
+  let unchangedSuggestions = 0;
+  let threads: Awaited<ReturnType<typeof listDroidThreads>> = [];
   if (lifecycle && octokit) {
     await advanceReviewLifecycle({
       octokit,
       run: lifecycle,
       name: "Posting review",
     });
+    threads =
+      (await optionalGitHubOperation(
+        () =>
+          listDroidThreads({
+            octokit,
+            owner: lifecycle.owner,
+            repo: lifecycle.repo,
+            prNumber: lifecycle.prNumber,
+          }),
+        lifecycleWarning(lifecycle),
+      )) ?? [];
+    const previous = stateFindings(lifecycle.state);
+    for (const thread of threads) {
+      if (previous.some((finding) => finding.id === thread.findingId)) continue;
+      const marker = decodeFindingMarker(thread.body)!;
+      const remembered = lifecycle.state.findings.find(
+        (finding) => finding.id === thread.findingId,
+      );
+      previous.push({
+        ...normalizeFinding({
+          id: marker.id,
+          severity: marker.sev,
+          category: marker.cat,
+          security: marker.cat === "security",
+          title:
+            /\*\*([^*\n]+)\*\*/.exec(thread.body)?.[1] ||
+            remembered?.title ||
+            "Finding from an earlier review",
+          path: thread.path,
+          line: thread.line,
+          body: remembered?.body || thread.body,
+        }),
+        threadId: thread.nodeId,
+        threadUrl: thread.url,
+        state: remembered?.state || (thread.resolved ? "dismissed" : "open"),
+        isNew: false,
+      });
+    }
     const authoritativeDiff =
       lifecycle.base || lifecycle.pullRequest?.baseSha
         ? await optionalGitHubOperation(
@@ -493,6 +542,62 @@ export async function run(
           )
         : undefined;
     diff = authoritativeDiff ?? "";
+    const priorDiff =
+      lifecycle.state.head && /^[a-f0-9]{7,64}$/i.test(lifecycle.state.head)
+        ? await optionalGitHubOperation(
+            () =>
+              fetchImmutableReviewDiff(octokit, {
+                owner: lifecycle.owner,
+                repo: lifecycle.repo,
+                base: lifecycle.state.head,
+                head: lifecycle.head,
+              }),
+            lifecycleWarning(lifecycle),
+          )
+        : undefined;
+    const eligibleFixedIds =
+      priorDiff === undefined
+        ? []
+        : changedFindingCandidates(previous, priorDiff).map(
+            (finding) => finding.id,
+          );
+    const reconciled = reconcileFindings({
+      previous,
+      current: findings,
+      threads: threads.map((thread) => ({
+        findingId: thread.findingId,
+        resolved: thread.resolved,
+      })),
+      eligibleFixedIds,
+      fixedIds: parsed.fixedFindingIds,
+      head: commitId || lifecycle.head,
+      incremental: !!lifecycle.incrementalBaseSha,
+      changedPaths: new Set(changedReviewLines(priorDiff ?? diff).keys()),
+    });
+    findings = reconciled.findings;
+    newFindings = reconciled.newFindings;
+    resolved = reconciled.resolved;
+    unchangedSuggestions = reconciled.unchangedSuggestions;
+    if (config.review_auto_resolve) {
+      for (const finding of resolved) {
+        const thread = threads.find(
+          (thread) => thread.findingId === finding.id,
+        );
+        if (thread && !thread.resolved)
+          await optionalGitHubOperation(
+            () =>
+              resolveDroidThread({
+                octokit,
+                owner: lifecycle.owner,
+                repo: lifecycle.repo,
+                prNumber: lifecycle.prNumber,
+                thread,
+                head: commitId || lifecycle.head,
+              }),
+            lifecycleWarning(lifecycle),
+          );
+      }
+    }
   }
   const renderOptions: RenderOptions = {
     head: commitId || lifecycle?.head,
@@ -607,7 +712,13 @@ export async function run(
       reviewed: [...new Set([...(lifecycle.state.reviewed || []), head])].slice(
         -100,
       ),
+      autoRunCount:
+        (lifecycle.state.autoRunCount || 0) +
+        (lifecycle.automatic && !posted.failures.length ? 1 : 0),
       findings: findings.map((finding) => {
+        const thread = threads.find(
+          (thread) => thread.findingId === finding.id,
+        );
         return {
           id: finding.id,
           sev: finding.severity,
@@ -618,9 +729,13 @@ export async function run(
           body: finding.body,
           finding,
           thread: finding.threadId,
+          threadId: thread?.nodeId,
           commentId:
-            typeof finding.threadId === "number" ? finding.threadId : undefined,
-          url: finding.threadUrl,
+            thread?.commentId ||
+            (typeof finding.threadId === "number"
+              ? finding.threadId
+              : undefined),
+          url: thread?.url || finding.threadUrl,
         };
       }),
     };
@@ -632,6 +747,7 @@ export async function run(
           ? "findings"
           : "clean",
       findings,
+      resolved,
       summary: {
         ...parsed.summary,
         security: {
@@ -645,6 +761,7 @@ export async function run(
       candidatesConsidered: parsed.approvedCount + parsed.rejectedCount,
       postedCount: posted.posted + posted.fallbackPosted,
       skippedCount: parsed.skipped.length,
+      unchangedSuggestions,
       blocked:
         reviewCheckConclusion(findings, {
           failOnSeverity: config.fail_on_severity,

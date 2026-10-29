@@ -111,7 +111,7 @@ function decodeGitQuotedPath(value: string): string {
   return Buffer.from(bytes).toString("utf8");
 }
 
-function normalizePatchPath(raw: string): string | null {
+export function normalizePatchPath(raw: string): string | null {
   let value = raw.replace(/\r$/, "");
 
   if (value.startsWith('"')) {
