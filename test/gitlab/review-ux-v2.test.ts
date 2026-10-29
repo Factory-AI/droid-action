@@ -9,6 +9,12 @@ import {
   SUMMARY_MARKER,
 } from "../../src/core/review/markers";
 import { normalizeFinding } from "../../src/core/review/validated/finding";
+import {
+  assertGitlabFixRef,
+  dispatchGitlabCommand,
+  publishGitlabFix,
+  type CommandExecution,
+} from "../../src/gitlab/operations/commands";
 import { loadGitlabReviewConfig } from "../../src/gitlab/operations/review-config";
 import {
   descriptionWithReview,
@@ -29,14 +35,10 @@ import {
 import { postReview } from "../../src/entrypoints/gitlab-post-review";
 import { run as postRun } from "../../src/entrypoints/gitlab-post-review";
 import { run as finishRun } from "../../src/entrypoints/gitlab-update-comment-link";
+import { publishGitlabSecurityReport } from "../../src/gitlab/operations/security-report";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-
-import {
-  assertGitlabFixRef,
-  publishGitlabFix,
-} from "../../src/gitlab/operations/commands";
 
 const HEAD = "a".repeat(40);
 const BASE = "b".repeat(40);
@@ -574,6 +576,95 @@ describe("GitLab review UX v2", () => {
     expect(twice).toStartWith(example);
     expect(twice).toContain("new real summary");
     expect(twice).not.toContain("old real summary");
+  });
+});
+
+describe("GitLab command bridge", () => {
+  it("fetches the actual note author and refuses non-writers before execution", async () => {
+    const t = setup({ command: "@droid fix", actorRole: 20 });
+    const execute = mock(async () => "");
+    await expect(
+      dispatchGitlabCommand({
+        client: t.client,
+        projectId: 42,
+        mr,
+        config: config(),
+        noteId: 20,
+        execute,
+      }),
+    ).rejects.toThrow("Developer");
+    expect(execute).not.toHaveBeenCalled();
+    expect(t.requests.filter((r) => r.method !== "GET")).toHaveLength(0);
+  });
+
+  it("parses security alias/full reviews without executing a command model", async () => {
+    const t = setup({ command: "@droid review --full migration locks" });
+    const result = await dispatchGitlabCommand({
+      client: t.client,
+      projectId: 42,
+      mr,
+      config: config(),
+      noteId: 20,
+    });
+    expect(result.handled).toBe(false);
+    expect(result.command).toMatchObject({
+      command: "review",
+      fullReview: true,
+      focus: "migration locks",
+    });
+  });
+
+  it("does not trigger a fenced command", async () => {
+    const t = setup({ command: "```\n@droid fix\n```" });
+    expect(
+      (
+        await dispatchGitlabCommand({
+          client: t.client,
+          projectId: 42,
+          mr,
+          config: config(),
+          noteId: 20,
+        })
+      ).handled,
+    ).toBe(true);
+    expect(t.requests.filter((r) => r.method !== "GET")).toHaveLength(0);
+  });
+
+  it("answers thread questions in that discussion without starting a review", async () => {
+    const t = setup({
+      command: "@droid why does this lose retries?",
+      thread: true,
+    });
+    const execute = mock<CommandExecution>(
+      async () => "The connection has no retry callback.",
+    );
+    const result = await dispatchGitlabCommand({
+      client: t.client,
+      projectId: 42,
+      mr,
+      config: config(),
+      noteId: 20,
+      execute,
+    });
+    expect(result.handled).toBe(true);
+    expect(execute.mock.calls[0]?.[1]).toBe("answer");
+    expect(t.requests.find((r) => r.method === "POST")?.path).toContain(
+      "/discussions/discussion-1/notes",
+    );
+  });
+
+  it("pause persists a versioned state marker without deleting previous review", async () => {
+    const t = setup({ command: "@droid pause" });
+    await dispatchGitlabCommand({
+      client: t.client,
+      projectId: 42,
+      mr,
+      config: config(),
+      noteId: 20,
+    });
+    const body = t.requests.find((r) => r.method === "PUT")?.body.body;
+    expect(decodeReviewState(body)?.paused).toBe(true);
+    expect(body).toContain(SUMMARY_MARKER);
   });
 });
 
@@ -1212,5 +1303,39 @@ describe("GitLab v2 production entrypoints, local API only", () => {
         ),
       ).toHaveLength(0);
     });
+  });
+});
+
+describe("GitLab full security report, API mocked", () => {
+  it("requires an explicit command then creates an indexed report MR from the reviewed head", async () => {
+    const t = setup({ command: "@droid security --full" });
+    const url = await publishGitlabSecurityReport(t.client, 42, mr, 20, {
+      state: "findings",
+      head: HEAD,
+      findings: [{ ...finding, security: true, cwe: "CWE-79" }],
+    });
+    const commit = t.requests.find((r) =>
+      r.path.endsWith("/repository/commits"),
+    );
+    expect(commit?.body.start_sha).toBe(HEAD);
+    expect(commit?.body.branch).toStartWith("droid/security-7-");
+    const report = Buffer.from(
+      commit?.body.actions[0].content,
+      "base64",
+    ).toString("utf8");
+    expect(report).toContain("Findings index");
+    expect(report).toContain("How to verify");
+    expect(url).toContain("stacked");
+  });
+
+  it("will not create a full-report MR from an ordinary review command", async () => {
+    const t = setup({ command: "@droid review" });
+    await expect(
+      publishGitlabSecurityReport(t.client, 42, mr, 20, {
+        state: "clean",
+        head: HEAD,
+      }),
+    ).rejects.toThrow("explicit");
+    expect(t.requests.filter((r) => r.method === "POST")).toHaveLength(0);
   });
 });
