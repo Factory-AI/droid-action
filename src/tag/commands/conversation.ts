@@ -25,7 +25,7 @@ export function renderCommandHelp(context: ParsedGitHubContext): string {
 | \`@droid security --full\` | Full repository security report |
 | \`@droid resolve\` | Resolve all Droid finding threads |
 | \`@droid pause\` / \`@droid resume\` | Pause / resume automatic reviews |
-| \`@droid fill\` | Update the PR description |
+| \`@droid fill\` | Update only Droid's generated description block |
 | \`@droid help\` | Show this table and current configuration |
 
 <sub>Depth: ${config.review_depth} · Incremental: ${config.review_incremental} · Auto-resolve: ${config.review_auto_resolve} · Auto-run limit: ${config.review_max_auto_runs || "unlimited"}</sub>`;

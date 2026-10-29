@@ -6,6 +6,9 @@ import { z } from "zod";
 import { Octokit } from "@octokit/rest";
 import { GITHUB_API_URL } from "../github/api/config";
 import { withRequestRedaction } from "../github/api/client";
+import { updateGeneratedDescription } from "../core/review/fill";
+import { retryWithBackoff } from "../utils/retry";
+import { redactCredentials } from "../utils/redact-credentials";
 import {
   createGitHubCommentReview,
   type GitHubReviewCommentPayload,
@@ -19,7 +22,7 @@ const PLACEHOLDER_REGEX = /@droid\s+fill(?:\s+description)?/gi;
 const PLACEHOLDER_LINE_REGEX =
   /^[^\S\r\n]*@droid\s+fill(?:\s+description)?[^\S\r\n]*\r?\n?/gim;
 
-export type UpdateMode = "replace" | "merge";
+export type UpdateMode = "replace" | "merge" | "generated";
 
 export interface UpdateDescriptionParams {
   owner: string;
@@ -127,7 +130,25 @@ export async function handleUpdatePRDescription({
 }: UpdateDescriptionParams): Promise<string> {
   let finalBody: string;
 
-  if (mode === "merge") {
+  if (
+    mode === "generated" ||
+    process.env.DROID_EXEC_RUN_TYPE === "droid-fill"
+  ) {
+    const existing = await retryWithBackoff(
+      () =>
+        octokit.rest.pulls.get({
+          owner,
+          repo,
+          pull_number: prNumber,
+        }),
+      { initialDelayMs: 1000 },
+    );
+    finalBody = updateGeneratedDescription(
+      existing.data.body ?? "",
+      redactCredentials(body),
+      existing.data.head?.sha ?? "",
+    );
+  } else if (mode === "merge") {
     const existing = await octokit.rest.pulls.get({
       owner,
       repo,
@@ -143,12 +164,16 @@ export async function handleUpdatePRDescription({
     finalBody = "";
   }
 
-  await octokit.rest.pulls.update({
-    owner,
-    repo,
-    pull_number: prNumber,
-    body: finalBody,
-  });
+  await retryWithBackoff(
+    () =>
+      octokit.rest.pulls.update({
+        owner,
+        repo,
+        pull_number: prNumber,
+        body: finalBody,
+      }),
+    { initialDelayMs: 1000 },
+  );
 
   return finalBody;
 }
@@ -654,10 +679,12 @@ export function createGitHubPRServer({
     {
       body: z.string().min(1).describe("The new PR description in markdown"),
       mode: z
-        .enum(["replace", "merge"])
+        .enum(["replace", "merge", "generated"])
         .optional()
         .default("replace")
-        .describe("Replace entire description or merge with existing"),
+        .describe(
+          "Replace, merge, or update only the Droid-generated description region",
+        ),
       pr_number: z.number().int().describe("PR number to update"),
     },
     async ({ body, mode, pr_number }) => {
