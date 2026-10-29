@@ -2,6 +2,8 @@ import * as core from "@actions/core";
 import { lstat, readFile } from "fs/promises";
 import { createOctokit, type Octokits } from "../github/api/client";
 import { listDroidThreads } from "../github/operations/review-lifecycle";
+import { publishReviewFix } from "../github/operations/review-fix";
+import { fixProposalSchema, type FixMode } from "../core/review/fix";
 import { redactCredentials } from "../utils/redact-credentials";
 
 export type PostCommandOptions = {
@@ -9,10 +11,11 @@ export type PostCommandOptions = {
   repo: string;
   prNumber: number;
   actor: string;
-  mode: "question";
+  mode: "fix" | "question";
   expectedHead: string;
+  fixMode: FixMode;
   outputPath: string;
-  rootCommentId: number;
+  rootCommentId?: number;
   success: boolean;
 };
 
@@ -23,22 +26,31 @@ export async function postCommand(
 ): Promise<void> {
   const { owner, repo, prNumber } = options;
   const threads = await listDroidThreads({ octokit, owner, repo, prNumber });
-  const selected = threads.filter(
-    (thread) => thread.commentId === options.rootCommentId,
-  );
-  if (!options.rootCommentId || !selected.length)
+  const selected = options.rootCommentId
+    ? threads.filter((thread) => thread.commentId === options.rootCommentId)
+    : threads.filter((thread) => !thread.resolved);
+  if (options.rootCommentId && !selected.length)
     throw new Error(
       "The selected comment is not a verified Droid finding on this PR",
     );
   const reply = async (body: string) => {
     const safeBody = redactCredentials(body);
-    await octokit.rest.pulls.createReplyForReviewComment({
-      owner,
-      repo,
-      pull_number: prNumber,
-      comment_id: options.rootCommentId,
-      body: safeBody,
-    });
+    if (options.rootCommentId) {
+      await octokit.rest.pulls.createReplyForReviewComment({
+        owner,
+        repo,
+        pull_number: prNumber,
+        comment_id: options.rootCommentId,
+        body: safeBody,
+      });
+    } else {
+      await octokit.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: prNumber,
+        body: safeBody,
+      });
+    }
   };
   try {
     if (!options.success)
@@ -51,15 +63,59 @@ export async function postCommand(
         "The command output is missing, too large, or not a regular file",
       );
     const text = await readFile(options.outputPath, "utf8");
-    if (!text.trim() || text.length > 60000)
-      throw new Error("The thread answer is empty or too long");
-    await reply(text);
+    if (options.mode === "question") {
+      if (!options.rootCommentId)
+        throw new Error(
+          "Questions must be answered inside their verified Droid review thread",
+        );
+      if (!text.trim() || text.length > 60000)
+        throw new Error("The thread answer is empty or too long");
+      await reply(text);
+    } else {
+      if (!selected.some((thread) => !thread.resolved))
+        throw new Error(
+          "No selected Droid findings are still open; no fix was published",
+        );
+      const raw: unknown = JSON.parse(text);
+      // A valid no-op is useful and must not create an empty commit.
+      const noOp = fixProposalSchema
+        .extend({ files: fixProposalSchema.shape.files.min(0).max(0) })
+        .safeParse(raw);
+      if (noOp.success) {
+        await reply(
+          `No fix was published.\n\n${redactCredentials(noOp.data.summary)}\n\n⚠️ Tests were not run.`,
+        );
+      } else {
+        const result = await publishReviewFix(
+          octokit,
+          {
+            owner,
+            repo,
+            prNumber,
+            actor: options.actor,
+            expectedHead: options.expectedHead,
+            mode: options.fixMode,
+            allowedPaths: [
+              ...new Set(
+                selected
+                  .filter((thread) => !thread.resolved)
+                  .map((thread) => thread.path),
+              ),
+            ],
+          },
+          raw,
+        );
+        await reply(result.body);
+      }
+    }
     core.setOutput("conclusion", "success");
   } catch (error) {
     const message = redactCredentials(
       error instanceof Error ? error.message : String(error),
     );
-    await reply(`Droid could not answer this question. ${message}`);
+    await reply(
+      `Droid could not ${options.mode === "fix" ? "publish this fix" : "answer this question"}. ${message}`,
+    );
     core.setOutput("conclusion", "failure");
     throw new Error(message);
   }
@@ -67,10 +123,12 @@ export async function postCommand(
 
 export async function run(): Promise<void> {
   const mode = process.env.COMMAND_MODE;
+  const fixMode = process.env.COMMAND_FIX_MODE;
   const prNumber = Number(process.env.COMMAND_PR_NUMBER);
   const root = process.env.COMMAND_ROOT_COMMENT_ID;
   if (
-    mode !== "question" ||
+    (mode !== "fix" && mode !== "question") ||
+    (fixMode !== "commit" && fixMode !== "pr" && fixMode !== "off") ||
     !Number.isSafeInteger(prNumber) ||
     prNumber <= 0 ||
     !process.env.COMMAND_EXPECTED_HEAD ||
@@ -80,10 +138,7 @@ export async function run(): Promise<void> {
     !process.env.COMMAND_ACTOR ||
     !process.env.COMMAND_OUTPUT_PATH ||
     !process.env.GITHUB_TOKEN ||
-    !root ||
-    !/^\d+$/.test(root) ||
-    !Number.isSafeInteger(Number(root)) ||
-    Number(root) <= 0
+    (root && (!/^\d+$/.test(root) || !Number.isSafeInteger(Number(root))))
   )
     throw new Error("Missing or invalid trusted command outputs");
   await postCommand(createOctokit(process.env.GITHUB_TOKEN), {
@@ -93,8 +148,9 @@ export async function run(): Promise<void> {
     actor: process.env.COMMAND_ACTOR,
     expectedHead: process.env.COMMAND_EXPECTED_HEAD,
     mode,
+    fixMode,
     outputPath: process.env.COMMAND_OUTPUT_PATH,
-    rootCommentId: Number(root),
+    ...(root ? { rootCommentId: Number(root) } : {}),
     success: process.env.DROID_SUCCESS === "true",
   });
 }

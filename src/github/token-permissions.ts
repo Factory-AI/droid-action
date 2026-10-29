@@ -51,9 +51,10 @@ export function appTokenPermissionsFor(
     command,
   });
   const fullScan = runType === DroidRunType.SecurityScan;
+  const fixes = runType === DroidRunType.Fix;
   if (context.isPR) {
     return {
-      contents: fullScan ? "write" : "read",
+      contents: fullScan || fixes ? "write" : "read",
       pull_requests: "write",
     };
   }

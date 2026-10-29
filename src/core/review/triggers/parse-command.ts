@@ -5,6 +5,7 @@ export type DroidCommand =
   | "security"
   | "security-full"
   | "help"
+  | "fix"
   | "resolve"
   | "pause"
   | "resume"
@@ -75,6 +76,7 @@ export function parseDroidCommand(text: string): ParsedCommand | null {
         "review",
         "security",
         "help",
+        "fix",
         "resolve",
         "pause",
         "resume",
