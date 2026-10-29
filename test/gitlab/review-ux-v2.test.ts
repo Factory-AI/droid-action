@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
 import { GitlabClient } from "../../src/gitlab/api/client";
+import { resolveReviewUxConfig } from "../../src/core/review/config";
 import {
+  decodeFindingMarker,
+  decodeReviewState,
   encodeFindingMarker,
   encodeReviewState,
   SUMMARY_MARKER,
@@ -23,6 +26,12 @@ import {
   startFakeServer,
   type FakeServer,
 } from "../bitbucket/fake-server";
+import { postReview } from "../../src/entrypoints/gitlab-post-review";
+import { run as postRun } from "../../src/entrypoints/gitlab-post-review";
+import { run as finishRun } from "../../src/entrypoints/gitlab-update-comment-link";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 
 const HEAD = "a".repeat(40);
 const BASE = "b".repeat(40);
@@ -86,6 +95,7 @@ const state = {
   ],
   autoRunCount: 2,
 };
+const config = () => resolveReviewUxConfig();
 let server: FakeServer | undefined;
 afterEach(() => server?.stop());
 
@@ -106,6 +116,8 @@ function setup(
     draft?: boolean;
     configMode?: string;
     statusDenied?: boolean;
+    head?: string;
+    advanceAfterMrFetch?: boolean;
   } = {},
 ) {
   const trigger = note(20, options.command ?? "@droid help", 5);
@@ -246,8 +258,15 @@ function setup(
       return options.statusDenied
         ? new Response("Forbidden", { status: 403 })
         : json({ id: 4 });
-    if (url.pathname.endsWith("/merge_requests/7") && req.method === "GET")
-      return json({ ...mr, draft: options.draft ?? false });
+    if (url.pathname.endsWith("/merge_requests/7") && req.method === "GET") {
+      const currentMr = {
+        ...mr,
+        draft: options.draft ?? false,
+        diff_refs: { ...mr.diff_refs, head_sha: options.head ?? HEAD },
+      };
+      if (options.advanceAfterMrFetch) options.head = FIX;
+      return json(currentMr);
+    }
     if (url.pathname.endsWith("/merge_requests") && req.method === "POST")
       return json({ ...mr, web_url: mr.web_url + "-stacked" });
     return notFound();
@@ -321,6 +340,71 @@ describe("GitLab review UX v2", () => {
     expect(body).toContain("Previous review");
     expect(body).toContain("#note_10");
     expect(body).not.toContain("discussion_r");
+  });
+
+  it("uses rich deterministic inline bodies and stable finding markers", async () => {
+    const t = setup();
+    const seen = mock(() => {});
+    await postReview({
+      client: t.client,
+      projectId: 42,
+      mrIid: 7,
+      comments: [
+        {
+          path: finding.path,
+          body: finding.body,
+          line: 10,
+          startLine: null,
+          side: "RIGHT",
+          old_path: null,
+          old_line: null,
+          finding,
+        },
+      ],
+      renderOptions: { platform: "gitlab", head: HEAD },
+      onPosted: seen,
+    });
+    const posted = t.requests.find(
+      (r) => r.method === "POST" && r.path.endsWith("/discussions"),
+    );
+    expect(posted?.body.body).toContain('alt="P1"');
+    expect(posted?.body.body).toContain("Why this was flagged");
+    expect(decodeFindingMarker(posted?.body.body)).toMatchObject({
+      id: finding.id,
+      head: HEAD,
+    });
+    expect(seen).toHaveBeenCalledWith(
+      expect.objectContaining({ threadUrl: `${mr.web_url}#note_100` }),
+    );
+  });
+
+  it("keeps unanchorable findings in the sticky summary rather than another note", async () => {
+    const t = setup();
+    const outside = mock(() => {});
+    const result = await postReview({
+      client: t.client,
+      projectId: 42,
+      mrIid: 7,
+      comments: [
+        {
+          path: "outside.ts",
+          body: finding.body,
+          line: 900,
+          startLine: null,
+          side: "RIGHT",
+          old_path: null,
+          old_line: null,
+          finding: { ...finding, path: "outside.ts", line: 900 },
+        },
+      ],
+      renderOptions: { platform: "gitlab" },
+      onOutsideDiff: outside,
+    });
+    expect(result.fallbackPosted).toBe(1);
+    expect(outside).toHaveBeenCalledWith(
+      expect.objectContaining({ outside_diff: true }),
+    );
+    expect(t.requests.filter((r) => r.method === "POST")).toHaveLength(0);
   });
 
   it("treats a human-resolved finding as dismissed, never fixed", () => {
@@ -485,5 +569,547 @@ describe("GitLab review UX v2", () => {
     expect(twice).toStartWith(example);
     expect(twice).toContain("new real summary");
     expect(twice).not.toContain("old real summary");
+  });
+});
+
+describe("GitLab v2 production entrypoints, local API only", () => {
+  const keys = [
+    ...new Set([
+      "CI_PROJECT_ID",
+      "CI_PROJECT_PATH",
+      "CI_PROJECT_URL",
+      "CI_MERGE_REQUEST_IID",
+      "CI_COMMIT_SHA",
+      "CI_API_V4_URL",
+      "CI_PIPELINE_SOURCE",
+      "DROID_STATE_FILE",
+      "DROID_PROMPT_FILE",
+      "REVIEW_POST_RESULTS_PATH",
+      "REVIEW_VALIDATED_PATH",
+      "GITLAB_TOKEN",
+      "OVERRIDE_GITLAB_TOKEN",
+      "REVIEW_UX_V2",
+      "DROID_SECURITY_FULL",
+      "DROID_SECURITY_ONLY",
+      "DROID_REVIEW_HEAD_SHA",
+      "DROID_LIFECYCLE_AWARD_CONTEXT",
+      "DROID_TRIGGER_NOTE_ID",
+      "AUTOMATIC_REVIEW",
+      "AUTOMATIC_SECURITY_REVIEW",
+      "REVIEW_DEPTH",
+      "HOME",
+      "FACTORY_API_KEY",
+      "DROID_PASS1_LOG",
+      "DROID_PASS2_LOG",
+      "DROID_SUCCESS",
+      ...Object.keys(config()).map((key) => key.toUpperCase()),
+    ]),
+  ];
+  async function environment(test: (directory: string) => Promise<void>) {
+    const directory = await fs.mkdtemp(
+      path.join(os.tmpdir(), "droid-gl-v2-entry-"),
+    );
+    const saved = Object.fromEntries(
+      keys.map((key) => [key, process.env[key]]),
+    );
+    for (const key of keys) delete process.env[key];
+    Object.assign(process.env, {
+      CI_PROJECT_ID: "42",
+      CI_PROJECT_PATH: "group/repo",
+      CI_PROJECT_URL: "https://gitlab.com/group/repo",
+      CI_MERGE_REQUEST_IID: "7",
+      CI_COMMIT_SHA: HEAD,
+      CI_PIPELINE_SOURCE: "merge_request_event",
+      CI_API_V4_URL: `${server?.url}/api/v4`,
+      DROID_STATE_FILE: path.join(directory, "state.json"),
+      DROID_PROMPT_FILE: path.join(directory, "prompt.txt"),
+      REVIEW_POST_RESULTS_PATH: path.join(directory, "results.json"),
+      REVIEW_VALIDATED_PATH: path.join(directory, "validated.json"),
+      GITLAB_TOKEN: "test-token",
+      REVIEW_UX_V2: "true",
+      HOME: directory,
+      DROID_PASS1_LOG: path.join(directory, "missing1.jsonl"),
+      DROID_PASS2_LOG: path.join(directory, "missing2.jsonl"),
+    });
+    try {
+      await test(directory);
+    } finally {
+      // Preparation exports every resolved setting into this process.
+      for (const key of keys) {
+        if (saved[key] === undefined) delete process.env[key];
+        else process.env[key] = saved[key];
+      }
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  }
+
+  it("keeps v2 dormant without the parent flag even when model-writable state supplies reviewConfig", async () => {
+    const t = setup({ noState: true });
+    await environment(async (directory) => {
+      delete process.env.REVIEW_UX_V2;
+      await fs.writeFile(
+        path.join(directory, "state.json"),
+        JSON.stringify({
+          shouldRunReview: true,
+          projectId: "42",
+          mrIid: 7,
+          trackingNoteId: 1,
+          reviewConfig: config(),
+          validatedPath: path.join(directory, "validated.json"),
+        }),
+      );
+      await fs.writeFile(
+        path.join(directory, "validated.json"),
+        JSON.stringify({
+          meta: { headSha: HEAD },
+          results: [{ status: "approved", comment: finding }],
+        }),
+      );
+      await postRun();
+      const result = JSON.parse(
+        await fs.readFile(path.join(directory, "results.json"), "utf8"),
+      );
+      expect(result.renderInput).toBeUndefined();
+      await finishRun();
+      expect(
+        t.requests.filter((request) =>
+          request.path.includes("/repository/branches/"),
+        ),
+      ).toHaveLength(0);
+      expect(
+        t.requests.filter((request) => request.path.includes("/statuses/")),
+      ).toHaveLength(0);
+    });
+  });
+
+  it("posts from structured JSON and completes the same sticky note with a linked finding", async () => {
+    const t = setup({ noState: true });
+    await environment(async (directory) => {
+      process.env.DROID_LIFECYCLE_AWARD_CONTEXT = JSON.stringify(
+        await updateLifecycleAward(t.client, 42, 7, "running"),
+      );
+      await fs.writeFile(
+        path.join(directory, "state.json"),
+        JSON.stringify({
+          shouldRunReview: true,
+          projectId: "42",
+          mrIid: 7,
+          trackingNoteId: 1,
+          validatedPath: path.join(directory, "validated.json"),
+          reviewConfig: config(),
+          securityReviewEnabled: true,
+          automatic: false,
+        }),
+      );
+      await fs.writeFile(
+        path.join(directory, "validated.json"),
+        JSON.stringify({
+          meta: { headSha: HEAD },
+          results: [{ status: "approved", comment: finding }],
+          reviewSummary: { whatChanged: "Restores retry handling" },
+        }),
+      );
+      await postRun();
+      const posted = JSON.parse(
+        await fs.readFile(path.join(directory, "results.json"), "utf8"),
+      );
+      expect(posted.renderInput.findings[0].threadUrl).toBe(
+        `${mr.web_url}#note_100`,
+      );
+      expect(posted.renderInput.reviewState.head).toBe(HEAD);
+      // The real note-id verification endpoint is absent in this fixture, so
+      // the adapter falls back to its author-verified paginated note lookup.
+      await finishRun();
+      const completed = t.requests.filter((r) => r.method === "PUT").at(-1)
+        ?.body.body;
+      expect(completed).toContain("Changes recommended");
+      expect(completed).toContain("#note_100");
+      expect(decodeReviewState(completed)?.findings[0]?.id).toBe(finding.id);
+      expect(
+        t.requests.some(
+          (r) => r.method === "DELETE" && r.path.endsWith("/award_emoji/3"),
+        ),
+      ).toBe(true);
+      expect(
+        t.requests.filter(
+          (r) => r.method === "GET" && r.path.includes("award_emoji"),
+        ),
+      ).toHaveLength(0);
+    });
+  });
+
+  const finalizerHeadCases: {
+    name: string;
+    trustedHead?: string | null;
+    liveHead?: string;
+    postedHead?: string;
+    removePostedHead?: boolean;
+    missingResults?: boolean;
+    advanceAfterFetch?: boolean;
+    ciCommitSha?: string;
+    publishes?: boolean;
+  }[] = [
+    { name: "skips a new live head after posting the original", liveHead: FIX },
+    { name: "completes the unchanged reviewed head", publishes: true },
+    { name: "rejects a mismatched posted head", postedHead: FIX },
+    {
+      name: "rejects forged posted/live agreement",
+      postedHead: FIX,
+      liveHead: FIX,
+    },
+    { name: "skips without a trusted parent binding", trustedHead: null },
+    { name: "skips malformed parent bindings", trustedHead: "abc1234" },
+    { name: "rejects a different full parent binding", trustedHead: FIX },
+    { name: "rejects present results without a head", removePostedHead: true },
+    {
+      name: "preserves a friendly failed status on the trusted head without results",
+      missingResults: true,
+      publishes: true,
+    },
+    {
+      name: "skips a changed live head without results",
+      missingResults: true,
+      liveHead: FIX,
+    },
+    {
+      name: "skips preparation failure before parent binding capture",
+      missingResults: true,
+      trustedHead: null,
+    },
+    {
+      name: "pins the status URI when the head advances after the live fetch",
+      advanceAfterFetch: true,
+      publishes: true,
+    },
+    {
+      name: "does not use CI_COMMIT_SHA as status authority",
+      ciCommitSha: BASE,
+      publishes: true,
+    },
+  ];
+  for (const testCase of finalizerHeadCases)
+    it(`finalizer status head: ${testCase.name}`, async () => {
+      const options = { noState: true, head: HEAD, advanceAfterMrFetch: false };
+      const t = setup(options);
+      await environment(async (directory) => {
+        process.env.DROID_REVIEW_HEAD_SHA = HEAD;
+        process.env.DROID_LIFECYCLE_AWARD_CONTEXT = JSON.stringify(
+          await updateLifecycleAward(t.client, 42, 7, "running"),
+        );
+        await fs.writeFile(
+          path.join(directory, "state.json"),
+          JSON.stringify({
+            shouldRunReview: true,
+            projectId: "42",
+            mrIid: 7,
+            trackingNoteId: 1,
+            validatedPath: path.join(directory, "validated.json"),
+            reviewConfig: config(),
+          }),
+        );
+        await fs.writeFile(
+          path.join(directory, "validated.json"),
+          JSON.stringify({
+            meta: { headSha: HEAD },
+            results: [],
+            reviewSummary: { whatChanged: "Reviewed the original commit" },
+          }),
+        );
+        if (testCase.missingResults) {
+          await updateReviewStatus(
+            t.client,
+            42,
+            HEAD,
+            { state: "in_progress", head: HEAD },
+            true,
+            "in_progress",
+          );
+        } else {
+          await postRun();
+          const posted = JSON.parse(
+            await fs.readFile(path.join(directory, "results.json"), "utf8"),
+          );
+          expect(posted.renderInput.head).toBe(HEAD);
+          expect(posted.renderInput.state).toBe("clean");
+          if (testCase.postedHead)
+            posted.renderInput.head = testCase.postedHead;
+          if (testCase.removePostedHead) delete posted.renderInput.head;
+          await fs.writeFile(
+            path.join(directory, "results.json"),
+            JSON.stringify(posted),
+          );
+        }
+        options.head = testCase.liveHead ?? HEAD;
+        options.advanceAfterMrFetch = testCase.advanceAfterFetch ?? false;
+        if (testCase.trustedHead === null)
+          delete process.env.DROID_REVIEW_HEAD_SHA;
+        else process.env.DROID_REVIEW_HEAD_SHA = testCase.trustedHead ?? HEAD;
+        process.env.CI_COMMIT_SHA = testCase.ciCommitSha ?? HEAD;
+        const beforeFinalization = t.requests.length;
+        await finishRun();
+        const finalRequests = t.requests.slice(beforeFinalization);
+        const statuses = finalRequests.filter((r) =>
+          r.path.includes("/statuses/"),
+        );
+        expect(statuses.map((r) => r.path)).toEqual(
+          testCase.publishes ? [`/api/v4/projects/42/statuses/${HEAD}`] : [],
+        );
+        if (testCase.publishes) {
+          expect(statuses[0]?.body.state).toBe("success");
+          expect(statuses[0]?.body.description).toBe(
+            testCase.missingResults ? "Review failed" : "No issues found",
+          );
+        }
+        if (testCase.advanceAfterFetch) expect(options.head).toBe(FIX);
+        expect(
+          finalRequests.some(
+            (r) => r.method === "DELETE" && r.path.endsWith("/award_emoji/3"),
+          ),
+        ).toBe(true);
+        const completed = finalRequests.filter((r) => r.method === "PUT").at(-1)
+          ?.body.body;
+        expect(typeof completed).toBe("string");
+        if (testCase.missingResults)
+          expect(completed).toContain(
+            "Review did not produce validated results",
+          );
+      });
+    });
+
+  for (const mode of ["legacy", "nonreview", "nostate"])
+    it(`finalizer status head: preserves ${mode} early-exit behavior without a binding`, async () => {
+      const t = setup({ noState: true });
+      await environment(async (directory) => {
+        if (mode !== "nostate")
+          await fs.writeFile(
+            path.join(directory, "state.json"),
+            JSON.stringify({
+              shouldRunReview: mode !== "nonreview",
+              projectId: "42",
+              mrIid: 7,
+              trackingNoteId: 1,
+            }),
+          );
+        if (mode === "legacy") delete process.env.REVIEW_UX_V2;
+        await finishRun();
+        expect(
+          t.requests.filter((r) => r.path.includes("/statuses/")),
+        ).toHaveLength(0);
+        expect(t.requests.filter((r) => r.method === "PUT")).toHaveLength(
+          mode === "legacy" ? 1 : 0,
+        );
+      });
+    });
+
+  it("fails closed on a validated SHA different from the live MR head", async () => {
+    const t = setup({ noState: true });
+    await environment(async (directory) => {
+      await fs.writeFile(
+        path.join(directory, "state.json"),
+        JSON.stringify({
+          shouldRunReview: true,
+          projectId: "42",
+          mrIid: 7,
+          reviewConfig: config(),
+          validatedPath: path.join(directory, "validated.json"),
+        }),
+      );
+      await fs.writeFile(
+        path.join(directory, "validated.json"),
+        JSON.stringify({ meta: { headSha: BASE }, results: [] }),
+      );
+      await expect(postRun()).rejects.toThrow("head changed");
+      expect(t.requests.filter((r) => r.method === "POST")).toHaveLength(0);
+    });
+  });
+
+  it("reports effective security blocking flags and all configured-filter drop reasons", async () => {
+    const t = setup({
+      noState: true,
+      yaml: "review_severity_threshold: P1\nsecurity_severity_threshold: high\nshow_dropped_findings: true\nsecurity_block_on_critical: false\nsecurity_block_on_high: true",
+    });
+    await environment(async (directory) => {
+      await fs.writeFile(
+        path.join(directory, "state.json"),
+        JSON.stringify({
+          shouldRunReview: true,
+          projectId: "42",
+          mrIid: 7,
+          reviewConfig: config(),
+          validatedPath: path.join(directory, "validated.json"),
+        }),
+      );
+      const candidates = [
+        finding,
+        { ...finding, id: "ignored", path: "package-lock.json" },
+        { ...finding, id: "priority", severity: "P2" },
+        {
+          ...finding,
+          id: "low-security",
+          security: true,
+          securitySeverity: "low",
+        },
+      ];
+      await fs.writeFile(
+        path.join(directory, "validated.json"),
+        JSON.stringify({
+          meta: { headSha: HEAD },
+          results: candidates.map((comment) => ({
+            status: "approved",
+            comment,
+          })),
+        }),
+      );
+      await postRun();
+      const result = JSON.parse(
+        await fs.readFile(path.join(directory, "results.json"), "utf8"),
+      );
+      expect(result.renderInput.summary.security).toMatchObject({
+        enabled: true,
+        blockOnCritical: false,
+        blockOnHigh: true,
+        threshold: "high",
+      });
+      expect(result.renderInput.dropped).toHaveLength(3);
+      expect(
+        result.renderInput.dropped.map((f: { reason: string }) => f.reason),
+      ).toEqual([
+        expect.stringContaining("Ignored path"),
+        expect.stringContaining("priority threshold P1"),
+        expect.stringContaining("security threshold high"),
+      ]);
+      expect(renderGitlabSummary(result.renderInput)).toContain(
+        "4 considered → 1 posted · 3 dropped",
+      );
+      expect(
+        t.requests.filter(
+          (r) => r.method === "POST" && r.path.endsWith("/discussions"),
+        ),
+      ).toHaveLength(1);
+    });
+  });
+
+  it("links a LEFT-side renamed finding to its old path at the immutable base SHA", async () => {
+    const t = setup({ noState: true });
+    await environment(async (directory) => {
+      await fs.writeFile(
+        path.join(directory, "state.json"),
+        JSON.stringify({
+          shouldRunReview: true,
+          projectId: "42",
+          mrIid: 7,
+          reviewConfig: config(),
+          validatedPath: path.join(directory, "validated.json"),
+        }),
+      );
+      await fs.writeFile(
+        path.join(directory, "validated.json"),
+        JSON.stringify({
+          meta: { headSha: HEAD },
+          results: [
+            {
+              status: "approved",
+              comment: { ...finding, side: "LEFT", oldPath: "src/before.ts" },
+            },
+          ],
+        }),
+      );
+      await postRun();
+      const result = JSON.parse(
+        await fs.readFile(path.join(directory, "results.json"), "utf8"),
+      );
+      const body = renderGitlabSummary(result.renderInput);
+      expect(
+        t.requests.some(
+          (r) => r.method === "POST" && r.path.endsWith("/discussions"),
+        ),
+      ).toBe(true);
+      expect(body).toContain(`/-/blob/${BASE}/src/before.ts#L10`);
+      expect(body).not.toContain(`/-/blob/${HEAD}/src/before.ts`);
+    });
+  });
+
+  it("recovers owned posted findings after an interrupted summary write, without reposting", async () => {
+    const t = setup({ noState: true, existingDiscussions: true });
+    await environment(async (directory) => {
+      await fs.writeFile(
+        path.join(directory, "state.json"),
+        JSON.stringify({
+          shouldRunReview: true,
+          projectId: "42",
+          mrIid: 7,
+          reviewConfig: config(),
+          validatedPath: path.join(directory, "validated.json"),
+        }),
+      );
+      await fs.writeFile(
+        path.join(directory, "validated.json"),
+        JSON.stringify({
+          meta: { headSha: HEAD },
+          results: [{ status: "approved", comment: finding }],
+        }),
+      );
+      await postRun();
+      expect(
+        t.requests.filter(
+          (r) => r.method === "POST" && r.path.endsWith("/discussions"),
+        ),
+      ).toHaveLength(0);
+      const results = JSON.parse(
+        await fs.readFile(path.join(directory, "results.json"), "utf8"),
+      );
+      expect(results.renderInput.findings[0].threadUrl).toBe(
+        `${mr.web_url}#note_10`,
+      );
+    });
+  });
+
+  it("compacts oversized off-mode state and updates one owned hidden note without comment spam", async () => {
+    const t = setup({ noState: true, yaml: "review_summary: off" });
+    await environment(async (directory) => {
+      await fs.writeFile(
+        path.join(directory, "state.json"),
+        JSON.stringify({
+          shouldRunReview: true,
+          projectId: "42",
+          mrIid: 7,
+          trackingNoteId: 1,
+          reviewConfig: config(),
+          validatedPath: path.join(directory, "validated.json"),
+        }),
+      );
+      await fs.writeFile(
+        path.join(directory, "validated.json"),
+        JSON.stringify({
+          meta: { headSha: HEAD },
+          results: [
+            {
+              status: "approved",
+              comment: {
+                ...finding,
+                body: "Oversized context. ".repeat(10_000),
+              },
+            },
+          ],
+        }),
+      );
+      await postRun();
+      await finishRun();
+      await finishRun();
+      const updates = t.requests.filter(
+        (r) => r.method === "PUT" && r.path.endsWith("/notes/1"),
+      );
+      expect(updates).toHaveLength(2);
+      const body = updates[0]?.body.body;
+      expect(Buffer.byteLength(body, "utf8")).toBeLessThanOrEqual(60 * 1024);
+      expect(decodeReviewState(body)?.findings[0]?.id).toBe(finding.id);
+      expect(body).not.toContain("<sub>");
+      expect(body).not.toContain("Some optional review context");
+      expect(
+        t.requests.filter(
+          (r) => r.method === "POST" && r.path.endsWith("/notes"),
+        ),
+      ).toHaveLength(0);
+    });
   });
 });

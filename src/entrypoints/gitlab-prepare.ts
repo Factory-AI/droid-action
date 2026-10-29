@@ -24,6 +24,8 @@
  */
 
 import { spawnSync } from "child_process";
+import type { ReviewUxConfig } from "../core/review/config";
+import type { ReviewState } from "../core/review/markers";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { parseGitlabContext, isMergeRequestContext } from "../gitlab/context";
@@ -118,6 +120,16 @@ export type PrepareState = {
   headSha: string | null;
   includeSuggestions: boolean;
   securityReviewEnabled: boolean;
+  reviewConfig?: ReviewUxConfig;
+  previousReviewState?: ReviewState | null;
+  reviewState?: ReviewState;
+  changedPaths?: string[];
+  filesSkipped?: Array<{ path: string; reason: string }>;
+  fullReview?: boolean;
+  focus?: string;
+  automatic?: boolean;
+  securityFull?: boolean;
+  summaryBody?: string;
 
   reason?: string;
   /**

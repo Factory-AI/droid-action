@@ -42,6 +42,30 @@ import {
   validatedFilePath,
   type PrepareState,
 } from "./gitlab-prepare";
+import { normalizeFinding } from "../core/review/validated/finding";
+import {
+  renderInlineComment,
+  type RenderOptions,
+  type ReviewRenderInput,
+} from "../core/review/render";
+import type { ReviewFinding } from "../core/review/validated/types";
+import {
+  discussionFinding,
+  findingFromState,
+  loadReviewMemory,
+  resolveFixedDiscussions,
+  stateFinding,
+  warnCapability,
+} from "../gitlab/operations/review-ux";
+import {
+  changedFindingCandidates,
+  reconcileFindings,
+} from "../core/review/incremental";
+import { buildDiffContent } from "../gitlab/data/review-artifacts";
+import { enrichReviewSummary } from "../core/review/validated/metadata";
+import { isMissingFile } from "../gitlab/operations/review-ux";
+import { shouldIgnoreReviewPath } from "../core/review/config";
+import { loadGitlabReviewConfig } from "../gitlab/operations/review-config";
 
 export type ReviewComment = ValidatedReviewComment;
 export {
@@ -51,7 +75,9 @@ export {
 };
 export type { FileLineIndex };
 
-export type PostResults = ReviewPostResults;
+export type PostResults = ReviewPostResults & {
+  renderInput?: ReviewRenderInput;
+};
 
 /** Written here, read by gitlab-update-comment-link. */
 export function postResultsFilePath(): string {
@@ -234,6 +260,9 @@ export async function postReview(options: {
   projectId: string | number;
   mrIid: number;
   comments: ReviewComment[];
+  renderOptions?: RenderOptions;
+  onPosted?: (finding: ReviewFinding) => void;
+  onOutsideDiff?: (finding: ReviewFinding) => void;
 }): Promise<PostReviewResult> {
   const { client, projectId, mrIid, comments } = options;
   const result: PostReviewResult = {
@@ -247,6 +276,13 @@ export async function postReview(options: {
   }
 
   const mr = await client.getMr(projectId, mrIid);
+  if (
+    process.env.DROID_REVIEW_HEAD_SHA &&
+    process.env.DROID_REVIEW_HEAD_SHA !== mr.diff_refs.head_sha
+  )
+    throw new Error(
+      "MR head changed after preparation; refusing to post a stale review",
+    );
   const diffRefs = mr.diff_refs ?? null;
   if (!diffRefs) {
     throw new Error(
@@ -271,6 +307,10 @@ export async function postReview(options: {
 
   for (let i = 0; i < comments.length; i++) {
     const comment = comments[i]!;
+    const finding = comment.finding ?? normalizeFinding({ ...comment });
+    const body = options.renderOptions
+      ? renderInlineComment(finding, options.renderOptions)
+      : comment.body;
     const line = anchorLine(comment);
     const where = `${comment.path}:${line ?? "?"}`;
     const label = `[${i + 1}/${comments.length}]`;
@@ -304,12 +344,19 @@ export async function postReview(options: {
     let posted = false;
     for (const position of attempts) {
       try {
-        await client.createDiscussionOnDiff(
+        const discussion = await client.createDiscussionOnDiff(
           projectId,
           mrIid,
-          comment.body,
+          body,
           position,
         );
+        options.onPosted?.({
+          ...finding,
+          threadId: discussion.id,
+          ...(discussion.notes?.[0]?.id && mr.web_url
+            ? { threadUrl: `${mr.web_url}#note_${discussion.notes[0].id}` }
+            : {}),
+        });
         posted = true;
         break;
       } catch (error) {
@@ -320,6 +367,12 @@ export async function postReview(options: {
     if (posted) {
       result.posted += 1;
       console.log(`  ${label} posted ${where}`);
+      continue;
+    }
+
+    if (options.onOutsideDiff) {
+      options.onOutsideDiff({ ...finding, outside_diff: true });
+      result.fallbackPosted += 1;
       continue;
     }
 
@@ -421,12 +474,298 @@ async function run(): Promise<void> {
       "https://gitlab.com/api/v4",
   );
 
+  // Old installed templates can hand this entrypoint a pre-v2 state file.
+  // New templates pin v2 in the parent environment, not model-writable state.
+  if (process.env.REVIEW_UX_V2 !== "true") {
+    const result = await postReview({
+      client,
+      projectId,
+      mrIid,
+      comments: parsed.approved,
+    });
+    const results: PostResults = {
+      posted: result.posted,
+      fallbackPosted: result.fallbackPosted,
+      approved: parsed.approvedCount,
+      rejected: parsed.rejectedCount,
+      failed: result.failures.length,
+      skipped: parsed.skipped.length,
+      summaryBody: parsed.summaryBody,
+      failures: result.failures,
+    };
+    await fs.mkdir(path.dirname(postResultsFilePath()), { recursive: true });
+    await fs.writeFile(postResultsFilePath(), JSON.stringify(results, null, 2));
+    if (
+      parsed.approved.length > 0 &&
+      results.posted === 0 &&
+      results.fallbackPosted === 0
+    )
+      throw new Error(
+        `gitlab-post-review: all ${parsed.approved.length} approved comments failed to post. First error: ${results.failures[0]?.error ?? "unknown"}`,
+      );
+    return;
+  }
+
+  // Every addressing hint from the model-writable state is checked against
+  // current API data and a summary owned by this token's user.
+  const mr = await client.getMr(projectId, mrIid);
+  if (parsed.commitId && parsed.commitId !== mr.diff_refs.head_sha)
+    throw new Error(
+      "MR head changed after validation; refusing to post a stale review",
+    );
+  if (
+    process.env.DROID_REVIEW_HEAD_SHA &&
+    process.env.DROID_REVIEW_HEAD_SHA !== mr.diff_refs.head_sha
+  )
+    throw new Error(
+      "MR head changed after preparation; refusing to post a stale review",
+    );
+  const config = await loadGitlabReviewConfig(client, projectId, mr);
+  const memory = await loadReviewMemory(client, projectId, mrIid);
+  let previous = memory.state ?? { head: "", findings: [] };
+  let resolved: ReviewFinding[] = [];
+  let actualChanges = await client.getMrChanges(projectId, mrIid);
+  let eligibleFixedIds = new Set<string>();
+  let discussions: Awaited<ReturnType<GitlabClient["listDiscussions"]>> = [];
+  try {
+    discussions = await client.listDiscussions(projectId, mrIid);
+  } catch (error) {
+    warnCapability("discussion state", error);
+  }
+  // Recover a completed inline post after an interrupted run even if its
+  // final summary/state write never happened. Only actual owned notes count.
+  for (const candidate of parsed.findings) {
+    if (previous.findings.some((f) => f.id === candidate.id)) continue;
+    const discussion = discussions.find(
+      (d) => discussionFinding(d, memory.user.id)?.marker.id === candidate.id,
+    );
+    const owned = discussion && discussionFinding(discussion, memory.user.id);
+    if (discussion && owned)
+      previous.findings.push(
+        stateFinding({
+          ...candidate,
+          state: owned.note.resolved ? "dismissed" : "open",
+          threadId: discussion.id,
+          threadUrl: `${mr.web_url}#note_${owned.note.id}`,
+        }),
+      );
+  }
+  if (previous.head && previous.head !== mr.diff_refs.head_sha) {
+    try {
+      const comparison = await client.compare(
+        projectId,
+        previous.head,
+        mr.diff_refs.head_sha,
+      );
+      if (comparison.compare_timeout)
+        throw new Error("Incremental comparison timed out");
+      actualChanges = { changes: comparison.diffs, diff_refs: mr.diff_refs };
+      eligibleFixedIds = new Set(
+        changedFindingCandidates(
+          previous.findings
+            .filter((f) => f.state === "open")
+            .map(findingFromState),
+          buildDiffContent(actualChanges),
+        ).map((f) => f.id),
+      );
+    } catch (error) {
+      warnCapability(
+        "fixed-finding eligibility (auto-resolution skipped)",
+        error,
+      );
+    }
+  }
+  const changedPaths = actualChanges.changes.map(
+    (c) => c.new_path || c.old_path,
+  );
+  try {
+    const fixed = await resolveFixedDiscussions({
+      client,
+      projectId,
+      mr,
+      state: previous,
+      discussions,
+      userId: memory.user.id,
+      fixed: parsed.fixedFindings.filter((f) => eligibleFixedIds.has(f.id)),
+      changedPaths,
+      enabled: config.review_auto_resolve,
+    });
+    previous = fixed.state;
+    resolved = fixed.resolved;
+  } catch (error) {
+    warnCapability("discussion state", error);
+  }
+  const securityRank = { critical: 0, high: 1, medium: 2, low: 3 };
+  const normalizedTitle = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim();
+  const dropped = [...parsed.dropped];
+  const findings = parsed.findings
+    .filter((finding, index) => {
+      const reason = shouldIgnoreReviewPath(finding.path, config)
+        ? "Ignored path (generated, lock file, or configured exclusion)"
+        : process.env.DROID_SECURITY_ONLY === "true" && !finding.security
+          ? "Not a security finding in a security-only review"
+          : Number(finding.severity.slice(1)) >
+              Number(config.review_severity_threshold.slice(1))
+            ? `Below report priority threshold ${config.review_severity_threshold}`
+            : finding.security &&
+                finding.securitySeverity &&
+                securityRank[finding.securitySeverity] >
+                  securityRank[config.security_severity_threshold]
+              ? `Below security threshold ${config.security_severity_threshold}`
+              : null;
+      if (reason)
+        dropped.push({
+          index,
+          path: finding.path,
+          title: finding.title,
+          reason,
+        });
+      return !reason;
+    })
+    .map((finding) => {
+      const known = previous.findings.find(
+        (f) =>
+          f.id === finding.id ||
+          (f.path === finding.path &&
+            f.title &&
+            normalizedTitle(f.title) === normalizedTitle(finding.title)),
+      );
+      return known ? { ...finding, id: known.id } : finding;
+    });
+  const reconciled = reconcileFindings({
+    previous: previous.findings.map(findingFromState),
+    current: findings,
+    head: mr.diff_refs.head_sha,
+    incremental:
+      Boolean(previous.head) && config.review_incremental && !state.fullReview,
+    changedPaths: new Set(changedPaths),
+  });
+  const fresh = new Set(reconciled.newFindings.map((f) => f.id));
+  const postedFindings: ReviewFinding[] = [];
+  const outside = reconciled.newFindings.filter((f) => f.outside_diff);
+  const renderOptions: RenderOptions = {
+    platform: "gitlab",
+    head: mr.diff_refs.head_sha,
+    base: mr.diff_refs.base_sha,
+    repositoryUrl: mr.web_url.split("/-/merge_requests/")[0],
+    badges: config.review_badges,
+    includeAgentPrompts: config.include_agent_prompts,
+    includeCategories: config.review_category_chips,
+  };
+  const commentsToPost = parsed.approved.filter((comment) => {
+    const candidate = comment.finding ?? normalizeFinding({ ...comment });
+    return fresh.has(candidate.id) && !candidate.outside_diff;
+  });
+
   const result = await postReview({
     client,
     projectId,
     mrIid,
-    comments: parsed.approved,
+    comments: commentsToPost,
+    renderOptions,
+    onPosted: (finding) =>
+      postedFindings.push({ ...finding, state: "open", isNew: true }),
+    onOutsideDiff: (finding) =>
+      outside.push({ ...finding, state: "open", isNew: true }),
   });
+
+  const all = [
+    ...reconciled.findings.filter((f) => !fresh.has(f.id)),
+    ...postedFindings,
+    ...outside,
+  ];
+  const open = all.filter((f) => f.state === "open" || !f.state);
+  const blocked = open.some(
+    (f) =>
+      (config.fail_on_severity &&
+        Number(f.severity.slice(1)) <=
+          Number(config.fail_on_severity.slice(1))) ||
+      (f.security &&
+        ((config.security_block_on_critical &&
+          f.securitySeverity === "critical") ||
+          (config.security_block_on_high &&
+            ["critical", "high"].includes(f.securitySeverity ?? "")))),
+  );
+  const reviewState = {
+    ...previous,
+    head: mr.diff_refs.head_sha,
+    base: mr.diff_refs.base_sha,
+    depth: config.review_depth,
+    reviewed: [
+      ...new Set([...(previous.reviewed ?? []), mr.diff_refs.head_sha]),
+    ],
+    findings: all.map(stateFinding),
+    autoRunCount:
+      (previous.autoRunCount ?? 0) + (state.automatic === false ? 0 : 1),
+    diffHash: state.reviewState?.diffHash,
+  };
+  let codeowners: string | undefined;
+  if (config.review_suggest_reviewers) {
+    const base = await client.getBranch(projectId, mr.target_branch);
+    for (const location of [
+      ".gitlab/CODEOWNERS",
+      "CODEOWNERS",
+      "docs/CODEOWNERS",
+    ]) {
+      try {
+        codeowners = await client.getRepositoryFile(
+          projectId,
+          location,
+          base.commit.id,
+        );
+        break;
+      } catch (error) {
+        if (!isMissingFile(error)) {
+          warnCapability("CODEOWNERS suggestions", error);
+          break;
+        }
+      }
+    }
+  }
+  const summary = enrichReviewSummary(parsed.summary, {
+    changedPaths,
+    title: mr.title,
+    description: mr.description ?? "",
+    codeowners,
+    suggestReviewers: config.review_suggest_reviewers,
+    includeEffort: config.review_effort,
+    preMergeChecks: config.review_pre_merge_checks,
+    ignoredPaths: state.filesSkipped,
+    security: {
+      enabled:
+        process.env.DROID_SECURITY_ONLY === "true" ||
+        config.automatic_security_review,
+      threshold: config.security_severity_threshold,
+      blockOnCritical: config.security_block_on_critical,
+      blockOnHigh: config.security_block_on_high,
+    },
+  });
+  const renderInput: ReviewRenderInput = {
+    ...renderOptions,
+    state: open.length ? "findings" : "clean",
+    findings: all,
+    resolved,
+    blocked,
+    summary,
+    depth: config.review_depth,
+    model: state.resolvedModel ?? undefined,
+    reasoning: state.resolvedReasoningEffort ?? undefined,
+    base: previous.head || mr.diff_refs.base_sha,
+    jobUrl: state.jobUrl ?? undefined,
+    reviewState,
+    candidatesConsidered: parsed.approvedCount + parsed.rejectedCount,
+    postedCount: result.posted + outside.length,
+    dropped,
+    skippedCount: parsed.skipped.length,
+    showDroppedFindings: config.show_dropped_findings,
+    diagram: config.review_diagram,
+    sections: config.review_summary_sections,
+    unchangedSuggestions: reconciled.unchangedSuggestions,
+  };
 
   const results: PostResults = {
     posted: result.posted,
@@ -437,6 +776,7 @@ async function run(): Promise<void> {
     skipped: parsed.skipped.length,
     summaryBody: parsed.summaryBody,
     failures: result.failures,
+    renderInput,
   };
 
   const resultsPath = postResultsFilePath();
@@ -452,7 +792,7 @@ async function run(): Promise<void> {
   // all reaching the MR points at a systemic problem (revoked token scope,
   // API unreachable) rather than bad line numbers. Surface it.
   if (
-    parsed.approved.length > 0 &&
+    commentsToPost.length > 0 &&
     results.posted === 0 &&
     results.fallbackPosted === 0
   ) {
