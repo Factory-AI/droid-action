@@ -32,9 +32,13 @@ export function resolveReviewConfig(options?: {
   reasoningEffort?: string;
   reviewDepth?: string;
 }): { model: string; reasoningEffort: string | undefined } {
-  const depth = (options?.reviewDepth || ReviewDepth.Deep) as ReviewDepth;
-  const defaults =
-    REVIEW_DEPTH_PRESETS[depth] ?? REVIEW_DEPTH_PRESETS[ReviewDepth.Shallow];
+  const value = options?.reviewDepth?.trim().toLowerCase();
+  const depth =
+    value === ReviewDepth.Shallow ? ReviewDepth.Shallow : ReviewDepth.Deep;
+  if (value && value !== ReviewDepth.Deep && value !== ReviewDepth.Shallow) {
+    console.warn("Unknown review_depth; falling back to deep.");
+  }
+  const defaults = REVIEW_DEPTH_PRESETS[depth];
 
   return {
     model: options?.reviewModel || defaults.model,

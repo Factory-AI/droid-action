@@ -1,4 +1,5 @@
 import * as github from "@actions/github";
+import type { ReviewUxConfig } from "../core/review/config";
 import type {
   IssuesEvent,
   IssuesAssignedEvent,
@@ -107,6 +108,7 @@ type BaseContext = {
     stewardModel?: string;
     instructions?: string;
     configPath?: string;
+    reviewConfig?: ReviewUxConfig;
   };
 };
 
