@@ -22,6 +22,7 @@ import { githubReviewSessionTagArg } from "../utils/review-session-tag";
 import { initializeReviewConfig } from "../prepare/review-config";
 import { freezeReviewRuntime } from "../prepare/review-runtime";
 import { automaticReviewSkipReason } from "../core/review/config";
+import { extractCommandFromContext } from "../github/utils/command-parser";
 import {
   prepareReviewLifecycle,
   readReviewLifecycle,
@@ -62,6 +63,7 @@ async function run() {
       prNumber: context.entityNumber,
     });
     core.setOutput("review_head_sha", prData.headRefOid);
+    const command = extractCommandFromContext(context);
     const config = context.inputs.reviewConfig!;
     const skipReason = automaticReviewSkipReason({
       config,
@@ -78,6 +80,7 @@ async function run() {
       baseSha: process.env.REVIEW_BASE_SHA,
       trackingCommentId: commentId,
       securityOnly: reviewType === "security",
+      full: command?.fullReview,
       skipReason: skipReason ?? undefined,
     });
     commentId = lifecycle.commentId;
