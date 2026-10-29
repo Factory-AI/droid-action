@@ -24,11 +24,13 @@ import {
   authoritativeReviewTarget,
   findReviewSummary,
   finishReviewLifecycle,
+  loadBoundReviewLifecycle,
   prepareReviewLifecycle,
   readReviewLifecycle,
   replaceReviewDescription,
   saveReviewLifecycle,
 } from "../../src/github/operations/review-lifecycle";
+import { reviewCheckConclusion } from "../../src/github/operations/review-checks";
 import { run as postReview } from "../../src/entrypoints/github-post-review-v2";
 import { run as lifecyclePhase } from "../../src/entrypoints/github-review-lifecycle";
 import { retryWithBackoff } from "../../src/utils/retry";
@@ -342,6 +344,29 @@ describe("review lifecycle production boundaries", () => {
         .map((call) => call.input.basehead),
     ).toContain(`${BASE}...${HEAD}`);
   });
+  it("finishes clean without an empty review, cleans its own eyes, and writes the step summary", async () => {
+    process.env.GITHUB_STEP_SUMMARY = join(directory, "summary.md");
+    const f = fixture([]);
+    await f.prepare();
+    await f.post([]);
+    expect(f.calls.some((call) => call.method === "createReview")).toBe(false);
+    expect(
+      f.calls
+        .filter((call) => call.method === "reactionCreate")
+        .map((call) => call.input.content),
+    ).toEqual(["eyes", "hooray"]);
+    expect(
+      f.calls.find((call) => call.method === "reactionDelete")?.input
+        .reaction_id,
+    ).toBe(60);
+    expect(
+      f.calls.filter((call) => call.method === "checkUpdate").at(-1)?.input
+        .conclusion,
+    ).toBe("success");
+    expect(await readFile(process.env.GITHUB_STEP_SUMMARY, "utf8")).toContain(
+      "Looks good to merge",
+    );
+  });
   it("rejects model-cached cross-PR targets before metadata mutations", async () => {
     const f = fixture();
     await f.prepare();
@@ -364,7 +389,17 @@ describe("review lifecycle production boundaries", () => {
     process.env.REVIEW_PHASE = "finalize";
     process.env.DROID_SUCCESS = "true";
     await lifecyclePhase({ octokit: f.octokit });
+    expect(
+      f.calls.filter((call) => call.method === "checkUpdate").at(-1)?.input,
+    ).toMatchObject({
+      conclusion: "neutral",
+      output: { title: "Review failed" },
+    });
     expect(f.body()).toContain("couldn't finish");
+    expect(
+      f.calls.filter((call) => call.method === "reactionCreate").at(-1)?.input
+        .content,
+    ).toBe("confused");
   });
   it("binds optional CODEOWNERS metadata to the immutable base and never assigns", async () => {
     process.env.REVIEW_SUGGEST_REVIEWERS = "true";
@@ -420,6 +455,8 @@ describe("review lifecycle production boundaries", () => {
       new Error("Resource not accessible by integration"),
       { status: 403 },
     );
+    spyOn(f.octokit.rest.checks, "create").mockRejectedValue(denied);
+    spyOn(f.octokit.rest.reactions, "createForIssue").mockRejectedValue(denied);
     spyOn(f.octokit.rest.issues, "updateComment").mockRejectedValue(denied);
     const prepared = await f.prepare();
     await finishReviewLifecycle({
@@ -457,9 +494,40 @@ describe("review lifecycle production boundaries", () => {
     });
     expect(found?.id).toBe(40);
   });
+  it("rejects an immutable check id whose actual check belongs to a different head", async () => {
+    const f = fixture([]);
+    await f.prepare();
+    spyOn(f.octokit.rest.checks, "get").mockResolvedValue({
+      data: {
+        id: 50,
+        name: "Droid Review",
+        head_sha: OLD,
+        status: "in_progress",
+      },
+    } as any);
+    await expect(loadBoundReviewLifecycle(f.octokit)).rejects.toThrow(
+      "does not belong",
+    );
+  });
 });
 
 describe("GitHub v2 invariants", () => {
+  it("does not infer security taxonomy from P priority and only blocks configured levels", () => {
+    expect(
+      reviewCheckConclusion([finding({ severity: "P0", security: true })]),
+    ).toBe("neutral");
+    expect(
+      reviewCheckConclusion([finding({ severity: "P2" })], {
+        failOnSeverity: "P1",
+      }),
+    ).toBe("neutral");
+    expect(
+      reviewCheckConclusion([finding({ severity: "P1" })], {
+        failOnSeverity: "P1",
+      }),
+    ).toBe("failure");
+    expect(reviewCheckConclusion([], {}, true)).toBe("neutral");
+  });
   it("redacts retry diagnostics without changing the thrown error or retry policy", async () => {
     const error = Object.assign(new Error(`Denied fk-${"x".repeat(32)}`), {
       status: 403,
