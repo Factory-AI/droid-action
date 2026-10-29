@@ -32,6 +32,9 @@ export type ComputeReviewArtifactsOptions = {
   projectId: string | number;
   mrIid: number;
   outDir: string;
+  mr?: GitlabMr;
+  changes?: GitlabMrChanges;
+  notes?: GitlabNote[];
 };
 
 export function buildDiffContent(changes: GitlabMrChanges): string {
@@ -61,9 +64,9 @@ export async function computeReviewArtifacts(
   const { client, projectId, mrIid, outDir } = opts;
 
   const [mr, changes, notes] = await Promise.all([
-    client.getMr(projectId, mrIid),
-    client.getMrChanges(projectId, mrIid),
-    client.listNotes(projectId, mrIid),
+    opts.mr ?? client.getMr(projectId, mrIid),
+    opts.changes ?? client.getMrChanges(projectId, mrIid),
+    opts.notes ?? client.listNotes(projectId, mrIid),
   ]);
 
   const paths = await writeReviewArtifacts(
