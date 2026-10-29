@@ -19,6 +19,7 @@ export function generateGitlabReviewValidatorPrompt(
   ctx: GitlabReviewPromptContext,
 ): string {
   return generateValidatorPrompt({
+    reviewSettings: ctx.reviewSettings,
     terminology: GITLAB_TERMINOLOGY,
     postingMode: "file",
     entityNumber: ctx.mrIid,
