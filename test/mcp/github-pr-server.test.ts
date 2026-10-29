@@ -180,11 +180,12 @@ describe("github-pr-server helpers", () => {
         {
           path: "file.ts",
           position: 3,
-          body: expect.stringContaining('<img alt="P2"'),
+          body: expect.stringContaining("`P2`"),
         },
       ],
     });
     expect(decodeReviewMarker(payload.body)).toEqual({ head: "unknown" });
+    expect(payload.comments[0].body).not.toContain("<img");
     expect(payload.comments[0].body).toContain("**issue**\n\nissue");
     expect(decodeFindingMarker(payload.comments[0].body)).toEqual({
       id: expect.stringMatching(/^f-[a-f0-9]{12}$/),
@@ -220,10 +221,11 @@ describe("github-pr-server helpers", () => {
       {
         path: "file.ts",
         position: 3,
-        body: expect.stringContaining('<img alt="P1"'),
+        body: expect.stringContaining("`P1`"),
       },
     ]);
-    expect(payload.comments[0].body).toContain('<img alt="Security"');
+    expect(payload.comments[0].body).toContain("`Security`");
+    expect(payload.comments[0].body).not.toContain("<img");
     expect(payload.comments[0].body).toContain("**issue**\n\nissue");
     expect(payload.comments[0].body).toEndWith(
       "<!-- factory-pr-inline-comment: run-type=droid-security-review -->",

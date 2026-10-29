@@ -57,7 +57,12 @@ export function escapeHtml(text: string): string {
 }
 /** Model prose is text, never trusted Markdown/HTML or a source of bot mentions. */
 export function escapeMarkdown(text: string): string {
-  return escapeHtml(redactSecrets(text))
+  // Prose is HTML text, not an attribute. Encoding quotes before escaping
+  // Markdown would corrupt the generated apostrophe entity's # character.
+  return redactSecrets(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
     .replace(/([\\`*_[\]{}()|#!>~])/g, "\\$1")
     .replace(/@/g, "@\u200b");
 }

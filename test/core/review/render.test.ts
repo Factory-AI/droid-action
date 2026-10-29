@@ -40,7 +40,7 @@ describe("review render templates", () => {
     });
     expect(body).not.toContain("| **Open**");
     expect(body).not.toContain("What changed");
-    expect(body).not.toContain("Fix all");
+    expect(body).not.toContain("Fix with an agent");
     expect(body).not.toContain("None");
     expect(body).toContain("0 considered");
     expect(body).toContain("🟢 Looks good to merge");
@@ -129,7 +129,7 @@ describe("review render templates", () => {
     ).not.toContain("~~~suggestion");
     expect(
       renderInlineComment(finding, { includeAgentPrompts: false }),
-    ).not.toContain("Prompt for AI agents");
+    ).not.toContain("Fix with an agent");
   });
   it("renders indentation, trailing newlines, and explicit deletion suggestions", () => {
     const finding = parseValidatedReview(raw).findings[0]!;
@@ -142,7 +142,9 @@ describe("review render templates", () => {
   });
   it("renders GitLab full-SHA permalinks without GitHub anchor syntax", () => {
     const finding = parseValidatedReview(raw).findings[0]!;
-    const body = renderInlineComment(finding, {
+    const body = renderReviewSummary({
+      state: "findings",
+      findings: [finding],
       platform: "gitlab",
       repositoryUrl: "https://gitlab.example.com/group/project",
       head: "9ea6c830123456789abcdef0123456789abcdef012",
@@ -151,6 +153,14 @@ describe("review render templates", () => {
       "/-/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/budgetTracker.ts#L451-465",
     );
     expect(body).not.toContain("#L451-L465");
+    expect(body).toContain("Guideline:");
+    expect(body).toContain(
+      "/-/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-18",
+    );
+    expect(body).toContain(
+      "/-/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-40",
+    );
+    expect(body).not.toContain("#L27-L40");
     expect(safeUrl("javascript:alert(1)")).toBeUndefined();
     expect(safeUrl("https://example.com/path(unsafe)")).toContain(
       "%28unsafe%29",

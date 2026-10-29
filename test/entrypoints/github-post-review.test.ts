@@ -133,7 +133,8 @@ describe("postGitHubReview", () => {
         ?.outside_diff,
     ).toBe(true);
     expect(payload.comments[0].body).toContain("droid-finding:v1");
-    expect(payload.comments[0].body).toContain('alt="P1"');
+    expect(payload.comments[0].body).toContain("`P1`");
+    expect(payload.comments[0].body).not.toContain("<img");
     expect(payload.event).toBe("COMMENT");
     // Without a validated SHA the poster must not invent one.
     expect(payload).not.toHaveProperty("commit_id");

@@ -91,7 +91,7 @@ spec:
       description: "Comma-separated sections. Default: verdict,findings,changes,details."
       default: ""
     review_badges:
-      description: "image, emoji, or text. Effective default: image."
+      description: "text, image, or emoji. Effective default: text."
       default: ""
     review_reactions:
       description: "eyes / tada (clean) / confused lifecycle awards. Default: true."

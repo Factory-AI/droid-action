@@ -130,7 +130,7 @@ describe("review configuration action wiring", () => {
     expect(reviewConfigEnvironment(resolveReviewUxConfig())).toMatchObject({
       REVIEW_DEPTH: "deep",
       REVIEW_SUMMARY: "comment",
-      REVIEW_BADGES: "image",
+      REVIEW_BADGES: "text",
       REVIEW_REACTIONS: "true",
       REVIEW_MAX_AUTO_RUNS: "0",
       AUTOMATIC_REVIEW: "false",

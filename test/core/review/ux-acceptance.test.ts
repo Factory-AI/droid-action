@@ -1346,7 +1346,9 @@ describe("review UX production boundaries", () => {
       expect(validateRenderedMarkdown(output)).toEqual([]);
       expect(output).not.toContain("\uFFFD");
     }
-    expect(summary).toContain("| **Open** | 4 | 4 | 4 | 3 |");
+    expect(summary).toContain(
+      "**12 open findings** · `P0: 4` · `P1: 4` · `P2: 4` · `Security: 3`",
+    );
     expect(decodeSeverityMarker(check.text)).toEqual({
       p0: 4,
       p1: 4,

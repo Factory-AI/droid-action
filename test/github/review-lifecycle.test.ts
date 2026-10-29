@@ -343,7 +343,8 @@ describe("review lifecycle production boundaries", () => {
       (call) => call.method === "createReview",
     )!.input;
     expect(created.event).toBe("COMMENT");
-    expect(created.comments[0].body).toContain('alt="P1"');
+    expect(created.comments[0].body).toContain("`P1`");
+    expect(created.comments[0].body).not.toContain("<img");
     expect(created.comments[0].body).toContain("droid-finding:v1");
     expect(decodeReviewState(f.body())?.head).toBe(HEAD);
     expect(

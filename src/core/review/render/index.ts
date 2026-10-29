@@ -60,9 +60,9 @@ export function severityCounts(findings: ReviewFinding[]): SeverityCounts {
 }
 export function renderBadge(
   label: "P0" | "P1" | "P2" | "Security",
-  mode: BadgeMode = "image",
+  mode: BadgeMode = "text",
 ): string {
-  if (mode === "text") return `[${label}]`;
+  if (mode === "text") return `\`${label}\``;
   if (mode === "emoji")
     return `${{ P0: "🔴", P1: "🟠", P2: "🟡", Security: "🔒" }[label]} ${label}`;
   const color = { P0: "red", P1: "orange", P2: "yellow", Security: "blue" }[
@@ -118,18 +118,34 @@ function findingReference(f: ReviewFinding, options: RenderOptions): string {
     f.side === "LEFT" ? { ...options, head: options.base } : options,
   );
 }
-function findingRow(f: ReviewFinding, options: RenderOptions): string {
+function findingRow(
+  f: ReviewFinding,
+  options: RenderOptions,
+  compact = false,
+): string {
   const target =
     f.threadUrl ??
     (typeof f.threadId === "number"
       ? `#${options.platform === "gitlab" ? "note_" : "discussion_r"}${f.threadId}`
       : undefined);
-  return `- ${badges(f, options)} ${link(title(f), target)} · ${findingReference(f, options)}${f.isNew ? " · New" : ""}${options.includeCategories && f.category ? ` · ${inlineCode(f.category)}` : ""}`;
+  return `- ${compact ? "" : `${badges(f, options)} `}${link(title(f), target)} · ${findingReference(f, options)}${!compact && f.isNew ? " · New" : ""}${options.includeCategories && f.category ? ` · ${inlineCode(f.category)}` : ""}`;
 }
 export function renderCountsTable(findings: ReviewFinding[]): string {
   if (!findings.length) return "";
   const c = severityCounts(findings);
   return `| | P0 | P1 | P2 | Security |\n| --- | :-: | :-: | :-: | :------: |\n| **Open** | ${c.p0} | ${c.p1} | ${c.p2} | ${c.security} |`;
+}
+function compactCounts(findings: ReviewFinding[]): string {
+  const counts = severityCounts(findings);
+  return [
+    ["P0", counts.p0],
+    ["P1", counts.p1],
+    ["P2", counts.p2],
+    ["Security", counts.security],
+  ]
+    .filter(([, count]) => count)
+    .map(([label, count]) => `\`${label}: ${count}\``)
+    .join(" · ");
 }
 function countBreakdown(findings: ReviewFinding[]): string {
   const c = severityCounts(findings);
@@ -147,7 +163,6 @@ function footer(input: ReviewRenderInput): string {
     `Reviewed by ${link("Droid", "https://factory.ai")} for commit ${sha(input.head)}${input.durationSeconds !== undefined ? ` in ${duration(input.durationSeconds)}` : ""}`,
     input.jobUrl ? link("View job", input.jobUrl) : "",
     input.configureUrl ? link("Configure", input.configureUrl) : "",
-    "Comment `@droid help` for commands",
   ]
     .filter(Boolean)
     .join(" · ")}</sub>`;
@@ -167,6 +182,26 @@ function reviewDetails(
   findings: ReviewFinding[],
 ): string {
   const summary = input.summary;
+  const context = findings
+    .map((finding) => {
+      const evidence = [
+        finding.why ? prose(finding.why) : "",
+        finding.verification ? `Verified: ${prose(finding.verification)}` : "",
+        finding.cwe ? `CWE: ${prose(finding.cwe)}` : "",
+        finding.also_at.length
+          ? `Also at: ${finding.also_at.map((loc) => reference(loc, input)).join(", ")}`
+          : "",
+        finding.source_guideline
+          ? `Guideline: ${reference(finding.source_guideline, input)}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+      return evidence
+        ? `**${title(finding)}** · ${findingReference(finding, input)}\n\n${evidence}`
+        : "";
+    })
+    .filter(Boolean);
   const rows = [
     input.base
       ? `Commit range: ${sha(input.base)}..${sha(input.head)}${input.commitCount !== undefined ? ` (${pluralize(input.commitCount, "commit")})` : ""}`
@@ -191,6 +226,8 @@ function reviewDetails(
     input.showDroppedFindings && input.dropped?.length
       ? `\nDropped candidates:\n${input.dropped.map((f) => `- ${f.title ? prose(f.title) : `Candidate ${f.index + 1}`}${f.path ? ` · ${inlineCode(f.path)}` : ""}: ${prose(f.reason)}`).join("\n")}`
       : "",
+    context.length ? `Finding context:\n\n${context.join("\n\n")}` : "",
+    footer(input),
   ].filter(Boolean);
   return details("Review details", rows.join("\n\n"));
 }
@@ -245,37 +282,31 @@ function inlineCommentBody(
   finding: ReviewFinding,
   options: RenderOptions = {},
 ): string {
-  const why = [
-    finding.why ? prose(finding.why) : "",
-    finding.verification ? `Verified: ${prose(finding.verification)}` : "",
+  const securityContext = [
+    finding.securitySeverity
+      ? `Security: ${finding.securitySeverity[0]!.toUpperCase()}${finding.securitySeverity.slice(1)}`
+      : "",
     finding.cwe ? `CWE: ${prose(finding.cwe)}` : "",
-    finding.also_at.length
-      ? `Also at: ${finding.also_at.map((loc) => reference(loc, options)).join(", ")}`
-      : "",
-    finding.source_guideline
-      ? `Guideline: ${reference(finding.source_guideline, options)}`
-      : "",
   ]
     .filter(Boolean)
-    .join("\n\n");
+    .join(" · ");
   return [
     `${badges(finding, options)} **${title(finding)}**${options.includeCategories && finding.category ? ` · ${inlineCode(finding.category)}` : ""}`,
     prose(finding.body),
+    securityContext ? `<sub>${securityContext}</sub>` : "",
     finding.suggestion !== undefined &&
     finding.side === "RIGHT" &&
     !finding.outside_diff
       ? fenced(finding.suggestion, "suggestion")
       : "",
-    details("Why this was flagged", why),
     options.includeAgentPrompts !== false && finding.agent_prompt
       ? details(
-          "Prompt for AI agents",
+          "Fix with an agent",
           fenced(
             `${UNTRUSTED_PREAMBLE}\n\n${locationLabel(findingLocation(finding))} (${finding.severity})\n${finding.agent_prompt}`,
           ),
         )
       : "",
-    `<sub>Finding ${prose(finding.id)} · Reply \`@droid fix\` to apply · Reply with a question to discuss</sub>`,
     encodeFindingMarker({
       id: redactSecrets(finding.id),
       sev: finding.severity,
@@ -401,6 +432,10 @@ function reviewSummaryBody(input: ReviewRenderInput): string {
   const outside = findings.filter((f) => f.outside_diff);
   const resolved = input.resolved ?? [];
   const security = findings.filter((f) => f.security);
+  const compactRows =
+    (input.badges === undefined || input.badges === "text") &&
+    new Set(findings.map((f) => f.severity)).size <= 1 &&
+    findings.every((f) => f.isNew !== false && !f.security);
   const highestSecurity = ["critical", "high", "medium", "low"].find((level) =>
     security.some((f) => f.securitySeverity === level),
   );
@@ -423,13 +458,11 @@ function reviewSummaryBody(input: ReviewRenderInput): string {
     input.summary?.security?.enabled || security.length
       ? `🔒 Security review: ${security.length ? `${pluralize(security.length, "finding")}${highestSecurity ? ` (${highestSecurity[0]!.toUpperCase()}${highestSecurity.slice(1)})` : ""}` : "no findings"}.`
       : "",
-    selected(input, "findings") ? renderCountsTable(findings) : "",
+    selected(input, "findings") && findings.length
+      ? `**${pluralize(findings.length, "open finding")}** · ${compactCounts(findings)}`
+      : "",
     selected(input, "findings") && inline.length
-      ? details(
-          `<strong>${pluralize(inline.length, "open finding")}</strong>`,
-          inline.map((f) => findingRow(f, input)).join("\n"),
-          true,
-        )
+      ? inline.map((f) => findingRow(f, input, compactRows)).join("\n")
       : "",
     selected(input, "findings") && inline.some((f) => f.isNew === false)
       ? details(
@@ -464,8 +497,10 @@ function reviewSummaryBody(input: ReviewRenderInput): string {
       : "",
     input.includeAgentPrompts !== false && findings.length
       ? details(
-          "Fix all with an AI agent",
-          `${fenced(`${UNTRUSTED_PREAMBLE}\n\n${findings.map((f, i) => `${i + 1}. ${locationLabel(findingLocation(f))} (${f.severity}) ${f.title}\n${f.agent_prompt || f.body}`).join("\n\n")}`)}\n\nOr comment \`@droid fix\` to have Droid apply the valid fixes.`,
+          "Fix with an agent",
+          fenced(
+            `${UNTRUSTED_PREAMBLE}\n\n${findings.map((f, i) => `${i + 1}. ${locationLabel(findingLocation(f))} (${f.severity}) ${f.title}\n${f.agent_prompt || f.body}`).join("\n\n")}`,
+          ),
         )
       : "",
     input.unchangedSuggestions
@@ -474,7 +509,10 @@ function reviewSummaryBody(input: ReviewRenderInput): string {
     selected(input, "details")
       ? reviewDetails(input, findings)
       : transparency(input, findings),
-    footer(input),
+    !selected(input, "details") ? footer(input) : "",
+    findings.length
+      ? "<sub>Reply to a finding with a question, or comment `@droid fix` to apply valid fixes.</sub>"
+      : "",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -486,7 +524,6 @@ function reviewBody(input: ReviewRenderInput): string {
   return [
     encodeReviewMarker({ head: input.head ?? "unknown" }),
     `**Droid found ${pluralize(findings.length, "issue")}**${findings.length ? ` (${countBreakdown(findings)})` : ""} in ${sha(input.head)}.${input.summaryUrl ? ` ${link("Summary", input.summaryUrl)}` : ""}`,
-    "<sub>Reply to a finding to ask Droid about it · Comment `@droid fix` to apply fixes</sub>",
   ].join("\n\n");
 }
 export function renderStaleReviewBody(

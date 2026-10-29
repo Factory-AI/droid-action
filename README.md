@@ -301,7 +301,7 @@ Droid never pushes to a repository's default branch and never force-pushes. The 
 Review output is rendered by TypeScript from the two-pass validator's structured JSON. The model supplies evidence and prose, not layout, counts, badges, or links.
 
 - A sticky issue comment is the default summary location. Running and failed states preserve the previous review below a clear banner.
-- Findings include severity badges with alt text, verification, related locations, optional complete suggestions, guideline permalinks, a stable hidden finding marker, and a copyable AI-agent prompt with an untrusted-data warning.
+- Findings use native text severity labels by default, optional complete suggestions, a stable hidden finding marker, and a collapsed **Fix with an agent** prompt with an untrusted-data warning. Verification, related locations, rationale and guideline permalinks live in the summary's collapsed **Review details**; security severity and CWE remain visible inline. Image and emoji badges remain explicit opt-ins.
 - Clean reviews explicitly say no issues were found. Droid does not submit an empty review object.
 - Lifecycle reactions are eyes while running, hooray when clean, and confused on failure. Eyes are removed at completion. Droid does not request, read, or learn from thumbs feedback.
 - Re-reviews use stored state to avoid duplicates, honor human-dismissed threads, and resolve only confirmed fixes. Unchanged optional suggestions are suppressed only when explicitly classified as optional, never merely because they are P2.
@@ -434,29 +434,29 @@ To leave comments and reviews on your PRs, Droid needs a GitHub token. Droid nev
 
 These are **effective defaults**. Config-enabled action inputs use an empty-string inheritance sentinel, not an explicit default override. Set a nonempty input to override the base-branch file, including `false` and `0`. Use `off` to clear `fail_on_severity`; use `[]` to clear a list. GitLab exposes the same settings as component inputs, with automatic code and security review effectively enabled by default.
 
-| Input                       | Effective default                              | Purpose                                                                               |
-| --------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `review_summary`            | `comment`                                      | `comment`, `description`, or `off`. Description mode owns only its marked block.      |
-| `review_summary_sections`   | `verdict,findings,changes,details`             | Visible sections; also accepts `diagram`, `risk`, `effort`.                           |
-| `review_badges`             | `image`                                        | Shields.io images with meaningful alt text; `emoji` or `text` avoids external images. |
-| `review_reactions`          | `true`                                         | Running/clean/failure lifecycle reactions, never feedback reactions.                  |
-| `review_check_run`          | `true`                                         | GitHub check run; GitLab commit status.                                               |
-| `fail_on_severity`          | `""`                                           | Fail only when an open finding meets `P0`, `P1`, or `P2` or a higher priority.        |
-| `review_incremental`        | `true`                                         | Review only new changes after a successful review; full-review commands override it.  |
-| `review_auto_resolve`       | `true`                                         | Resolve only validator-confirmed fixed threads.                                       |
-| `review_max_auto_runs`      | `0`                                            | Automatic-run budget; `0` means unlimited.                                            |
-| `show_dropped_findings`     | `false`                                        | Show dropped candidate details/reasons. Aggregate counts always remain visible.       |
-| `include_agent_prompts`     | `true`                                         | Per-finding and fix-all prompts with an untrusted-data preamble.                      |
-| `fix_mode`                  | `commit`                                       | `commit`, `pr` (stacked PR/MR), or `off`.                                             |
-| `review_diagram`            | `auto`                                         | Include an evidenced passive Mermaid diagram, or `off`.                               |
-| `review_severity_threshold` | `P2`                                           | Report P0/P1/P2 by default; choose `P0` or `P1` for a stricter reporting floor.       |
-| `review_ignore_paths`       | Generated/build/lock files                     | Comma/newline-separated glob patterns. See the base-config example below.             |
-| `review_auto_triggers`      | `opened,reopened,synchronize,ready_for_review` | Automatic event actions. The workflow must subscribe to those events too.             |
-| `review_drafts`             | `false`                                        | Review drafts automatically; explicit review commands still work.                     |
-| `review_effort`             | `false`                                        | Include an evidence-backed effort estimate.                                           |
-| `review_category_chips`     | `false`                                        | Show correctness/security/performance/maintainability labels.                         |
-| `review_suggest_reviewers`  | `false`                                        | Suggest reviewers from base-branch CODEOWNERS, never assign them.                     |
-| `review_pre_merge_checks`   | None                                           | Opt-in `title,description,linked_issue` checks.                                       |
+| Input                       | Effective default                              | Purpose                                                                              |
+| --------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `review_summary`            | `comment`                                      | `comment`, `description`, or `off`. Description mode owns only its marked block.     |
+| `review_summary_sections`   | `verdict,findings,changes,details`             | Visible sections; also accepts `diagram`, `risk`, `effort`.                          |
+| `review_badges`             | `text`                                         | Native code-formatted severity labels; `image` and `emoji` remain explicit opt-ins.  |
+| `review_reactions`          | `true`                                         | Running/clean/failure lifecycle reactions, never feedback reactions.                 |
+| `review_check_run`          | `true`                                         | GitHub check run; GitLab commit status.                                              |
+| `fail_on_severity`          | `""`                                           | Fail only when an open finding meets `P0`, `P1`, or `P2` or a higher priority.       |
+| `review_incremental`        | `true`                                         | Review only new changes after a successful review; full-review commands override it. |
+| `review_auto_resolve`       | `true`                                         | Resolve only validator-confirmed fixed threads.                                      |
+| `review_max_auto_runs`      | `0`                                            | Automatic-run budget; `0` means unlimited.                                           |
+| `show_dropped_findings`     | `false`                                        | Show dropped candidate details/reasons. Aggregate counts always remain visible.      |
+| `include_agent_prompts`     | `true`                                         | Per-finding and fix-all prompts with an untrusted-data preamble.                     |
+| `fix_mode`                  | `commit`                                       | `commit`, `pr` (stacked PR/MR), or `off`.                                            |
+| `review_diagram`            | `auto`                                         | Include an evidenced passive Mermaid diagram, or `off`.                              |
+| `review_severity_threshold` | `P2`                                           | Report P0/P1/P2 by default; choose `P0` or `P1` for a stricter reporting floor.      |
+| `review_ignore_paths`       | Generated/build/lock files                     | Comma/newline-separated glob patterns. See the base-config example below.            |
+| `review_auto_triggers`      | `opened,reopened,synchronize,ready_for_review` | Automatic event actions. The workflow must subscribe to those events too.            |
+| `review_drafts`             | `false`                                        | Review drafts automatically; explicit review commands still work.                    |
+| `review_effort`             | `false`                                        | Include an evidence-backed effort estimate.                                          |
+| `review_category_chips`     | `false`                                        | Show correctness/security/performance/maintainability labels.                        |
+| `review_suggest_reviewers`  | `false`                                        | Suggest reviewers from base-branch CODEOWNERS, never assign them.                    |
+| `review_pre_merge_checks`   | None                                           | Opt-in `title,description,linked_issue` checks.                                      |
 
 ### Base-branch repository configuration
 
@@ -465,7 +465,7 @@ Precedence is built-in defaults, then `.factory/review.yaml` fetched at an immut
 ```yaml
 # .factory/review.yaml, merged to the base branch
 review_depth: deep
-review_badges: image
+review_badges: text
 review_summary: comment
 review_summary_sections: [verdict, findings, changes, details, risk]
 review_incremental: true

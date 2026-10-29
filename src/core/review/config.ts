@@ -27,7 +27,7 @@ const configSchema = z
       "changes",
       "details",
     ]),
-    review_badges: z.enum(["image", "emoji", "text"]).default("image"),
+    review_badges: z.enum(["image", "emoji", "text"]).default("text"),
     review_reactions: z.boolean().default(true),
     review_check_run: z.boolean().default(true),
     fail_on_severity: z.enum(["", "P0", "P1", "P2"]).default(""),

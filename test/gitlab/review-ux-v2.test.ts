@@ -375,8 +375,9 @@ describe("GitLab review UX v2", () => {
     const posted = t.requests.find(
       (r) => r.method === "POST" && r.path.endsWith("/discussions"),
     );
-    expect(posted?.body.body).toContain('alt="P1"');
-    expect(posted?.body.body).toContain("Why this was flagged");
+    expect(posted?.body.body).toContain("`P1`");
+    expect(posted?.body.body).not.toContain("<img");
+    expect(posted?.body.body).not.toContain("Why this was flagged");
     expect(decodeFindingMarker(posted?.body.body)).toMatchObject({
       id: finding.id,
       head: HEAD,
@@ -844,7 +845,7 @@ describe("GitLab v2 production entrypoints, local API only", () => {
         await fs.readFile(path.join(directory, "state.json"), "utf8"),
       );
       expect(prepared.shouldRunReview).toBe(true);
-      expect(prepared.reviewConfig.review_badges).toBe("image");
+      expect(prepared.reviewConfig.review_badges).toBe("text");
       expect(
         await fs.readFile(path.join(directory, "resolved-env.sh"), "utf8"),
       ).toContain(

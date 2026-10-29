@@ -195,7 +195,7 @@ inputs:
     required: false
     default: ""
   review_badges:
-    description: "Severity badges: image (effective default), emoji, or text. Empty inherits base config."
+    description: "Severity badges: text (effective default), image, or emoji. Empty inherits base config."
     required: false
     default: ""
   review_reactions:

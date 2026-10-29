@@ -16,7 +16,7 @@ describe("trusted base review configuration", () => {
     expect(config).toMatchObject({
       review_depth: "deep",
       review_summary: "comment",
-      review_badges: "image",
+      review_badges: "text",
       review_reactions: true,
       review_check_run: true,
       fail_on_severity: "",
