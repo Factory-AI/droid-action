@@ -129,13 +129,23 @@ describe("credential exposure wiring", () => {
     const [, jobs] = parseAllDocuments(
       readFileSync(join(root, "templates/droid-review.yml"), "utf8"),
     ).map((doc) => doc.toJS());
-    const afterScript: string[] = jobs["droid-review"].after_script;
-    expect(
-      afterScript.some((line) =>
-        line.includes("gitlab-collect-debug-artifacts.ts"),
-      ),
-    ).toBe(true);
-    expect(afterScript.join("\n")).not.toContain("cp -r /tmp/droid-prompts");
+    const job = jobs["droid-review"];
+    const parentScript = [...job.before_script, ...job.script].join("\n");
+    const frozenRuntime = readFileSync(
+      join(root, "gitlab/freeze-runtime.sh"),
+      "utf8",
+    );
+    expect(parentScript).toContain(
+      '. "$DROID_ACTION_DIR/gitlab/freeze-runtime.sh"',
+    );
+    expect(parentScript).toContain("droid_install_finalize_trap");
+    expect(job.after_script).toEqual([]);
+    expect(frozenRuntime).toContain(
+      "droid_run_trusted gitlab-collect-debug-artifacts",
+    );
+    expect(parentScript + frozenRuntime).not.toContain(
+      "cp -r /tmp/droid-prompts",
+    );
     expect(jobs["droid-review"].artifacts.paths).toEqual([".droid-debug/"]);
   });
 });
