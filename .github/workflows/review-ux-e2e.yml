@@ -102,7 +102,7 @@ jobs:
               "commandCommentId": comment_id,
               "head": pr["head"]["sha"],
               "base": pr["base"]["sha"],
-              "pinnedActionSha": "ef8e39b49aad6eff785a818e541acfe43f41b157",
+              "pinnedActionSha": "c8782743c139468d315b9036a4fe2e93cf31aafc",
               "draft": pr["draft"],
               "automaticReview": os.environ["GITHUB_EVENT_NAME"] == "pull_request",
               "reviewDrafts": True,
@@ -112,7 +112,7 @@ jobs:
           PY
 
       - name: Run unmodified final V7 review and command action
-        uses: Factory-AI/droid-action@ef8e39b49aad6eff785a818e541acfe43f41b157
+        uses: Factory-AI/droid-action@c8782743c139468d315b9036a4fe2e93cf31aafc
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           github_token: ${{ github.token }}
