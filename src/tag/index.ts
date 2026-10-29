@@ -15,6 +15,7 @@ import { isAutomationContext } from "../github/context";
 import { prepareStewardMode } from "../steward";
 import { DroidRunType, resolveTagRunType, setDroidRunType } from "../run-type";
 import { DROID_APP_BOT_ID } from "../github/bot-identity";
+import { prepareConversationCommand } from "./commands/conversation";
 import { hasSummaryMarker } from "../core/review/markers";
 const SECURITY_REVIEW_MARKER = "## Security Review Summary";
 
@@ -116,7 +117,24 @@ export async function prepareTagExecution({
     );
   }
 
-  const commandContext = extractCommandFromContext(context);
+  let commandContext = extractCommandFromContext(context);
+  if (
+    commandContext?.location === "body" &&
+    (context.inputs.automaticReview || context.inputs.automaticSecurityReview)
+  ) {
+    commandContext = null;
+  }
+  // Explicit comment commands take precedence over automatic-review flags.
+  if (commandContext && commandContext.location === "comment") {
+    context = {
+      ...context,
+      inputs: {
+        ...context.inputs,
+        automaticReview: false,
+        automaticSecurityReview: false,
+      },
+    };
+  }
   const runType = resolveTagRunType({
     automaticReview: context.inputs.automaticReview,
     automaticSecurityReview: context.inputs.automaticSecurityReview,
@@ -125,6 +143,19 @@ export async function prepareTagExecution({
   if (runType) {
     setDroidRunType(runType);
   }
+  if (
+    commandContext &&
+    ["help", "unknown", "resolve", "pause", "resume"].includes(
+      commandContext.command,
+    )
+  ) {
+    return prepareConversationCommand({
+      context,
+      octokit,
+      command: commandContext,
+    });
+  }
+
   let runAutomaticSecurityReview = context.inputs.automaticSecurityReview;
   if (runAutomaticSecurityReview) {
     const hasExisting = await hasExistingSecurityReview(octokit, context);
@@ -197,6 +228,8 @@ export async function prepareTagExecution({
       githubToken,
       trackingCommentId: commentId,
       runType,
+      fullReview: commandContext?.fullReview,
+      focus: commandContext?.focus,
     });
   }
 
@@ -209,6 +242,8 @@ export async function prepareTagExecution({
       githubToken,
       trackingCommentId: commentId,
       runType,
+      fullReview: commandContext?.fullReview,
+      focus: commandContext?.focus,
     });
   }
 
@@ -272,6 +307,8 @@ export async function prepareTagExecution({
       githubToken,
       trackingCommentId: commentId,
       runType,
+      fullReview: commandContext?.fullReview,
+      focus: commandContext?.focus,
     });
   }
 

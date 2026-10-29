@@ -1,18 +1,14 @@
-/**
- * Platform-agnostic Droid command parser.
- *
- * Both GitHub and GitLab look for the same `@droid <command>` mentions
- * in PR/MR bodies and comments. This parser only operates on a raw
- * string; the per-platform context extraction (which fields of which
- * webhook payload to scan) stays in the platform-specific module
- * because the payload shapes diverge.
- */
-
+/** Shared parser. Platform adapters decide whether free text is a thread question. */
 export type DroidCommand =
   | "fill"
   | "review"
   | "security"
   | "security-full"
+  | "help"
+  | "resolve"
+  | "pause"
+  | "resume"
+  | "unknown"
   | "default";
 
 export interface ParsedCommand {
@@ -20,55 +16,111 @@ export interface ParsedCommand {
   raw: string;
   location: "body" | "comment";
   timestamp?: string | null;
+  fullReview?: boolean;
+  focus?: string;
+  text?: string;
 }
 
-/**
- * Parses text to detect specific @droid commands.
- *
- * Returns `null` when no `@droid` mention is present, the generic
- * `default` command for a bare `@droid`, or the specific subcommand
- * when matched. `location` defaults to "body" and is overridden by
- * the caller when the text came from a comment.
- */
+/** Mask code rather than deleting it, so raw command offsets remain accurate. */
+export function withoutMarkdownCode(text: string): string {
+  let fence: { character: string; length: number } | undefined;
+  return text
+    .split("\n")
+    .map((line) => {
+      const match = /^(?: {0,3}> ?)* {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+      if (fence) {
+        if (
+          match &&
+          match[1]![0] === fence.character &&
+          match[1]!.length >= fence.length &&
+          !match[2]!.trim()
+        ) {
+          fence = undefined;
+        }
+        return " ".repeat(line.length);
+      }
+      if (match) {
+        fence = { character: match[1]![0]!, length: match[1]!.length };
+        return " ".repeat(line.length);
+      }
+      return line.replace(/(`+)[\s\S]*?\1/g, (code) => " ".repeat(code.length));
+    })
+    .join("\n");
+}
+
 export function parseDroidCommand(text: string): ParsedCommand | null {
-  if (!text) {
-    return null;
-  }
-
-  const fillMatch = text.match(/@droid\s+fill/i);
-  if (fillMatch) {
-    return { command: "fill", raw: fillMatch[0], location: "body" };
-  }
-
-  // Note: `@droid review security` will match as just `@droid review`.
-  const reviewMatch = text.match(/@droid\s+review/i);
-  if (reviewMatch) {
-    return { command: "review", raw: reviewMatch[0], location: "body" };
-  }
-
-  const securityFullMatch = text.match(/@droid\s+security\s+--full/i);
-  if (securityFullMatch) {
-    return {
-      command: "security-full",
-      raw: securityFullMatch[0],
-      location: "body",
+  if (!text) return null;
+  const visible = withoutMarkdownCode(text);
+  const mentions = [...visible.matchAll(/(?<![\w@/])@droid(?![\w-])/gi)];
+  let fallback: ParsedCommand | null = null;
+  for (const mention of mentions) {
+    const start = mention.index!;
+    const rest = visible.slice(start + mention[0].length).split("\n")[0]!;
+    const tail = rest.replace(/^[\s,:;.!?]+/, "").trim();
+    const base = {
+      raw: text.slice(start, start + mention[0].length),
+      location: "body" as const,
     };
+    if (!tail) {
+      fallback ??= { ...base, command: "default" };
+      continue;
+    }
+    const word = /^([a-z]+)(?=$|[\s,:;.!?])/i.exec(tail);
+    const name = word?.[1]?.toLowerCase();
+    if (
+      !name ||
+      ![
+        "fill",
+        "review",
+        "security",
+        "help",
+        "resolve",
+        "pause",
+        "resume",
+      ].includes(name)
+    ) {
+      fallback ??= { ...base, command: "unknown", text: tail };
+      continue;
+    }
+    const prefixLength = rest.indexOf(word![0]) + word![0].length;
+    const raw = text.slice(start, start + mention[0].length + prefixLength);
+    let args = tail
+      .slice(word![0].length)
+      .replace(/^[,:;.!?]+/, "")
+      .trim();
+    if (name === "review" && /^security(?:$|[\s,:;.!?])/i.test(args)) {
+      args = args.replace(/^security[\s,:;.!?]*/i, "");
+      const full = /^--full(?:$|[\s.!?,;:])/i.test(args);
+      return {
+        ...base,
+        raw: `${raw} security${full ? " --full" : ""}`,
+        command: full ? "security-full" : "security",
+      };
+    }
+    if (name === "review") {
+      const fullReview = /(?:^|\s)--full(?:$|[\s.!?,;:])/i.test(args);
+      const focus = args
+        .replace(/(?:^|\s)--full(?=$|[\s.!?,;:])(?:[.!?,;:](?=$))?/gi, " ")
+        .trim();
+      if (/(?:^|\s)--\S+/.test(focus))
+        return { ...base, command: "unknown", text: tail };
+      return {
+        ...base,
+        raw,
+        command: "review",
+        ...(fullReview ? { fullReview: true } : {}),
+        ...(focus ? { focus } : {}),
+      };
+    }
+    if (name === "security") {
+      const full = /^--full(?:$|[\s.!?,;:])/i.test(args);
+      return {
+        ...base,
+        raw: `${raw}${full ? " --full" : ""}`,
+        command: full ? "security-full" : "security",
+      };
+    }
+    return { ...base, raw, command: name as DroidCommand };
   }
-
-  // Check after security-full to avoid false matches.
-  const securityMatch = text.match(/@droid\s+security(?:\s|$|[^-\w])/i);
-  if (securityMatch) {
-    return {
-      command: "security",
-      raw: securityMatch[0].trim(),
-      location: "body",
-    };
-  }
-
-  const droidMatch = text.match(/@droid/i);
-  if (droidMatch) {
-    return { command: "default", raw: droidMatch[0], location: "body" };
-  }
-
-  return null;
+  return fallback;
 }
