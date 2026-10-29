@@ -477,7 +477,7 @@ async function run(): Promise<void> {
 
   // Old installed templates can hand this entrypoint a pre-v2 state file.
   // New templates pin v2 in the parent environment, not model-writable state.
-  if (process.env.REVIEW_UX_V2 !== "true") {
+  if (!state.reviewConfig && process.env.REVIEW_UX_V2 !== "true") {
     const result = await postReview({
       client,
       projectId,
