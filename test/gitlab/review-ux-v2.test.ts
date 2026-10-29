@@ -34,6 +34,7 @@ import {
 } from "../bitbucket/fake-server";
 import { postReview } from "../../src/entrypoints/gitlab-post-review";
 import { run as postRun } from "../../src/entrypoints/gitlab-post-review";
+import { run as prepareRun } from "../../src/entrypoints/gitlab-prepare";
 import { run as finishRun } from "../../src/entrypoints/gitlab-update-comment-link";
 import { publishGitlabSecurityReport } from "../../src/gitlab/operations/security-report";
 import * as fs from "node:fs/promises";
@@ -835,42 +836,69 @@ describe("GitLab v2 production entrypoints, local API only", () => {
     }
   }
 
-  it("keeps v2 dormant without the parent flag even when model-writable state supplies reviewConfig", async () => {
+  it("prepares real artifacts, a rich progress note and queued/running statuses", async () => {
     const t = setup({ noState: true });
     await environment(async (directory) => {
-      delete process.env.REVIEW_UX_V2;
-      await fs.writeFile(
-        path.join(directory, "state.json"),
-        JSON.stringify({
-          shouldRunReview: true,
-          projectId: "42",
-          mrIid: 7,
-          trackingNoteId: 1,
-          reviewConfig: config(),
-          validatedPath: path.join(directory, "validated.json"),
-        }),
+      await prepareRun();
+      const prepared = JSON.parse(
+        await fs.readFile(path.join(directory, "state.json"), "utf8"),
       );
-      await fs.writeFile(
-        path.join(directory, "validated.json"),
-        JSON.stringify({
-          meta: { headSha: HEAD },
-          results: [{ status: "approved", comment: finding }],
-        }),
-      );
-      await postRun();
-      const result = JSON.parse(
-        await fs.readFile(path.join(directory, "results.json"), "utf8"),
-      );
-      expect(result.renderInput).toBeUndefined();
-      await finishRun();
+      expect(prepared.shouldRunReview).toBe(true);
+      expect(prepared.reviewConfig.review_badges).toBe("image");
       expect(
-        t.requests.filter((request) =>
-          request.path.includes("/repository/branches/"),
+        await fs.readFile(path.join(directory, "resolved-env.sh"), "utf8"),
+      ).toContain(
+        'DROID_LIFECYCLE_AWARD_CONTEXT=\'{"projectId":"42","mrIid":7,"id":3}\'',
+      );
+      expect(
+        await fs.readFile(path.join(directory, "prompt.txt"), "utf8"),
+      ).toContain("Trusted review settings");
+      expect(
+        t.requests
+          .filter((r) => r.path.includes("/statuses/"))
+          .map((r) => r.body.state),
+      ).toEqual(["pending", "running"]);
+      expect(t.requests.find((r) => r.method === "PUT")?.body.body).toContain(
+        "[!NOTE]",
+      );
+    });
+  });
+
+  it("skips identical heads without erasing prior state or invoking model passes", async () => {
+    const t = setup({ priorHead: HEAD });
+    await environment(async (directory) => {
+      await prepareRun();
+      const prepared = JSON.parse(
+        await fs.readFile(path.join(directory, "state.json"), "utf8"),
+      );
+      expect(prepared.shouldRunReview).toBe(false);
+      expect(prepared.reason).toBe(`No new changes since ${HEAD.slice(0, 7)}`);
+      expect(prepared.reviewState.findings[0].id).toBe(finding.id);
+      expect(t.requests.find((r) => r.method === "PUT")?.body.body).toContain(
+        "[!IMPORTANT]",
+      );
+    });
+  });
+
+  it("renders draft skips and writes the skipped-file manifest", async () => {
+    const t = setup({ draft: true });
+    await environment(async (directory) => {
+      await prepareRun();
+      const prepared = JSON.parse(
+        await fs.readFile(path.join(directory, "state.json"), "utf8"),
+      );
+      expect(prepared.reason).toContain("draft MR");
+      expect(
+        JSON.parse(
+          await fs.readFile(
+            path.join(directory, "review_files_skipped.json"),
+            "utf8",
+          ),
         ),
-      ).toHaveLength(0);
-      expect(
-        t.requests.filter((request) => request.path.includes("/statuses/")),
-      ).toHaveLength(0);
+      ).toEqual([]);
+      expect(t.requests.find((r) => r.method === "PUT")?.body.body).toContain(
+        "draft MR",
+      );
     });
   });
 

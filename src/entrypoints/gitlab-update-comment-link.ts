@@ -124,7 +124,7 @@ async function run(): Promise<void> {
 
   const review = await readPostResults();
 
-  if (process.env.REVIEW_UX_V2 === "true") {
+  if (state.reviewConfig || process.env.REVIEW_UX_V2 === "true") {
     const mr = await client.getMr(target.projectId, target.mrIid);
     const config = await loadGitlabReviewConfig(client, target.projectId, mr);
     let posted: PostResults | null = null;
