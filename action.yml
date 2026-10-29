@@ -599,7 +599,7 @@ runs:
 
     - name: Publish Droid command result
       id: post_command
-      if: always() && steps.prepare.outputs.command_mode == 'question'
+      if: always() && (steps.prepare.outputs.command_mode == 'fix' || steps.prepare.outputs.command_mode == 'question')
       shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
         set -euo pipefail
@@ -627,7 +627,7 @@ runs:
           GITHUB_TOKEN="$GITHUB_TOKEN" GITHUB_API_URL="$GITHUB_API_URL" GITHUB_SERVER_URL="$GITHUB_SERVER_URL" \
           GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" \
           COMMAND_MODE="$COMMAND_MODE" COMMAND_OUTPUT_PATH="$COMMAND_OUTPUT_PATH" \
-          COMMAND_EXPECTED_HEAD="$COMMAND_EXPECTED_HEAD" \
+          COMMAND_EXPECTED_HEAD="$COMMAND_EXPECTED_HEAD" COMMAND_FIX_MODE="$COMMAND_FIX_MODE" \
           COMMAND_ROOT_COMMENT_ID="$COMMAND_ROOT_COMMENT_ID" COMMAND_PR_NUMBER="$COMMAND_PR_NUMBER" \
           COMMAND_ACTOR="$COMMAND_ACTOR" REPO_OWNER="$REPO_OWNER" REPO_NAME="$REPO_NAME" \
           DROID_SUCCESS="$DROID_SUCCESS" \
@@ -647,6 +647,7 @@ runs:
         COMMAND_MODE: ${{ steps.prepare.outputs.command_mode }}
         COMMAND_OUTPUT_PATH: ${{ steps.prepare.outputs.command_output_path }}
         COMMAND_EXPECTED_HEAD: ${{ steps.prepare.outputs.command_expected_head }}
+        COMMAND_FIX_MODE: ${{ steps.prepare.outputs.command_fix_mode }}
         COMMAND_ROOT_COMMENT_ID: ${{ steps.prepare.outputs.command_root_comment_id }}
         COMMAND_PR_NUMBER: ${{ steps.prepare.outputs.command_pr_number }}
         COMMAND_ACTOR: ${{ steps.prepare.outputs.command_actor }}

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, spyOn } from "bun:test";
 import * as core from "@actions/core";
 import * as lifecycle from "../../src/github/operations/review-lifecycle";
+import * as fixes from "../../src/github/operations/review-fix";
 import { prepareConversationCommand } from "../../src/tag/commands/conversation";
 import { postCommand } from "../../src/entrypoints/github-post-command";
 import { createMockContext } from "../mockContext";
@@ -36,7 +37,9 @@ describe("command execution isolation and replies", () => {
   let listSpy: ReturnType<typeof spyOn>,
     pausedSpy: ReturnType<typeof spyOn>,
     resolveSpy: ReturnType<typeof spyOn>;
-  let outputSpy: ReturnType<typeof spyOn>, exportSpy: ReturnType<typeof spyOn>;
+  let sourcesSpy: ReturnType<typeof spyOn>,
+    outputSpy: ReturnType<typeof spyOn>,
+    exportSpy: ReturnType<typeof spyOn>;
   let replies: any[], issueComments: any[];
   let client: Octokits;
   let actorSpy: ReturnType<typeof spyOn>;
@@ -58,6 +61,9 @@ describe("command execution isolation and replies", () => {
     resolveSpy = spyOn(lifecycle, "resolveAllDroidThreads").mockResolvedValue(
       1,
     );
+    sourcesSpy = spyOn(fixes, "fetchFixSources").mockResolvedValue([
+      { path: "src/file.ts", content: "source" },
+    ]);
     outputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
     exportSpy = spyOn(core, "exportVariable").mockImplementation(() => {});
     replies = [];
@@ -105,6 +111,7 @@ describe("command execution isolation and replies", () => {
     listSpy.mockRestore();
     pausedSpy.mockRestore();
     resolveSpy.mockRestore();
+    sourcesSpy.mockRestore();
     outputSpy.mockRestore();
     exportSpy.mockRestore();
     if (previousTemp === undefined) delete process.env.RUNNER_TEMP;
@@ -158,6 +165,58 @@ describe("command execution isolation and replies", () => {
     expect(reviewSpy).not.toHaveBeenCalled();
     expect(issueComments[0].body).toContain("### Droid commands");
   });
+  test("disabled fixes never start Exec or fetch source snapshots", async () => {
+    const disabled = context();
+    disabled.inputs.reviewConfig = resolveReviewUxConfig({
+      inputs: { fix_mode: "off" },
+    });
+    const result = await prepareConversationCommand({
+      context: disabled,
+      octokit: client,
+      command: { command: "fix", raw: "@droid fix", location: "comment" },
+    });
+    expect(result.skipped).toBe(true);
+    expect(sourcesSpy).not.toHaveBeenCalled();
+    expect(output("command_mode")).toBe("");
+    expect(issueComments[0].body).toContain("disabled");
+  });
+  test("PR fixes select every open thread but thread fixes select only that root", async () => {
+    listSpy.mockResolvedValue([
+      thread,
+      {
+        ...thread,
+        id: "other",
+        commentId: 200,
+        findingId: "f-2",
+        path: "src/other.ts",
+        comments: [],
+      },
+      {
+        ...thread,
+        id: "resolved",
+        commentId: 300,
+        findingId: "f-3",
+        path: "src/resolved.ts",
+        resolved: true,
+        comments: [],
+      },
+    ]);
+    await prepareConversationCommand({
+      context: context(),
+      octokit: client,
+      command: { command: "fix", raw: "@droid fix", location: "comment" },
+    });
+    expect(sourcesSpy.mock.calls[0]?.[1].allowedPaths).toEqual([
+      "src/file.ts",
+      "src/other.ts",
+    ]);
+    await prepareConversationCommand({
+      context: context(true),
+      octokit: client,
+      command: { command: "fix", raw: "@droid fix", location: "comment" },
+    });
+    expect(sourcesSpy.mock.calls[1]?.[1].allowedPaths).toEqual(["src/file.ts"]);
+  });
   test("pause, resume, resolve dispatch only the requested control helper", async () => {
     for (const command of ["pause", "resume", "resolve"] as const)
       await prepareConversationCommand({
@@ -197,6 +256,24 @@ describe("command execution isolation and replies", () => {
     expect(code).not.toMatch(/^\s*import[^;\n]*from\s+["'](?:@|\.|\/)/m);
     expect(replies).toHaveLength(0);
   });
+  test("fix gathers only selected snapshots and restricts the model to file tools", async () => {
+    await prepareConversationCommand({
+      context: context(true),
+      octokit: client,
+      command: { command: "fix", raw: "@droid fix", location: "comment" },
+    });
+    expect(sourcesSpy.mock.calls[0]?.[1].allowedPaths).toEqual(["src/file.ts"]);
+    expect(output("command_expected_head")).toBe(head);
+    expect(output("command_fix_mode")).toBe("commit");
+    expect(output("droid_args")).toContain("ApplyPatch");
+    expect(output("droid_args")).not.toContain("Execute");
+    const prompt = await readFile(
+      path.join(dir, "droid-prompts/droid-prompt.txt"),
+      "utf8",
+    );
+    expect(prompt).toContain("untrusted review data");
+    expect(prompt).toContain("Do not claim tests ran");
+  });
   test("publisher answers only the verified root thread, without review or top-level comments", async () => {
     const outputPath = path.join(dir, "answer.txt");
     await writeFile(
@@ -210,6 +287,7 @@ describe("command execution isolation and replies", () => {
       actor: "maintainer",
       mode: "question",
       expectedHead: head,
+      fixMode: "commit",
       outputPath,
       rootCommentId: 100,
       success: true,
@@ -235,6 +313,7 @@ describe("command execution isolation and replies", () => {
       actor: "maintainer",
       mode: "question" as const,
       expectedHead: head,
+      fixMode: "commit" as const,
       outputPath,
       rootCommentId: 999,
       success: true,

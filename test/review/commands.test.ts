@@ -5,6 +5,7 @@ import {
   FILL_START,
   FILL_END,
 } from "../../src/core/review/fill";
+import { assertFixPath, chooseFixTarget } from "../../src/core/review/fix";
 import { checkContainsTrigger } from "../../src/github/validation/trigger";
 import { extractCommandFromContext } from "../../src/github/utils/command-parser";
 import { appTokenPermissionsFor } from "../../src/github/token-permissions";
@@ -24,7 +25,7 @@ describe("review UX command grammar", () => {
     ["@DROID REVIEW SECURITY --FULL", "security-full"],
     ["@droid security --full", "security-full"],
     ["@DROID, SECURITY --FULL!", "security-full"],
-    ["@droid fix", "unknown"],
+    ["@droid fix", "fix"],
     ["@droid resolve.", "resolve"],
     ["@droid pause", "pause"],
     ["@droid resume", "resume"],
@@ -70,11 +71,11 @@ describe("review UX command grammar", () => {
     expect(checkContainsTrigger(context)).toBe(false);
     expect(appTokenPermissionsFor(context).contents).toBe("read");
   });
-  test("PR prose cannot authorize state changes; controls keep read-only contents access", () => {
+  test("PR prose cannot authorize fixes; comments can override auto-review flags", () => {
     const context = createMockContext({
       eventName: "pull_request",
       isPR: true,
-      payload: { pull_request: { body: "@droid pause" } } as any,
+      payload: { pull_request: { body: "@droid fix" } } as any,
     });
     expect(extractCommandFromContext(context)?.command).toBe("unknown");
     expect(appTokenPermissionsFor(context).contents).toBe("read");
@@ -82,9 +83,9 @@ describe("review UX command grammar", () => {
       eventName: "issue_comment",
       isPR: true,
       inputs: { ...context.inputs, automaticReview: true },
-      payload: { comment: { body: "@droid pause" } } as any,
+      payload: { comment: { body: "@droid fix" } } as any,
     });
-    expect(appTokenPermissionsFor(comment).contents).toBe("read");
+    expect(appTokenPermissionsFor(comment).contents).toBe("write");
   });
   test("free text becomes a question only in a review comment", () => {
     const context = createMockContext({
@@ -160,4 +161,42 @@ describe("generated description ownership", () => {
       updateGeneratedDescription(existing, "new", "abc1234567"),
     ).toThrow("markers");
   });
+});
+
+describe("fix destination policy", () => {
+  const safe = {
+    mode: "commit" as const,
+    writable: true,
+    protected: false,
+    headBranch: "feature",
+    defaultBranch: "trunk",
+    fork: false,
+  };
+  test("uses commit by default and stacked PR for protected branches, forks, or explicit PR mode", () => {
+    expect(chooseFixTarget(safe)).toBe("commit");
+    expect(chooseFixTarget({ ...safe, protected: true })).toBe("pr");
+    expect(chooseFixTarget({ ...safe, fork: true })).toBe("pr");
+    expect(chooseFixTarget({ ...safe, mode: "pr" })).toBe("pr");
+  });
+  test("refuses disabled, unwritable forks and real default branches", () => {
+    expect(() => chooseFixTarget({ ...safe, mode: "off" })).toThrow("disabled");
+    expect(() =>
+      chooseFixTarget({ ...safe, writable: false, fork: true }),
+    ).toThrow("fork");
+    expect(() => chooseFixTarget({ ...safe, headBranch: "trunk" })).toThrow(
+      "default branch",
+    );
+  });
+  test.each([
+    "../secret",
+    "/etc/passwd",
+    "src/../../secret",
+    ".github/workflows/run.yml",
+    ".env",
+    "src/.env.local",
+    ".factory/hooks.json",
+    "src\\bad",
+  ])("rejects privileged or traversing fix paths %s", (path) =>
+    expect(() => assertFixPath(path)).toThrow(),
+  );
 });
