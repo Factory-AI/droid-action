@@ -20,6 +20,7 @@ import {
   encodeReviewState,
   SUMMARY_MARKER,
 } from "../../src/core/review/markers";
+import { prepareDroidTrackingCommentBody } from "../../src/github/operations/comments/common";
 import {
   authoritativeReviewTarget,
   findReviewSummary,
@@ -32,7 +33,7 @@ import {
   saveReviewLifecycle,
 } from "../../src/github/operations/review-lifecycle";
 import { reviewCheckConclusion } from "../../src/github/operations/review-checks";
-import { run as postReview } from "../../src/entrypoints/github-post-review-v2";
+import { run as postReview } from "../../src/entrypoints/github-post-review";
 import { run as lifecyclePhase } from "../../src/entrypoints/github-review-lifecycle";
 import {
   changedFindingCandidates,
@@ -532,6 +533,17 @@ describe("review lifecycle production boundaries", () => {
     });
     expect(core.warning).toHaveBeenCalledTimes(1);
   });
+  it("preserves only trusted incremental markers when the model updates visible progress", () => {
+    const state = { head: OLD, findings: [] };
+    const current = `${SUMMARY_MARKER}\n${encodeReviewState(state)}\n<!-- droid-review-active:v1 head=${HEAD} run=123 -->`;
+    const result = prepareDroidTrackingCommentBody(
+      `${encodeReviewState({ head: HEAD, findings: [] })}\nNew progress`,
+      current,
+    );
+    expect(decodeReviewState(result)?.head).toBe(OLD);
+    expect(result).toContain(`head=${HEAD} run=123`);
+    expect(result).toContain("New progress");
+  });
   it("does not accept missing immutable bindings", () => {
     expect(() => authoritativeReviewTarget({})).toThrow(
       "Immutable review target",
@@ -577,7 +589,7 @@ describe("review lifecycle production boundaries", () => {
   });
 });
 
-describe("GitHub v2 invariants", () => {
+describe("incremental and check policy invariants", () => {
   it("keeps fresh severity and security metadata without reposting old ids", () => {
     const prior = finding({ severity: "P2" });
     const current = finding({

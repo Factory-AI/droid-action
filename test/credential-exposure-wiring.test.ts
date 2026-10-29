@@ -31,7 +31,12 @@ describe("credential exposure wiring", () => {
 
     const collect = stepById(action, "collect_debug");
     expect(collect.if).toContain("inputs.upload_debug_artifacts == 'true'");
-    expect(collect.run).toContain("collect-debug-artifacts.ts");
+    expect(collect.run).not.toContain("collect-debug-artifacts.ts");
+    expect(collect.env.TRUSTED_TAIL_PATH).toBe(
+      "${{ steps.prepare.outputs.review_debug_publisher_path }}",
+    );
+    expect(collect.run).toContain("/usr/bin/env -i");
+    expect(collect.run).toContain('"$TRUSTED_TAIL_PATH"');
     expect(collect.env.DEBUG_ARTIFACTS_DIR).toBe(
       "${{ runner.temp }}/droid-debug-artifacts",
     );
@@ -52,8 +57,8 @@ describe("credential exposure wiring", () => {
       "GH_TOKEN",
     ]);
     for (const name of GITHUB_CREDENTIAL_ENV_NAMES) {
-      if (notSetByAction.has(name)) continue;
-      expect(collect.env[name]).toBeDefined();
+      if (!notSetByAction.has(name)) expect(collect.env[name]).toBeDefined();
+      expect(collect.run).toContain(`${name}="\${${name}:-}"`);
     }
   });
 
@@ -82,7 +87,14 @@ describe("credential exposure wiring", () => {
       expect(last.name).toBe("Revoke GitHub App token");
       expect(last.if).toContain("always()");
       expect(last.if).toContain("inputs.github_token == ''");
-      expect(last.run).toContain("revoke-github-token.ts");
+      expect(last.run).not.toContain("revoke-github-token.ts");
+      expect(last.run).toContain("/usr/bin/env -i");
+      expect(last.run).toContain('"$TRUSTED_TAIL_PATH"');
+      const preparationStep =
+        relativePath === "action.yml" ? "prepare" : "token";
+      expect(last.env.TRUSTED_TAIL_PATH).toBe(
+        `\${{ steps.${preparationStep}.outputs.review_revoke_publisher_path }}`,
+      );
       expect(last.env.GITHUB_TOKEN).toMatch(
         /steps\.(prepare|token)\.outputs\.github_token/,
       );

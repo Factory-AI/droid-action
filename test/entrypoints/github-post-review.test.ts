@@ -100,7 +100,7 @@ describe("fallbackReviewBody", () => {
 });
 
 describe("postGitHubReview", () => {
-  it("creates one review containing inline and body-fallback findings", async () => {
+  it("creates one nonempty review and preserves fallback findings for the sticky summary", async () => {
     const createReview = mock(async (_payload: any) => ({
       data: { id: 123 },
     }));
@@ -117,7 +117,7 @@ describe("postGitHubReview", () => {
       diff: DIFF,
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       reviewId: 123,
       posted: 1,
       fallbackPosted: 1,
@@ -126,7 +126,14 @@ describe("postGitHubReview", () => {
     expect(createReview).toHaveBeenCalledTimes(1);
     const payload = createReview.mock.calls[0]![0] as any;
     expect(payload.comments).toHaveLength(1);
-    expect(payload.body).toContain("missing.ts:99");
+    expect(payload.body).toContain("Droid found 2 issues");
+    expect(payload.body).not.toContain("missing.ts:99");
+    expect(
+      result.findings?.find((finding) => finding.path === "missing.ts")
+        ?.outside_diff,
+    ).toBe(true);
+    expect(payload.comments[0].body).toContain("droid-finding:v1");
+    expect(payload.comments[0].body).toContain('alt="P1"');
     expect(payload.event).toBe("COMMENT");
     // Without a validated SHA the poster must not invent one.
     expect(payload).not.toHaveProperty("commit_id");
@@ -227,7 +234,7 @@ describe("postGitHubReview", () => {
     expect(createReview).toHaveBeenCalledTimes(1);
   });
 
-  it("does not send a fallback body over GitHub's size budget", async () => {
+  it("never submits an outside-diff-only review, even for a large fallback", async () => {
     const createReview = mock(async (_payload: any) => ({
       data: { id: 789 },
     }));
@@ -249,8 +256,9 @@ describe("postGitHubReview", () => {
       diff: DIFF,
     });
 
-    expect(result.failures).toHaveLength(1);
-    expect(result.failures[0]!.error).toContain("review body budget");
+    expect(result.failures).toHaveLength(0);
+    expect(result.fallbackPosted).toBe(1);
+    expect(result.findings?.[0]?.outside_diff).toBe(true);
     expect(createReview).not.toHaveBeenCalled();
   });
 });

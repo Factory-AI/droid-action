@@ -19,6 +19,10 @@ import * as childProcess from "node:child_process";
 import { parseGitHubContext } from "../../src/github/context";
 import { DroidRunType } from "../../src/run-type";
 import { parseSessionTagFromDroidArgs } from "../utils/session-tag-helpers";
+import * as lifecycle from "../../src/github/operations/review-lifecycle";
+import { SUMMARY_MARKER } from "../../src/core/review/markers";
+
+const realPrepareLifecycle = lifecycle.prepareReviewLifecycle;
 
 describe("review command integration", () => {
   const originalRunnerTemp = process.env.RUNNER_TEMP;
@@ -46,6 +50,8 @@ describe("review command integration", () => {
   let computeArtifactsSpy: ReturnType<typeof spyOn>;
   let execSyncSpy: ReturnType<typeof spyOn>;
   let fetchSpy: ReturnType<typeof spyOn>;
+  let lifecycleSpy: ReturnType<typeof spyOn>;
+  let stickyBodies: string[];
 
   function createAutomaticReviewContext(
     automaticReview: boolean,
@@ -114,6 +120,35 @@ describe("review command integration", () => {
   }
 
   beforeEach(async () => {
+    stickyBodies = [];
+    lifecycleSpy = spyOn(
+      lifecycle,
+      "prepareReviewLifecycle",
+    ).mockImplementation(async (options) => {
+      // Keep the real lifecycle and renderer. Mock GitHub at its boundary.
+      const rest = options.octokit.rest as any;
+      rest.issues ??= {};
+      rest.issues.listComments ??= async () => ({ data: [] });
+      rest.issues.createComment = async (params: { body: string }) => {
+        stickyBodies.push(params.body);
+        return { data: { id: 202, body: params.body } };
+      };
+      rest.issues.updateComment = async (params: { body: string }) => {
+        stickyBodies.push(params.body);
+        return { data: { id: 202, body: params.body } };
+      };
+      rest.checks = {
+        create: async () => ({ data: { id: 303 } }),
+        update: async () => ({ data: { id: 303 } }),
+      };
+      rest.reactions = {
+        createForIssue: async () => ({ data: { id: 404 } }),
+        createForIssueComment: async () => ({ data: { id: 404 } }),
+        deleteForIssue: async () => ({}),
+        deleteForIssueComment: async () => ({}),
+      };
+      return realPrepareLifecycle(options);
+    });
     tmpDir = await mkdtemp(path.join(os.tmpdir(), "review-int-"));
     process.env.RUNNER_TEMP = tmpDir;
     process.env.DROID_ARGS = "";
@@ -168,6 +203,7 @@ describe("review command integration", () => {
   });
 
   afterEach(async () => {
+    lifecycleSpy.mockRestore();
     graphqlSpy?.mockRestore();
     createCommentSpy.mockRestore();
     mcpSpy.mockRestore();
@@ -222,6 +258,26 @@ describe("review command integration", () => {
       (call: unknown[]) => call[0] === "droid_args",
     )?.[1] as string | undefined;
     return parseSessionTagFromDroidArgs(droidArgs ?? "");
+  }
+  function expectStickyLifecycle(
+    context: Parameters<typeof prepareTagExecution>[0]["context"],
+    securityOnly = false,
+  ): void {
+    expect(lifecycleSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context,
+        ...(securityOnly ? { securityOnly: true } : {}),
+      }),
+    );
+    expect(
+      stickyBodies.some(
+        (body) =>
+          body.includes(SUMMARY_MARKER) &&
+          body.includes("[!NOTE]") &&
+          body.includes("Droid is reviewing"),
+      ),
+    ).toBe(true);
+    expect(createCommentSpy).not.toHaveBeenCalled();
   }
 
   it("prepares review flow end-to-end", async () => {
@@ -294,12 +350,7 @@ describe("review command integration", () => {
       "DROID_EXEC_RUN_TYPE",
       DroidRunType.Review,
     );
-    expect(createCommentSpy).toHaveBeenCalledWith(
-      octokit.rest,
-      context,
-      "default",
-      DroidRunType.Review,
-    );
+    expectStickyLifecycle(context);
 
     // Verify output flags were set correctly for code review only
     const runCodeReviewCall = setOutputSpy.mock.calls.find(
@@ -343,12 +394,7 @@ describe("review command integration", () => {
       "DROID_EXEC_RUN_TYPE",
       DroidRunType.Default,
     );
-    expect(createCommentSpy).toHaveBeenCalledWith(
-      octokit.rest,
-      context,
-      "default",
-      DroidRunType.Default,
-    );
+    expectStickyLifecycle(context);
     expect(mcpSpy).toHaveBeenCalledWith(
       expect.objectContaining({ runType: DroidRunType.Default }),
     );
@@ -387,12 +433,7 @@ describe("review command integration", () => {
       "DROID_EXEC_RUN_TYPE",
       expect.anything(),
     );
-    expect(createCommentSpy).toHaveBeenCalledWith(
-      octokit.rest,
-      context,
-      "default",
-      null,
-    );
+    expectStickyLifecycle(context);
     expect(mcpSpy).toHaveBeenCalledWith(
       expect.objectContaining({ runType: null }),
     );
@@ -461,12 +502,7 @@ describe("review command integration", () => {
       "DROID_EXEC_RUN_TYPE",
       DroidRunType.SecurityReview,
     );
-    expect(createCommentSpy).toHaveBeenCalledWith(
-      octokit.rest,
-      context,
-      "security",
-      DroidRunType.SecurityReview,
-    );
+    expectStickyLifecycle(context, true);
 
     const runCodeReviewCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "run_code_review",
@@ -494,12 +530,7 @@ describe("review command integration", () => {
       });
 
       expect(result.skipped).toBeFalsy();
-      expect(createCommentSpy).toHaveBeenCalledWith(
-        octokit.rest,
-        context,
-        "default",
-        DroidRunType.Review,
-      );
+      expectStickyLifecycle(context);
       expect(setOutputSpy).toHaveBeenCalledWith("run_code_review", "true");
       expect(setOutputSpy).toHaveBeenCalledWith("run_security_review", "false");
       expect(setOutputSpy).not.toHaveBeenCalledWith(
@@ -521,7 +552,7 @@ describe("review command integration", () => {
     });
   }
 
-  it("does not create a comment when automatic security review is skipped", async () => {
+  it("renders the skipped lifecycle when automatic security review already exists", async () => {
     const context = createAutomaticReviewContext(false, "true");
     const octokit = createAutomaticReviewOctokit(true);
 
@@ -531,15 +562,15 @@ describe("review command integration", () => {
       githubToken: "token",
     });
 
-    expect(result).toEqual({
-      skipped: true,
-      reason: "security_review_exists",
-      branchInfo: {
-        baseBranch: "",
-        currentBranch: "",
-      },
-      mcpTools: "",
-    });
+    expect(result.skipped).toBe(true);
+    expect(result.reason).toBe("Security review already exists on this PR.");
+    expect(
+      stickyBodies.some(
+        (body) =>
+          body.includes(SUMMARY_MARKER) && body.includes("[!IMPORTANT]"),
+      ),
+    ).toBe(true);
+    expect(promptSpy).not.toHaveBeenCalled();
     expect(createCommentSpy).not.toHaveBeenCalled();
     expect(setOutputSpy).toHaveBeenCalledWith("run_code_review", "false");
     expect(setOutputSpy).toHaveBeenCalledWith("run_security_review", "false");
@@ -556,12 +587,7 @@ describe("review command integration", () => {
     });
 
     expect(result.skipped).toBeFalsy();
-    expect(createCommentSpy).toHaveBeenCalledWith(
-      octokit.rest,
-      context,
-      "security",
-      DroidRunType.SecurityReview,
-    );
+    expectStickyLifecycle(context, true);
     expect(setOutputSpy).toHaveBeenCalledWith("run_security_review", "true");
   });
 
@@ -582,12 +608,7 @@ describe("review command integration", () => {
       });
 
       expect(result.skipped).toBeFalsy();
-      expect(createCommentSpy).toHaveBeenCalledWith(
-        octokit.rest,
-        context,
-        "default",
-        DroidRunType.Review,
-      );
+      expectStickyLifecycle(context);
       expect(setOutputSpy).toHaveBeenCalledWith("run_code_review", "true");
       expect(setOutputSpy).toHaveBeenCalledWith("run_security_review", "false");
       expect(exportVarSpy).not.toHaveBeenCalledWith(
@@ -622,12 +643,7 @@ describe("review command integration", () => {
       });
 
       expect(result.skipped).toBeFalsy();
-      expect(createCommentSpy).toHaveBeenCalledWith(
-        octokit.rest,
-        context,
-        "review_and_security",
-        DroidRunType.Review,
-      );
+      expectStickyLifecycle(context);
       expect(setOutputSpy).toHaveBeenCalledWith("run_code_review", "true");
       expect(setOutputSpy).toHaveBeenCalledWith("run_security_review", "true");
       expect(exportVarSpy).toHaveBeenCalledWith(
@@ -737,12 +753,19 @@ describe("review command integration", () => {
           githubToken: "token",
         });
         expect(result.skipped).toBeFalsy();
-        expect(createCommentSpy).toHaveBeenCalledWith(
-          octokit.rest,
-          context,
-          commentType,
-          runType,
-        );
+        if (runType === DroidRunType.Fill) {
+          expect(createCommentSpy).toHaveBeenCalledWith(
+            octokit.rest,
+            context,
+            commentType,
+            runType,
+          );
+        } else {
+          expectStickyLifecycle(
+            context,
+            runType === DroidRunType.SecurityReview,
+          );
+        }
         expect(setOutputSpy).toHaveBeenCalledWith(
           expectedOutput,
           expect.any(String),

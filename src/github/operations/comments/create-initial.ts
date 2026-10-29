@@ -10,6 +10,8 @@ import {
   createJobRunLink,
   createCommentBody,
   prepareDroidTrackingCommentBody,
+  appendPrCommentMarker,
+  COMBINED_REVIEW_COMMENT_RUN_TYPE,
   readPrCommentRunType,
   type CommentType,
   type PrCommentKind,
@@ -23,6 +25,12 @@ import type { Octokit } from "@octokit/rest";
 import { getPrValidationRunType, type DroidRunType } from "../../../run-type";
 import * as core from "@actions/core";
 import { DROID_APP_BOT_ID } from "../../bot-identity";
+import {
+  decodeReviewState,
+  hasSummaryMarker,
+  SUMMARY_MARKER,
+} from "../../../core/review/markers";
+import { renderReviewSummary } from "../../../core/review/render";
 
 export async function createInitialComment(
   octokit: Octokit,
@@ -37,36 +45,72 @@ export async function createInitialComment(
   const createInitialBody = (kind: PrCommentKind) =>
     createCommentBody(jobRunLink, "", commentType, prValidationRunType, kind);
   let issueCommentBody = createInitialBody("issue-comment");
+  const reviewTracking = context.isPR && !!prValidationRunType;
+  if (reviewTracking && !isPullRequestReviewCommentEvent(context)) {
+    issueCommentBody = appendPrCommentMarker(
+      renderReviewSummary({
+        state: "in_progress",
+        jobUrl: jobRunLink.match(/\((.*)\)/)?.[1],
+        depth: process.env.REVIEW_DEPTH || "deep",
+      }),
+      "issue-comment",
+      commentType === "review_and_security"
+        ? COMBINED_REVIEW_COMMENT_RUN_TYPE
+        : prValidationRunType!,
+    );
+  }
 
   try {
     let response;
     let createdCommentKind: PrCommentKind = "issue-comment";
 
     if (
-      context.inputs.useStickyComment &&
+      (context.inputs.useStickyComment || reviewTracking) &&
       context.isPR &&
-      isPullRequestEvent(context)
+      (isPullRequestEvent(context) ||
+        (reviewTracking && !isPullRequestReviewCommentEvent(context)))
     ) {
-      const comments = await octokit.rest.issues.listComments({
-        owner,
-        repo,
-        issue_number: context.entityNumber,
-      });
-      const existingComment = comments.data.find((comment) => {
-        const idMatch = comment.user?.id === DROID_APP_BOT_ID;
-        const botNameMatch =
-          comment.user?.type === "Bot" &&
-          comment.user?.login.toLowerCase().includes("droid");
-        const bodyMatch = comment.body === issueCommentBody;
-
-        return idMatch || botNameMatch || bodyMatch;
-      });
+      let existingComment;
+      for (let page = 1; !existingComment; page++) {
+        const comments = await octokit.rest.issues.listComments({
+          owner,
+          repo,
+          issue_number: context.entityNumber,
+          per_page: 100,
+          page,
+        });
+        existingComment = comments.data.find((comment) => {
+          const idMatch = comment.user?.id === DROID_APP_BOT_ID;
+          const configuredBotMatch =
+            !!process.env.DROID_BOT_LOGIN &&
+            comment.user?.login === process.env.DROID_BOT_LOGIN;
+          const markerMatch =
+            hasSummaryMarker(comment.body || "") ||
+            !!readPrCommentRunType(comment.body || "", "issue-comment");
+          return (idMatch || configuredBotMatch) && markerMatch;
+        });
+        if (comments.data.length < 100) break;
+      }
       if (existingComment) {
+        if (reviewTracking)
+          issueCommentBody = renderReviewSummary({
+            state: "in_progress",
+            jobUrl: jobRunLink.match(/\((.*)\)/)?.[1],
+            previousBody: existingComment.body || "",
+            previousHead: decodeReviewState(existingComment.body || "")?.head,
+            reviewState:
+              decodeReviewState(existingComment.body || "") || undefined,
+            depth: process.env.REVIEW_DEPTH || "deep",
+          });
         issueCommentBody = prepareDroidTrackingCommentBody(
           issueCommentBody,
           existingComment.body ?? "",
-          readPrCommentRunType(issueCommentBody, "issue-comment"),
+          commentType === "review_and_security"
+            ? COMBINED_REVIEW_COMMENT_RUN_TYPE
+            : prValidationRunType,
         );
+        if (reviewTracking && !hasSummaryMarker(issueCommentBody))
+          issueCommentBody = `${SUMMARY_MARKER}\n\n${issueCommentBody}`;
         response = await octokit.rest.issues.updateComment({
           owner,
           repo,

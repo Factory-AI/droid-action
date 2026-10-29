@@ -5,7 +5,6 @@ import { preparePullRequestHead } from "../../github/data/pr-checkout";
 import { computeReviewArtifacts } from "../../github/data/review-artifacts";
 import { createPrompt } from "../../create-prompt";
 import { prepareMcpTools } from "../../mcp/install-mcp-server";
-import { createInitialComment } from "../../github/operations/comments/create-initial";
 import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
 import { isEntityContext } from "../../github/context";
 import { generateSecurityCandidatesPrompt } from "../../create-prompt/templates/security-review-prompt";
@@ -15,6 +14,14 @@ import { applyModelPolicyFallback } from "../../utils/model-policy";
 import { resolveReviewConfig } from "../../utils/review-depth";
 import { assertDroidRunType, DroidRunType } from "../../run-type";
 import { githubReviewSessionTagArg } from "../../utils/review-session-tag";
+import {
+  prepareReviewLifecycle,
+  readReviewLifecycle,
+} from "../../github/operations/review-lifecycle";
+import {
+  automaticReviewSkipReason,
+  reviewConfigFromEnvironment,
+} from "../../core/review/config";
 
 type SecurityReviewCommandOptions = {
   context: GitHubContext;
@@ -22,6 +29,7 @@ type SecurityReviewCommandOptions = {
   githubToken: string;
   trackingCommentId?: number;
   runType?: DroidRunType | null;
+  skipReason?: string;
 };
 
 export async function prepareSecurityReviewMode({
@@ -30,6 +38,7 @@ export async function prepareSecurityReviewMode({
   githubToken,
   trackingCommentId,
   runType = DroidRunType.SecurityReview,
+  skipReason: skipReasonOverride,
 }: SecurityReviewCommandOptions): Promise<PrepareResult> {
   if (!isEntityContext(context)) {
     throw new Error("Security review command requires an entity event context");
@@ -42,10 +51,6 @@ export async function prepareSecurityReviewMode({
   }
   assertDroidRunType(runType, DroidRunType.SecurityReview);
 
-  const commentId =
-    trackingCommentId ??
-    (await createInitialComment(octokit.rest, context, "security", runType)).id;
-
   const prData = await fetchPRBranchData({
     octokits: octokit,
     repository: context.repository,
@@ -57,6 +62,39 @@ export async function prepareSecurityReviewMode({
     droidBranch: undefined,
     currentBranch: prData.headRefName,
   };
+  const config = context.inputs.reviewConfig ?? reviewConfigFromEnvironment();
+  const draft =
+    "pull_request" in context.payload && context.payload.pull_request.draft;
+  const skipReason =
+    skipReasonOverride ??
+    automaticReviewSkipReason({
+      config,
+      draft: !!draft,
+      eventAction: context.eventAction,
+      manual: context.eventName !== "pull_request",
+    });
+  const lifecycle = await prepareReviewLifecycle({
+    octokit,
+    context,
+    headSha: prData.headRefOid,
+    trackingCommentId,
+    securityOnly: true,
+    full: context.eventName !== "pull_request",
+    skipReason: skipReason ?? undefined,
+  });
+  const commentId = lifecycle.commentId;
+  if (lifecycle.skipReason) {
+    core.setOutput("run_code_review", "false");
+    core.setOutput("run_security_review", "false");
+    core.setOutput("steward_skipped", "true");
+    return {
+      skipped: true,
+      reason: lifecycle.skipReason,
+      commentId,
+      branchInfo,
+      mcpTools: "",
+    };
+  }
 
   const headRevision = await preparePullRequestHead({
     prNumber: context.entityNumber,
@@ -77,8 +115,22 @@ export async function prepareSecurityReviewMode({
     body: prData.body,
     githubToken,
     headRevision,
+    incrementalBaseSha: lifecycle.incrementalBaseSha,
   });
 
+  const artifactSkip = (await readReviewLifecycle())?.skipReason;
+  if (artifactSkip) {
+    core.setOutput("run_code_review", "false");
+    core.setOutput("run_security_review", "false");
+    core.setOutput("steward_skipped", "true");
+    return {
+      skipped: true,
+      reason: artifactSkip,
+      commentId,
+      branchInfo,
+      mcpTools: "",
+    };
+  }
   await createPrompt({
     githubContext: context,
     commentId,
@@ -166,6 +218,9 @@ export async function prepareSecurityReviewMode({
     },
     { flowLabel: "security review", modelInputName: "security_model" },
   );
+  core.setOutput("review_model", securityModel || "auto");
+  core.setOutput("review_reasoning_effort", reasoningEffort || "default");
+
   if (securityModel) {
     droidArgParts.push(`--model "${securityModel}"`);
   }
