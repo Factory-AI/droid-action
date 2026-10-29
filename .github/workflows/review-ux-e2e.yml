@@ -1,0 +1,141 @@
+name: Review UX V7 isolated live acceptance
+
+on:
+  pull_request:
+    types: [synchronize]
+    branches: [droid/review-ux-e2e-base-20261029]
+  pull_request_review_comment:
+    types: [edited]
+
+concurrency:
+  group: review-ux-e2e-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: write
+  actions: read
+
+jobs:
+  review-ux-e2e:
+    if: >-
+      github.repository == 'Factory-AI/droid-action' &&
+      github.actor == 'factory-nizar' &&
+      github.event.pull_request.draft == true &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'droid/review-ux-e2e-test-20261029' &&
+      github.event.pull_request.base.ref == 'droid/review-ux-e2e-base-20261029' &&
+      (github.event_name == 'pull_request' ||
+       (github.event_name == 'pull_request_review_comment' &&
+        github.event.action == 'edited' &&
+        github.event.comment.user.login == 'factory-nizar' &&
+        github.event.comment.user.type == 'User' &&
+        github.event.comment.in_reply_to_id != null &&
+        startsWith(github.event.comment.body, '@droid')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout only the dedicated test head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify live test identity without exposing credentials
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "$FACTORY_API_KEY" ]; then
+            echo "::error::FACTORY_API_KEY is unavailable to this dedicated test workflow. Stop and ask the repository owner to configure it."
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          def api(path):
+              result = subprocess.run(
+                  ["gh", "api", path], check=True, capture_output=True, text=True
+              )
+              return json.loads(result.stdout)
+
+          with open(os.environ["GITHUB_EVENT_PATH"]) as handle:
+              event = json.load(handle)
+          repository = "Factory-AI/droid-action"
+          number = event["pull_request"]["number"]
+          pr = api(f"repos/{repository}/pulls/{number}")
+          assert pr["state"] == "open" and pr["draft"] is True
+          assert pr["head"]["repo"]["full_name"] == repository
+          assert pr["base"]["repo"]["full_name"] == repository
+          assert pr["head"]["ref"] == "droid/review-ux-e2e-test-20261029"
+          assert pr["base"]["ref"] == "droid/review-ux-e2e-base-20261029"
+          assert pr["head"]["sha"] == os.environ["EXPECTED_HEAD"]
+          permission = api(
+              f"repos/{repository}/collaborators/factory-nizar/permission"
+          )
+          assert permission["permission"] in ["admin", "maintain", "write"]
+          assert permission["user"]["login"] == "factory-nizar"
+          assert permission["user"]["type"] == "User"
+          comment_id = None
+          if os.environ["GITHUB_EVENT_NAME"] == "pull_request_review_comment":
+              comment_id = event["comment"]["id"]
+              comment = api(f"repos/{repository}/pulls/comments/{comment_id}")
+              assert comment["user"]["login"] == "factory-nizar"
+              assert comment["user"]["type"] == "User"
+              assert comment["pull_request_url"] == f"https://api.github.com/repos/{repository}/pulls/{number}"
+              assert comment["in_reply_to_id"] == event["comment"]["in_reply_to_id"]
+              assert comment["body"] == event["comment"]["body"]
+              assert comment["body"].startswith("@droid")
+          print(json.dumps({
+              "repository": repository,
+              "pr": number,
+              "actor": "factory-nizar",
+              "actorType": "User",
+              "event": os.environ["GITHUB_EVENT_NAME"],
+              "commandCommentId": comment_id,
+              "head": pr["head"]["sha"],
+              "base": pr["base"]["sha"],
+              "pinnedActionSha": "ef8e39b49aad6eff785a818e541acfe43f41b157",
+              "draft": pr["draft"],
+              "automaticReview": os.environ["GITHUB_EVENT_NAME"] == "pull_request",
+              "reviewDrafts": True,
+              "reviewAutoTriggers": ["synchronize"],
+              "legacyHandlersRemovedOnTestBaseOnly": True,
+          }))
+          PY
+
+      - name: Run unmodified final V7 review and command action
+        uses: Factory-AI/droid-action@ef8e39b49aad6eff785a818e541acfe43f41b157
+        with:
+          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          github_token: ${{ github.token }}
+          automatic_review: ${{ github.event_name == 'pull_request' && 'true' || 'false' }}
+          automatic_security_review: "false"
+          review_drafts: "true"
+          review_auto_triggers: synchronize
+          review_depth: shallow
+          review_candidates_max_turns: "40"
+          review_validator_max_turns: "25"
+          review_summary: comment
+          review_summary_sections: verdict,findings,changes,details
+          review_badges: image
+          review_reactions: "true"
+          review_check_run: "true"
+          review_incremental: "true"
+          review_auto_resolve: "true"
+          review_max_auto_runs: "0"
+          review_diagram: "off"
+          review_severity_threshold: P2
+          include_suggestions: "true"
+          include_agent_prompts: "true"
+          fail_on_severity: "off"
+          fix_mode: commit
+          show_full_output: "false"
+          upload_debug_artifacts: "false"
