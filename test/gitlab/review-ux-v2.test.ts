@@ -33,6 +33,11 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
+import {
+  assertGitlabFixRef,
+  publishGitlabFix,
+} from "../../src/gitlab/operations/commands";
+
 const HEAD = "a".repeat(40);
 const BASE = "b".repeat(40);
 const FIX = "c".repeat(40);
@@ -570,6 +575,102 @@ describe("GitLab review UX v2", () => {
     expect(twice).toContain("new real summary");
     expect(twice).not.toContain("old real summary");
   });
+});
+
+describe("GitLab fix publisher, API and push mocked", () => {
+  const execute = async () =>
+    JSON.stringify({
+      summary: "Restored retries",
+      files: [{ path: "src/x.ts", content: "new code\n" }],
+    });
+  const publish = (
+    client: GitlabClient,
+    extra: Partial<Parameters<typeof publishGitlabFix>[0]> = {},
+  ) =>
+    publishGitlabFix({
+      client,
+      projectId: 42,
+      mr,
+      config: config(),
+      findings: state.findings,
+      execute,
+      context: "",
+      actorId: 5,
+      push: mock(async () => {}),
+      ...extra,
+    });
+
+  it("creates an expected-head commit on a fresh branch, then uses non-force push boundary", async () => {
+    const t = setup();
+    const push = mock(async () => {});
+    const body = await publish(t.client, { push });
+    const commit = t.requests.find((r) =>
+      r.path.endsWith("/repository/commits"),
+    );
+    expect(commit?.body.start_sha).toBe(HEAD);
+    expect(commit?.body.branch).toStartWith("droid/fix-7-");
+    expect(commit?.body.force).toBeUndefined();
+    expect(push).toHaveBeenCalledWith(
+      expect.objectContaining({ branch: "feat/retry", sha: FIX }),
+    );
+    expect(body).toContain(FIX);
+    expect(body).toContain("not independently verified");
+  });
+
+  it("refuses the source project's actual default branch before creating a commit", async () => {
+    const t = setup({ defaultBranch: "feat/retry" });
+    await expect(publish(t.client)).rejects.toThrow("default branch");
+    expect(t.requests.filter((r) => r.method === "POST")).toHaveLength(0);
+  });
+
+  it("requires the command author's source-project write permission", async () => {
+    const t = setup({ actorRole: 20 });
+    await expect(publish(t.client)).rejects.toThrow("command author");
+    expect(t.requests.filter((r) => r.method === "POST")).toHaveLength(0);
+  });
+
+  it("refuses a fork without token write permission", async () => {
+    const t = setup({ botRole: 20 });
+    await expect(
+      publish(t.client, { mr: { ...mr, target_project_id: 99 } }),
+    ).rejects.toThrow("fork");
+    expect(t.requests.filter((r) => r.method === "POST")).toHaveLength(0);
+  });
+
+  it("uses a stacked MR for protected writable branches and never pushes", async () => {
+    const t = setup({ protected: true });
+    const push = mock(async () => {});
+    const body = await publish(t.client, { push });
+    expect(push).not.toHaveBeenCalled();
+    expect(
+      t.requests.find((r) => r.path.endsWith("/merge_requests"))?.body
+        .target_branch,
+    ).toBe("feat/retry");
+    expect(body).toContain("Stacked MR:");
+  });
+
+  it("rejects a concurrent branch advance before push", async () => {
+    const t = setup({ advance: true });
+    const push = mock(async () => {});
+    await expect(publish(t.client, { push })).rejects.toThrow("advanced");
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  for (const branch of [
+    "main..x",
+    "-option",
+    "x.lock",
+    "a\nmain",
+    "a:main",
+    "a@{1}",
+    "a//b",
+  ])
+    it(`refuses unsafe ref ${JSON.stringify(branch)}`, () =>
+      expect(() => assertGitlabFixRef(branch, HEAD)).toThrow());
+  it("refuses short or model-injected commit SHAs", () =>
+    expect(() => assertGitlabFixRef("feat/x", "abc1234")).toThrow(
+      "full commit SHA",
+    ));
 });
 
 describe("GitLab v2 production entrypoints, local API only", () => {
