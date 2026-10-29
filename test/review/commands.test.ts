@@ -86,6 +86,17 @@ describe("review UX command grammar", () => {
     });
     expect(appTokenPermissionsFor(comment).contents).toBe("read");
   });
+  test("free text becomes a question only in a review comment", () => {
+    const context = createMockContext({
+      eventName: "pull_request_review_comment",
+      isPR: true,
+      payload: { comment: { body: "@droid why is this unsafe?" } } as any,
+    });
+    expect(extractCommandFromContext(context)).toMatchObject({
+      command: "question",
+      text: "why is this unsafe?",
+    });
+  });
 });
 
 describe("generated description ownership", () => {

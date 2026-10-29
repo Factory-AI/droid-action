@@ -461,7 +461,7 @@ runs:
         INPUT_PATH_TO_DROID_EXECUTABLE: ${{ inputs.path_to_droid_executable }}
 
     - name: Review lifecycle candidates
-      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true' && steps.prepare.outputs.run_code_review == 'true'
+      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true' && steps.prepare.outputs.command_mode == '' && steps.prepare.outputs.run_code_review == 'true'
       continue-on-error: true
       shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
@@ -578,12 +578,13 @@ runs:
         NODE_OPTIONS: ""
         ENV: ""
         BASH_ENV: ""
+        DROID_COMMAND_MODE: ${{ steps.prepare.outputs.command_mode }}
         # Base-action inputs
         INPUT_PROMPT_FILE: ${{ runner.temp }}/droid-prompts/droid-prompt.txt
-        INPUT_SETTINGS: ${{ inputs.settings }}
+        INPUT_SETTINGS: ${{ steps.prepare.outputs.command_mode != '' && '{}' || inputs.settings }}
         INPUT_DROID_ARGS: ${{ steps.prepare.outputs.droid_args }}
-        INPUT_MCP_TOOLS: ${{ steps.prepare.outputs.mcp_tools }}
-        INPUT_EXPERIMENTAL_SLASH_COMMANDS_DIR: ${{ github.action_path }}/slash-commands
+        INPUT_MCP_TOOLS: ${{ steps.prepare.outputs.command_mode == '' && steps.prepare.outputs.mcp_tools || '' }}
+        INPUT_EXPERIMENTAL_SLASH_COMMANDS_DIR: ${{ steps.prepare.outputs.command_mode == '' && format('{0}/slash-commands', github.action_path) || '' }}
         INPUT_ACTION_INPUTS_PRESENT: ${{ steps.prepare.outputs.action_inputs_present }}
         INPUT_PATH_TO_DROID_EXECUTABLE: ${{ inputs.path_to_droid_executable }}
         INPUT_PATH_TO_BUN_EXECUTABLE: ${{ inputs.path_to_bun_executable }}
@@ -591,11 +592,71 @@ runs:
         INPUT_MAX_TURNS: ${{ steps.prepare.outputs.run_code_review == 'true' && inputs.review_candidates_max_turns || '' }}
 
         # Model configuration
-        GITHUB_TOKEN: ${{ steps.prepare.outputs.github_token }}
+        GITHUB_TOKEN: ${{ steps.prepare.outputs.command_mode == '' && steps.prepare.outputs.github_token || '' }}
         NODE_VERSION: ${{ env.NODE_VERSION }}
         DETAILED_PERMISSION_MESSAGES: "1"
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
 
+    - name: Publish Droid command result
+      id: post_command
+      if: always() && steps.prepare.outputs.command_mode == 'question'
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
+      run: |
+        set -euo pipefail
+        # Never execute mutable action source or a model-selected runtime here.
+        # Both hashes were captured before the credential-free model started.
+        for path in "$COMMAND_PUBLISHER_PATH" "$COMMAND_RUNTIME_PATH"; do
+          case "$path" in /*) ;; *) echo "Refusing a non-absolute command executable"; exit 1 ;; esac
+          if [ ! -f "$path" ] || [ -L "$path" ]; then
+            echo "Refusing a missing or symlinked command executable"
+            exit 1
+          fi
+        done
+        if [[ ! "$COMMAND_PUBLISHER_SHA256" =~ ^[a-f0-9]{64}$ ]] || [[ ! "$COMMAND_RUNTIME_SHA256" =~ ^[a-f0-9]{64}$ ]]; then
+          echo "Missing trusted command executable digest"
+          exit 1
+        fi
+        publisher_hash=$(/usr/bin/sha256sum -- "$COMMAND_PUBLISHER_PATH")
+        runtime_hash=$(/usr/bin/sha256sum -- "$COMMAND_RUNTIME_PATH")
+        if [ "${publisher_hash%% *}" != "$COMMAND_PUBLISHER_SHA256" ] || [ "${runtime_hash%% *}" != "$COMMAND_RUNTIME_SHA256" ]; then
+          echo "Command publisher or runtime changed during execution; refusing to publish"
+          exit 1
+        fi
+        /usr/bin/env -i \
+          PATH=/usr/bin:/bin \
+          GITHUB_TOKEN="$GITHUB_TOKEN" GITHUB_API_URL="$GITHUB_API_URL" GITHUB_SERVER_URL="$GITHUB_SERVER_URL" \
+          GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" \
+          COMMAND_MODE="$COMMAND_MODE" COMMAND_OUTPUT_PATH="$COMMAND_OUTPUT_PATH" \
+          COMMAND_EXPECTED_HEAD="$COMMAND_EXPECTED_HEAD" \
+          COMMAND_ROOT_COMMENT_ID="$COMMAND_ROOT_COMMENT_ID" COMMAND_PR_NUMBER="$COMMAND_PR_NUMBER" \
+          COMMAND_ACTOR="$COMMAND_ACTOR" REPO_OWNER="$REPO_OWNER" REPO_NAME="$REPO_NAME" \
+          DROID_SUCCESS="$DROID_SUCCESS" \
+          "$COMMAND_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$COMMAND_PUBLISHER_PATH"
+      env:
+        GITHUB_API_URL: ${{ github.api_url }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
+        GITHUB_TOKEN: ${{ steps.prepare.outputs.github_token }}
+        COMMAND_MODE: ${{ steps.prepare.outputs.command_mode }}
+        COMMAND_OUTPUT_PATH: ${{ steps.prepare.outputs.command_output_path }}
+        COMMAND_EXPECTED_HEAD: ${{ steps.prepare.outputs.command_expected_head }}
+        COMMAND_ROOT_COMMENT_ID: ${{ steps.prepare.outputs.command_root_comment_id }}
+        COMMAND_PR_NUMBER: ${{ steps.prepare.outputs.command_pr_number }}
+        COMMAND_ACTOR: ${{ steps.prepare.outputs.command_actor }}
+        REPO_OWNER: ${{ github.repository_owner }}
+        REPO_NAME: ${{ github.event.repository.name }}
+        COMMAND_PUBLISHER_PATH: ${{ steps.prepare.outputs.command_publisher_path }}
+        COMMAND_PUBLISHER_SHA256: ${{ steps.prepare.outputs.command_publisher_sha256 }}
+        COMMAND_RUNTIME_PATH: ${{ steps.prepare.outputs.command_runtime_path }}
+        COMMAND_RUNTIME_SHA256: ${{ steps.prepare.outputs.command_runtime_sha256 }}
+        DROID_SUCCESS: ${{ steps.droid.outputs.conclusion == 'success' }}
     - name: CI Steward post-run
       if: steps.prepare.outputs.steward_skipped != 'true' && github.event_name == 'workflow_run' && steps.prepare.outputs.droid_comment_id && always()
       shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
@@ -651,7 +712,7 @@ runs:
         DROID_CONCLUSION: ${{ steps.droid.outputs.conclusion }}
 
     - name: Review lifecycle validated
-      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true' && steps.prepare.outputs.run_code_review == 'true' && steps.droid.outputs.conclusion == 'success'
+      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true' && steps.prepare.outputs.command_mode == '' && steps.prepare.outputs.run_code_review == 'true' && steps.droid.outputs.conclusion == 'success'
       continue-on-error: true
       shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
@@ -972,7 +1033,7 @@ runs:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
 
     - name: Review lifecycle posted
-      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true' && steps.prepare.outputs.run_code_review == 'true' && steps.droid_validator.outputs.conclusion == 'success'
+      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true' && steps.prepare.outputs.command_mode == '' && steps.prepare.outputs.run_code_review == 'true' && steps.droid_validator.outputs.conclusion == 'success'
       continue-on-error: true
       shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
@@ -1073,7 +1134,7 @@ runs:
 
     - name: Post review
       id: post_review
-      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true' && steps.prepare.outputs.run_code_review == 'true' && steps.prepare_validator.outputs.validator_should_run != 'false' && steps.droid_validator.outputs.conclusion == 'success'
+      if: steps.prepare.outputs.command_mode == '' && steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true' && steps.prepare.outputs.run_code_review == 'true' && steps.prepare_validator.outputs.validator_should_run != 'false' && steps.droid_validator.outputs.conclusion == 'success'
       shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
         set -euo pipefail
@@ -1184,7 +1245,7 @@ runs:
         REVIEW_POST_RESULTS_PATH: ${{ runner.temp }}/droid-prompts/review_post_results.json
 
     - name: Update comment with job link
-      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true' && steps.prepare.outputs.droid_comment_id && github.event_name != 'workflow_run' && always()
+      if: steps.prepare.outputs.command_mode == '' && steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true' && steps.prepare.outputs.droid_comment_id && github.event_name != 'workflow_run' && always()
       shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
         set -euo pipefail
@@ -1315,7 +1376,7 @@ runs:
         AUTOMATIC_SECURITY_REVIEW: ${{ steps.prepare.outputs.run_security_review }}
 
     - name: Review lifecycle finalize
-      if: always() && steps.prepare.outputs.contains_trigger == 'true' && github.event_name != 'workflow_run' && steps.prepare.outputs.run_code_review == 'true'
+      if: always() && steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.command_mode == '' && github.event_name != 'workflow_run' && steps.prepare.outputs.run_code_review == 'true'
       continue-on-error: true
       shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |

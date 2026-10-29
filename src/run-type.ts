@@ -8,6 +8,7 @@ export enum DroidRunType {
   Fill = "droid-fill",
   SecurityScan = "droid-security-scan",
   CiSteward = "ci-steward",
+  Question = "droid-question",
   Help = "droid-help",
   Control = "droid-control",
 }
@@ -76,6 +77,8 @@ export function resolveTagRunType({
   }
 
   switch (command) {
+    case "question":
+      return DroidRunType.Question;
     case "help":
     case "unknown":
       return DroidRunType.Help;

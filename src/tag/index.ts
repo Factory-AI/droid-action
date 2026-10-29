@@ -145,7 +145,7 @@ export async function prepareTagExecution({
   }
   if (
     commandContext &&
-    ["help", "unknown", "resolve", "pause", "resume"].includes(
+    ["help", "unknown", "question", "resolve", "pause", "resume"].includes(
       commandContext.command,
     )
   ) {

@@ -81,6 +81,12 @@ export function extractCommandFromContext(
       if (command) {
         return {
           ...command,
+          ...(command.command === "unknown" &&
+          /(?:\?|^(?:why|what|when|where|who|how|is|are|can|could|would|does|do|explain|tell|please explain)\b)/i.test(
+            command.text ?? "",
+          )
+            ? { command: "question" as const }
+            : {}),
           location: "comment",
           timestamp: comment.created_at,
         };
