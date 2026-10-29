@@ -15,6 +15,7 @@ import {
   isPullRequestReviewCommentEvent,
 } from "../github/context";
 import type { ParsedGitHubContext } from "../github/context";
+import { exportRuntimeVariable } from "../utils/runtime-env";
 import type {
   CommonFields,
   PreparedContext,
@@ -365,8 +366,8 @@ export async function createPrompt({
       allowedTools,
     );
 
-    core.exportVariable("ALLOWED_TOOLS", allowedToolsString);
-    core.exportVariable("DISALLOWED_TOOLS", disallowedToolsString);
+    exportRuntimeVariable("ALLOWED_TOOLS", allowedToolsString);
+    exportRuntimeVariable("DISALLOWED_TOOLS", disallowedToolsString);
   } catch (error) {
     core.setFailed(`Create prompt failed with error: ${error}`);
     process.exit(1);

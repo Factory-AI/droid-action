@@ -29,6 +29,10 @@ describe("review command integration", () => {
   const originalDroidArgs = process.env.DROID_ARGS;
   const originalSecurityReviewEnabled = process.env.SECURITY_REVIEW_ENABLED;
   const originalFactoryApiKey = process.env.FACTORY_API_KEY;
+  const originalRuntimeEnvironment = {
+    DROID_EXEC_RUN_TYPE: process.env.DROID_EXEC_RUN_TYPE,
+    GITHUB_ENV: process.env.GITHUB_ENV,
+  };
   const originalAutomaticInputs = {
     AUTOMATIC_REVIEW: process.env.AUTOMATIC_REVIEW,
     AUTOMATIC_SECURITY_REVIEW: process.env.AUTOMATIC_SECURITY_REVIEW,
@@ -155,6 +159,8 @@ describe("review command integration", () => {
     process.env.GITHUB_REPOSITORY = "test-owner/test-repo";
     process.env.FACTORY_API_KEY = "test-factory-api-key";
     delete process.env.SECURITY_REVIEW_ENABLED;
+    delete process.env.DROID_EXEC_RUN_TYPE;
+    delete process.env.GITHUB_ENV;
 
     // Keep the real policy parsing without sending this integration test to
     // the network or depending on the runner's Factory credentials.
@@ -244,6 +250,10 @@ describe("review command integration", () => {
     }
 
     Object.assign(github.context, originalGitHubContext);
+    for (const [name, value] of Object.entries(originalRuntimeEnvironment)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
     for (const [name, value] of Object.entries(originalAutomaticInputs)) {
       if (value === undefined) {
         delete process.env[name];
@@ -346,7 +356,8 @@ describe("review command integration", () => {
     expect(result.branchInfo.baseBranch).toBe("main");
     expect(result.branchInfo.currentBranch).toBe("feature/review");
     expect(promptSpy).toHaveBeenCalled();
-    expect(exportVarSpy).toHaveBeenCalledWith(
+    expect(process.env.DROID_EXEC_RUN_TYPE).toBe(DroidRunType.Review);
+    expect(exportVarSpy).not.toHaveBeenCalledWith(
       "DROID_EXEC_RUN_TYPE",
       DroidRunType.Review,
     );
@@ -390,7 +401,8 @@ describe("review command integration", () => {
     });
 
     expect(result.skipped).toBeFalsy();
-    expect(exportVarSpy).toHaveBeenCalledWith(
+    expect(process.env.DROID_EXEC_RUN_TYPE).toBe(DroidRunType.Default);
+    expect(exportVarSpy).not.toHaveBeenCalledWith(
       "DROID_EXEC_RUN_TYPE",
       DroidRunType.Default,
     );
@@ -498,7 +510,8 @@ describe("review command integration", () => {
     expect(result.branchInfo.baseBranch).toBe("main");
     expect(result.branchInfo.currentBranch).toBe("feature/security");
     expect(promptSpy).toHaveBeenCalled();
-    expect(exportVarSpy).toHaveBeenCalledWith(
+    expect(process.env.DROID_EXEC_RUN_TYPE).toBe(DroidRunType.SecurityReview);
+    expect(exportVarSpy).not.toHaveBeenCalledWith(
       "DROID_EXEC_RUN_TYPE",
       DroidRunType.SecurityReview,
     );
