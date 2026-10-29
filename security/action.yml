@@ -2,6 +2,8 @@ name: "Droid Security Review"
 description: "Run Droid security review on a PR"
 
 inputs:
+  # Empty config-enabled inputs mean omitted. Effective defaults are documented
+  # below and resolved as built-in defaults < base .factory/review.yaml < inputs.
   factory_api_key:
     description: "Factory API key"
     required: true
@@ -17,17 +19,17 @@ inputs:
     required: false
     default: ""
   security_severity_threshold:
-    description: "Minimum severity to report"
+    description: "Minimum security severity: critical, high, medium (effective default), or low. Empty inherits base config."
     required: false
-    default: "medium"
+    default: ""
   security_block_on_critical:
-    description: "Block PR on critical findings"
+    description: "Fail the check run for critical security findings, never request changes. Effective default true."
     required: false
-    default: "true"
+    default: ""
   security_block_on_high:
-    description: "Block PR on high findings"
+    description: "Fail the check run for high security findings, never request changes. Effective default false."
     required: false
-    default: "false"
+    default: ""
   output_file:
     description: "Path to write security results JSON"
     required: false
@@ -41,9 +43,9 @@ inputs:
     required: false
     default: "${{ runner.temp }}/droid-prompts/review_validated.json"
   review_depth:
-    description: "Review depth preset for the validator."
+    description: "Review depth: deep (effective default) or shallow. Empty inherits base-branch config; unknown values warn and use deep."
     required: false
-    default: "deep"
+    default: ""
   review_model:
     description: "Advanced. Leave empty to use the review_depth preset (recommended)."
     required: false
@@ -64,6 +66,99 @@ inputs:
     description: "Maximum agent turns for the validation pass (pass 2) before the run is stopped. Empty disables the cap."
     required: false
     default: "40"
+
+  review_summary:
+    description: "Summary location: comment (effective default), description, or off. Empty inherits base-branch config."
+    required: false
+    default: ""
+  review_summary_sections:
+    description: "Visible sections. Effective default: verdict,findings,changes,details; also diagram,risk,effort. Empty inherits base config; [] disables optional sections."
+    required: false
+    default: ""
+  review_badges:
+    description: "Severity badges: image (effective default), emoji, or text. Empty inherits base config."
+    required: false
+    default: ""
+  review_reactions:
+    description: "Lifecycle reactions: eyes while running, hooray when clean, confused on failure. Effective default true; no thumbs-up/down."
+    required: false
+    default: ""
+  review_check_run:
+    description: "Create the Droid Review check run with the caller token. Effective default true; missing checks write warns once."
+    required: false
+    default: ""
+  fail_on_severity:
+    description: "Fail the check at or above P0, P1, or P2. Effective default empty (no priority gate); off explicitly disables a base-config gate."
+    required: false
+    default: ""
+  review_incremental:
+    description: "Review only new commits after the first run. Effective default true; empty inherits base config."
+    required: false
+    default: ""
+  review_auto_resolve:
+    description: "Resolve verified fixed Droid threads. Effective default true; empty inherits base config."
+    required: false
+    default: ""
+  review_max_auto_runs:
+    description: "Auto-pause after this many automatic reviews. Effective default 0 (unlimited); explicit 0 overrides base config."
+    required: false
+    default: ""
+  show_dropped_findings:
+    description: "List validation-dropped candidates and reasons. Effective default false; empty inherits base config."
+    required: false
+    default: ""
+  include_agent_prompts:
+    description: "Include untrusted-data-safe AI agent prompts. Effective default true; empty inherits base config."
+    required: false
+    default: ""
+  fix_mode:
+    description: "Droid fix publishing mode: commit (effective default), pr, or off. Commit falls back to an authorized stacked PR for protected branches; inaccessible forks are refused."
+    required: false
+    default: ""
+  review_diagram:
+    description: "What changed diagram: auto (effective default) or off. Empty inherits base config."
+    required: false
+    default: ""
+  review_severity_threshold:
+    description: "Minimum reported finding priority: P0, P1, or P2 (effective default). Empty inherits base config."
+    required: false
+    default: ""
+  review_ignore_paths:
+    description: "Comma/newline-separated ignored globs. Effective default generated files, dist/build/coverage and lock files; [] disables ignores. Empty inherits base config."
+    required: false
+    default: ""
+  review_auto_triggers:
+    description: "Automatic PR event actions. Effective default opened,reopened,synchronize,ready_for_review. [] disables automatic event triggers."
+    required: false
+    default: ""
+  review_drafts:
+    description: "Review draft PRs automatically. Effective default false; manual review commands still run."
+    required: false
+    default: ""
+  review_effort:
+    description: "Show an evidence-based effort estimate. Effective default false; empty inherits base config."
+    required: false
+    default: ""
+  review_category_chips:
+    description: "Show finding category chips. Effective default false; empty inherits base config."
+    required: false
+    default: ""
+  review_suggest_reviewers:
+    description: "Suggest CODEOWNERS reviewers, never assign them. Effective default false."
+    required: false
+    default: ""
+  review_pre_merge_checks:
+    description: "Opt-in checks: title,description,linked_issue. Effective default none; [] explicitly clears base checks."
+    required: false
+    default: ""
+  automatic_review:
+    description: "Run automatic code review without a mention. Effective default false; empty inherits base config."
+    required: false
+    default: ""
+  automatic_security_review:
+    description: "Run automatic security review. Effective default inherits automatic_review; explicit false opts out."
+    required: false
+    default: ""
 
 outputs:
   conclusion:
@@ -98,10 +193,18 @@ runs:
     # caller's checkout into a process holding the job's credentials.
     - name: Get GitHub Token
       id: token
-      shell: bash
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
         bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../src/entrypoints/get-token.ts
       env:
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
         # Enough to check out the PR, read it, and post the review and comments.
@@ -128,12 +231,21 @@ runs:
 
     - name: Generate Security Prompt
       id: prompt
-      shell: bash
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
         bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../src/entrypoints/generate-review-prompt.ts
       env:
+        REVIEW_CONFIG_JSON: ""
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
-        DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
+        DROID_COMMENT_ID: ${{ steps.prompt.outputs.droid_comment_id || inputs.tracking_comment_id }}
         SECURITY_MODEL: ${{ inputs.security_model }}
         SECURITY_SEVERITY_THRESHOLD: ${{ inputs.security_severity_threshold }}
         SECURITY_BLOCK_ON_CRITICAL: ${{ inputs.security_block_on_critical }}
@@ -143,12 +255,164 @@ runs:
         INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}
         DROID_OUTPUT_FILE: ${{ inputs.output_file }}
 
+        REVIEW_DEPTH: ${{ inputs.review_depth }}
+        REVIEW_SUMMARY: ${{ inputs.review_summary }}
+        REVIEW_SUMMARY_SECTIONS: ${{ inputs.review_summary_sections }}
+        REVIEW_BADGES: ${{ inputs.review_badges }}
+        REVIEW_REACTIONS: ${{ inputs.review_reactions }}
+        REVIEW_CHECK_RUN: ${{ inputs.review_check_run }}
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
+        REVIEW_INCREMENTAL: ${{ inputs.review_incremental }}
+        REVIEW_AUTO_RESOLVE: ${{ inputs.review_auto_resolve }}
+        REVIEW_MAX_AUTO_RUNS: ${{ inputs.review_max_auto_runs }}
+        SHOW_DROPPED_FINDINGS: ${{ inputs.show_dropped_findings }}
+        INCLUDE_AGENT_PROMPTS: ${{ inputs.include_agent_prompts }}
+        FIX_MODE: ${{ inputs.fix_mode }}
+        REVIEW_DIAGRAM: ${{ inputs.review_diagram }}
+        REVIEW_SEVERITY_THRESHOLD: ${{ inputs.review_severity_threshold }}
+        REVIEW_IGNORE_PATHS: ${{ inputs.review_ignore_paths }}
+        REVIEW_AUTO_TRIGGERS: ${{ inputs.review_auto_triggers }}
+        REVIEW_DRAFTS: ${{ inputs.review_drafts }}
+        REVIEW_EFFORT: ${{ inputs.review_effort }}
+        REVIEW_CATEGORY_CHIPS: ${{ inputs.review_category_chips }}
+        REVIEW_SUGGEST_REVIEWERS: ${{ inputs.review_suggest_reviewers }}
+        REVIEW_PRE_MERGE_CHECKS: ${{ inputs.review_pre_merge_checks }}
+        AUTOMATIC_REVIEW: ${{ inputs.automatic_review }}
+        AUTOMATIC_SECURITY_REVIEW: ${{ inputs.automatic_security_review }}
+        WORKFLOW_GITHUB_TOKEN: ${{ github.token }}
+        ALL_INPUTS: ${{ toJson(inputs) }}
+    - name: Freeze trusted Droid executable
+      id: review_cli
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
+      run: |
+        bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../src/entrypoints/freeze-review-cli.ts
+      env:
+        BASH_ENV: ""
+        ENV: ""
+        NODE_OPTIONS: ""
+        BUN_OPTIONS: ""
+        NODE_PATH: ""
+        LD_PRELOAD: ""
+        LD_LIBRARY_PATH: ""
+        LD_AUDIT: ""
+
+    - name: Review lifecycle candidates
+      if: steps.prompt.outputs.review_skipped != 'true'
+      continue-on-error: true
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
+      run: |
+        set -euo pipefail
+        # Execute only the publisher and runtime frozen before model execution.
+        for path in "$REVIEW_PUBLISHER_PATH" "$REVIEW_RUNTIME_PATH"; do
+          case "$path" in /*) ;; *) echo "Refusing a non-absolute review executable"; exit 1 ;; esac
+          if [ ! -f "$path" ] || [ -L "$path" ]; then
+            echo "Refusing a missing or symlinked review executable"
+            exit 1
+          fi
+        done
+        if [[ ! "$REVIEW_PUBLISHER_SHA256" =~ ^[a-f0-9]{64}$ ]] || [[ ! "$REVIEW_RUNTIME_SHA256" =~ ^[a-f0-9]{64}$ ]]; then
+          echo "Missing trusted review executable digest"
+          exit 1
+        fi
+        publisher_hash=$(/usr/bin/sha256sum -- "$REVIEW_PUBLISHER_PATH")
+        runtime_hash=$(/usr/bin/sha256sum -- "$REVIEW_RUNTIME_PATH")
+        if [ "${publisher_hash%% *}" != "$REVIEW_PUBLISHER_SHA256" ] || [ "${runtime_hash%% *}" != "$REVIEW_RUNTIME_SHA256" ]; then
+          echo "Review publisher or runtime changed during execution; refusing to publish"
+          exit 1
+        fi
+        /usr/bin/env -i \
+          PATH=/usr/bin:/bin \
+          GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-}" GITHUB_EVENT_PATH="${GITHUB_EVENT_PATH:-}" \
+          RUNNER_TEMP="${RUNNER_TEMP:-}" \
+          GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
+          GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
+          GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
+          GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
+          GITHUB_API_URL="${GITHUB_API_URL:-}" \
+          REVIEW_RUNTIME_SHA256="${REVIEW_RUNTIME_SHA256:-}" \
+          REVIEW_RUNTIME_PATH="${REVIEW_RUNTIME_PATH:-}" \
+          REVIEW_PUBLISHER_SHA256="${REVIEW_PUBLISHER_SHA256:-}" \
+          REVIEW_PUBLISHER_PATH="${REVIEW_PUBLISHER_PATH:-}" \
+          REVIEW_SKIPPED="${REVIEW_SKIPPED:-}" \
+          REVIEW_POSTED="${REVIEW_POSTED:-}" \
+          REVIEW_AUTOMATIC="${REVIEW_AUTOMATIC:-}" \
+          REVIEW_SECURITY_ONLY="${REVIEW_SECURITY_ONLY:-}" \
+          REVIEW_INCREMENTAL_BASE_SHA="${REVIEW_INCREMENTAL_BASE_SHA:-}" \
+          REVIEW_CONFIG_JSON="${REVIEW_CONFIG_JSON:-}" \
+          REVIEW_REACTION_KIND="${REVIEW_REACTION_KIND:-}" \
+          REVIEW_REACTION_TARGET="${REVIEW_REACTION_TARGET:-}" \
+          REVIEW_REACTION_ID="${REVIEW_REACTION_ID:-}" \
+          REVIEW_STARTED_AT="${REVIEW_STARTED_AT:-}" \
+          REVIEW_CHECK_ID="${REVIEW_CHECK_ID:-}" \
+          REVIEW_COMMENT_ID="${REVIEW_COMMENT_ID:-}" \
+          REVIEW_BASE_SHA="${REVIEW_BASE_SHA:-}" \
+          REPO_OWNER="${REPO_OWNER:-}" \
+          REPO_NAME="${REPO_NAME:-}" \
+          PR_NUMBER="${PR_NUMBER:-}" \
+          REVIEW_HEAD_SHA="${REVIEW_HEAD_SHA:-}" \
+          GITHUB_TOKEN="${GITHUB_TOKEN:-}" \
+          WORKFLOW_GITHUB_TOKEN="${WORKFLOW_GITHUB_TOKEN:-}" \
+          REVIEW_PHASE="${REVIEW_PHASE:-}" \
+          "$REVIEW_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$REVIEW_PUBLISHER_PATH"
+      env:
+        RUNNER_TEMP: ${{ runner.temp }}
+        GITHUB_ACTOR: ${{ github.actor }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        REVIEW_RUNTIME_SHA256: ${{ steps.prompt.outputs.review_runtime_sha256 }}
+        REVIEW_RUNTIME_PATH: ${{ steps.prompt.outputs.review_runtime_path }}
+        REVIEW_PUBLISHER_SHA256: ${{ steps.prompt.outputs.review_lifecycle_publisher_sha256 }}
+        REVIEW_PUBLISHER_PATH: ${{ steps.prompt.outputs.review_lifecycle_publisher_path }}
+        REVIEW_SKIPPED: ${{ steps.prompt.outputs.review_skipped }}
+        REVIEW_POSTED: ${{ steps.post_review.outputs.review_posted }}
+        REVIEW_AUTOMATIC: ${{ steps.prompt.outputs.review_automatic }}
+        REVIEW_SECURITY_ONLY: ${{ steps.prompt.outputs.review_security_only }}
+        REVIEW_INCREMENTAL_BASE_SHA: ${{ steps.prompt.outputs.review_incremental_base_sha }}
+        REVIEW_CONFIG_JSON: ${{ steps.prompt.outputs.review_config_json }}
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
+        REVIEW_REACTION_KIND: ${{ steps.prompt.outputs.review_reaction_kind }}
+        REVIEW_REACTION_TARGET: ${{ steps.prompt.outputs.review_reaction_target }}
+        REVIEW_REACTION_ID: ${{ steps.prompt.outputs.review_reaction_id }}
+        REVIEW_STARTED_AT: ${{ steps.prompt.outputs.review_started_at }}
+        REVIEW_CHECK_ID: ${{ steps.prompt.outputs.review_check_id }}
+        REVIEW_COMMENT_ID: ${{ steps.prompt.outputs.review_comment_id }}
+        REVIEW_BASE_SHA: ${{ steps.prompt.outputs.review_base_sha }}
+        REPO_OWNER: ${{ steps.prompt.outputs.repo_owner }}
+        REPO_NAME: ${{ steps.prompt.outputs.repo_name }}
+        PR_NUMBER: ${{ steps.prompt.outputs.pr_number }}
+        REVIEW_HEAD_SHA: ${{ steps.prompt.outputs.review_head_sha }}
+        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+        WORKFLOW_GITHUB_TOKEN: ${{ github.token }}
+        REVIEW_PHASE: candidates
+
     - name: Run Security Review
       id: review
-      shell: bash
+      if: steps.prompt.outputs.review_skipped != 'true'
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
         bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../base-action/src/index.ts
       env:
+        FACTORY_DROID_AUTO_UPDATE_ENABLED: "false"
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
+        DROID_COMMAND_MODE: ""
         INPUT_PROMPT_FILE: ${{ runner.temp }}/droid-prompts/droid-prompt.txt
         INPUT_DROID_ARGS: ${{ steps.prompt.outputs.droid_args }}
         INPUT_MCP_TOOLS: ${{ steps.prompt.outputs.mcp_tools }}
@@ -157,29 +421,301 @@ runs:
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
         DROID_OUTPUT_FILE: ${{ inputs.output_file }}
 
+    - name: Review lifecycle validated
+      if: steps.prompt.outputs.review_skipped != 'true' && steps.review.outputs.conclusion == 'success'
+      continue-on-error: true
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
+      run: |
+        set -euo pipefail
+        # Execute only the publisher and runtime frozen before model execution.
+        for path in "$REVIEW_PUBLISHER_PATH" "$REVIEW_RUNTIME_PATH"; do
+          case "$path" in /*) ;; *) echo "Refusing a non-absolute review executable"; exit 1 ;; esac
+          if [ ! -f "$path" ] || [ -L "$path" ]; then
+            echo "Refusing a missing or symlinked review executable"
+            exit 1
+          fi
+        done
+        if [[ ! "$REVIEW_PUBLISHER_SHA256" =~ ^[a-f0-9]{64}$ ]] || [[ ! "$REVIEW_RUNTIME_SHA256" =~ ^[a-f0-9]{64}$ ]]; then
+          echo "Missing trusted review executable digest"
+          exit 1
+        fi
+        publisher_hash=$(/usr/bin/sha256sum -- "$REVIEW_PUBLISHER_PATH")
+        runtime_hash=$(/usr/bin/sha256sum -- "$REVIEW_RUNTIME_PATH")
+        if [ "${publisher_hash%% *}" != "$REVIEW_PUBLISHER_SHA256" ] || [ "${runtime_hash%% *}" != "$REVIEW_RUNTIME_SHA256" ]; then
+          echo "Review publisher or runtime changed during execution; refusing to publish"
+          exit 1
+        fi
+        /usr/bin/env -i \
+          PATH=/usr/bin:/bin \
+          GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-}" GITHUB_EVENT_PATH="${GITHUB_EVENT_PATH:-}" \
+          RUNNER_TEMP="${RUNNER_TEMP:-}" \
+          GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
+          GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
+          GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
+          GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
+          GITHUB_API_URL="${GITHUB_API_URL:-}" \
+          REVIEW_RUNTIME_SHA256="${REVIEW_RUNTIME_SHA256:-}" \
+          REVIEW_RUNTIME_PATH="${REVIEW_RUNTIME_PATH:-}" \
+          REVIEW_PUBLISHER_SHA256="${REVIEW_PUBLISHER_SHA256:-}" \
+          REVIEW_PUBLISHER_PATH="${REVIEW_PUBLISHER_PATH:-}" \
+          REVIEW_SKIPPED="${REVIEW_SKIPPED:-}" \
+          REVIEW_POSTED="${REVIEW_POSTED:-}" \
+          REVIEW_AUTOMATIC="${REVIEW_AUTOMATIC:-}" \
+          REVIEW_SECURITY_ONLY="${REVIEW_SECURITY_ONLY:-}" \
+          REVIEW_INCREMENTAL_BASE_SHA="${REVIEW_INCREMENTAL_BASE_SHA:-}" \
+          REVIEW_CONFIG_JSON="${REVIEW_CONFIG_JSON:-}" \
+          REVIEW_REACTION_KIND="${REVIEW_REACTION_KIND:-}" \
+          REVIEW_REACTION_TARGET="${REVIEW_REACTION_TARGET:-}" \
+          REVIEW_REACTION_ID="${REVIEW_REACTION_ID:-}" \
+          REVIEW_STARTED_AT="${REVIEW_STARTED_AT:-}" \
+          REVIEW_CHECK_ID="${REVIEW_CHECK_ID:-}" \
+          REVIEW_COMMENT_ID="${REVIEW_COMMENT_ID:-}" \
+          REVIEW_BASE_SHA="${REVIEW_BASE_SHA:-}" \
+          REPO_OWNER="${REPO_OWNER:-}" \
+          REPO_NAME="${REPO_NAME:-}" \
+          PR_NUMBER="${PR_NUMBER:-}" \
+          REVIEW_HEAD_SHA="${REVIEW_HEAD_SHA:-}" \
+          GITHUB_TOKEN="${GITHUB_TOKEN:-}" \
+          WORKFLOW_GITHUB_TOKEN="${WORKFLOW_GITHUB_TOKEN:-}" \
+          REVIEW_PHASE="${REVIEW_PHASE:-}" \
+          "$REVIEW_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$REVIEW_PUBLISHER_PATH"
+      env:
+        RUNNER_TEMP: ${{ runner.temp }}
+        GITHUB_ACTOR: ${{ github.actor }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        REVIEW_RUNTIME_SHA256: ${{ steps.prompt.outputs.review_runtime_sha256 }}
+        REVIEW_RUNTIME_PATH: ${{ steps.prompt.outputs.review_runtime_path }}
+        REVIEW_PUBLISHER_SHA256: ${{ steps.prompt.outputs.review_lifecycle_publisher_sha256 }}
+        REVIEW_PUBLISHER_PATH: ${{ steps.prompt.outputs.review_lifecycle_publisher_path }}
+        REVIEW_SKIPPED: ${{ steps.prompt.outputs.review_skipped }}
+        REVIEW_POSTED: ${{ steps.post_review.outputs.review_posted }}
+        REVIEW_AUTOMATIC: ${{ steps.prompt.outputs.review_automatic }}
+        REVIEW_SECURITY_ONLY: ${{ steps.prompt.outputs.review_security_only }}
+        REVIEW_INCREMENTAL_BASE_SHA: ${{ steps.prompt.outputs.review_incremental_base_sha }}
+        REVIEW_CONFIG_JSON: ${{ steps.prompt.outputs.review_config_json }}
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
+        REVIEW_REACTION_KIND: ${{ steps.prompt.outputs.review_reaction_kind }}
+        REVIEW_REACTION_TARGET: ${{ steps.prompt.outputs.review_reaction_target }}
+        REVIEW_REACTION_ID: ${{ steps.prompt.outputs.review_reaction_id }}
+        REVIEW_STARTED_AT: ${{ steps.prompt.outputs.review_started_at }}
+        REVIEW_CHECK_ID: ${{ steps.prompt.outputs.review_check_id }}
+        REVIEW_COMMENT_ID: ${{ steps.prompt.outputs.review_comment_id }}
+        REVIEW_BASE_SHA: ${{ steps.prompt.outputs.review_base_sha }}
+        REPO_OWNER: ${{ steps.prompt.outputs.repo_owner }}
+        REPO_NAME: ${{ steps.prompt.outputs.repo_name }}
+        PR_NUMBER: ${{ steps.prompt.outputs.pr_number }}
+        REVIEW_HEAD_SHA: ${{ steps.prompt.outputs.review_head_sha }}
+        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+        WORKFLOW_GITHUB_TOKEN: ${{ github.token }}
+        REVIEW_PHASE: validated
+
     - name: Prepare Validator
       id: prepare_validator
-      shell: bash
+      if: steps.prompt.outputs.review_skipped != 'true'
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
-        bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../src/entrypoints/prepare-validator.ts
+        set -euo pipefail
+        # Execute only the publisher and runtime frozen before model execution.
+        for path in "$REVIEW_PUBLISHER_PATH" "$REVIEW_RUNTIME_PATH"; do
+          case "$path" in /*) ;; *) echo "Refusing a non-absolute review executable"; exit 1 ;; esac
+          if [ ! -f "$path" ] || [ -L "$path" ]; then
+            echo "Refusing a missing or symlinked review executable"
+            exit 1
+          fi
+        done
+        if [[ ! "$REVIEW_PUBLISHER_SHA256" =~ ^[a-f0-9]{64}$ ]] || [[ ! "$REVIEW_RUNTIME_SHA256" =~ ^[a-f0-9]{64}$ ]]; then
+          echo "Missing trusted review executable digest"
+          exit 1
+        fi
+        publisher_hash=$(/usr/bin/sha256sum -- "$REVIEW_PUBLISHER_PATH")
+        runtime_hash=$(/usr/bin/sha256sum -- "$REVIEW_RUNTIME_PATH")
+        if [ "${publisher_hash%% *}" != "$REVIEW_PUBLISHER_SHA256" ] || [ "${runtime_hash%% *}" != "$REVIEW_RUNTIME_SHA256" ]; then
+          echo "Review publisher or runtime changed during execution; refusing to publish"
+          exit 1
+        fi
+        /usr/bin/env -i \
+          PATH=/usr/bin:/bin \
+          GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-}" GITHUB_EVENT_PATH="${GITHUB_EVENT_PATH:-}" \
+          RUNNER_TEMP="${RUNNER_TEMP:-}" \
+          GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
+          GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
+          GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
+          GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
+          GITHUB_API_URL="${GITHUB_API_URL:-}" \
+          REVIEW_SKIPPED="${REVIEW_SKIPPED:-}" \
+          REVIEW_POSTED="${REVIEW_POSTED:-}" \
+          REVIEW_SECURITY_ONLY="${REVIEW_SECURITY_ONLY:-}" \
+          REVIEW_AUTOMATIC="${REVIEW_AUTOMATIC:-}" \
+          REVIEW_INCREMENTAL_BASE_SHA="${REVIEW_INCREMENTAL_BASE_SHA:-}" \
+          REVIEW_HEAD_SHA="${REVIEW_HEAD_SHA:-}" \
+          REVIEW_CONFIG_JSON="${REVIEW_CONFIG_JSON:-}" \
+          REVIEW_RUNTIME_SHA256="${REVIEW_RUNTIME_SHA256:-}" \
+          REVIEW_RUNTIME_PATH="${REVIEW_RUNTIME_PATH:-}" \
+          REVIEW_PUBLISHER_SHA256="${REVIEW_PUBLISHER_SHA256:-}" \
+          REVIEW_PUBLISHER_PATH="${REVIEW_PUBLISHER_PATH:-}" \
+          GITHUB_TOKEN="${GITHUB_TOKEN:-}" \
+          FACTORY_API_KEY="${FACTORY_API_KEY:-}" \
+          REVIEW_VALIDATED_PATH="${REVIEW_VALIDATED_PATH:-}" \
+          REVIEW_CANDIDATES_PATH="${REVIEW_CANDIDATES_PATH:-}" \
+          REVIEW_DEPTH="${REVIEW_DEPTH:-}" \
+          REVIEW_MODEL="${REVIEW_MODEL:-}" \
+          REASONING_EFFORT="${REASONING_EFFORT:-}" \
+          INCLUDE_SUGGESTIONS="${INCLUDE_SUGGESTIONS:-}" \
+          DROID_COMMENT_ID="${DROID_COMMENT_ID:-}" \
+          "$REVIEW_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$REVIEW_PUBLISHER_PATH"
       env:
+        RUNNER_TEMP: ${{ runner.temp }}
+        GITHUB_ACTOR: ${{ github.actor }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        REVIEW_SKIPPED: ${{ steps.prompt.outputs.review_skipped }}
+        REVIEW_POSTED: ${{ steps.post_review.outputs.review_posted }}
+        REVIEW_SECURITY_ONLY: ${{ steps.prompt.outputs.review_security_only }}
+        REVIEW_AUTOMATIC: ${{ steps.prompt.outputs.review_automatic }}
+        REVIEW_INCREMENTAL_BASE_SHA: ${{ steps.prompt.outputs.review_incremental_base_sha }}
+        REVIEW_HEAD_SHA: ${{ steps.prompt.outputs.review_head_sha }}
+        REVIEW_CONFIG_JSON: ${{ steps.prompt.outputs.review_config_json }}
+        REVIEW_RUNTIME_SHA256: ${{ steps.prompt.outputs.review_runtime_sha256 }}
+        REVIEW_RUNTIME_PATH: ${{ steps.prompt.outputs.review_runtime_path }}
+        REVIEW_PUBLISHER_SHA256: ${{ steps.prompt.outputs.review_validator_publisher_sha256 }}
+        REVIEW_PUBLISHER_PATH: ${{ steps.prompt.outputs.review_validator_publisher_path }}
+        BASH_ENV: ""
+        ENV: ""
+        NODE_OPTIONS: ""
+        BUN_OPTIONS: ""
+        NODE_PATH: ""
+        LD_PRELOAD: ""
+        LD_LIBRARY_PATH: ""
+        LD_AUDIT: ""
+
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
         REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
-        REVIEW_DEPTH: ${{ inputs.review_depth }}
+        REVIEW_DEPTH: ${{ fromJSON(steps.prompt.outputs.review_config_json).review_depth }}
         REVIEW_MODEL: ${{ inputs.review_model }}
         REASONING_EFFORT: ${{ inputs.reasoning_effort }}
         INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}
-        DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
+        DROID_COMMENT_ID: ${{ steps.prompt.outputs.droid_comment_id || inputs.tracking_comment_id }}
 
     - name: Run Validator
       id: validator
-      if: steps.prepare_validator.outputs.validator_should_run != 'false'
-      shell: bash
+      if: steps.prepare_validator.outputs.validator_should_run != 'false' && steps.prompt.outputs.review_skipped != 'true'
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
-        bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../base-action/src/index.ts
+        set -euo pipefail
+        # Execute only the publisher and runtime frozen before model execution.
+        for path in "$REVIEW_PUBLISHER_PATH" "$REVIEW_RUNTIME_PATH"; do
+          case "$path" in /*) ;; *) echo "Refusing a non-absolute review executable"; exit 1 ;; esac
+          if [ ! -f "$path" ] || [ -L "$path" ]; then
+            echo "Refusing a missing or symlinked review executable"
+            exit 1
+          fi
+        done
+        if [[ ! "$REVIEW_PUBLISHER_SHA256" =~ ^[a-f0-9]{64}$ ]] || [[ ! "$REVIEW_RUNTIME_SHA256" =~ ^[a-f0-9]{64}$ ]]; then
+          echo "Missing trusted review executable digest"
+          exit 1
+        fi
+        publisher_hash=$(/usr/bin/sha256sum -- "$REVIEW_PUBLISHER_PATH")
+        runtime_hash=$(/usr/bin/sha256sum -- "$REVIEW_RUNTIME_PATH")
+        if [ "${publisher_hash%% *}" != "$REVIEW_PUBLISHER_SHA256" ] || [ "${runtime_hash%% *}" != "$REVIEW_RUNTIME_SHA256" ]; then
+          echo "Review publisher or runtime changed during execution; refusing to publish"
+          exit 1
+        fi
+        case "$REVIEW_CLI_PATH" in /*) ;; *) echo "Refusing a non-absolute Droid executable"; exit 1 ;; esac
+        if [ ! -f "$REVIEW_CLI_PATH" ] || [ -L "$REVIEW_CLI_PATH" ] || [[ ! "$REVIEW_CLI_SHA256" =~ ^[a-f0-9]{64}$ ]]; then
+          echo "Missing trusted Droid executable"
+          exit 1
+        fi
+        cli_hash=$(/usr/bin/sha256sum -- "$REVIEW_CLI_PATH")
+        if [ "${cli_hash%% *}" != "$REVIEW_CLI_SHA256" ]; then
+          echo "Droid executable changed during execution; refusing to run validator"
+          exit 1
+        fi
+        /usr/bin/env -i \
+          PATH="$PATH" \
+          GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-}" GITHUB_EVENT_PATH="${GITHUB_EVENT_PATH:-}" \
+          FACTORY_DROID_AUTO_UPDATE_ENABLED="${FACTORY_DROID_AUTO_UPDATE_ENABLED:-}" \
+          HOME="${HOME:-}" \
+          REVIEW_CLI_SHA256="${REVIEW_CLI_SHA256:-}" \
+          REVIEW_CLI_PATH="${REVIEW_CLI_PATH:-}" \
+          INPUT_PATH_TO_DROID_EXECUTABLE="${INPUT_PATH_TO_DROID_EXECUTABLE:-}" \
+          RUNNER_TEMP="${RUNNER_TEMP:-}" \
+          GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
+          GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
+          GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
+          GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
+          GITHUB_API_URL="${GITHUB_API_URL:-}" \
+          REVIEW_SKIPPED="${REVIEW_SKIPPED:-}" \
+          REVIEW_POSTED="${REVIEW_POSTED:-}" \
+          REVIEW_SECURITY_ONLY="${REVIEW_SECURITY_ONLY:-}" \
+          REVIEW_AUTOMATIC="${REVIEW_AUTOMATIC:-}" \
+          REVIEW_INCREMENTAL_BASE_SHA="${REVIEW_INCREMENTAL_BASE_SHA:-}" \
+          REVIEW_HEAD_SHA="${REVIEW_HEAD_SHA:-}" \
+          REVIEW_CONFIG_JSON="${REVIEW_CONFIG_JSON:-}" \
+          REVIEW_RUNTIME_SHA256="${REVIEW_RUNTIME_SHA256:-}" \
+          REVIEW_RUNTIME_PATH="${REVIEW_RUNTIME_PATH:-}" \
+          REVIEW_PUBLISHER_SHA256="${REVIEW_PUBLISHER_SHA256:-}" \
+          REVIEW_PUBLISHER_PATH="${REVIEW_PUBLISHER_PATH:-}" \
+          DROID_COMMAND_MODE="${DROID_COMMAND_MODE:-}" \
+          INPUT_PROMPT_FILE="${INPUT_PROMPT_FILE:-}" \
+          INPUT_DROID_ARGS="${INPUT_DROID_ARGS:-}" \
+          INPUT_MCP_TOOLS="${INPUT_MCP_TOOLS:-}" \
+          INPUT_MAX_TURNS="${INPUT_MAX_TURNS:-}" \
+          FACTORY_API_KEY="${FACTORY_API_KEY:-}" \
+          "$REVIEW_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$REVIEW_PUBLISHER_PATH"
       env:
+        FACTORY_DROID_AUTO_UPDATE_ENABLED: "false"
+        HOME: ${{ steps.review_cli.outputs.review_home }}
+        PATH: ${{ steps.review_cli.outputs.review_path }}
+        REVIEW_CLI_SHA256: ${{ steps.review_cli.outputs.review_cli_sha256 }}
+        REVIEW_CLI_PATH: ${{ steps.review_cli.outputs.review_cli_path }}
+        INPUT_PATH_TO_DROID_EXECUTABLE: ${{ steps.review_cli.outputs.review_cli_path }}
+        RUNNER_TEMP: ${{ runner.temp }}
+        GITHUB_ACTOR: ${{ github.actor }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        REVIEW_SKIPPED: ${{ steps.prompt.outputs.review_skipped }}
+        REVIEW_POSTED: ${{ steps.post_review.outputs.review_posted }}
+        REVIEW_SECURITY_ONLY: ${{ steps.prompt.outputs.review_security_only }}
+        REVIEW_AUTOMATIC: ${{ steps.prompt.outputs.review_automatic }}
+        REVIEW_INCREMENTAL_BASE_SHA: ${{ steps.prompt.outputs.review_incremental_base_sha }}
+        REVIEW_HEAD_SHA: ${{ steps.prompt.outputs.review_head_sha }}
+        REVIEW_CONFIG_JSON: ${{ steps.prompt.outputs.review_config_json }}
+        REVIEW_RUNTIME_SHA256: ${{ steps.prompt.outputs.review_runtime_sha256 }}
+        REVIEW_RUNTIME_PATH: ${{ steps.prompt.outputs.review_runtime_path }}
+        REVIEW_PUBLISHER_SHA256: ${{ steps.prompt.outputs.review_runner_publisher_sha256 }}
+        REVIEW_PUBLISHER_PATH: ${{ steps.prompt.outputs.review_runner_publisher_path }}
+        BASH_ENV: ""
+        ENV: ""
+        NODE_OPTIONS: ""
+        BUN_OPTIONS: ""
+        NODE_PATH: ""
+        LD_PRELOAD: ""
+        LD_LIBRARY_PATH: ""
+        LD_AUDIT: ""
+
+        DROID_COMMAND_MODE: ""
         INPUT_PROMPT_FILE: ${{ runner.temp }}/droid-prompts/droid-prompt.txt
         INPUT_DROID_ARGS: ${{ steps.prepare_validator.outputs.droid_args }}
         INPUT_MCP_TOOLS: ${{ steps.prepare_validator.outputs.mcp_tools }}
@@ -189,26 +725,322 @@ runs:
         # post_review posts. It keeps `Execute` and runs as the job's user, so
         # this narrows what a prompt injection can reach; it is not a boundary.
 
+    - name: Review lifecycle posted
+      if: steps.prompt.outputs.review_skipped != 'true' && steps.validator.outputs.conclusion == 'success'
+      continue-on-error: true
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
+      run: |
+        set -euo pipefail
+        # Execute only the publisher and runtime frozen before model execution.
+        for path in "$REVIEW_PUBLISHER_PATH" "$REVIEW_RUNTIME_PATH"; do
+          case "$path" in /*) ;; *) echo "Refusing a non-absolute review executable"; exit 1 ;; esac
+          if [ ! -f "$path" ] || [ -L "$path" ]; then
+            echo "Refusing a missing or symlinked review executable"
+            exit 1
+          fi
+        done
+        if [[ ! "$REVIEW_PUBLISHER_SHA256" =~ ^[a-f0-9]{64}$ ]] || [[ ! "$REVIEW_RUNTIME_SHA256" =~ ^[a-f0-9]{64}$ ]]; then
+          echo "Missing trusted review executable digest"
+          exit 1
+        fi
+        publisher_hash=$(/usr/bin/sha256sum -- "$REVIEW_PUBLISHER_PATH")
+        runtime_hash=$(/usr/bin/sha256sum -- "$REVIEW_RUNTIME_PATH")
+        if [ "${publisher_hash%% *}" != "$REVIEW_PUBLISHER_SHA256" ] || [ "${runtime_hash%% *}" != "$REVIEW_RUNTIME_SHA256" ]; then
+          echo "Review publisher or runtime changed during execution; refusing to publish"
+          exit 1
+        fi
+        /usr/bin/env -i \
+          PATH=/usr/bin:/bin \
+          GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-}" GITHUB_EVENT_PATH="${GITHUB_EVENT_PATH:-}" \
+          RUNNER_TEMP="${RUNNER_TEMP:-}" \
+          GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
+          GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
+          GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
+          GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
+          GITHUB_API_URL="${GITHUB_API_URL:-}" \
+          REVIEW_RUNTIME_SHA256="${REVIEW_RUNTIME_SHA256:-}" \
+          REVIEW_RUNTIME_PATH="${REVIEW_RUNTIME_PATH:-}" \
+          REVIEW_PUBLISHER_SHA256="${REVIEW_PUBLISHER_SHA256:-}" \
+          REVIEW_PUBLISHER_PATH="${REVIEW_PUBLISHER_PATH:-}" \
+          REVIEW_SKIPPED="${REVIEW_SKIPPED:-}" \
+          REVIEW_POSTED="${REVIEW_POSTED:-}" \
+          REVIEW_AUTOMATIC="${REVIEW_AUTOMATIC:-}" \
+          REVIEW_SECURITY_ONLY="${REVIEW_SECURITY_ONLY:-}" \
+          REVIEW_INCREMENTAL_BASE_SHA="${REVIEW_INCREMENTAL_BASE_SHA:-}" \
+          REVIEW_CONFIG_JSON="${REVIEW_CONFIG_JSON:-}" \
+          REVIEW_REACTION_KIND="${REVIEW_REACTION_KIND:-}" \
+          REVIEW_REACTION_TARGET="${REVIEW_REACTION_TARGET:-}" \
+          REVIEW_REACTION_ID="${REVIEW_REACTION_ID:-}" \
+          REVIEW_STARTED_AT="${REVIEW_STARTED_AT:-}" \
+          REVIEW_CHECK_ID="${REVIEW_CHECK_ID:-}" \
+          REVIEW_COMMENT_ID="${REVIEW_COMMENT_ID:-}" \
+          REVIEW_BASE_SHA="${REVIEW_BASE_SHA:-}" \
+          REPO_OWNER="${REPO_OWNER:-}" \
+          REPO_NAME="${REPO_NAME:-}" \
+          PR_NUMBER="${PR_NUMBER:-}" \
+          REVIEW_HEAD_SHA="${REVIEW_HEAD_SHA:-}" \
+          GITHUB_TOKEN="${GITHUB_TOKEN:-}" \
+          WORKFLOW_GITHUB_TOKEN="${WORKFLOW_GITHUB_TOKEN:-}" \
+          REVIEW_PHASE="${REVIEW_PHASE:-}" \
+          "$REVIEW_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$REVIEW_PUBLISHER_PATH"
+      env:
+        RUNNER_TEMP: ${{ runner.temp }}
+        GITHUB_ACTOR: ${{ github.actor }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        REVIEW_RUNTIME_SHA256: ${{ steps.prompt.outputs.review_runtime_sha256 }}
+        REVIEW_RUNTIME_PATH: ${{ steps.prompt.outputs.review_runtime_path }}
+        REVIEW_PUBLISHER_SHA256: ${{ steps.prompt.outputs.review_lifecycle_publisher_sha256 }}
+        REVIEW_PUBLISHER_PATH: ${{ steps.prompt.outputs.review_lifecycle_publisher_path }}
+        REVIEW_SKIPPED: ${{ steps.prompt.outputs.review_skipped }}
+        REVIEW_POSTED: ${{ steps.post_review.outputs.review_posted }}
+        REVIEW_AUTOMATIC: ${{ steps.prompt.outputs.review_automatic }}
+        REVIEW_SECURITY_ONLY: ${{ steps.prompt.outputs.review_security_only }}
+        REVIEW_INCREMENTAL_BASE_SHA: ${{ steps.prompt.outputs.review_incremental_base_sha }}
+        REVIEW_CONFIG_JSON: ${{ steps.prompt.outputs.review_config_json }}
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
+        REVIEW_REACTION_KIND: ${{ steps.prompt.outputs.review_reaction_kind }}
+        REVIEW_REACTION_TARGET: ${{ steps.prompt.outputs.review_reaction_target }}
+        REVIEW_REACTION_ID: ${{ steps.prompt.outputs.review_reaction_id }}
+        REVIEW_STARTED_AT: ${{ steps.prompt.outputs.review_started_at }}
+        REVIEW_CHECK_ID: ${{ steps.prompt.outputs.review_check_id }}
+        REVIEW_COMMENT_ID: ${{ steps.prompt.outputs.review_comment_id }}
+        REVIEW_BASE_SHA: ${{ steps.prompt.outputs.review_base_sha }}
+        REPO_OWNER: ${{ steps.prompt.outputs.repo_owner }}
+        REPO_NAME: ${{ steps.prompt.outputs.repo_name }}
+        PR_NUMBER: ${{ steps.prompt.outputs.pr_number }}
+        REVIEW_HEAD_SHA: ${{ steps.prompt.outputs.review_head_sha }}
+        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+        WORKFLOW_GITHUB_TOKEN: ${{ github.token }}
+        REVIEW_PHASE: posted
+
     - name: Post Review
       id: post_review
-      if: steps.prepare_validator.outputs.validator_should_run != 'false' && steps.validator.outputs.conclusion == 'success'
-      shell: bash
+      if: steps.prepare_validator.outputs.validator_should_run != 'false' && steps.prompt.outputs.review_skipped != 'true' && steps.validator.outputs.conclusion == 'success'
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
-        bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../src/entrypoints/github-post-review.ts
+        set -euo pipefail
+        # Execute only the publisher and runtime frozen before model execution.
+        for path in "$REVIEW_PUBLISHER_PATH" "$REVIEW_RUNTIME_PATH"; do
+          case "$path" in /*) ;; *) echo "Refusing a non-absolute review executable"; exit 1 ;; esac
+          if [ ! -f "$path" ] || [ -L "$path" ]; then
+            echo "Refusing a missing or symlinked review executable"
+            exit 1
+          fi
+        done
+        if [[ ! "$REVIEW_PUBLISHER_SHA256" =~ ^[a-f0-9]{64}$ ]] || [[ ! "$REVIEW_RUNTIME_SHA256" =~ ^[a-f0-9]{64}$ ]]; then
+          echo "Missing trusted review executable digest"
+          exit 1
+        fi
+        publisher_hash=$(/usr/bin/sha256sum -- "$REVIEW_PUBLISHER_PATH")
+        runtime_hash=$(/usr/bin/sha256sum -- "$REVIEW_RUNTIME_PATH")
+        if [ "${publisher_hash%% *}" != "$REVIEW_PUBLISHER_SHA256" ] || [ "${runtime_hash%% *}" != "$REVIEW_RUNTIME_SHA256" ]; then
+          echo "Review publisher or runtime changed during execution; refusing to publish"
+          exit 1
+        fi
+        /usr/bin/env -i \
+          PATH=/usr/bin:/bin \
+          GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-}" GITHUB_EVENT_PATH="${GITHUB_EVENT_PATH:-}" \
+          RUNNER_TEMP="${RUNNER_TEMP:-}" \
+          GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
+          GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
+          GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
+          GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
+          GITHUB_API_URL="${GITHUB_API_URL:-}" \
+          REVIEW_RUNTIME_SHA256="${REVIEW_RUNTIME_SHA256:-}" \
+          REVIEW_RUNTIME_PATH="${REVIEW_RUNTIME_PATH:-}" \
+          REVIEW_PUBLISHER_SHA256="${REVIEW_PUBLISHER_SHA256:-}" \
+          REVIEW_PUBLISHER_PATH="${REVIEW_PUBLISHER_PATH:-}" \
+          REVIEW_SKIPPED="${REVIEW_SKIPPED:-}" \
+          REVIEW_POSTED="${REVIEW_POSTED:-}" \
+          REVIEW_AUTOMATIC="${REVIEW_AUTOMATIC:-}" \
+          REVIEW_SECURITY_ONLY="${REVIEW_SECURITY_ONLY:-}" \
+          REVIEW_INCREMENTAL_BASE_SHA="${REVIEW_INCREMENTAL_BASE_SHA:-}" \
+          REVIEW_CONFIG_JSON="${REVIEW_CONFIG_JSON:-}" \
+          REVIEW_REACTION_KIND="${REVIEW_REACTION_KIND:-}" \
+          REVIEW_REACTION_TARGET="${REVIEW_REACTION_TARGET:-}" \
+          REVIEW_REACTION_ID="${REVIEW_REACTION_ID:-}" \
+          REVIEW_STARTED_AT="${REVIEW_STARTED_AT:-}" \
+          REVIEW_CHECK_ID="${REVIEW_CHECK_ID:-}" \
+          REVIEW_COMMENT_ID="${REVIEW_COMMENT_ID:-}" \
+          REVIEW_BASE_SHA="${REVIEW_BASE_SHA:-}" \
+          REVIEW_HEAD_SHA="${REVIEW_HEAD_SHA:-}" \
+          PR_NUMBER="${PR_NUMBER:-}" \
+          REPO_NAME="${REPO_NAME:-}" \
+          REPO_OWNER="${REPO_OWNER:-}" \
+          WORKFLOW_GITHUB_TOKEN="${WORKFLOW_GITHUB_TOKEN:-}" \
+          GITHUB_TOKEN="${GITHUB_TOKEN:-}" \
+          REVIEW_VALIDATED_PATH="${REVIEW_VALIDATED_PATH:-}" \
+          REVIEW_DIFF_PATH="${REVIEW_DIFF_PATH:-}" \
+          REVIEW_POST_RESULTS_PATH="${REVIEW_POST_RESULTS_PATH:-}" \
+          REVIEW_MODEL="${REVIEW_MODEL:-}" \
+          REASONING_EFFORT="${REASONING_EFFORT:-}" \
+          REVIEW_EFFECTIVE_MODEL="${REVIEW_EFFECTIVE_MODEL:-}" \
+          REVIEW_EFFECTIVE_REASONING="${REVIEW_EFFECTIVE_REASONING:-}" \
+          "$REVIEW_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$REVIEW_PUBLISHER_PATH"
       env:
+        REVIEW_EFFECTIVE_REASONING: ${{ steps.prompt.outputs.review_reasoning_effort }}
+        REVIEW_EFFECTIVE_MODEL: ${{ steps.prompt.outputs.review_model }}
+        REASONING_EFFORT: ${{ steps.prompt.outputs.review_reasoning_effort }}
+        REVIEW_MODEL: ${{ steps.prompt.outputs.review_model }}
+        RUNNER_TEMP: ${{ runner.temp }}
+        GITHUB_ACTOR: ${{ github.actor }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        REVIEW_RUNTIME_SHA256: ${{ steps.prompt.outputs.review_runtime_sha256 }}
+        REVIEW_RUNTIME_PATH: ${{ steps.prompt.outputs.review_runtime_path }}
+        REVIEW_PUBLISHER_SHA256: ${{ steps.prompt.outputs.review_post_publisher_sha256 }}
+        REVIEW_PUBLISHER_PATH: ${{ steps.prompt.outputs.review_post_publisher_path }}
+        REVIEW_SKIPPED: ${{ steps.prompt.outputs.review_skipped }}
+        REVIEW_POSTED: ${{ steps.post_review.outputs.review_posted }}
+        REVIEW_AUTOMATIC: ${{ steps.prompt.outputs.review_automatic }}
+        REVIEW_SECURITY_ONLY: ${{ steps.prompt.outputs.review_security_only }}
+        REVIEW_INCREMENTAL_BASE_SHA: ${{ steps.prompt.outputs.review_incremental_base_sha }}
+        REVIEW_CONFIG_JSON: ${{ steps.prompt.outputs.review_config_json }}
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
+        REVIEW_REACTION_KIND: ${{ steps.prompt.outputs.review_reaction_kind }}
+        REVIEW_REACTION_TARGET: ${{ steps.prompt.outputs.review_reaction_target }}
+        REVIEW_REACTION_ID: ${{ steps.prompt.outputs.review_reaction_id }}
+        REVIEW_STARTED_AT: ${{ steps.prompt.outputs.review_started_at }}
+        REVIEW_CHECK_ID: ${{ steps.prompt.outputs.review_check_id }}
+        REVIEW_COMMENT_ID: ${{ steps.prompt.outputs.review_comment_id }}
+        REVIEW_BASE_SHA: ${{ steps.prompt.outputs.review_base_sha }}
+        REVIEW_HEAD_SHA: ${{ steps.prompt.outputs.review_head_sha }}
+        PR_NUMBER: ${{ steps.prompt.outputs.pr_number }}
+        REPO_NAME: ${{ steps.prompt.outputs.repo_name }}
+        REPO_OWNER: ${{ steps.prompt.outputs.repo_owner }}
+        WORKFLOW_GITHUB_TOKEN: ${{ github.token }}
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
         REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
         REVIEW_DIFF_PATH: ${{ runner.temp }}/droid-prompts/pr.diff
         REVIEW_POST_RESULTS_PATH: ${{ runner.temp }}/droid-prompts/review_post_results.json
 
     - name: Update tracking comment
-      if: always() && inputs.tracking_comment_id
+      if: always() && inputs.tracking_comment_id && steps.prompt.outputs.review_skipped != 'true'
       continue-on-error: true
-      shell: bash
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
-        bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../src/entrypoints/update-comment-link.ts
+        set -euo pipefail
+        # Execute only the publisher and runtime frozen before model execution.
+        for path in "$REVIEW_PUBLISHER_PATH" "$REVIEW_RUNTIME_PATH"; do
+          case "$path" in /*) ;; *) echo "Refusing a non-absolute review executable"; exit 1 ;; esac
+          if [ ! -f "$path" ] || [ -L "$path" ]; then
+            echo "Refusing a missing or symlinked review executable"
+            exit 1
+          fi
+        done
+        if [[ ! "$REVIEW_PUBLISHER_SHA256" =~ ^[a-f0-9]{64}$ ]] || [[ ! "$REVIEW_RUNTIME_SHA256" =~ ^[a-f0-9]{64}$ ]]; then
+          echo "Missing trusted review executable digest"
+          exit 1
+        fi
+        publisher_hash=$(/usr/bin/sha256sum -- "$REVIEW_PUBLISHER_PATH")
+        runtime_hash=$(/usr/bin/sha256sum -- "$REVIEW_RUNTIME_PATH")
+        if [ "${publisher_hash%% *}" != "$REVIEW_PUBLISHER_SHA256" ] || [ "${runtime_hash%% *}" != "$REVIEW_RUNTIME_SHA256" ]; then
+          echo "Review publisher or runtime changed during execution; refusing to publish"
+          exit 1
+        fi
+        /usr/bin/env -i \
+          PATH=/usr/bin:/bin \
+          GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-}" GITHUB_EVENT_PATH="${GITHUB_EVENT_PATH:-}" \
+          RUNNER_TEMP="${RUNNER_TEMP:-}" \
+          GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
+          GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
+          GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
+          GITHUB_API_URL="${GITHUB_API_URL:-}" \
+          REVIEW_RUNTIME_SHA256="${REVIEW_RUNTIME_SHA256:-}" \
+          REVIEW_RUNTIME_PATH="${REVIEW_RUNTIME_PATH:-}" \
+          REVIEW_PUBLISHER_SHA256="${REVIEW_PUBLISHER_SHA256:-}" \
+          REVIEW_PUBLISHER_PATH="${REVIEW_PUBLISHER_PATH:-}" \
+          REVIEW_SKIPPED="${REVIEW_SKIPPED:-}" \
+          REVIEW_POSTED="${REVIEW_POSTED:-}" \
+          REVIEW_AUTOMATIC="${REVIEW_AUTOMATIC:-}" \
+          REVIEW_SECURITY_ONLY="${REVIEW_SECURITY_ONLY:-}" \
+          REVIEW_INCREMENTAL_BASE_SHA="${REVIEW_INCREMENTAL_BASE_SHA:-}" \
+          REVIEW_CONFIG_JSON="${REVIEW_CONFIG_JSON:-}" \
+          REVIEW_REACTION_KIND="${REVIEW_REACTION_KIND:-}" \
+          REVIEW_REACTION_TARGET="${REVIEW_REACTION_TARGET:-}" \
+          REVIEW_REACTION_ID="${REVIEW_REACTION_ID:-}" \
+          REVIEW_STARTED_AT="${REVIEW_STARTED_AT:-}" \
+          REVIEW_CHECK_ID="${REVIEW_CHECK_ID:-}" \
+          REVIEW_COMMENT_ID="${REVIEW_COMMENT_ID:-}" \
+          REVIEW_BASE_SHA="${REVIEW_BASE_SHA:-}" \
+          REVIEW_HEAD_SHA="${REVIEW_HEAD_SHA:-}" \
+          PR_NUMBER="${PR_NUMBER:-}" \
+          REPO_NAME="${REPO_NAME:-}" \
+          REPO_OWNER="${REPO_OWNER:-}" \
+          WORKFLOW_GITHUB_TOKEN="${WORKFLOW_GITHUB_TOKEN:-}" \
+          DROID_COMMENT_ID="${DROID_COMMENT_ID:-}" \
+          GITHUB_TOKEN="${GITHUB_TOKEN:-}" \
+          GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
+          OUTPUT_FILE="${OUTPUT_FILE:-}" \
+          TRIGGER_USERNAME="${TRIGGER_USERNAME:-}" \
+          PREPARE_SUCCESS="${PREPARE_SUCCESS:-}" \
+          DROID_SUCCESS="${DROID_SUCCESS:-}" \
+          DROID_ERROR_MESSAGE="${DROID_ERROR_MESSAGE:-}" \
+          DROID_VALIDATOR_ERROR_MESSAGE="${DROID_VALIDATOR_ERROR_MESSAGE:-}" \
+          DROID_POST_ERROR_MESSAGE="${DROID_POST_ERROR_MESSAGE:-}" \
+          REVIEW_POST_RESULTS_PATH="${REVIEW_POST_RESULTS_PATH:-}" \
+          "$REVIEW_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$REVIEW_PUBLISHER_PATH"
       env:
-        DROID_COMMENT_ID: ${{ inputs.tracking_comment_id }}
+        RUNNER_TEMP: ${{ runner.temp }}
+        GITHUB_ACTOR: ${{ github.actor }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        REVIEW_RUNTIME_SHA256: ${{ steps.prompt.outputs.review_runtime_sha256 }}
+        REVIEW_RUNTIME_PATH: ${{ steps.prompt.outputs.review_runtime_path }}
+        REVIEW_PUBLISHER_SHA256: ${{ steps.prompt.outputs.review_tracking_publisher_sha256 }}
+        REVIEW_PUBLISHER_PATH: ${{ steps.prompt.outputs.review_tracking_publisher_path }}
+        REVIEW_SKIPPED: ${{ steps.prompt.outputs.review_skipped }}
+        REVIEW_POSTED: ${{ steps.post_review.outputs.review_posted }}
+        REVIEW_AUTOMATIC: ${{ steps.prompt.outputs.review_automatic }}
+        REVIEW_SECURITY_ONLY: ${{ steps.prompt.outputs.review_security_only }}
+        REVIEW_INCREMENTAL_BASE_SHA: ${{ steps.prompt.outputs.review_incremental_base_sha }}
+        REVIEW_CONFIG_JSON: ${{ steps.prompt.outputs.review_config_json }}
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
+        REVIEW_REACTION_KIND: ${{ steps.prompt.outputs.review_reaction_kind }}
+        REVIEW_REACTION_TARGET: ${{ steps.prompt.outputs.review_reaction_target }}
+        REVIEW_REACTION_ID: ${{ steps.prompt.outputs.review_reaction_id }}
+        REVIEW_STARTED_AT: ${{ steps.prompt.outputs.review_started_at }}
+        REVIEW_CHECK_ID: ${{ steps.prompt.outputs.review_check_id }}
+        REVIEW_COMMENT_ID: ${{ steps.prompt.outputs.review_comment_id }}
+        REVIEW_BASE_SHA: ${{ steps.prompt.outputs.review_base_sha }}
+        REVIEW_HEAD_SHA: ${{ steps.prompt.outputs.review_head_sha }}
+        PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+        REPO_NAME: ${{ github.event.repository.name }}
+        REPO_OWNER: ${{ github.repository_owner }}
+        WORKFLOW_GITHUB_TOKEN: ${{ github.token }}
+        DROID_COMMENT_ID: ${{ steps.prompt.outputs.droid_comment_id || inputs.tracking_comment_id }}
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
         GITHUB_RUN_ID: ${{ github.run_id }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
@@ -221,14 +1053,156 @@ runs:
         DROID_POST_ERROR_MESSAGE: ${{ steps.post_review.outputs.error_message || '' }}
         REVIEW_POST_RESULTS_PATH: ${{ runner.temp }}/droid-prompts/review_post_results.json
 
+    - name: Review lifecycle finalize
+      if: always()
+      continue-on-error: true
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
+      run: |
+        set -euo pipefail
+        # Execute only the publisher and runtime frozen before model execution.
+        for path in "$REVIEW_PUBLISHER_PATH" "$REVIEW_RUNTIME_PATH"; do
+          case "$path" in /*) ;; *) echo "Refusing a non-absolute review executable"; exit 1 ;; esac
+          if [ ! -f "$path" ] || [ -L "$path" ]; then
+            echo "Refusing a missing or symlinked review executable"
+            exit 1
+          fi
+        done
+        if [[ ! "$REVIEW_PUBLISHER_SHA256" =~ ^[a-f0-9]{64}$ ]] || [[ ! "$REVIEW_RUNTIME_SHA256" =~ ^[a-f0-9]{64}$ ]]; then
+          echo "Missing trusted review executable digest"
+          exit 1
+        fi
+        publisher_hash=$(/usr/bin/sha256sum -- "$REVIEW_PUBLISHER_PATH")
+        runtime_hash=$(/usr/bin/sha256sum -- "$REVIEW_RUNTIME_PATH")
+        if [ "${publisher_hash%% *}" != "$REVIEW_PUBLISHER_SHA256" ] || [ "${runtime_hash%% *}" != "$REVIEW_RUNTIME_SHA256" ]; then
+          echo "Review publisher or runtime changed during execution; refusing to publish"
+          exit 1
+        fi
+        /usr/bin/env -i \
+          PATH=/usr/bin:/bin \
+          GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-}" GITHUB_EVENT_PATH="${GITHUB_EVENT_PATH:-}" \
+          RUNNER_TEMP="${RUNNER_TEMP:-}" \
+          GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
+          GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
+          GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
+          GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
+          GITHUB_API_URL="${GITHUB_API_URL:-}" \
+          REVIEW_RUNTIME_SHA256="${REVIEW_RUNTIME_SHA256:-}" \
+          REVIEW_RUNTIME_PATH="${REVIEW_RUNTIME_PATH:-}" \
+          REVIEW_PUBLISHER_SHA256="${REVIEW_PUBLISHER_SHA256:-}" \
+          REVIEW_PUBLISHER_PATH="${REVIEW_PUBLISHER_PATH:-}" \
+          REVIEW_SKIPPED="${REVIEW_SKIPPED:-}" \
+          REVIEW_POSTED="${REVIEW_POSTED:-}" \
+          REVIEW_AUTOMATIC="${REVIEW_AUTOMATIC:-}" \
+          REVIEW_SECURITY_ONLY="${REVIEW_SECURITY_ONLY:-}" \
+          REVIEW_INCREMENTAL_BASE_SHA="${REVIEW_INCREMENTAL_BASE_SHA:-}" \
+          REVIEW_CONFIG_JSON="${REVIEW_CONFIG_JSON:-}" \
+          REVIEW_REACTION_KIND="${REVIEW_REACTION_KIND:-}" \
+          REVIEW_REACTION_TARGET="${REVIEW_REACTION_TARGET:-}" \
+          REVIEW_REACTION_ID="${REVIEW_REACTION_ID:-}" \
+          REVIEW_STARTED_AT="${REVIEW_STARTED_AT:-}" \
+          REVIEW_CHECK_ID="${REVIEW_CHECK_ID:-}" \
+          REVIEW_COMMENT_ID="${REVIEW_COMMENT_ID:-}" \
+          REVIEW_BASE_SHA="${REVIEW_BASE_SHA:-}" \
+          REPO_OWNER="${REPO_OWNER:-}" \
+          REPO_NAME="${REPO_NAME:-}" \
+          PR_NUMBER="${PR_NUMBER:-}" \
+          REVIEW_HEAD_SHA="${REVIEW_HEAD_SHA:-}" \
+          GITHUB_TOKEN="${GITHUB_TOKEN:-}" \
+          WORKFLOW_GITHUB_TOKEN="${WORKFLOW_GITHUB_TOKEN:-}" \
+          REVIEW_PHASE="${REVIEW_PHASE:-}" \
+          DROID_SUCCESS="${DROID_SUCCESS:-}" \
+          DROID_ERROR_MESSAGE="${DROID_ERROR_MESSAGE:-}" \
+          DROID_VALIDATOR_ERROR_MESSAGE="${DROID_VALIDATOR_ERROR_MESSAGE:-}" \
+          DROID_POST_ERROR_MESSAGE="${DROID_POST_ERROR_MESSAGE:-}" \
+          "$REVIEW_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$REVIEW_PUBLISHER_PATH"
+      env:
+        RUNNER_TEMP: ${{ runner.temp }}
+        GITHUB_ACTOR: ${{ github.actor }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        REVIEW_RUNTIME_SHA256: ${{ steps.prompt.outputs.review_runtime_sha256 }}
+        REVIEW_RUNTIME_PATH: ${{ steps.prompt.outputs.review_runtime_path }}
+        REVIEW_PUBLISHER_SHA256: ${{ steps.prompt.outputs.review_lifecycle_publisher_sha256 }}
+        REVIEW_PUBLISHER_PATH: ${{ steps.prompt.outputs.review_lifecycle_publisher_path }}
+        REVIEW_SKIPPED: ${{ steps.prompt.outputs.review_skipped }}
+        REVIEW_POSTED: ${{ steps.post_review.outputs.review_posted }}
+        REVIEW_AUTOMATIC: ${{ steps.prompt.outputs.review_automatic }}
+        REVIEW_SECURITY_ONLY: ${{ steps.prompt.outputs.review_security_only }}
+        REVIEW_INCREMENTAL_BASE_SHA: ${{ steps.prompt.outputs.review_incremental_base_sha }}
+        REVIEW_CONFIG_JSON: ${{ steps.prompt.outputs.review_config_json }}
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
+        REVIEW_REACTION_KIND: ${{ steps.prompt.outputs.review_reaction_kind }}
+        REVIEW_REACTION_TARGET: ${{ steps.prompt.outputs.review_reaction_target }}
+        REVIEW_REACTION_ID: ${{ steps.prompt.outputs.review_reaction_id }}
+        REVIEW_STARTED_AT: ${{ steps.prompt.outputs.review_started_at }}
+        REVIEW_CHECK_ID: ${{ steps.prompt.outputs.review_check_id }}
+        REVIEW_COMMENT_ID: ${{ steps.prompt.outputs.review_comment_id }}
+        REVIEW_BASE_SHA: ${{ steps.prompt.outputs.review_base_sha }}
+        REPO_OWNER: ${{ steps.prompt.outputs.repo_owner }}
+        REPO_NAME: ${{ steps.prompt.outputs.repo_name }}
+        PR_NUMBER: ${{ steps.prompt.outputs.pr_number }}
+        REVIEW_HEAD_SHA: ${{ steps.prompt.outputs.review_head_sha }}
+        GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
+        WORKFLOW_GITHUB_TOKEN: ${{ github.token }}
+        REVIEW_PHASE: finalize
+        DROID_SUCCESS: ${{ steps.review.outputs.conclusion == 'success' && (steps.prepare_validator.outputs.validator_should_run == 'false' || (steps.validator.outputs.conclusion == 'success' && steps.post_review.outputs.conclusion == 'success')) }}
+        DROID_ERROR_MESSAGE: ${{ steps.review.outputs.error_message || '' }}
+        DROID_VALIDATOR_ERROR_MESSAGE: ${{ steps.validator.outputs.error_message || '' }}
+        DROID_POST_ERROR_MESSAGE: ${{ steps.post_review.outputs.error_message || '' }}
+
     # Must stay the last step: everything above may still call GitHub with the
     # token. A provided github_token belongs to the caller and is left alone.
     - name: Revoke GitHub App token
       if: always() && inputs.github_token == ''
       continue-on-error: true
-      shell: bash
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
-        bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../src/entrypoints/revoke-github-token.ts
+        set -euo pipefail
+        for path in "${TRUSTED_TAIL_PATH:-}" "${TRUSTED_RUNTIME_PATH:-}"; do
+          case "$path" in /*) ;; *) echo "::warning::Trusted token cleanup is unavailable; no mutable fallback will run"; exit 1 ;; esac
+          if [ ! -f "$path" ] || [ -L "$path" ]; then
+            echo "::warning::Refusing a missing or symlinked token cleanup executable"
+            exit 1
+          fi
+        done
+        if [[ ! "${TRUSTED_TAIL_SHA256:-}" =~ ^[a-f0-9]{64}$ ]] || [[ ! "${TRUSTED_RUNTIME_SHA256:-}" =~ ^[a-f0-9]{64}$ ]]; then
+          echo "::warning::Missing trusted token cleanup executable digest"
+          exit 1
+        fi
+        publisher_hash=$(/usr/bin/sha256sum -- "$TRUSTED_TAIL_PATH")
+        runtime_hash=$(/usr/bin/sha256sum -- "$TRUSTED_RUNTIME_PATH")
+        if [ "${publisher_hash%% *}" != "$TRUSTED_TAIL_SHA256" ] || [ "${runtime_hash%% *}" != "$TRUSTED_RUNTIME_SHA256" ]; then
+          echo "::warning::Token cleanup publisher or runtime changed; refusing to execute"
+          exit 1
+        fi
+        /usr/bin/env -i \
+          PATH=/usr/bin:/bin \
+          GITHUB_TOKEN="${GITHUB_TOKEN:-}" OVERRIDE_GITHUB_TOKEN="${OVERRIDE_GITHUB_TOKEN:-}" GITHUB_API_URL="${GITHUB_API_URL:-}" \
+          "$TRUSTED_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$TRUSTED_TAIL_PATH"
       env:
+        TRUSTED_TAIL_PATH: ${{ steps.token.outputs.review_revoke_publisher_path }}
+        TRUSTED_TAIL_SHA256: ${{ steps.token.outputs.review_revoke_publisher_sha256 }}
+        TRUSTED_RUNTIME_PATH: ${{ steps.token.outputs.review_runtime_path }}
+        TRUSTED_RUNTIME_SHA256: ${{ steps.token.outputs.review_runtime_sha256 }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
         OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}

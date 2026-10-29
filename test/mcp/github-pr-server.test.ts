@@ -14,6 +14,10 @@ import {
   type ReviewComment,
 } from "../../src/mcp/github-pr-server";
 import { DroidRunType } from "../../src/run-type";
+import {
+  decodeFindingMarker,
+  decodeReviewMarker,
+} from "../../src/core/review/markers";
 
 function createOctokitStub() {
   const calls = {
@@ -164,13 +168,28 @@ describe("github-pr-server helpers", () => {
       octokit: client,
     });
 
-    expect(calls.createReview[0][0]).toEqual({
+    expect(calls.createReview).toHaveLength(1);
+    const payload = calls.createReview[0][0];
+    expect(payload).toEqual({
       owner: "o",
       repo: "r",
       pull_number: 7,
       event: "COMMENT",
-      body: "Summary",
-      comments: [{ path: "file.ts", position: 3, body: "issue" }],
+      body: expect.stringContaining("**Droid found 1 issue** (1 P2)"),
+      comments: [
+        {
+          path: "file.ts",
+          position: 3,
+          body: expect.stringContaining('<img alt="P2"'),
+        },
+      ],
+    });
+    expect(decodeReviewMarker(payload.body)).toEqual({ head: "unknown" });
+    expect(payload.comments[0].body).toContain("**issue**\n\nissue");
+    expect(decodeFindingMarker(payload.comments[0].body)).toEqual({
+      id: expect.stringMatching(/^f-[a-f0-9]{12}$/),
+      sev: "P2",
+      cat: "correctness",
     });
     expect(reviewId).toBe(9001);
   });
@@ -193,15 +212,27 @@ describe("github-pr-server helpers", () => {
       octokit: client,
     });
 
-    expect(calls.createReview[0][0].comments).toEqual([
+    expect(calls.createReview).toHaveLength(1);
+    const payload = calls.createReview[0][0];
+    expect(payload.event).toBe("COMMENT");
+    expect(payload.body).toContain("**Droid found 1 issue** (1 P1)");
+    expect(payload.comments).toEqual([
       {
         path: "file.ts",
         position: 3,
-        body:
-          "[P1] [security] issue\n\n" +
-          "<!-- factory-pr-inline-comment: run-type=droid-security-review -->",
+        body: expect.stringContaining('<img alt="P1"'),
       },
     ]);
+    expect(payload.comments[0].body).toContain('<img alt="Security"');
+    expect(payload.comments[0].body).toContain("**issue**\n\nissue");
+    expect(payload.comments[0].body).toEndWith(
+      "<!-- factory-pr-inline-comment: run-type=droid-security-review -->",
+    );
+    expect(decodeFindingMarker(payload.comments[0].body)).toEqual({
+      id: expect.stringMatching(/^f-[a-f0-9]{12}$/),
+      sev: "P1",
+      cat: "security",
+    });
   });
 
   it("deletes issue and review comments", async () => {

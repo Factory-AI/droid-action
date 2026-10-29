@@ -377,6 +377,13 @@ export async function prepareStewardMode(
     "STEWARD_PROTECTED_PATHS",
     config.fix.protected_paths.join("\n"),
   );
+  // Bind the post-run guard to preparation outputs, not model-writable env.
+  core.setOutput("steward_run_marker", runMarker);
+  core.setOutput("steward_base_sha", pr.headSha);
+  core.setOutput(
+    "steward_protected_paths",
+    config.fix.protected_paths.join("\n"),
+  );
 
   const prompt = `You are CI Steward for ${context.repository.full_name}, pull request #${pr.number}.
 

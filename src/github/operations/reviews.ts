@@ -1,14 +1,11 @@
+import { appendPrCommentMarker } from "./comments/common";
+import type { PrValidationRunType } from "../../run-type";
 import { normalizeFinding } from "../../core/review/validated/finding";
 import {
   renderInlineComment,
   renderReviewBody,
 } from "../../core/review/render";
 import { redactCredentials } from "../../utils/redact-credentials";
-import {
-  prepareDroidCommentBody,
-  appendPrCommentMarker,
-} from "./comments/common";
-import type { PrValidationRunType } from "../../run-type";
 
 export type GitHubReviewCommentPayload = {
   path: string;
@@ -40,39 +37,6 @@ export type GitHubReviewCreateClient = {
  * makes the anchors point at different code or fail the whole review.
  */
 export async function createGitHubCommentReview(options: {
-  client: GitHubReviewCreateClient;
-  owner: string;
-  repo: string;
-  prNumber: number;
-  body?: string;
-  comments?: GitHubReviewCommentPayload[];
-  commitId?: string | null;
-  runType?: PrValidationRunType;
-}): Promise<number | undefined> {
-  const { client, owner, repo, prNumber, body, comments, commitId, runType } =
-    options;
-  const preparedComments = runType
-    ? comments?.map((comment) => ({
-        ...comment,
-        body: prepareDroidCommentBody(comment.body, runType, "inline-comment"),
-      }))
-    : comments;
-  const response = await client.rest.pulls.createReview({
-    owner,
-    repo,
-    pull_number: prNumber,
-    event: "COMMENT",
-    ...(commitId ? { commit_id: commitId } : {}),
-    ...(body ? { body } : {}),
-    ...(preparedComments && preparedComments.length > 0
-      ? { comments: preparedComments }
-      : {}),
-  });
-  return response.data.id;
-}
-
-/** Dormant rich publisher. Existing callers retain their legacy helper. */
-export async function createRenderedGitHubCommentReview(options: {
   client: GitHubReviewCreateClient;
   owner: string;
   repo: string;

@@ -43,6 +43,7 @@ const WITHHELD_ENV_NAMES = new Set([
   "GITHUB_STEP_SUMMARY",
   "OVERRIDE_GITHUB_TOKEN",
   "DEFAULT_WORKFLOW_TOKEN",
+  "WORKFLOW_GITHUB_TOKEN",
 ]);
 
 export function buildDroidEnv(
@@ -54,7 +55,8 @@ export function buildDroidEnv(
     if (
       value === undefined ||
       WITHHELD_ENV_NAMES.has(name) ||
-      name.startsWith("INPUT_")
+      name.startsWith("INPUT_") ||
+      name.startsWith("COMMAND_")
     ) {
       continue;
     }
@@ -164,6 +166,7 @@ export type DroidOptions = {
   systemPrompt?: string;
   appendSystemPrompt?: string;
   showFullOutput?: string;
+  isolatedProfile?: { cwd: string; env: Record<string, string> };
 };
 
 type PreparedConfig = {
@@ -444,7 +447,9 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
     let turnLimitHit = false;
     const droidProcess = spawn(droidExecutable, currentDroidArgs, {
       stdio: ["ignore", "pipe", "pipe"],
-      env: buildDroidEnv(process.env, config.env),
+      env:
+        options.isolatedProfile?.env ?? buildDroidEnv(process.env, config.env),
+      ...(options.isolatedProfile ? { cwd: options.isolatedProfile.cwd } : {}),
     });
 
     const stopForTurnLimit = () => {

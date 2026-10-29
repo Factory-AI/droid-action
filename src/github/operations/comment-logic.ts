@@ -1,5 +1,7 @@
 import { GITHUB_SERVER_URL } from "../api/config";
 import type { ReviewPostOutcome } from "../../core/review/tracking/types";
+import { details, fenced, friendlyReviewError } from "../../core/review/render";
+import { redactCredentials } from "../../utils/redact-credentials";
 import {
   prepareDroidTrackingCommentBody,
   readPrCommentRunType,
@@ -113,7 +115,6 @@ export function updateCommentBody(input: CommentUpdateInput): string {
     prLink,
     actionFailed,
     branchName,
-    triggerUsername,
     errorDetails,
     notice,
     securityReviewRan,
@@ -136,7 +137,7 @@ export function updateCommentBody(input: CommentUpdateInput): string {
 
   // Strip any previous completion headers (success or error) to avoid duplication
   bodyContent = bodyContent.replace(
-    /^\*\*(?:Droid finished [^\n]*|Droid encountered an error[^\n]*)\*\*.*$/gim,
+    /^\*\*(?:Droid finished[^\n]*|Droid reviewed this PR[^\n]*|Droid encountered an error[^\n]*)\*\*.*$/gim,
     "",
   );
   bodyContent = bodyContent.trim();
@@ -176,12 +177,12 @@ export function updateCommentBody(input: CommentUpdateInput): string {
     }
     header += "**";
   } else {
-    // Get the username from triggerUsername or extract from content
-    const usernameMatch = bodyContent.match(/@([a-zA-Z0-9-]+)/);
-    const username =
-      triggerUsername || (usernameMatch ? usernameMatch[1] : "user");
-
-    header = `**Droid finished @${username}'s task`;
+    header =
+      review ||
+      input.prCommentRunType ||
+      readPrCommentRunType(originalBody, input.prCommentKind ?? "issue-comment")
+        ? "**Droid reviewed this PR"
+        : "**Droid finished";
     if (durationStr) {
       header += ` in ${durationStr}`;
     }
@@ -189,7 +190,7 @@ export function updateCommentBody(input: CommentUpdateInput): string {
   }
 
   // Add links section
-  let links = ` —— [View job](${jobUrl})`;
+  let links = ` · [View job](${jobUrl})`;
 
   // Add branch name with link
   if (branchName || branchLink) {
@@ -222,9 +223,9 @@ export function updateCommentBody(input: CommentUpdateInput): string {
     }
 
     if (finalBranchName && branchUrl) {
-      links += ` • [\`${finalBranchName}\`](${branchUrl})`;
+      links += ` · [\`${finalBranchName}\`](${branchUrl})`;
     } else if (finalBranchName) {
-      links += ` • \`${finalBranchName}\``;
+      links += ` · \`${finalBranchName}\``;
     }
   }
 
@@ -232,7 +233,7 @@ export function updateCommentBody(input: CommentUpdateInput): string {
   const prUrl =
     prLinkFromContent || (prLink ? prLink.match(/\(([^)]+)\)/)?.[1] : "");
   if (prUrl) {
-    links += ` • [Create PR ➔](${prUrl})`;
+    links += ` · [Create PR ➔](${prUrl})`;
   }
 
   // Build the new body with blank line between header and separator
@@ -240,7 +241,8 @@ export function updateCommentBody(input: CommentUpdateInput): string {
 
   // Add error details if available
   if (actionFailed && errorDetails) {
-    newBody += `\n\n\`\`\`\n${errorDetails}\n\`\`\``;
+    const friendly = friendlyReviewError(errorDetails);
+    newBody += `\n\n> [!WARNING]\n> ${friendly.message}\n>\n> ${friendly.retry}\n\n${details("Error details", fenced(redactCredentials(errorDetails)))}`;
     if (MODEL_POLICY_ERROR_PATTERN.test(errorDetails)) {
       newBody += `\n\n${MODEL_POLICY_HINT}`;
     } else if (INVALID_MODEL_ERROR_PATTERN.test(errorDetails)) {
@@ -257,7 +259,7 @@ export function updateCommentBody(input: CommentUpdateInput): string {
 
   // Clean up the body content
   // Remove any existing View job run, branch links from the bottom
-  bodyContent = bodyContent.replace(/\n?\[View job run\]\([^\)]+\)/g, "");
+  bodyContent = bodyContent.replace(/\n?\[View job(?: run)?\]\([^\)]+\)/g, "");
   bodyContent = bodyContent.replace(/\n?\[View branch\]\([^\)]+\)/g, "");
 
   // Remove stale model-policy notices from previous runs
@@ -270,8 +272,17 @@ export function updateCommentBody(input: CommentUpdateInput): string {
   // Remove any existing duration info at the bottom
   bodyContent = bodyContent.replace(/\n*---\n*Duration: [0-9]+m? [0-9]+s/g, "");
 
-  if (securityReviewRan && !bodyContent.includes("security%20review-ran")) {
-    bodyContent = `${SECURITY_REVIEW_BADGE}\n\n${bodyContent}`.trim();
+  const securityRan =
+    securityReviewRan ||
+    input.prCommentRunType === "droid-security-review" ||
+    input.prCommentRunType === "droid-review-and-security";
+  bodyContent = bodyContent.replace(
+    /!\[Security Review\]\(https:\/\/img\.shields\.io\/badge\/security%20review-ran-blue\)\s*/g,
+    "",
+  );
+  if (securityRan) {
+    bodyContent =
+      `🔒 Security review: ${actionFailed ? "could not finish" : "no findings"}.\n\n${bodyContent}`.trim();
   }
 
   if (review) {
@@ -303,12 +314,12 @@ export function updateCommentBody(input: CommentUpdateInput): string {
     if (typeof review.skipped === "number" && review.skipped > 0) {
       counts.push(`${review.skipped} skipped`);
     }
-    if (counts.length > 0) reviewContent.push(counts.join(" • "));
+    if (counts.length > 0) reviewContent.push(counts.join(" · "));
 
     if (reviewContent.length > 0) {
       bodyContent = reviewContent.join("\n\n");
-      if (securityReviewRan && !bodyContent.includes("security%20review-ran")) {
-        bodyContent = `${SECURITY_REVIEW_BADGE}\n\n${bodyContent}`;
+      if (securityRan) {
+        bodyContent = `🔒 Security review: ${actionFailed ? "could not finish" : (review.posted ?? 0) + (review.fallbackPosted ?? 0) > 0 ? `${(review.posted ?? 0) + (review.fallbackPosted ?? 0)} finding${(review.posted ?? 0) + (review.fallbackPosted ?? 0) === 1 ? "" : "s"}` : "no findings"}.\n\n${bodyContent}`;
       }
     }
   }
@@ -320,10 +331,10 @@ export function updateCommentBody(input: CommentUpdateInput): string {
     !input.prCommentRunType &&
     !readPrCommentRunType(originalBody, input.prCommentKind ?? "issue-comment")
   ) {
-    return newBody.trim();
+    return redactCredentials(newBody.trim());
   }
   return prepareDroidTrackingCommentBody(
-    newBody.trim(),
+    redactCredentials(newBody.trim()),
     originalBody,
     input.prCommentRunType,
     input.prCommentKind,

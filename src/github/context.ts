@@ -1,5 +1,8 @@
 import * as github from "@actions/github";
-import type { ReviewUxConfig } from "../core/review/config";
+import {
+  reviewConfigFromEnvironment,
+  type ReviewUxConfig,
+} from "../core/review/config";
 import type {
   IssuesEvent,
   IssuesAssignedEvent,
@@ -140,6 +143,7 @@ export type GitHubContext = ParsedGitHubContext | AutomationContext;
 
 export function parseGitHubContext(): GitHubContext {
   const context = github.context;
+  const reviewConfig = reviewConfigFromEnvironment();
 
   const commonFields = {
     runId: process.env.GITHUB_RUN_ID!,
@@ -153,21 +157,17 @@ export function parseGitHubContext(): GitHubContext {
     inputs: {
       triggerPhrase: process.env.TRIGGER_PHRASE ?? "@droid",
       assigneeTrigger: process.env.ASSIGNEE_TRIGGER ?? "",
-      labelTrigger: process.env.LABEL_TRIGGER ?? "droid",
+      labelTrigger: process.env.LABEL_TRIGGER ?? "",
       useStickyComment: process.env.USE_STICKY_COMMENT === "true",
       allowedBots: process.env.ALLOWED_BOTS ?? "",
       allowedNonWriteUsers: process.env.ALLOWED_NON_WRITE_USERS ?? "",
       trackProgress: process.env.TRACK_PROGRESS === "true",
-      automaticReview: process.env.AUTOMATIC_REVIEW === "true",
-      automaticSecurityReview:
-        (process.env.AUTOMATIC_SECURITY_REVIEW ||
-          process.env.AUTOMATIC_REVIEW) === "true",
+      automaticReview: reviewConfig.automatic_review,
+      automaticSecurityReview: reviewConfig.automatic_security_review,
       securityModel: process.env.SECURITY_MODEL ?? "",
-      securitySeverityThreshold:
-        process.env.SECURITY_SEVERITY_THRESHOLD ?? "medium",
-      securityBlockOnCritical:
-        process.env.SECURITY_BLOCK_ON_CRITICAL !== "false",
-      securityBlockOnHigh: process.env.SECURITY_BLOCK_ON_HIGH === "true",
+      securitySeverityThreshold: reviewConfig.security_severity_threshold,
+      securityBlockOnCritical: reviewConfig.security_block_on_critical,
+      securityBlockOnHigh: reviewConfig.security_block_on_high,
       securityNotifyTeam: process.env.SECURITY_NOTIFY_TEAM ?? "",
       securityScanSchedule: process.env.SECURITY_SCAN_SCHEDULE === "true",
       securityScanDays: Math.max(
@@ -183,6 +183,7 @@ export function parseGitHubContext(): GitHubContext {
       stewardModel: process.env.STEWARD_MODEL ?? "",
       instructions: process.env.INSTRUCTIONS ?? "",
       configPath: process.env.CONFIG_PATH ?? ".github/droid-ci.yml",
+      reviewConfig,
     },
   };
 

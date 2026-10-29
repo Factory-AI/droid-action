@@ -15,6 +15,7 @@ import { isAutomationContext } from "../github/context";
 import { prepareStewardMode } from "../steward";
 import { DroidRunType, resolveTagRunType, setDroidRunType } from "../run-type";
 import { DROID_APP_BOT_ID } from "../github/bot-identity";
+import { hasSummaryMarker } from "../core/review/markers";
 const SECURITY_REVIEW_MARKER = "## Security Review Summary";
 
 export function shouldTriggerTag(context: GitHubContext): boolean {
@@ -54,12 +55,26 @@ async function hasExistingSecurityReview(
       per_page: 100,
     });
 
+    let viewer: string | undefined;
+    try {
+      viewer = (
+        await octokit.graphql<{ viewer: { login: string } }>(
+          "query DroidSecurityViewer { viewer { login } }",
+        )
+      ).viewer.login;
+    } catch {
+      /* The known Droid App id remains a safe identity fallback. */
+    }
     const hasSecurityReview = comments.data.some((comment) => {
       const isOurBot =
         comment.user?.id === DROID_APP_BOT_ID ||
-        (comment.user?.type === "Bot" &&
-          comment.user?.login.toLowerCase().includes("droid"));
-      return isOurBot && comment.body?.includes(SECURITY_REVIEW_MARKER);
+        (!!viewer && comment.user?.login === viewer);
+      const body = comment.body ?? "";
+      return (
+        isOurBot &&
+        (body.includes(SECURITY_REVIEW_MARKER) ||
+          (hasSummaryMarker(body) && body.includes("Security review: ran")))
+      );
     });
 
     return hasSecurityReview;
@@ -110,7 +125,6 @@ export async function prepareTagExecution({
   if (runType) {
     setDroidRunType(runType);
   }
-
   let runAutomaticSecurityReview = context.inputs.automaticSecurityReview;
   if (runAutomaticSecurityReview) {
     const hasExisting = await hasExistingSecurityReview(octokit, context);
@@ -123,15 +137,13 @@ export async function prepareTagExecution({
       if (!context.inputs.automaticReview) {
         core.setOutput("run_code_review", "false");
         core.setOutput("run_security_review", "false");
-        return {
-          skipped: true,
-          reason: "security_review_exists",
-          branchInfo: {
-            baseBranch: "",
-            currentBranch: "",
-          },
-          mcpTools: "",
-        };
+        return prepareSecurityReviewMode({
+          context,
+          octokit,
+          githubToken,
+          runType,
+          skipReason: "Security review already exists on this PR.",
+        });
       }
     }
   }
@@ -151,13 +163,15 @@ export async function prepareTagExecution({
       ? "security"
       : "default";
 
-  const commentData = await createInitialComment(
-    octokit.rest,
-    context,
-    commentType,
-    runType,
-  );
-  const commentId = commentData.id;
+  const isReviewRun =
+    runType === null ||
+    runType === DroidRunType.Review ||
+    runType === DroidRunType.Default ||
+    runType === DroidRunType.SecurityReview;
+  const commentData = isReviewRun
+    ? undefined
+    : await createInitialComment(octokit.rest, context, commentType, runType);
+  const commentId = commentData?.id;
 
   // Handle when both automatic review flags are set
   if (
