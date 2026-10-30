@@ -209,7 +209,9 @@ describe("platform-specific review output contracts", () => {
       expect(parsed.approved).toHaveLength(0);
       expect(parsed.outsideDiff).toHaveLength(1);
       expect(parsed.findings).toHaveLength(1);
-      expect(parsed.fixedFindingIds).toEqual(["verified"]);
+      expect(parsed.fixedFindings.map((finding) => finding.id)).toEqual([
+        "verified",
+      ]);
       const rendered = renderReviewSummary({
         state: "findings",
         platform: platform.platform,

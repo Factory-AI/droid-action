@@ -8,7 +8,11 @@
  * `src/entrypoints/gitlab-post-review.ts` and
  * `src/entrypoints/github-post-review.ts` consume the parsed shape.
  */
-import { normalizeFinding, normalizeSummary } from "./finding";
+import {
+  normalizeFinding,
+  normalizeSummary,
+  record as asRecord,
+} from "./finding";
 import type { DroppedFinding, ReviewFinding, ReviewSummaryData } from "./types";
 export type {
   ReviewFinding,
@@ -50,7 +54,6 @@ export type ParsedValidatedReview = {
   dropped: DroppedFinding[];
   summary: ReviewSummaryData;
   fixedFindings: Array<{ id: string; evidence: string }>;
-  fixedFindingIds: string[];
 };
 
 export class InvalidValidatedReviewError extends Error {
@@ -58,12 +61,6 @@ export class InvalidValidatedReviewError extends Error {
     super(`Invalid validated review file: ${message}`);
     this.name = "InvalidValidatedReviewError";
   }
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
 }
 
 function asPositiveInt(value: unknown): number | null {
@@ -253,6 +250,5 @@ export function parseValidatedReview(raw: string): ParsedValidatedReview {
     dropped,
     summary: normalizeSummary(root.reviewSummary),
     fixedFindings,
-    fixedFindingIds: fixedFindings.map((finding) => finding.id),
   };
 }

@@ -1,4 +1,5 @@
 import type { ReviewSummaryData } from "./types";
+import type { ReviewUxConfig } from "../config";
 
 export type ReviewMetadataInput = {
   changedPaths: string[];
@@ -10,7 +11,7 @@ export type ReviewMetadataInput = {
   /** Optional provider-verified user/team allowlist; unknown owners are omitted. */
   availableReviewers?: string[];
   includeEffort?: boolean;
-  preMergeChecks?: Array<"title" | "description" | "linked_issue">;
+  preMergeChecks?: ReviewUxConfig["review_pre_merge_checks"];
   ignoredPaths?: Array<{ path: string; reason: string }>;
   security?: NonNullable<ReviewSummaryData["security"]>;
 };
@@ -46,7 +47,10 @@ function matchesCodeownersPattern(pattern: string, filePath: string): boolean {
   if (!pattern || /^[!#]/.test(pattern) || /[\[\]]/.test(pattern)) return false;
   const anchored = pattern.startsWith("/");
   const directory = pattern.endsWith("/");
-  const normalized = pattern.replace(/^\//, "").replace(/\/$/, "");
+  const normalized = pattern
+    .replace(/^\//, "")
+    .replace(/\/$/, "")
+    .replace(/[{}]/g, "\\$&");
   if (!normalized) return false;
   const rootRelative = anchored || normalized.includes("/");
   const glob = rootRelative ? normalized : `**/${normalized}`;
@@ -74,9 +78,13 @@ export function suggestedReviewersFromCodeowners(
     return [{ pattern, owners }];
   });
   const available = availableReviewers
-    ? new Set(availableReviewers.map((owner) => owner.replace(/^@/, "")))
+    ? new Set(
+        availableReviewers.map((owner) =>
+          owner.replace(/^@/, "").toLowerCase(),
+        ),
+      )
     : null;
-  const suggestions = new Set<string>();
+  const suggestions = new Map<string, string>();
   for (const rawPath of changedPaths) {
     const filePath = rawPath.replace(/\\/g, "/").replace(/^\.\//, "");
     if (!filePath || filePath.split("/").includes("..")) continue;
@@ -86,9 +94,13 @@ export function suggestedReviewersFromCodeowners(
         owners = rule.owners;
     }
     for (const owner of owners)
-      if (!available || available.has(owner)) suggestions.add(owner);
+      if (
+        (!available || available.has(owner.toLowerCase())) &&
+        !suggestions.has(owner.toLowerCase())
+      )
+        suggestions.set(owner.toLowerCase(), owner);
   }
-  return [...suggestions].sort();
+  return [...suggestions.values()].sort();
 }
 
 function visibleDescription(description: string): string {

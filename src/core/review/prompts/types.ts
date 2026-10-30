@@ -1,3 +1,5 @@
+import type { ReviewUxConfig } from "../config";
+
 /**
  * Shared types for the platform-agnostic review prompts.
  *
@@ -77,16 +79,16 @@ export interface ReviewTerminology {
 export type ReviewPostingMode = "tool" | "file";
 
 export type ReviewPromptSettings = {
-  depth: "deep" | "shallow";
-  diagram: "auto" | "off";
-  effort: boolean;
-  suggestReviewers: boolean;
-  preMergeChecks: Array<"title" | "description" | "linked_issue">;
-  ignorePaths: string[];
-  severityThreshold: "P0" | "P1" | "P2";
-  securitySeverityThreshold: "critical" | "high" | "medium" | "low";
-  securityBlockOnCritical: boolean;
-  securityBlockOnHigh: boolean;
+  depth: ReviewUxConfig["review_depth"];
+  diagram: ReviewUxConfig["review_diagram"];
+  effort: ReviewUxConfig["review_effort"];
+  suggestReviewers: ReviewUxConfig["review_suggest_reviewers"];
+  preMergeChecks: ReviewUxConfig["review_pre_merge_checks"];
+  ignorePaths: ReviewUxConfig["review_ignore_paths"];
+  severityThreshold: ReviewUxConfig["review_severity_threshold"];
+  securitySeverityThreshold: ReviewUxConfig["security_severity_threshold"];
+  securityBlockOnCritical: ReviewUxConfig["security_block_on_critical"];
+  securityBlockOnHigh: ReviewUxConfig["security_block_on_high"];
 };
 
 export interface ReviewPromptContext {

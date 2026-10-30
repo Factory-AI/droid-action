@@ -35,7 +35,9 @@ describe("rich validated review schema", () => {
         ],
       }),
     );
-    expect(parsed.fixedFindingIds).toEqual(["fixed"]);
+    expect(parsed.fixedFindings.map((finding) => finding.id)).toEqual([
+      "fixed",
+    ]);
     expect(parsed.approvedCount).toBe(0);
     expect(parsed.rejectedCount).toBe(0);
   });
@@ -184,7 +186,9 @@ describe("rich validated review schema", () => {
         ],
       }),
     );
-    expect(parsed.fixedFindingIds).toEqual(["f-fixed"]);
+    expect(parsed.fixedFindings.map((finding) => finding.id)).toEqual([
+      "f-fixed",
+    ]);
     expect(parsed.fixedFindings[0]?.evidence).toContain("regression test");
     expect(parsed.dropped[0]?.reason).toContain("existing guard");
     expect(parsed.skipped).toHaveLength(1);

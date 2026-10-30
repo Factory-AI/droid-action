@@ -12,12 +12,14 @@ export type FileLineIndex = {
   oldLines: Map<number, number | "removed">;
 };
 
-const HUNK_HEADER = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
+const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
 type DiffLineState = {
   index: FileLineIndex;
   oldLine: number;
   newLine: number;
+  oldRemaining: number;
+  newRemaining: number;
   inHunk: boolean;
 };
 
@@ -26,6 +28,8 @@ function createDiffLineState(): DiffLineState {
     index: { newLines: new Map(), oldLines: new Map() },
     oldLine: 0,
     newLine: 0,
+    oldRemaining: 0,
+    newRemaining: 0,
     inHunk: false,
   };
 }
@@ -34,8 +38,10 @@ function indexDiffLine(state: DiffLineState, raw: string): void {
   const hunk = HUNK_HEADER.exec(raw);
   if (hunk) {
     state.oldLine = Number(hunk[1]);
-    state.newLine = Number(hunk[2]);
-    state.inHunk = true;
+    state.newLine = Number(hunk[3]);
+    state.oldRemaining = Number(hunk[2] ?? 1);
+    state.newRemaining = Number(hunk[4] ?? 1);
+    state.inHunk = state.oldRemaining > 0 || state.newRemaining > 0;
     return;
   }
   if (!state.inHunk || raw.startsWith("\\")) return;
@@ -43,9 +49,11 @@ function indexDiffLine(state: DiffLineState, raw: string): void {
   if (raw.startsWith("+")) {
     state.index.newLines.set(state.newLine, "added");
     state.newLine += 1;
+    state.newRemaining -= 1;
   } else if (raw.startsWith("-")) {
     state.index.oldLines.set(state.oldLine, "removed");
     state.oldLine += 1;
+    state.oldRemaining -= 1;
   } else {
     // Context lines normally start with a space. Treat an empty line as
     // context too because some artifact producers strip the prefix.
@@ -53,7 +61,10 @@ function indexDiffLine(state: DiffLineState, raw: string): void {
     state.index.oldLines.set(state.oldLine, state.newLine);
     state.newLine += 1;
     state.oldLine += 1;
+    state.newRemaining -= 1;
+    state.oldRemaining -= 1;
   }
+  state.inHunk = state.oldRemaining > 0 || state.newRemaining > 0;
 }
 
 /** Indexes the hunks for one file diff. */
@@ -74,9 +85,10 @@ function decodeGitQuotedPath(value: string): string {
   const bytes: number[] = [];
 
   for (let i = 0; i < value.length; i += 1) {
-    const current = value[i]!;
+    const current = String.fromCodePoint(value.codePointAt(i)!);
     if (current !== "\\") {
       bytes.push(...Buffer.from(current));
+      i += current.length - 1;
       continue;
     }
 
@@ -199,12 +211,25 @@ export function buildUnifiedDiffIndex(
       };
       continue;
     }
+    // GitLab also supplies headerless unified patches. Hunk counts distinguish
+    // the next file's headers from removed/added source beginning with --/++.
+    if (!current?.state.inHunk && raw.startsWith("--- ")) {
+      if (
+        current?.state.index.oldLines.size ||
+        current?.state.index.newLines.size
+      )
+        flush();
+      current = {
+        oldPath: normalizePatchPath(raw.slice(4)),
+        newPath: null,
+        state: createDiffLineState(),
+      };
+      continue;
+    }
     if (!current) continue;
-
-    if (!current.state.inHunk && raw.startsWith("--- ")) {
-      current.oldPath = normalizePatchPath(raw.slice(4));
-    } else if (!current.state.inHunk && raw.startsWith("+++ ")) {
+    if (!current.state.inHunk && raw.startsWith("+++ ")) {
       current.newPath = normalizePatchPath(raw.slice(4));
+      continue;
     }
 
     indexDiffLine(current.state, raw);

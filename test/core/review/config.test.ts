@@ -1,14 +1,33 @@
 import { describe, expect, it, mock, spyOn } from "bun:test";
 import {
   automaticReviewSkipReason,
-  loadReviewUxConfigFromBase,
   parseReviewConfigYaml,
   resolveReviewUxConfig,
   reviewConfigEnvironment,
   reviewConfigFromEnvironment,
   shouldIgnoreReviewPath,
 } from "../../../src/core/review/config";
+import { loadReviewUxConfigFromBase } from "../../../src/github/data/review-config";
 import { resolveReviewConfig } from "../../../src/utils/review-depth";
+
+const git = {
+  getTree: async ({ tree_sha }: { tree_sha: string }) => ({
+    data: {
+      truncated: false,
+      tree:
+        tree_sha === "c".repeat(40)
+          ? [{ path: "review.yaml", type: "blob", mode: "100644" }]
+          : [
+              {
+                path: ".factory",
+                type: "tree",
+                mode: "040000",
+                sha: "c".repeat(40),
+              },
+            ],
+    },
+  }),
+};
 
 describe("trusted base review configuration", () => {
   it("keeps documented effective defaults without action inputs", () => {
@@ -253,7 +272,7 @@ describe("trusted base review configuration", () => {
       }),
     );
     const config = await loadReviewUxConfigFromBase({
-      client: { rest: { pulls: { get }, repos: { getContent } } },
+      client: { rest: { pulls: { get }, repos: { getContent }, git } },
       owner: "owner",
       repo: "repo",
       prNumber: 7,
@@ -282,6 +301,7 @@ describe("trusted base review configuration", () => {
             get: async () => ({ data: { base: { sha: "a".repeat(40) } } }),
           },
           repos: { getContent },
+          git,
         },
       },
       owner: "owner",
@@ -300,6 +320,7 @@ describe("trusted base review configuration", () => {
       rest: {
         pulls: { get: async () => ({ data: { base: { sha: "head" } } }) },
         repos: { getContent },
+        git,
       },
     };
     await expect(

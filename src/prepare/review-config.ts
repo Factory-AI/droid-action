@@ -1,11 +1,13 @@
 import * as core from "@actions/core";
 import {
-  loadReviewUxConfigFromBase,
   reviewConfigEnvironment,
   reviewConfigFromEnvironment,
   reviewInputsFromEnvironment,
-  type ReviewConfigBaseClient,
 } from "../core/review/config";
+import {
+  loadReviewUxConfigFromBase,
+  type ReviewConfigBaseClient,
+} from "../github/data/review-config";
 import { isEntityContext, type GitHubContext } from "../github/context";
 
 /** Runs before trigger selection or checkout, so the PR cannot set its own policy. */

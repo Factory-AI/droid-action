@@ -1,5 +1,5 @@
 import type { ReviewFinding } from "./validated/types";
-import { normalizePatchPath } from "./validated/diff";
+import { buildUnifiedDiffIndex, type FileLineIndex } from "./validated/diff";
 
 export type IncrementalReviewState = {
   head: string;
@@ -97,43 +97,30 @@ export function changedReviewLines(
     string,
     { oldLines: Set<number>; newLines: Set<number> }
   >();
-  let file: { oldLines: Set<number>; newLines: Set<number> } | undefined;
-  let oldLine = 0;
-  let newLine = 0;
-  let inHunk = false;
-  for (const line of diff.split("\n")) {
-    if (line.startsWith("diff --git ")) {
-      file = undefined;
-      inHunk = false;
-      continue;
+  const projected = new Map<
+    FileLineIndex,
+    { oldLines: Set<number>; newLines: Set<number> }
+  >();
+  for (const [path, index] of buildUnifiedDiffIndex(diff)) {
+    // A file header alone does not establish a reviewable hunk.
+    if (!index.oldLines.size && !index.newLines.size) continue;
+    let file = projected.get(index);
+    if (!file) {
+      file = {
+        oldLines: new Set(
+          [...index.oldLines]
+            .filter(([, kind]) => kind === "removed")
+            .map(([line]) => line),
+        ),
+        newLines: new Set(
+          [...index.newLines]
+            .filter(([, kind]) => kind === "added")
+            .map(([line]) => line),
+        ),
+      };
+      projected.set(index, file);
     }
-    if (!inHunk && line.startsWith("--- ")) {
-      file = { oldLines: new Set(), newLines: new Set() };
-      const name = normalizePatchPath(line.slice(4));
-      if (name) result.set(name, file);
-      continue;
-    }
-    if (!inHunk && line.startsWith("+++ ")) {
-      const name = normalizePatchPath(line.slice(4));
-      if (file && name) result.set(name, file);
-      continue;
-    }
-    const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
-    if (hunk) {
-      inHunk = true;
-      oldLine = Number(hunk[1]);
-      newLine = Number(hunk[2]);
-      continue;
-    }
-    if (!file || !inHunk) continue;
-    if (line.startsWith("-")) {
-      file.oldLines.add(oldLine++);
-    } else if (line.startsWith("+")) {
-      file.newLines.add(newLine++);
-    } else if (line.startsWith(" ")) {
-      oldLine++;
-      newLine++;
-    }
+    result.set(path, file);
   }
   return result;
 }

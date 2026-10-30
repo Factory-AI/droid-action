@@ -186,7 +186,8 @@ describe("lifecycle fields through existing parser and deterministic policy", ()
       { id: "no-evidence", status: "fixed", evidence: "" },
       { id: "still-open", status: "open", evidence: "Still vulnerable." },
     ]);
-    expect(result.fixedFindingIds).toEqual([finding.id]);
+    const fixedIds = result.fixedFindings.map((finding) => finding.id);
+    expect(fixedIds).toEqual([finding.id]);
     expect(result.approved).toHaveLength(1);
     const reconcile = (eligibleFixedIds: string[], fixedIds: string[]) =>
       reconcileFindings({
@@ -196,17 +197,15 @@ describe("lifecycle fields through existing parser and deterministic policy", ()
         fixedIds,
         head: "abcdef1234567890",
       });
-    expect(reconcile([], result.fixedFindingIds).resolved).toEqual([]);
+    expect(reconcile([], fixedIds).resolved).toEqual([]);
     expect(reconcile([finding.id], []).resolved).toEqual([]);
-    expect(
-      reconcile([finding.id], result.fixedFindingIds).resolved,
-    ).toHaveLength(1);
+    expect(reconcile([finding.id], fixedIds).resolved).toHaveLength(1);
     expect(
       reconcileFindings({
         previous: [{ ...finding, state: "dismissed" }],
         current: [],
         eligibleFixedIds: [finding.id],
-        fixedIds: result.fixedFindingIds,
+        fixedIds,
         head: "abcdef1234567890",
       }).resolved,
     ).toEqual([]);

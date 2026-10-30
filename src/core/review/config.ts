@@ -1,6 +1,6 @@
 import { parseDocument } from "yaml";
 import { z } from "zod";
-import { retryWithBackoff } from "../../utils/retry";
+import { normalizeReviewDepth } from "../../utils/review-depth";
 
 const list = z.array(z.string().min(1).max(500)).max(200);
 const sections = z.array(
@@ -188,35 +188,23 @@ export function parseReviewConfigYaml(raw: string): Record<string, unknown> {
   }
 }
 
-const booleanKeys = new Set([
-  "review_reactions",
-  "review_check_run",
-  "review_incremental",
-  "review_auto_resolve",
-  "show_dropped_findings",
-  "include_agent_prompts",
-  "review_drafts",
-  "review_effort",
-  "review_category_chips",
-  "review_suggest_reviewers",
-  "automatic_review",
-  "automatic_security_review",
-  "security_block_on_critical",
-  "security_block_on_high",
-]);
-const listKeys = new Set([
-  "review_summary_sections",
-  "review_ignore_paths",
-  "review_auto_triggers",
-  "review_pre_merge_checks",
-]);
+const inputSchemas = Object.fromEntries(
+  Object.entries(configSchema.shape).map(([key, value]) => {
+    let schema: z.ZodTypeAny = value;
+    while (schema instanceof z.ZodDefault || schema instanceof z.ZodOptional) {
+      schema =
+        schema instanceof z.ZodDefault
+          ? schema.removeDefault()
+          : schema.unwrap();
+    }
+    return [key, schema];
+  }),
+);
 
 function inputValue(key: string, raw: string): unknown {
-  if (key === "review_depth" && raw !== "deep" && raw !== "shallow") {
-    console.warn("Unknown review_depth; falling back to deep.");
-    return "deep";
-  }
-  if (booleanKeys.has(key)) {
+  if (key === "review_depth") return normalizeReviewDepth(raw);
+  const schema = inputSchemas[key];
+  if (schema instanceof z.ZodBoolean) {
     if (raw !== "true" && raw !== "false")
       throw new ReviewConfigError(`${key} must be true or false`);
     return raw === "true";
@@ -226,7 +214,7 @@ function inputValue(key: string, raw: string): unknown {
       throw new ReviewConfigError(`${key} must be a nonnegative integer`);
     return Number(raw);
   }
-  if (listKeys.has(key)) {
+  if (schema instanceof z.ZodArray) {
     if (raw === "[]" || raw === "off") return [];
     return raw
       .split(/[,\n]/)
@@ -290,16 +278,19 @@ export function reviewConfigFromEnvironment(
 export function reviewConfigEnvironment(
   config: ReviewUxConfig,
 ): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(config).map(([key, value]) => [
-      key.toUpperCase(),
-      Array.isArray(value)
-        ? value.length
-          ? value.join(",")
-          : "[]"
-        : String(value),
-    ]),
-  );
+  return {
+    ...Object.fromEntries(
+      Object.entries(config).map(([key, value]) => [
+        key.toUpperCase(),
+        Array.isArray(value)
+          ? value.length
+            ? value.join(",")
+            : "[]"
+          : String(value),
+      ]),
+    ),
+    REVIEW_CONFIG_JSON: JSON.stringify(config),
+  };
 }
 
 export function shouldIgnoreReviewPath(
@@ -327,90 +318,4 @@ export function automaticReviewSkipReason(options: {
   )
     return `automatic trigger ${options.eventAction} is disabled`;
   return null;
-}
-
-export type ReviewConfigBaseClient = {
-  rest: {
-    pulls: {
-      get(params: {
-        owner: string;
-        repo: string;
-        pull_number: number;
-      }): Promise<{ data: unknown }>;
-    };
-    repos: {
-      getContent(params: {
-        owner: string;
-        repo: string;
-        path: string;
-        ref: string;
-      }): Promise<{ data: unknown }>;
-    };
-  };
-};
-
-function status(error: unknown): unknown {
-  return error && typeof error === "object" && "status" in error
-    ? error.status
-    : undefined;
-}
-
-/** Fetches a fresh PR base SHA and pins the config read to that immutable SHA. */
-export async function loadReviewUxConfigFromBase(options: {
-  client: ReviewConfigBaseClient;
-  owner: string;
-  repo: string;
-  prNumber: number;
-  inputs?: ReviewConfigInputs;
-  onBaseSha?: (sha: string) => void;
-}): Promise<ReviewUxConfig> {
-  const { client, owner, repo, prNumber } = options;
-  const request = <T>(operation: () => Promise<T>) =>
-    retryWithBackoff(operation, {
-      initialDelayMs: 200,
-      maxDelayMs: 1000,
-      shouldRetry: (error) => status(error) !== 404 && status(error) !== 403,
-    });
-  const response = await request(() =>
-    client.rest.pulls.get({ owner, repo, pull_number: prNumber }),
-  );
-  const pr = record(response.data);
-  const base = record(pr?.base);
-  if (typeof base?.sha !== "string" || !/^[a-f\d]{40,64}$/i.test(base.sha)) {
-    throw new ReviewConfigError(
-      "could not determine the immutable base commit; refusing to read head-branch configuration",
-    );
-  }
-  const baseSha = base.sha;
-  options.onBaseSha?.(baseSha);
-  let fileConfig: Record<string, unknown> = {};
-  try {
-    const response = await request(() =>
-      client.rest.repos.getContent({
-        owner,
-        repo,
-        path: REVIEW_CONFIG_PATH,
-        ref: baseSha,
-      }),
-    );
-    const data = record(response.data);
-    if (
-      !data ||
-      data.type !== "file" ||
-      data.encoding !== "base64" ||
-      typeof data.content !== "string"
-    ) {
-      throw new ReviewConfigError(
-        "expected a regular UTF-8 configuration file",
-      );
-    }
-    if (typeof data.size === "number" && data.size > MAX_REVIEW_CONFIG_BYTES)
-      throw new ReviewConfigError("file exceeds 64 KiB");
-    fileConfig = parseReviewConfigYaml(
-      Buffer.from(data.content, "base64").toString("utf8"),
-    );
-  } catch (error) {
-    if (status(error) !== 404) throw error;
-  }
-  return resolveReviewUxConfig({ fileConfig, inputs: options.inputs });
 }

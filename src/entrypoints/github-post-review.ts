@@ -584,7 +584,7 @@ export async function run(
         resolved: thread.resolved,
       })),
       eligibleFixedIds,
-      fixedIds: parsed.fixedFindingIds,
+      fixedIds: parsed.fixedFindings.map((finding) => finding.id),
       head: commitId || lifecycle.head,
       incremental: !!lifecycle.incrementalBaseSha,
       changedPaths: new Set(changedReviewLines(priorDiff ?? diff).keys()),

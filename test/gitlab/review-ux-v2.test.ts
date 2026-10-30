@@ -831,6 +831,7 @@ describe("GitLab v2 production entrypoints, local API only", () => {
       "GITLAB_TOKEN",
       "OVERRIDE_GITLAB_TOKEN",
       "REVIEW_UX_V2",
+      "REVIEW_CONFIG_JSON",
       "DROID_SECURITY_FULL",
       "DROID_SECURITY_ONLY",
       "DROID_REVIEW_HEAD_SHA",

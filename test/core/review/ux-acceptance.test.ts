@@ -7,10 +7,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { createMockContext } from "../../mockContext";
-import {
-  loadReviewUxConfigFromBase,
-  resolveReviewUxConfig,
-} from "../../../src/core/review/config";
+import { resolveReviewUxConfig } from "../../../src/core/review/config";
+import { loadReviewUxConfigFromBase } from "../../../src/github/data/review-config";
 import {
   encodeFindingMarker,
   encodeReviewState,
@@ -470,6 +468,23 @@ describe("review UX production boundaries", () => {
     const api = boundary((call) => {
       if (call.url.pathname.endsWith("/pulls/7"))
         return Response.json({ base: { sha: BASE }, head: { sha: HEAD } });
+      if (call.url.pathname.endsWith(`/git/trees/${BASE}`))
+        return Response.json({
+          truncated: false,
+          tree: [
+            {
+              path: ".factory",
+              type: "tree",
+              mode: "040000",
+              sha: "d".repeat(40),
+            },
+          ],
+        });
+      if (call.url.pathname.endsWith(`/git/trees/${"d".repeat(40)}`))
+        return Response.json({
+          truncated: false,
+          tree: [{ path: "review.yaml", type: "blob", mode: "100644" }],
+        });
       if (
         decodeURIComponent(call.url.pathname).endsWith(
           "/contents/.factory/review.yaml",
