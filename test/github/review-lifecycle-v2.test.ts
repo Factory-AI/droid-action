@@ -24,6 +24,7 @@ import {
   authoritativeReviewTarget,
   findReviewSummary,
   finishReviewLifecycle,
+  loadBoundReviewLifecycle,
   prepareReviewLifecycle,
   readReviewLifecycle,
   replaceReviewDescription,
@@ -103,6 +104,9 @@ describe("review lifecycle production boundaries", () => {
       })),
     };
     let body = `${SUMMARY_MARKER}\n${encodeReviewState(state)}`;
+    let liveHead = HEAD;
+    let description =
+      "Preserves cancellation and handles the timeout. Fixes #12.";
     let threads: any[] = [];
     const record = (method: string, input: any) =>
       calls.push({ method, input });
@@ -179,10 +183,10 @@ describe("review lifecycle production boundaries", () => {
             record("getPR", input);
             return {
               data: {
-                head: { sha: HEAD },
+                head: { sha: liveHead },
                 base: { sha: BASE },
                 title: "Fix request timeouts",
-                body: "Preserves cancellation and handles the timeout. Fixes #12.",
+                body: description,
               },
             };
           },
@@ -208,6 +212,7 @@ describe("review lifecycle production boundaries", () => {
           },
           update: async (input: any) => {
             record("updatePR", input);
+            description = input.body;
             return { data: {} };
           },
           createReplyForReviewComment: async (input: any) => {
@@ -270,7 +275,11 @@ describe("review lifecycle production boundaries", () => {
         process.env[name.toUpperCase()] = value;
       return result;
     }
-    async function post(results: unknown[], resolutions?: unknown[]) {
+    async function post(
+      results: unknown[],
+      resolutions?: unknown[],
+      reviewSession?: { runId: string; runAttempt?: string },
+    ) {
       await writeFile(
         join(directory, "droid-prompts/pr.diff"),
         "model can rewrite this artifact",
@@ -284,7 +293,11 @@ describe("review lifecycle production boundaries", () => {
           reviewSummary: { body: "Review complete." },
         }),
       );
-      return postReview({ context, octokit });
+      return postReview({
+        context,
+        octokit,
+        ...(reviewSession ? { reviewSession } : {}),
+      });
     }
     function setThreads(resolved: boolean, author = 138933559) {
       threads = [
@@ -321,8 +334,256 @@ describe("review lifecycle production boundaries", () => {
       post,
       setThreads,
       body: () => body,
+      setSummary: (next: string, head = HEAD) => {
+        body = next;
+        liveHead = head;
+      },
+      description: () => description,
+      setDescription: (next: string) => {
+        description = next;
+      },
     };
   }
+  it("refuses attempt A after attempt B on the same workflow run and keeps B valid", async () => {
+    const f = fixture([]);
+    process.env.GITHUB_RUN_ATTEMPT = "1";
+    const a = await f.prepare();
+    process.env.GITHUB_RUN_ATTEMPT = "2";
+    const b = await f.prepare();
+    const ownedByB = f.body();
+    await finishReviewLifecycle({
+      octokit: f.octokit,
+      run: a.run,
+      input: { state: "clean" },
+    });
+    const afterA = f.body();
+    await finishReviewLifecycle({
+      octokit: f.octokit,
+      run: b.run,
+      input: { state: "clean" },
+    });
+    expect(afterA).toBe(ownedByB);
+    expect(f.body()).toContain(`run=123 attempt=2 -->`);
+    expect(f.body()).toContain("Looks good to merge");
+  });
+  it("uses the trusted prepared attempt at post when ambient attempt is absent and cache is poisoned", async () => {
+    const f = fixture([]);
+    process.env.GITHUB_RUN_ATTEMPT = "2";
+    const prepared = await f.prepare();
+    const reviewSession = JSON.parse(
+      JSON.stringify({ runId: "123", runAttempt: "2" }),
+    );
+    const cache = (await readReviewLifecycle())!;
+    Object.assign(cache, { runAttempt: "99" });
+    await saveReviewLifecycle(cache);
+    delete process.env.GITHUB_RUN_ATTEMPT;
+    await f.post([], undefined, reviewSession);
+    expect(prepared.run).toHaveProperty("runAttempt", "2");
+    expect(f.body()).toContain("droid-review-completed:v1");
+    expect(f.body()).toContain("run=123 attempt=2 -->");
+  });
+  it("does not let a legacy unknown-attempt marker authenticate attempt 2", async () => {
+    const f = fixture([]);
+    process.env.GITHUB_RUN_ATTEMPT = "2";
+    await f.prepare();
+    f.setSummary(
+      `${SUMMARY_MARKER}\n<!-- droid-review-active:v1 head=${HEAD} run=123 -->`,
+    );
+    const loaded = await loadBoundReviewLifecycle(f.octokit);
+    expect(loaded?.superseded).toBe(true);
+  });
+  it("does not downgrade known attempt 2 when an optional identity omits its attempt", async () => {
+    const f = fixture([]);
+    process.env.GITHUB_RUN_ATTEMPT = "2";
+    await f.prepare();
+    const legacy = `${SUMMARY_MARKER}\n<!-- droid-review-active:v1 head=${HEAD} run=123 -->`;
+    f.setSummary(legacy);
+    await expect(f.post([], undefined, { runId: "123" })).rejects.toThrow(
+      "superseded",
+    );
+    expect(f.body()).toBe(legacy);
+  });
+  it("captures the attempt before preparation awaits and retains legacy attempt 1 compatibility", async () => {
+    const f = fixture([]);
+    process.env.GITHUB_RUN_ATTEMPT = "1";
+    const pending = f.prepare();
+    process.env.GITHUB_RUN_ATTEMPT = "2";
+    const prepared = await pending;
+    expect(prepared.run.runAttempt).toBe("1");
+    process.env.GITHUB_RUN_ATTEMPT = "1";
+    f.setSummary(
+      `${SUMMARY_MARKER}\n<!-- droid-review-active:v1 head=${HEAD} run=123 -->`,
+    );
+    const loaded = await loadBoundReviewLifecycle(f.octokit);
+    expect(loaded?.superseded).toBe(false);
+    await finishReviewLifecycle({
+      octokit: f.octokit,
+      run: loaded!,
+      input: { state: "clean" },
+    });
+    expect(f.body()).toContain("droid-review-completed:v1");
+    expect(f.body()).toContain("run=123 attempt=1 -->");
+  });
+  it.each([false, true])(
+    "rejects conflicting declared provenance before publication (outside=%s)",
+    async (outside) => {
+      const f = fixture([]);
+      await f.prepare();
+      f.calls.length = 0;
+      await expect(
+        f.post([
+          {
+            status: "approved",
+            comment: {
+              ...finding(),
+              commit_id: OLD,
+              outside_diff: outside,
+            },
+          },
+        ]),
+      ).rejects.toThrow("conflicting");
+      expect(f.calls.some((call) => call.method === "createReview")).toBe(
+        false,
+      );
+      expect(f.calls.some((call) => call.method === "updateComment")).toBe(
+        false,
+      );
+    },
+  );
+  it.each([false, true])(
+    "rechecks ownership after awaited publication (head changed=%s)",
+    async (changedHead) => {
+      const f = fixture([]);
+      await f.prepare();
+      const newerHead = changedHead ? OLD : HEAD;
+      const newer = `${SUMMARY_MARKER}\n${encodeReviewState({ head: newerHead, findings: [] })}\n<!-- droid-review-active:v1 head=${newerHead} run=456 -->`;
+      let release!: () => void;
+      let entered!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const blocked = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      spyOn(f.octokit.rest.pulls, "createReview").mockImplementation(
+        (async () => {
+          entered();
+          await blocked;
+          return { data: { id: 70 } };
+        }) as any,
+      );
+      f.calls.length = 0;
+      const posting = f.post([{ status: "approved", comment: finding() }]);
+      await waiting;
+      f.setSummary(newer, newerHead);
+      release();
+      await posting;
+      expect(f.body()).toBe(newer);
+      expect(f.calls.some((call) => call.method === "updateComment")).toBe(
+        false,
+      );
+    },
+  );
+  it("does not infer this run completed from a competing active marker at the same head", async () => {
+    const f = fixture([]);
+    await f.prepare();
+    f.setSummary(
+      `${SUMMARY_MARKER}\n${encodeReviewState({ head: HEAD, findings: [] })}\n<!-- droid-review-active:v1 head=${HEAD} run=456 -->`,
+    );
+    const bound = await loadBoundReviewLifecycle(f.octokit);
+    expect(bound?.completed).toBe(false);
+    expect(bound?.superseded).toBe(true);
+  });
+  it("does not accept an active-marker example in a fenced block as ownership", async () => {
+    const f = fixture([]);
+    const prepared = await f.prepare();
+    const newer = `${SUMMARY_MARKER}\n\`\`\`md\n<!-- droid-review-active:v1 head=${HEAD} run=123 -->\n\`\`\`\n<!-- droid-review-active:v1 head=${HEAD} run=456 -->`;
+    f.setSummary(newer);
+    await finishReviewLifecycle({
+      octokit: f.octokit,
+      run: prepared.run,
+      input: { state: "clean" },
+    });
+    expect(f.body()).toBe(newer);
+  });
+  it("recognizes its own completed session without repeating publication", async () => {
+    const f = fixture([]);
+    await f.prepare();
+    await f.post([]);
+    f.calls.length = 0;
+    const bound = await loadBoundReviewLifecycle(f.octokit);
+    expect(bound?.completed).toBe(true);
+    await finishReviewLifecycle({ octokit: f.octokit, run: bound! });
+    expect(f.calls.some((call) => call.method === "updateComment")).toBe(false);
+  });
+  it("keeps a later preparation owned without inheriting the previous session marker", async () => {
+    const f = fixture([]);
+    await f.prepare();
+    await f.post([]);
+    await f.prepare();
+    await f.post([]);
+    expect(f.body()).toContain("Looks good to merge");
+    expect(f.body().match(/droid-review-completed:v1/g) || []).toHaveLength(1);
+  });
+  it("rechecks session ownership before retrying an ambiguous sticky update", async () => {
+    const f = fixture([]);
+    const prepared = await f.prepare();
+    const newer = `${SUMMARY_MARKER}\n<!-- droid-review-active:v1 head=${HEAD} run=456 -->`;
+    const update = spyOn(
+      f.octokit.rest.issues,
+      "updateComment",
+    ).mockImplementation((async () => {
+      f.setSummary(newer);
+      throw new Error("connection lost before confirmation");
+    }) as any);
+    await finishReviewLifecycle({
+      octokit: f.octokit,
+      run: prepared.run,
+      input: { state: "clean" },
+    });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(f.body()).toBe(newer);
+  });
+  it("preserves current author description bytes at the actual publication boundary", async () => {
+    process.env.REVIEW_SUMMARY = "description";
+    const f = fixture([]);
+    const author =
+      "Author text\r\n\r\n```md\r\n<!-- droid-review-summary:start -->\r\nexample\r\n<!-- droid-review-summary:end -->\r\n```\r\n";
+    f.setDescription(author);
+    await f.prepare();
+    const edited = `Updated author preface\r\n${f.description()}`;
+    f.setDescription(edited);
+    await f.post([]);
+    expect(
+      f.description().startsWith(`Updated author preface\r\n${author}`),
+    ).toBe(true);
+    expect(f.description()).toContain("Looks good to merge");
+    expect(f.body()).toContain(
+      `droid-review-completed:v1 head=${HEAD} run=123`,
+    );
+  });
+  it("does not update a newer run's description after ownership changes", async () => {
+    process.env.REVIEW_SUMMARY = "description";
+    const f = fixture([]);
+    const prepared = await f.prepare();
+    const newer = `${SUMMARY_MARKER}\n<!-- droid-review-active:v1 head=${HEAD} run=456 -->`;
+    f.setSummary(newer);
+    f.setDescription("New author description owned by the newer run.");
+    f.calls.length = 0;
+    await finishReviewLifecycle({
+      octokit: f.octokit,
+      run: prepared.run,
+      input: { state: "clean" },
+    });
+    expect(f.description()).toBe(
+      "New author description owned by the newer run.",
+    );
+    expect(
+      f.calls.some(
+        (call) => call.method === "updatePR" || call.method === "updateComment",
+      ),
+    ).toBe(false);
+  });
   it("uses real returned discussion links and deterministic inline markers", async () => {
     const f = fixture([]);
     await f.prepare();

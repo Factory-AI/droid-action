@@ -43,6 +43,8 @@ export type ParsedValidatedReview = {
    * single SHA; the poster then omits `commit_id` rather than guess one.
    */
   commitId: string | null;
+  /** Conflicting declarations are not the same as absent legacy provenance. */
+  conflictingCommitIds: boolean;
   findings: ReviewFinding[];
   outsideDiff: ReviewFinding[];
   dropped: DroppedFinding[];
@@ -245,6 +247,7 @@ export function parseValidatedReview(raw: string): ParsedValidatedReview {
     skipped,
     summaryBody: summary ? asNonEmptyString(summary.body) : null,
     commitId,
+    conflictingCommitIds: shas.size > 1,
     findings,
     outsideDiff,
     dropped,

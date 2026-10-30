@@ -9,6 +9,8 @@ import {
   decodeReviewState,
   findReviewSummaryRange,
   hasSummaryMarker,
+  hasReviewSessionMarker,
+  stripReviewSessionMarkers,
   type ReviewState,
 } from "../../core/review/markers";
 import {
@@ -23,6 +25,7 @@ import type {
 import { redactCredentials } from "../../utils/redact-credentials";
 import { optionalGitHubOperation } from "./review-checks";
 import { reviewConfigFromEnvironment } from "../../core/review/config";
+import { fitReviewOutput } from "../../core/review/render/budget";
 
 export type ReviewLifecycleRun = {
   owner: string;
@@ -30,6 +33,8 @@ export type ReviewLifecycleRun = {
   prNumber: number;
   commentId: number;
   head: string;
+  runId?: string;
+  runAttempt?: string;
   base?: string;
   state: ReviewState;
   previousBody?: string;
@@ -45,6 +50,18 @@ export type ReviewLifecycleRun = {
   pullRequest?: { title: string; body: string; baseSha: string };
   previousState?: ReviewState;
 };
+
+export type ReviewSessionIdentity = Readonly<{
+  runId: string;
+  runAttempt?: string;
+}>;
+
+function validatedRunAttempt(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value)))
+    throw new Error("Invalid trusted workflow run attempt.");
+  return value;
+}
 
 export function reviewLifecycleFilePath(): string {
   return (
@@ -103,7 +120,12 @@ export function authoritativeReviewTarget(
 /** The local file is a cache, never authority to choose API targets or thread dispositions. */
 export async function loadBoundReviewLifecycle(
   octokit: Octokits,
+  reviewSession?: ReviewSessionIdentity,
 ): Promise<ReviewLifecycleRun | null> {
+  const runId = reviewSession?.runId ?? process.env.GITHUB_RUN_ID;
+  const runAttempt = validatedRunAttempt(
+    reviewSession?.runAttempt || process.env.GITHUB_RUN_ATTEMPT,
+  );
   let cached: ReviewLifecycleRun | null;
   try {
     cached = await readReviewLifecycle();
@@ -125,6 +147,8 @@ export async function loadBoundReviewLifecycle(
   const run: ReviewLifecycleRun = {
     ...cached,
     ...target,
+    runId,
+    runAttempt,
     commentId: 0,
     state: { head: "", findings: [] },
     completed: false,
@@ -179,13 +203,14 @@ export async function loadBoundReviewLifecycle(
         findings: [],
       };
       run.previousState = run.state;
-      run.previousBody = comment.data.body || undefined;
-      const active = `<!-- droid-review-active:v1 head=${target.head} run=${process.env.GITHUB_RUN_ID} -->`;
+      run.previousBody = comment.data.body
+        ? stripReviewSessionMarkers(comment.data.body)
+        : undefined;
       if (
         reviewConfigFromEnvironment().review_summary !== "off" &&
-        !(comment.data.body || "").split("\n").includes(active)
+        !hasSession(comment.data.body || "", run, "active")
       ) {
-        run.completed = run.state.head === target.head;
+        run.completed = hasSession(comment.data.body || "", run, "completed");
         run.superseded = !run.completed;
       }
     }
@@ -258,6 +283,61 @@ async function viewerLogin(octokit: Octokits): Promise<string | undefined> {
     return undefined;
   }
 }
+function sessionMarker(
+  run: ReviewLifecycleRun,
+  state: "active" | "completed",
+): string {
+  return `<!-- droid-review-${state}:v1 head=${run.head} run=${run.runId}${run.runAttempt ? ` attempt=${run.runAttempt}` : ""} -->`;
+}
+function hasSession(
+  body: string,
+  run: ReviewLifecycleRun,
+  state: "active" | "completed",
+): boolean {
+  // A legacy marker can only authenticate the first (or unknown legacy) attempt.
+  return (
+    hasReviewSessionMarker(body, sessionMarker(run, state)) ||
+    (run.runAttempt === "1" &&
+      hasReviewSessionMarker(
+        body,
+        sessionMarker({ ...run, runAttempt: undefined }, state),
+      ))
+  );
+}
+/** Revalidate within each write attempt. GitHub offers no atomic comment CAS. */
+async function ownsReviewSummary(
+  octokit: Octokits,
+  run: ReviewLifecycleRun,
+  allowCompleted = false,
+): Promise<boolean> {
+  if (run.superseded || !run.commentId || !run.runId) return false;
+  const viewer = await viewerLogin(octokit);
+  const pr = await octokit.rest.pulls.get({
+    owner: run.owner,
+    repo: run.repo,
+    pull_number: run.prNumber,
+  });
+  run.pullRequest = {
+    title: pr.data.title,
+    body: pr.data.body || "",
+    baseSha: pr.data.base.sha,
+  };
+  const comment = await octokit.rest.issues.getComment({
+    owner: run.owner,
+    repo: run.repo,
+    comment_id: run.commentId,
+  });
+  const body = comment.data.body || "";
+  const owned =
+    pr.data.head.sha === run.head &&
+    trustedAuthor(comment.data.user, viewer) &&
+    comment.data.issue_url.endsWith(`/issues/${run.prNumber}`) &&
+    hasSummaryMarker(body) &&
+    (hasSession(body, run, "active") ||
+      (allowCompleted && hasSession(body, run, "completed")));
+  if (!owned) run.superseded = true;
+  return owned;
+}
 export async function findReviewSummary(options: {
   octokit: Octokits;
   owner: string;
@@ -285,6 +365,7 @@ export async function prepareReviewLifecycle(options: {
   octokit: Octokits;
   context: ParsedGitHubContext;
   headSha: string;
+  runAttempt?: string;
   baseSha?: string;
   securityOnly?: boolean;
   trackingCommentId?: number;
@@ -295,6 +376,10 @@ export async function prepareReviewLifecycle(options: {
   skipReason?: string;
   run: ReviewLifecycleRun;
 }> {
+  // Capture before any awaited operation, never recover identity from the cache.
+  const runAttempt = validatedRunAttempt(
+    options.runAttempt ?? process.env.GITHUB_RUN_ATTEMPT,
+  );
   const { owner, repo } = options.context.repository;
   let existing;
   let lookupFailed = false;
@@ -321,9 +406,13 @@ export async function prepareReviewLifecycle(options: {
     prNumber: options.context.entityNumber,
     commentId: existing?.id || options.trackingCommentId || 0,
     head: options.headSha,
+    runId: options.context.runId,
+    runAttempt,
     base: options.baseSha || process.env.REVIEW_BASE_SHA,
     state,
-    previousBody: existing?.body || undefined,
+    previousBody: existing?.body
+      ? stripReviewSessionMarkers(existing.body)
+      : undefined,
     automatic,
     securityOnly: !!options.securityOnly,
     startedAt: new Date().toISOString(),
@@ -349,7 +438,7 @@ export async function prepareReviewLifecycle(options: {
     skipReason: run.skipReason,
   };
   const rendered = renderReviewSummary(input);
-  const body = `${config.review_summary === "description" ? renderReviewStateNote(state) : rendered}\n\n<!-- droid-review-active:v1 head=${run.head} run=${options.context.runId} -->`;
+  const body = `${config.review_summary === "description" ? renderReviewStateNote(state) : rendered}\n\n${sessionMarker(run, "active")}`;
   const response =
     config.review_summary === "off"
       ? undefined
@@ -472,19 +561,23 @@ export async function finishReviewLifecycle(options: {
   }
   const config = reviewConfigFromEnvironment();
   if (run.commentId && !run.superseded && config.review_summary !== "off")
-    await optionalGitHubOperation(
-      () =>
-        options.octokit.rest.issues.updateComment({
-          owner: run.owner,
-          repo: run.repo,
-          comment_id: run.commentId,
-          body:
-            config.review_summary === "description"
-              ? renderReviewStateNote(decodeReviewState(summary) || run.state)
-              : summary,
-        }),
-      warn,
-    );
+    await optionalGitHubOperation(async () => {
+      if (!(await ownsReviewSummary(options.octokit, run))) return;
+      return options.octokit.rest.issues.updateComment({
+        owner: run.owner,
+        repo: run.repo,
+        comment_id: run.commentId,
+        body: fitReviewOutput(
+          { ...input, reviewState: decodeReviewState(summary) || run.state },
+          (value) =>
+            `${
+              config.review_summary === "description"
+                ? renderReviewStateNote(value.reviewState)
+                : redactCredentials(renderReviewSummary(value))
+            }\n\n${sessionMarker(run, "completed")}`,
+        ),
+      });
+    }, warn);
   if (!run.superseded && config.review_summary === "description")
     await publishDescriptionSummary(options.octokit, run, input);
   const last = run.steps.at(-1);
@@ -527,17 +620,9 @@ async function publishDescriptionSummary(
   input: ReviewRenderInput,
 ): Promise<void> {
   await optionalGitHubOperation(async () => {
-    const pr = await octokit.rest.pulls.get({
-      owner: run.owner,
-      repo: run.repo,
-      pull_number: run.prNumber,
-    });
-    if (pr.data.head.sha !== run.head) {
-      run.superseded = true;
-      return;
-    }
+    if (!(await ownsReviewSummary(octokit, run, true))) return;
     const body = replaceReviewDescription(
-      pr.data.body || "",
+      run.pullRequest!.body,
       renderReviewSummary(input),
     );
     await octokit.rest.pulls.update({
