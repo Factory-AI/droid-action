@@ -61,9 +61,10 @@ describe("command execution isolation and replies", () => {
     resolveSpy = spyOn(lifecycle, "resolveAllDroidThreads").mockResolvedValue(
       1,
     );
-    sourcesSpy = spyOn(fixes, "fetchFixSources").mockResolvedValue([
-      { path: "src/file.ts", content: "source" },
-    ]);
+    sourcesSpy = spyOn(fixes, "fetchFixSources").mockResolvedValue({
+      sources: [{ path: "src/file.ts", content: "source" }],
+      skippedPaths: [],
+    });
     outputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
     exportSpy = spyOn(core, "exportVariable").mockImplementation(() => {});
     replies = [];
@@ -328,5 +329,95 @@ describe("command execution isolation and replies", () => {
       postCommand(client, { ...options, rootCommentId: 100, outputPath: link }),
     ).rejects.toThrow("regular file");
     expect(replies[0].body).toContain("could not answer");
+  });
+  test("missing finding files are communicated while available sources remain fixable", async () => {
+    sourcesSpy.mockResolvedValue({
+      sources: [{ path: "src/file.ts", content: "source" }],
+      skippedPaths: ["deleted.ts"],
+    });
+    await prepareConversationCommand({
+      context: context(),
+      octokit: client,
+      command: { command: "fix", raw: "@droid fix", location: "comment" },
+    });
+    const data = JSON.parse(
+      await readFile(
+        path.join(path.dirname(output("command_output_path")), "context.json"),
+        "utf8",
+      ),
+    );
+    expect(data.sources).toEqual([{ path: "src/file.ts", content: "source" }]);
+    expect(data.skippedFindings).toEqual([
+      { path: "deleted.ts", reason: "Source missing at the expected PR head" },
+    ]);
+    expect(issueComments[0].body).toContain("Skipped 1");
+    expect(output("command_mode")).toBe("fix");
+  });
+  test("all missing finding sources stop truthfully before model preparation", async () => {
+    sourcesSpy.mockResolvedValue({ sources: [], skippedPaths: ["deleted.ts"] });
+    const result = await prepareConversationCommand({
+      context: context(),
+      octokit: client,
+      command: { command: "fix", raw: "@droid fix", location: "comment" },
+    });
+    expect(result.skipped).toBe(true);
+    expect(issueComments[0].body).toContain("No fix was started");
+    expect(output("command_mode")).toBe("");
+    expect(output("command_output_path")).toBe("");
+  });
+  test("a missing second fix proposal cannot reuse the first invocation's output", async () => {
+    const command = {
+      command: "fix" as const,
+      raw: "@droid fix",
+      location: "comment" as const,
+    };
+    await prepareConversationCommand({
+      context: context(),
+      octokit: client,
+      command,
+    });
+    const first = output("command_output_path");
+    await writeFile(
+      first,
+      JSON.stringify({
+        summary: "old fix",
+        files: [{ path: "src/file.ts", content: "old proposal" }],
+      }),
+    );
+    outputSpy.mockClear();
+    await prepareConversationCommand({
+      context: context(),
+      octokit: client,
+      command,
+    });
+    const second = output("command_output_path");
+    const publishSpy = spyOn(fixes, "publishReviewFix").mockResolvedValue({
+      sha: head,
+      body: "stale fix published",
+    });
+    try {
+      await expect(
+        postCommand(client, {
+          owner: "org",
+          repo: "repo",
+          prNumber: 12,
+          actor: "maintainer",
+          mode: "fix",
+          expectedHead: head,
+          fixMode: "commit",
+          outputPath: second,
+          success: true,
+        }),
+      ).rejects.toThrow();
+      expect(second).not.toBe(first);
+      expect(publishSpy).not.toHaveBeenCalled();
+      expect(
+        issueComments.some((comment) =>
+          comment.body.includes("stale fix published"),
+        ),
+      ).toBe(false);
+    } finally {
+      publishSpy.mockRestore();
+    }
   });
 });

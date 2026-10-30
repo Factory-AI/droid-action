@@ -14,6 +14,7 @@ import { applyModelPolicyFallback } from "../../utils/model-policy";
 import { resolveReviewConfig } from "../../utils/review-depth";
 import { assertDroidRunType, DroidRunType } from "../../run-type";
 import { githubReviewSessionTagArg } from "../../utils/review-session-tag";
+import { isManualReviewRequest } from "../../github/utils/review-intent";
 import {
   prepareReviewLifecycle,
   readReviewLifecycle,
@@ -71,7 +72,7 @@ export async function prepareSecurityReviewMode({
       config,
       draft: !!draft,
       eventAction: context.eventAction,
-      manual: context.eventName !== "pull_request",
+      manual: isManualReviewRequest(context, "security"),
     });
   const lifecycle = await prepareReviewLifecycle({
     octokit,
@@ -79,7 +80,7 @@ export async function prepareSecurityReviewMode({
     headSha: prData.headRefOid,
     trackingCommentId,
     securityOnly: true,
-    full: context.eventName !== "pull_request",
+    full: isManualReviewRequest(context, "security"),
     skipReason: skipReason ?? undefined,
   });
   const commentId = lifecycle.commentId;

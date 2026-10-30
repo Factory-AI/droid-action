@@ -67,6 +67,9 @@ import { isMissingFile } from "../gitlab/operations/review-ux";
 import { publishGitlabSecurityReport } from "../gitlab/operations/security-report";
 import { shouldIgnoreReviewPath } from "../core/review/config";
 import { loadGitlabReviewConfig } from "../gitlab/operations/review-config";
+import { decodeReviewState, encodeReviewState } from "../core/review/markers";
+import { fitInlineOutput } from "../core/review/render/budget";
+import { parseSecurityReport } from "../core/review/security-report";
 
 export type ReviewComment = ValidatedReviewComment;
 export {
@@ -310,7 +313,17 @@ export async function postReview(options: {
     const comment = comments[i]!;
     const finding = comment.finding ?? normalizeFinding({ ...comment });
     const body = options.renderOptions
-      ? renderInlineComment(finding, options.renderOptions)
+      ? fitInlineOutput(
+          finding,
+          options.renderOptions,
+          (candidate, renderOptions) =>
+            `${renderInlineComment(candidate, renderOptions)}\n\n${encodeReviewState(
+              {
+                head: mr.diff_refs.head_sha,
+                findings: [stateFinding(candidate)],
+              },
+            )}`,
+        )
       : comment.body;
     const line = anchorLine(comment);
     const where = `${comment.path}:${line ?? "?"}`;
@@ -455,7 +468,11 @@ async function run(): Promise<void> {
     );
   }
 
-  const parsed = parseValidatedReview(raw);
+  const scan =
+    process.env.DROID_SECURITY_FULL === "true"
+      ? parseSecurityReport(raw, process.env.DROID_REVIEW_HEAD_SHA)
+      : undefined;
+  const parsed = scan?.review ?? parseValidatedReview(raw);
 
   console.log(
     `Validated review: ${parsed.approvedCount} approved, ` +
@@ -525,7 +542,8 @@ async function run(): Promise<void> {
   const memory = await loadReviewMemory(client, projectId, mrIid);
   let previous = memory.state ?? { head: "", findings: [] };
   let resolved: ReviewFinding[] = [];
-  let actualChanges = await client.getMrChanges(projectId, mrIid);
+  const fullChanges = await client.getMrChanges(projectId, mrIid);
+  let actualChanges = fullChanges;
   let eligibleFixedIds = new Set<string>();
   let discussions: Awaited<ReturnType<GitlabClient["listDiscussions"]>> = [];
   try {
@@ -535,21 +553,42 @@ async function run(): Promise<void> {
   }
   // Recover a completed inline post after an interrupted run even if its
   // final summary/state write never happened. Only actual owned notes count.
-  for (const candidate of parsed.findings) {
-    if (previous.findings.some((f) => f.id === candidate.id)) continue;
-    const discussion = discussions.find(
-      (d) => discussionFinding(d, memory.user.id)?.marker.id === candidate.id,
+  for (const discussion of discussions) {
+    const owned = discussionFinding(discussion, memory.user.id);
+    if (!owned || previous.findings.some((f) => f.id === owned.marker.id))
+      continue;
+    const saved = decodeReviewState(owned.note.body);
+    const entry =
+      saved && saved.head === owned.marker.head
+        ? saved.findings.find((f) => f.id === owned.marker.id)
+        : undefined;
+    const position = owned.note.position;
+    const candidate =
+      parsed.findings.find((f) => f.id === owned.marker.id) ??
+      (entry
+        ? findingFromState(entry)
+        : normalizeFinding({
+            id: owned.marker.id,
+            severity: owned.marker.sev,
+            category: "recovered-unclassified",
+            security: owned.marker.cat === "security",
+            title: `Recovered finding ${owned.marker.id} (classification unavailable)`,
+            verification:
+              "The original classification could not be recovered. Revalidate this finding before clearing the review gate.",
+            body: owned.note.body,
+            path: position?.new_path || position?.old_path || "",
+            line: position?.new_line ?? position?.old_line ?? null,
+            old_path: position?.old_path,
+            side: position?.new_line ? "RIGHT" : "LEFT",
+          }));
+    previous.findings.push(
+      stateFinding({
+        ...candidate,
+        state: owned.note.resolved ? "dismissed" : "open",
+        threadId: discussion.id,
+        threadUrl: `${mr.web_url}#note_${owned.note.id}`,
+      }),
     );
-    const owned = discussion && discussionFinding(discussion, memory.user.id);
-    if (discussion && owned)
-      previous.findings.push(
-        stateFinding({
-          ...candidate,
-          state: owned.note.resolved ? "dismissed" : "open",
-          threadId: discussion.id,
-          threadUrl: `${mr.web_url}#note_${owned.note.id}`,
-        }),
-      );
   }
   if (previous.head && previous.head !== mr.diff_refs.head_sha) {
     try {
@@ -576,7 +615,11 @@ async function run(): Promise<void> {
       );
     }
   }
-  const changedPaths = actualChanges.changes.map(
+  const reviewChanges =
+    state.fullReview || !config.review_incremental
+      ? fullChanges
+      : actualChanges;
+  const changedPaths = reviewChanges.changes.map(
     (c) => c.new_path || c.old_path,
   );
   try {
@@ -682,6 +725,8 @@ async function run(): Promise<void> {
   const open = all.filter((f) => f.state === "open" || !f.state);
   const blocked = open.some(
     (f) =>
+      (f.category === "recovered-unclassified" &&
+        (config.security_block_on_critical || config.security_block_on_high)) ||
       (config.fail_on_severity &&
         Number(f.severity.slice(1)) <=
           Number(config.fail_on_severity.slice(1))) ||
@@ -755,7 +800,7 @@ async function run(): Promise<void> {
     depth: config.review_depth,
     model: state.resolvedModel ?? undefined,
     reasoning: state.resolvedReasoningEffort ?? undefined,
-    base: previous.head || mr.diff_refs.base_sha,
+    base: mr.diff_refs.base_sha,
     jobUrl: state.jobUrl ?? undefined,
     reviewState,
     candidatesConsidered: parsed.approvedCount + parsed.rejectedCount,
@@ -778,7 +823,11 @@ async function run(): Promise<void> {
       projectId,
       mr,
       noteId,
-      { ...renderInput, findings },
+      {
+        ...renderInput,
+        findings: scan?.review.findings ?? findings,
+        securityReport: scan?.provenance,
+      },
     );
     renderInput.summary = {
       ...summary,

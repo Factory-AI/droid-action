@@ -98,6 +98,9 @@ async function run(): Promise<void> {
   }
 
   const promptCtx: GitlabReviewPromptContext = {
+    priorFindingsPath: state.previousReviewState
+      ? path.join(path.dirname(promptPath), "previous_findings.json")
+      : undefined,
     ...(state.reviewConfig
       ? {
           reviewSettings: reviewPromptSettingsFromEnvironment(

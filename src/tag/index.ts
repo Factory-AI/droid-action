@@ -4,6 +4,7 @@ import { checkHumanActor } from "../github/validation/actor";
 import { createInitialComment } from "../github/operations/comments/create-initial";
 import { isEntityContext, type ParsedGitHubContext } from "../github/context";
 import { extractCommandFromContext } from "../github/utils/command-parser";
+import { isManualReviewRequest } from "../github/utils/review-intent";
 import { prepareFillMode } from "./commands/fill";
 import { prepareReviewMode } from "./commands/review";
 import { prepareSecurityReviewMode } from "./commands/security-review";
@@ -16,8 +17,8 @@ import { prepareStewardMode } from "../steward";
 import { DroidRunType, resolveTagRunType, setDroidRunType } from "../run-type";
 import { DROID_APP_BOT_ID } from "../github/bot-identity";
 import { prepareConversationCommand } from "./commands/conversation";
-import { hasSummaryMarker } from "../core/review/markers";
-const SECURITY_REVIEW_MARKER = "## Security Review Summary";
+import { decodeReviewState, hasSummaryMarker } from "../core/review/markers";
+import { fetchPRBranchData } from "../github/data/pr-fetcher";
 
 export function shouldTriggerTag(context: GitHubContext): boolean {
   if (isAutomationContext(context)) {
@@ -49,6 +50,11 @@ async function hasExistingSecurityReview(
   const { owner, repo } = context.repository;
 
   try {
+    const pr = await fetchPRBranchData({
+      octokits: octokit,
+      repository: context.repository,
+      prNumber: context.entityNumber,
+    });
     const comments = await octokit.rest.issues.listComments({
       owner,
       repo,
@@ -69,12 +75,16 @@ async function hasExistingSecurityReview(
     const hasSecurityReview = comments.data.some((comment) => {
       const isOurBot =
         comment.user?.id === DROID_APP_BOT_ID ||
-        (!!viewer && comment.user?.login === viewer);
+        (!!viewer &&
+          comment.user?.type === "Bot" &&
+          comment.user.login === viewer);
       const body = comment.body ?? "";
+      const state = decodeReviewState(body);
       return (
         isOurBot &&
-        (body.includes(SECURITY_REVIEW_MARKER) ||
-          (hasSummaryMarker(body) && body.includes("Security review: ran")))
+        hasSummaryMarker(body) &&
+        state?.head === pr.headRefOid &&
+        state.securityReviewedHead === pr.headRefOid
       );
     });
 
@@ -118,14 +128,19 @@ export async function prepareTagExecution({
   }
 
   let commandContext = extractCommandFromContext(context);
+  const requestedMode =
+    commandContext?.command === "security" ||
+    commandContext?.command === "security-full"
+      ? "security"
+      : "code";
+  const manualReview = isManualReviewRequest(context, requestedMode);
   if (
     commandContext?.location === "body" &&
     (context.inputs.automaticReview || context.inputs.automaticSecurityReview)
   ) {
     commandContext = null;
   }
-  // Explicit comment commands take precedence over automatic-review flags.
-  if (commandContext && commandContext.location === "comment") {
+  if (commandContext && manualReview) {
     context = {
       ...context,
       inputs: {

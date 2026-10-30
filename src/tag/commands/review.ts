@@ -23,6 +23,7 @@ import {
   reviewConfigFromEnvironment,
 } from "../../core/review/config";
 import { redactCredentials } from "../../utils/redact-credentials";
+import { isManualReviewRequest } from "../../github/utils/review-intent";
 
 type ReviewCommandOptions = {
   context: GitHubContext;
@@ -74,7 +75,7 @@ export async function prepareReviewMode({
     config,
     draft: !!draft,
     eventAction: context.eventAction,
-    manual: context.eventName !== "pull_request",
+    manual: isManualReviewRequest(context),
   });
   const lifecycle = await prepareReviewLifecycle({
     octokit,

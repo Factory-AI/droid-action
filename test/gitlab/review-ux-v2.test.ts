@@ -213,8 +213,16 @@ function setup(
     if (url.pathname.endsWith("/notes/20")) return json(trigger);
     if (url.pathname.endsWith("/notes") && req.method === "GET")
       return json(notes);
-    if (url.pathname.endsWith("/notes") && req.method === "POST")
-      return json(note(99, "response"));
+    if (url.pathname.endsWith("/notes") && req.method === "POST") {
+      const created = note(99, req.body.body);
+      notes.push(created);
+      return json(created);
+    }
+    if (url.pathname.endsWith("/notes/99") && req.method === "PUT") {
+      const created = notes.find((n) => n.id === 99);
+      if (created) created.body = req.body.body;
+      return json(created ?? note(99, req.body.body));
+    }
     if (url.pathname.endsWith("/notes/1") && req.method === "PUT")
       return json(note(1, "updated"));
     if (url.pathname.endsWith("/discussions") && req.method === "GET")
@@ -276,7 +284,12 @@ function setup(
       return json(currentMr);
     }
     if (url.pathname.endsWith("/merge_requests") && req.method === "POST")
-      return json({ ...mr, web_url: mr.web_url + "-stacked" });
+      return json({
+        ...mr,
+        web_url: req.body.source_branch.startsWith("droid/security-")
+          ? "https://gitlab.com/group/repo/-/merge_requests/8"
+          : mr.web_url + "-stacked",
+      });
     return notFound();
   });
   return {
@@ -671,6 +684,20 @@ describe("GitLab command bridge", () => {
 });
 
 describe("GitLab fix publisher, API and push mocked", () => {
+  for (const stateAfterModel of ["closed", "merged"])
+    it(`refuses publication when the MR becomes ${stateAfterModel} during the model`, async () => {
+      const t = setup();
+      const getMr = t.client.getMr.bind(t.client);
+      t.client.getMr = async (...args) => ({
+        ...(await getMr(...args)),
+        state: stateAfterModel,
+      });
+      const push = mock(async () => {});
+      await expect(publish(t.client, { push })).rejects.toThrow("not open");
+      expect(push).not.toHaveBeenCalled();
+      expect(t.requests.filter((r) => r.method === "POST")).toHaveLength(0);
+    });
+
   const execute = async () =>
     JSON.stringify({
       summary: "Restored retries",
@@ -791,6 +818,7 @@ describe("GitLab v2 production entrypoints, local API only", () => {
       "AUTOMATIC_REVIEW",
       "AUTOMATIC_SECURITY_REVIEW",
       "REVIEW_DEPTH",
+      "REVIEW_MODEL",
       "HOME",
       "FACTORY_API_KEY",
       "DROID_PASS1_LOG",
@@ -821,6 +849,7 @@ describe("GitLab v2 production entrypoints, local API only", () => {
       REVIEW_VALIDATED_PATH: path.join(directory, "validated.json"),
       GITLAB_TOKEN: "test-token",
       REVIEW_UX_V2: "true",
+      REVIEW_MODEL: "gpt-5.4",
       HOME: directory,
       DROID_PASS1_LOG: path.join(directory, "missing1.jsonl"),
       DROID_PASS2_LOG: path.join(directory, "missing2.jsonl"),
@@ -880,6 +909,369 @@ describe("GitLab v2 production entrypoints, local API only", () => {
       );
     });
   });
+
+  const skipGateCases: {
+    name: string;
+    yaml?: string;
+    finding?: Partial<typeof finding>;
+    priorHead?: string;
+    paused?: boolean;
+    empty?: boolean;
+    humanResolved?: boolean;
+    previousFailure?: boolean;
+    status: "failed" | "skipped" | "off";
+  }[] = [
+    {
+      name: "retains the failed P1 gate on a same-head retry",
+      yaml: "fail_on_severity: P1",
+      previousFailure: true,
+      status: "failed",
+    },
+    {
+      name: "honors the exact P0 threshold",
+      yaml: "fail_on_severity: P0",
+      finding: { severity: "P0" },
+      status: "failed",
+    },
+    {
+      name: "does not block P1 at the P0 threshold",
+      yaml: "fail_on_severity: P0",
+      status: "skipped",
+    },
+    {
+      name: "does not block P2 at the P1 threshold",
+      yaml: "fail_on_severity: P1",
+      finding: { severity: "P2" },
+      status: "skipped",
+    },
+    { name: "keeps nonblocking defaults", status: "skipped" },
+    {
+      name: "preserves the historical orphan classification gate",
+      finding: { category: "recovered-unclassified", severity: "P2" },
+      status: "failed",
+    },
+    {
+      name: "uses the configured high policy for an unclassified orphan",
+      yaml: "security_block_on_critical: false\nsecurity_block_on_high: true",
+      finding: { category: "recovered-unclassified", severity: "P2" },
+      status: "failed",
+    },
+    {
+      name: "keeps historical orphans nonblocking with security policies off",
+      yaml: "security_block_on_critical: false\nsecurity_block_on_high: false",
+      finding: { category: "recovered-unclassified", severity: "P2" },
+      status: "skipped",
+    },
+    {
+      name: "does not block a human-resolved unclassified orphan",
+      humanResolved: true,
+      finding: { category: "recovered-unclassified", severity: "P2" },
+      status: "skipped",
+    },
+    {
+      name: "does not block a dismissed unclassified orphan",
+      finding: {
+        category: "recovered-unclassified",
+        severity: "P2",
+        state: "dismissed",
+      },
+      status: "skipped",
+    },
+    {
+      name: "blocks retained critical security findings by default",
+      finding: { security: true, securitySeverity: "critical" },
+      status: "failed",
+    },
+    {
+      name: "keeps high security findings nonblocking by default",
+      finding: { security: true, securitySeverity: "high" },
+      status: "skipped",
+    },
+    {
+      name: "honors the high security blocking setting",
+      yaml: "security_block_on_high: true",
+      finding: { security: true, securitySeverity: "high" },
+      status: "failed",
+    },
+    {
+      name: "honors disabled critical blocking",
+      yaml: "security_block_on_critical: false",
+      finding: { security: true, securitySeverity: "critical" },
+      status: "skipped",
+    },
+    {
+      name: "includes critical findings at the high security threshold",
+      yaml: "security_block_on_critical: false\nsecurity_block_on_high: true",
+      finding: { security: true, securitySeverity: "critical" },
+      status: "failed",
+    },
+    {
+      name: "does not block medium security at the high threshold",
+      yaml: "security_block_on_high: true",
+      finding: { security: true, securitySeverity: "medium" },
+      status: "skipped",
+    },
+    {
+      name: "ignores already resolved findings",
+      yaml: "fail_on_severity: P1",
+      finding: { state: "resolved" },
+      status: "skipped",
+    },
+    {
+      name: "honors human dismissal before recomputing the gate",
+      yaml: "fail_on_severity: P1",
+      humanResolved: true,
+      status: "skipped",
+    },
+    {
+      name: "keeps no-issues skips nonblocking",
+      empty: true,
+      status: "skipped",
+    },
+    {
+      name: "keeps a paused review with no issues nonblocking",
+      paused: true,
+      empty: true,
+      status: "skipped",
+    },
+    {
+      name: "does not clear a same-head blocking gate when paused",
+      yaml: "fail_on_severity: P1",
+      paused: true,
+      status: "failed",
+    },
+    {
+      name: "does not copy a prior-head failure onto a paused new head",
+      yaml: "fail_on_severity: P1",
+      paused: true,
+      priorHead: BASE,
+      status: "skipped",
+    },
+    {
+      name: "keeps out-of-scope new-head skips unchanged",
+      yaml: "fail_on_severity: P1\nreview_ignore_paths: ['src/**']",
+      priorHead: BASE,
+      status: "skipped",
+    },
+    {
+      name: "honors disabled commit statuses",
+      yaml: "fail_on_severity: P1\nreview_check_run: false",
+      status: "off",
+    },
+  ];
+  for (const testCase of skipGateCases)
+    it(`skip gate: ${testCase.name}`, async () => {
+      const t = setup({
+        priorHead: testCase.priorHead ?? HEAD,
+        yaml: testCase.yaml,
+        humanResolved: testCase.humanResolved,
+      });
+      const retained = {
+        ...finding,
+        threadId: "discussion-1",
+        ...testCase.finding,
+      };
+      t.notes[0]!.body = `${SUMMARY_MARKER}\n${encodeReviewState({
+        ...state,
+        head: testCase.priorHead ?? HEAD,
+        paused: testCase.paused,
+        findings: testCase.empty ? [] : [stateFinding(retained)],
+      })}`;
+      await environment(async (directory) => {
+        if (testCase.previousFailure)
+          await updateReviewStatus(t.client, 42, HEAD, {
+            platform: "gitlab",
+            state: "findings",
+            head: HEAD,
+            findings: [retained],
+            blocked: true,
+          });
+        await prepareRun();
+        const prepared = JSON.parse(
+          await fs.readFile(path.join(directory, "state.json"), "utf8"),
+        );
+        expect(prepared.shouldRunReview).toBe(false);
+        if (testCase.paused) expect(prepared.reason).toContain("paused");
+        else if (testCase.priorHead)
+          expect(prepared.reason).toContain("all changed files are excluded");
+        else expect(prepared.reason).toContain("No new changes");
+        expect(prepared.reviewState.findings).toHaveLength(
+          testCase.empty ? 0 : 1,
+        );
+        if (testCase.humanResolved)
+          expect(prepared.reviewState.findings[0].state).toBe("dismissed");
+        await postRun();
+        await finishRun();
+        const statuses = t.requests.filter((r) =>
+          r.path.includes("/statuses/"),
+        );
+        expect(statuses.map((r) => r.body.state)).toEqual(
+          testCase.previousFailure
+            ? ["failed", "failed"]
+            : testCase.status === "off"
+              ? []
+              : [testCase.status],
+        );
+        for (const status of statuses) {
+          expect(status.path).toBe(`/api/v4/projects/42/statuses/${HEAD}`);
+          expect(status.body.name).toBe("Droid Review");
+        }
+        await expect(
+          fs.stat(path.join(directory, "prompt.txt")),
+        ).rejects.toThrow();
+      });
+    });
+
+  it("GitLab diff contract prepares eligible old-side findings from real API hunks", async () => {
+    const t = setup();
+    await environment(async (directory) => {
+      process.env.REVIEW_MODEL = "gpt-5.4";
+      await prepareRun();
+      const previous = JSON.parse(
+        await fs.readFile(
+          path.join(directory, "previous_findings.json"),
+          "utf8",
+        ),
+      );
+      expect(previous.eligibleFixedIds).toEqual([finding.id]);
+      expect(previous.verifyFixed.map((f: { id: string }) => f.id)).toEqual([
+        finding.id,
+      ]);
+      expect(
+        await fs.readFile(path.join(directory, "mr.diff"), "utf8"),
+      ).toContain("--- a/src/x.ts\n+++ b/src/x.ts\n@@");
+      expect(
+        t.requests.find((r) => r.path.includes("/repository/compare"))?.path,
+      ).toContain(`from=${BASE}&to=${HEAD}`);
+    });
+  });
+
+  for (const full of [true, false])
+    it(`repository security audit ignores empty MR scope only when full=${full}`, async () => {
+      const t = setup({
+        command: full ? "@droid security --full" : "@droid security",
+        noState: true,
+        yaml: "review_ignore_paths: ['src/**']",
+      });
+      await environment(async (directory) => {
+        process.env.DROID_TRIGGER_NOTE_ID = "20";
+        process.env.REVIEW_MODEL = "gpt-5.4";
+        await prepareRun();
+        const prepared = JSON.parse(
+          await fs.readFile(path.join(directory, "state.json"), "utf8"),
+        );
+        expect(prepared.shouldRunReview).toBe(full);
+        if (full) {
+          expect(
+            await fs.readFile(path.join(directory, "mr.diff"), "utf8"),
+          ).toBe("");
+          expect(prepared.fullReview).toBe(true);
+        }
+        expect(t.requests.some((r) => r.path.endsWith("/notes/20"))).toBe(true);
+      });
+    });
+
+  for (const testCase of [
+    {
+      name: "changed old line with evidence",
+      line: 10,
+      evidence: "Traced the replacement",
+      resolves: true,
+    },
+    {
+      name: "unchanged context line",
+      line: 9,
+      evidence: "Traced the replacement",
+      resolves: false,
+    },
+    { name: "missing evidence", line: 10, evidence: " ", resolves: false },
+    {
+      name: "unknown finding ID",
+      line: 10,
+      evidence: "Traced the replacement",
+      id: "unknown",
+      resolves: false,
+    },
+    {
+      name: "disabled auto-resolution",
+      line: 10,
+      evidence: "Traced the replacement",
+      yaml: "review_auto_resolve: false",
+      resolves: false,
+    },
+    {
+      name: "human dismissal",
+      line: 10,
+      evidence: "Traced the replacement",
+      humanResolved: true,
+      resolves: false,
+    },
+  ])
+    it(`GitLab diff contract post resolution: ${testCase.name}`, async () => {
+      const t = setup({
+        yaml: testCase.yaml,
+        humanResolved: testCase.humanResolved,
+      });
+      t.notes[0]!.body = `${SUMMARY_MARKER}\n${encodeReviewState({
+        ...state,
+        findings: [
+          stateFinding({
+            ...finding,
+            line: testCase.line,
+            threadId: "discussion-1",
+          }),
+        ],
+      })}`;
+      await environment(async (directory) => {
+        process.env.DROID_REVIEW_HEAD_SHA = HEAD;
+        await fs.writeFile(
+          path.join(directory, "state.json"),
+          JSON.stringify({
+            shouldRunReview: true,
+            projectId: "42",
+            mrIid: 7,
+            trackingNoteId: 1,
+            headSha: HEAD,
+            validatedPath: path.join(directory, "validated.json"),
+            reviewConfig: config(),
+          }),
+        );
+        await fs.writeFile(
+          path.join(directory, "validated.json"),
+          JSON.stringify({
+            meta: { headSha: HEAD },
+            results: [],
+            findingResolutions: [
+              {
+                id: testCase.id ?? finding.id,
+                status: "fixed",
+                evidence: testCase.evidence,
+              },
+            ],
+          }),
+        );
+        await postRun();
+        const result = JSON.parse(
+          await fs.readFile(path.join(directory, "results.json"), "utf8"),
+        );
+        const resolutions = t.requests.filter(
+          (r) =>
+            r.method === "PUT" && r.path.endsWith("/discussions/discussion-1"),
+        );
+        expect(resolutions).toHaveLength(testCase.resolves ? 1 : 0);
+        if (testCase.resolves) expect(resolutions[0]!.body.resolved).toBe(true);
+        expect(
+          result.renderInput.resolved.map((f: { id: string }) => f.id),
+        ).toEqual(testCase.resolves ? [finding.id] : []);
+        expect(result.renderInput.reviewState.findings[0].state).toBe(
+          testCase.resolves
+            ? "resolved"
+            : testCase.humanResolved
+              ? "dismissed"
+              : "open",
+        );
+      });
+    });
 
   it("renders draft skips and writes the skipped-file manifest", async () => {
     const t = setup({ draft: true });
@@ -1144,6 +1536,119 @@ describe("GitLab v2 production entrypoints, local API only", () => {
     });
   });
 
+  for (const scenario of [
+    "reported",
+    "legacy",
+    "unbound",
+    "mismatch",
+    "fixed-meta",
+    "ordinary",
+  ])
+    it(`security scan consumer preserves original source and remediation: ${scenario}`, async () => {
+      const t = setup({ noState: true, command: "@droid security --full" });
+      await environment(async (directory) => {
+        process.env.DROID_SECURITY_FULL =
+          scenario === "ordinary" ? "false" : "true";
+        process.env.DROID_TRIGGER_NOTE_ID = "20";
+        process.env.DROID_REVIEW_HEAD_SHA = HEAD;
+        process.env.CI_COMMIT_SHA = FIX;
+        if (scenario === "unbound") delete process.env.DROID_REVIEW_HEAD_SHA;
+        await fs.writeFile(
+          path.join(directory, "state.json"),
+          JSON.stringify({
+            shouldRunReview: true,
+            projectId: "42",
+            mrIid: 7,
+            reviewConfig: config(),
+            validatedPath: path.join(directory, "validated.json"),
+          }),
+        );
+        const scanFinding = {
+          ...finding,
+          id: "scan-patched",
+          security: true,
+          securitySeverity: "high",
+          path: "src/original-evidence.ts",
+          line: 4,
+          outside_diff: true,
+        };
+        await fs.writeFile(
+          path.join(directory, "validated.json"),
+          JSON.stringify({
+            meta: { headSha: scenario === "fixed-meta" ? FIX : HEAD },
+            results: [
+              { status: "approved", comment: scanFinding },
+              {
+                status: "approved",
+                comment: { ...scanFinding, id: "scan-manual" },
+              },
+            ],
+            ...(scenario === "legacy"
+              ? {}
+              : {
+                  securityReport: {
+                    sourceRevision: ["mismatch", "ordinary"].includes(scenario)
+                      ? BASE
+                      : HEAD,
+                    outcomes: [
+                      {
+                        id: "scan-patched",
+                        disposition: "patched",
+                        fixCommit: FIX,
+                        verification: "Controlled regression passed",
+                      },
+                      { id: "scan-manual", disposition: "manual" },
+                    ],
+                  },
+                }),
+          }),
+        );
+        if (["mismatch", "fixed-meta"].includes(scenario)) {
+          await expect(postRun()).rejects.toThrow(
+            scenario === "mismatch"
+              ? "pre-model scan revision"
+              : /MR head changed after validation|original scan revision/,
+          );
+          expect(
+            t.requests.filter(
+              (r) =>
+                r.method === "POST" && r.path.endsWith("/repository/commits"),
+            ),
+          ).toHaveLength(0);
+          return;
+        }
+        await postRun();
+        const commits = t.requests.filter(
+          (r) => r.method === "POST" && r.path.endsWith("/repository/commits"),
+        );
+        if (scenario === "ordinary") {
+          expect(commits).toHaveLength(0);
+          return;
+        }
+        expect(commits).toHaveLength(1);
+        const report = Buffer.from(
+          commits[0]!.body.actions[0].content,
+          "base64",
+        ).toString("utf8");
+        expect(report).toContain(`/-/blob/${HEAD}/src/original-evidence.ts#L4`);
+        expect(report).not.toContain(`/-/blob/${FIX}/`);
+        expect(report).toContain(
+          scenario === "unbound"
+            ? "reported revision, not independently bound"
+            : "recorded before patching",
+        );
+        if (scenario === "legacy") {
+          expect(report).toContain("Remediation status not reported");
+          expect(report).not.toContain("Reported patched");
+        } else {
+          expect(report).toContain("Reported patched");
+          expect(report).toContain("not independently verified");
+          expect(report).toContain("Controlled regression passed");
+          expect(report).toContain("Manual remediation required");
+        }
+      });
+    });
+
   it("reports effective security blocking flags and all configured-filter drop reasons", async () => {
     const t = setup({
       noState: true,
@@ -1250,6 +1755,306 @@ describe("GitLab v2 production entrypoints, local API only", () => {
     });
   });
 
+  for (const humanResolved of [false, true])
+    it(`orphan recovery retains omitted owned findings, resolved=${humanResolved}`, async () => {
+      const t = setup({
+        noState: true,
+        existingDiscussions: true,
+        humanResolved,
+        yaml: "fail_on_severity: P1",
+      });
+      if (humanResolved)
+        t.discussion.notes[0]!.body = encodeFindingMarker({
+          id: finding.id,
+          sev: "P1",
+        });
+      await environment(async (directory) => {
+        await fs.writeFile(
+          path.join(directory, "state.json"),
+          JSON.stringify({
+            shouldRunReview: true,
+            projectId: "42",
+            mrIid: 7,
+            reviewConfig: config(),
+            validatedPath: path.join(directory, "validated.json"),
+          }),
+        );
+        await fs.writeFile(
+          path.join(directory, "validated.json"),
+          JSON.stringify({
+            meta: { headSha: HEAD },
+            results: [],
+          }),
+        );
+        await postRun();
+        const result = JSON.parse(
+          await fs.readFile(path.join(directory, "results.json"), "utf8"),
+        );
+        expect(result.renderInput.reviewState.findings).toHaveLength(1);
+        expect(result.renderInput.reviewState.findings[0].id).toBe(finding.id);
+        expect(result.renderInput.reviewState.findings[0].threadId).toBe(
+          "discussion-1",
+        );
+        expect(result.renderInput.reviewState.findings[0].state).toBe(
+          humanResolved ? "dismissed" : "open",
+        );
+        expect(result.renderInput.blocked).toBe(!humanResolved);
+        expect(
+          t.requests.filter(
+            (r) => r.method === "POST" && r.path.endsWith("/discussions"),
+          ),
+        ).toHaveLength(0);
+      });
+    });
+
+  for (const [disabled, humanResolved, revalidated] of [
+    [false, false, false],
+    [true, false, false],
+    [false, true, false],
+    [false, false, true],
+  ])
+    it(`historical orphan classification disabled=${disabled} resolved=${humanResolved} revalidated=${revalidated}`, async () => {
+      const t = setup({
+        noState: true,
+        existingDiscussions: true,
+        humanResolved,
+        yaml: disabled
+          ? "security_block_on_critical: false\nsecurity_block_on_high: false"
+          : "",
+      });
+      t.discussion.notes[0]!.body = encodeFindingMarker({
+        id: finding.id,
+        sev: "P2",
+        cat: "security",
+        head: BASE,
+      });
+      await environment(async (directory) => {
+        await fs.writeFile(
+          path.join(directory, "state.json"),
+          JSON.stringify({
+            shouldRunReview: true,
+            projectId: "42",
+            mrIid: 7,
+            reviewConfig: config(),
+            validatedPath: path.join(directory, "validated.json"),
+          }),
+        );
+        await fs.writeFile(
+          path.join(directory, "validated.json"),
+          JSON.stringify({
+            meta: { headSha: HEAD },
+            results: revalidated
+              ? [{ status: "approved", comment: finding }]
+              : [],
+          }),
+        );
+        await postRun();
+        const result = JSON.parse(
+          await fs.readFile(path.join(directory, "results.json"), "utf8"),
+        );
+        const recovered = result.renderInput.reviewState.findings[0].finding;
+        expect(result.renderInput.blocked).toBe(
+          !disabled && !humanResolved && !revalidated,
+        );
+        expect(recovered.category).toBe(
+          revalidated ? finding.category : "recovered-unclassified",
+        );
+        expect(recovered.securitySeverity).toBeUndefined();
+        if (!revalidated) {
+          expect(recovered.title).toContain("classification unavailable");
+          expect(recovered.verification).toContain("Revalidate");
+        }
+        expect(result.renderInput.state).toBe(
+          humanResolved ? "clean" : "findings",
+        );
+      });
+    });
+
+  for (const owner of [1, 5])
+    it(`orphan recovery trusts canonical security state only from owner=${owner}`, async () => {
+      const t = setup({ noState: true, existingDiscussions: true });
+      t.discussion.notes[0]!.author = { id: owner, username: "fixture" };
+      t.discussion.notes[0]!.body = `${encodeFindingMarker({ id: finding.id, sev: "P1", head: BASE })}\n${encodeReviewState(
+        {
+          head: BASE,
+          findings: [
+            stateFinding({
+              ...finding,
+              security: true,
+              securitySeverity: "critical",
+            }),
+          ],
+        },
+      )}`;
+      await environment(async (directory) => {
+        await fs.writeFile(
+          path.join(directory, "state.json"),
+          JSON.stringify({
+            shouldRunReview: true,
+            projectId: "42",
+            mrIid: 7,
+            reviewConfig: config(),
+            validatedPath: path.join(directory, "validated.json"),
+          }),
+        );
+        await fs.writeFile(
+          path.join(directory, "validated.json"),
+          JSON.stringify({ meta: { headSha: HEAD }, results: [] }),
+        );
+        await postRun();
+        const result = JSON.parse(
+          await fs.readFile(path.join(directory, "results.json"), "utf8"),
+        );
+        expect(result.renderInput.reviewState.findings).toHaveLength(
+          owner === 1 ? 1 : 0,
+        );
+        expect(result.renderInput.blocked).toBe(owner === 1);
+        if (owner === 1)
+          expect(
+            result.renderInput.reviewState.findings[0].finding.securitySeverity,
+          ).toBe("critical");
+      });
+    });
+
+  for (const context of ["Large verified context. ", "已验证 🛡️ 安全上下文。"])
+    it(`inline recovery metadata stays bounded and never becomes a summary note: ${context}`, async () => {
+      const t = setup({ noState: true });
+      await environment(async (directory) => {
+        await fs.writeFile(
+          path.join(directory, "state.json"),
+          JSON.stringify({
+            shouldRunReview: true,
+            projectId: "42",
+            mrIid: 7,
+            reviewConfig: config(),
+            validatedPath: path.join(directory, "validated.json"),
+          }),
+        );
+        await fs.writeFile(
+          path.join(directory, "validated.json"),
+          JSON.stringify({
+            meta: { headSha: HEAD },
+            results: [
+              {
+                status: "approved",
+                comment: {
+                  ...finding,
+                  security: true,
+                  securitySeverity: "critical",
+                  body: context.repeat(6000),
+                },
+              },
+            ],
+          }),
+        );
+        await postRun();
+        const body = t.requests.find(
+          (r) => r.method === "POST" && r.path.endsWith("/discussions"),
+        )!.body.body;
+        expect(Buffer.byteLength(body, "utf8")).toBeLessThanOrEqual(30 * 1024);
+        expect(body.split("\n").includes(SUMMARY_MARKER)).toBe(false);
+        expect(decodeReviewState(body)?.head).toBe(HEAD);
+        expect(decodeReviewState(body)?.findings).toHaveLength(1);
+        expect(decodeReviewState(body)?.findings[0]?.id).toBe(finding.id);
+        expect(
+          decodeReviewState(body)?.findings[0]?.finding?.securitySeverity,
+        ).toBe("critical");
+      });
+    });
+
+  for (const fullReview of [true, false])
+    it(`full metadata preserves the requested review scope, full=${fullReview}`, async () => {
+      setup({ yaml: fullReview ? "" : "review_incremental: false" });
+      await environment(async (directory) => {
+        await fs.writeFile(
+          path.join(directory, "state.json"),
+          JSON.stringify({
+            shouldRunReview: true,
+            projectId: "42",
+            mrIid: 7,
+            fullReview,
+            reviewConfig: config(),
+            validatedPath: path.join(directory, "validated.json"),
+          }),
+        );
+        // API full diff and incremental comparison deliberately name different files.
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = (async (input, init) => {
+          const response = await originalFetch(input, init);
+          if (String(input).includes("/changes"))
+            return json({
+              changes: [
+                {
+                  old_path: "src/x.ts",
+                  new_path: "src/x.ts",
+                  diff: "@@ -10 +10 @@\n-old\n+new\n",
+                },
+                {
+                  old_path: "src/y.ts",
+                  new_path: "src/y.ts",
+                  diff: "@@ -1 +1 @@\n-old\n+new\n",
+                },
+              ],
+              diff_refs: mr.diff_refs,
+            });
+          return response;
+        }) as typeof fetch;
+        try {
+          await fs.writeFile(
+            path.join(directory, "validated.json"),
+            JSON.stringify({ meta: { headSha: HEAD }, results: [] }),
+          );
+          await postRun();
+          const result = JSON.parse(
+            await fs.readFile(path.join(directory, "results.json"), "utf8"),
+          );
+          expect(result.renderInput.summary.filesReviewed).toBe(2);
+        } finally {
+          globalThis.fetch = originalFetch;
+        }
+      });
+    });
+
+  it("LEFT links keep the true MR base after a previous reviewed head", async () => {
+    setup({ priorHead: FIX });
+    await environment(async (directory) => {
+      await fs.writeFile(
+        path.join(directory, "state.json"),
+        JSON.stringify({
+          shouldRunReview: true,
+          projectId: "42",
+          mrIid: 7,
+          reviewConfig: config(),
+          validatedPath: path.join(directory, "validated.json"),
+        }),
+      );
+      await fs.writeFile(
+        path.join(directory, "validated.json"),
+        JSON.stringify({
+          meta: { headSha: HEAD },
+          results: [
+            {
+              status: "approved",
+              comment: {
+                ...finding,
+                id: "new-left",
+                side: "LEFT",
+                oldPath: "src/before.ts",
+              },
+            },
+          ],
+        }),
+      );
+      await postRun();
+      const result = JSON.parse(
+        await fs.readFile(path.join(directory, "results.json"), "utf8"),
+      );
+      const body = renderGitlabSummary(result.renderInput);
+      expect(body).toContain(`/-/blob/${BASE}/src/before.ts#L10`);
+      expect(body).not.toContain(`/-/blob/${FIX}/src/before.ts`);
+    });
+  });
+
   it("recovers owned posted findings after an interrupted summary write, without reposting", async () => {
     const t = setup({ noState: true, existingDiscussions: true });
     await environment(async (directory) => {
@@ -1336,6 +2141,84 @@ describe("GitLab v2 production entrypoints, local API only", () => {
 });
 
 describe("GitLab full security report, API mocked", () => {
+  it("reuses a completed same-note report and records the command receipt", async () => {
+    const t = setup({ command: "@droid security --full" });
+    const input = { state: "clean" as const, head: HEAD };
+    const first = await publishGitlabSecurityReport(
+      t.client,
+      42,
+      mr,
+      20,
+      input,
+    );
+    const second = await publishGitlabSecurityReport(
+      t.client,
+      42,
+      mr,
+      20,
+      input,
+    );
+    expect(second).toBe(first);
+    expect(
+      t.requests.filter(
+        (r) => r.method === "POST" && r.path.endsWith("/repository/commits"),
+      ),
+    ).toHaveLength(1);
+    expect(
+      t.requests.filter(
+        (r) => r.method === "POST" && r.path.endsWith("/merge_requests"),
+      ),
+    ).toHaveLength(1);
+    expect(
+      t.notes.some(
+        (n) =>
+          n.author.id === 1 &&
+          n.body.split("\n").includes("<!-- droid-command:v1 note=20 -->"),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not republish after an interrupted report MR creation", async () => {
+    const t = setup({ command: "@droid security --full" });
+    const input = { state: "clean" as const, head: HEAD };
+    const createMr = t.client.createMr.bind(t.client);
+    t.client.createMr = async () => {
+      throw new Error("controlled interrupted publication");
+    };
+    await expect(
+      publishGitlabSecurityReport(t.client, 42, mr, 20, input),
+    ).rejects.toThrow("controlled");
+    t.client.createMr = createMr;
+    await expect(
+      publishGitlabSecurityReport(t.client, 42, mr, 20, input),
+    ).rejects.toThrow("already started");
+    expect(
+      t.requests.filter(
+        (r) => r.method === "POST" && r.path.endsWith("/repository/commits"),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("does not accept another author's forged report receipt", async () => {
+    const t = setup({ command: "@droid security --full" });
+    t.notes.push(
+      note(
+        55,
+        '<!-- droid-security-report:v1 note=20 -->\n{"status":"complete","url":"https://example.test/fake"}',
+        5,
+      ),
+    );
+    await publishGitlabSecurityReport(t.client, 42, mr, 20, {
+      state: "clean",
+      head: HEAD,
+    });
+    expect(
+      t.requests.filter(
+        (r) => r.method === "POST" && r.path.endsWith("/repository/commits"),
+      ),
+    ).toHaveLength(1);
+  });
+
   it("requires an explicit command then creates an indexed report MR from the reviewed head", async () => {
     const t = setup({ command: "@droid security --full" });
     const url = await publishGitlabSecurityReport(t.client, 42, mr, 20, {
@@ -1354,7 +2237,7 @@ describe("GitLab full security report, API mocked", () => {
     ).toString("utf8");
     expect(report).toContain("Findings index");
     expect(report).toContain("How to verify");
-    expect(url).toContain("stacked");
+    expect(url).toBe("https://gitlab.com/group/repo/-/merge_requests/8");
   });
 
   it("will not create a full-report MR from an ordinary review command", async () => {

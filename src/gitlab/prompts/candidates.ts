@@ -21,6 +21,7 @@ export function generateGitlabReviewCandidatesPrompt(
 ): string {
   return generateCandidatesPrompt({
     reviewSettings: ctx.reviewSettings,
+    priorFindingsPath: ctx.priorFindingsPath,
     terminology: GITLAB_TERMINOLOGY,
     entityNumber: ctx.mrIid,
     repoOrProject: ctx.projectPath,

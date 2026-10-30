@@ -588,17 +588,31 @@ function securityReportBody(input: ReviewRenderInput): string {
   const findings = (input.findings ?? []).filter(
     (f) => f.security && (!f.state || f.state === "open"),
   );
+  const provenance = input.securityReport;
+  const source = provenance?.sourceRevision;
+  const evidenceOptions = { ...input, head: source, base: source };
+  const outcomes = new Map(
+    provenance?.outcomes.map((outcome) => [outcome.id, outcome]) ?? [],
+  );
+  const remediation = (finding: ReviewFinding): string => {
+    const outcome = outcomes.get(finding.id);
+    if (outcome?.disposition === "manual")
+      return "**Manual remediation required.**";
+    if (outcome?.disposition === "patched")
+      return `**Reported patched** in ${sha(outcome.fixCommit)} (reported by the scan, not independently verified by this renderer).\n\n**Reported verification:** ${prose(truncateReviewText(outcome.verification ?? "", 2000))}`;
+    return "**Remediation status not reported.** Do not infer that this finding is still open or already fixed.";
+  };
   return [
     "## Droid security review",
-    `${pluralize(findings.length, "security finding")} in ${sha(input.head)}.`,
+    `${pluralize(findings.length, "validated security finding")} from the original scan${source ? ` at ${sha(source)}${provenance?.sourceRevisionTrusted ? " (recorded before patching)" : " (reported revision, not independently bound)"}` : " (original revision not recorded; locations are unbound)"}.`,
     findings.length
       ? `### Findings index\n\n${findings.map((f, i) => `- ${link(title(f), `#droid-security-${i + 1}`)} · ${f.severity}`).join("\n")}`
       : "",
     ...findings.map(
       (f, i) =>
-        `<a id="droid-security-${i + 1}"></a>\n\n### ${badges(f, input)} ${title(f)}\n\n${findingReference(f, input)}\n\n${prose(f.body)}\n\n${f.cwe ? `CWE: ${prose(f.cwe)}\n\n` : ""}**How to verify**\n\n- [ ] Reproduce the affected path at ${findingReference(f, input)}.\n- [ ] ${prose(f.verification || "Verify the finding against the current code and test the proposed fix.")}\n- [ ] Run regression tests and confirm the unsafe behavior no longer occurs.`,
+        `<a id="droid-security-${i + 1}"></a>\n\n### ${badges(f, input)} ${title(f)}\n\n${findingReference(f, evidenceOptions)}\n\n${remediation(f)}\n\n${prose(f.body)}\n\n${f.cwe ? `CWE: ${prose(f.cwe)}\n\n` : ""}**How to verify**\n\n- [ ] Reproduce the original affected path at ${findingReference(f, evidenceOptions)}.\n- [ ] ${prose(f.verification || "Verify the finding against the original source and test the proposed fix.")}\n- [ ] Run regression tests on the report branch and confirm the unsafe behavior no longer occurs.`,
     ),
-    footer(input),
+    footer(evidenceOptions),
   ]
     .filter(Boolean)
     .join("\n\n");

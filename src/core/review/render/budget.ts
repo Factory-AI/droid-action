@@ -34,6 +34,7 @@ function compactFinding(
   finding: ReviewFinding,
   quota: number,
   suggestionLimit: number,
+  contextLimit = 5,
 ): ReviewFinding {
   const oversizedSuggestion =
     finding.suggestion !== undefined &&
@@ -49,7 +50,8 @@ function compactFinding(
     why: truncateReviewText(finding.why, quota),
     verification: truncateReviewText(finding.verification, quota),
     agent_prompt: truncateReviewText(finding.agent_prompt, quota),
-    also_at: finding.also_at.slice(0, 5),
+    also_at: finding.also_at.slice(0, contextLimit),
+    source_guideline: contextLimit ? finding.source_guideline : undefined,
     ...(oversizedSuggestion ? { suggestion: undefined } : {}),
   };
 }
@@ -113,7 +115,12 @@ function compactInput(
   return {
     ...input,
     findings: input.findings?.map((finding) =>
-      compactFinding(finding, quota, suggestionLimit),
+      compactFinding(
+        finding,
+        quota,
+        suggestionLimit,
+        stage === 1 ? 5 : stage === 2 ? 1 : 0,
+      ),
     ),
     resolved: input.resolved?.map((finding) => compactFinding(finding, 0, 0)),
     summary: compactSummary(input.summary, quota, limit),

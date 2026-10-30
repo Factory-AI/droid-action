@@ -12,6 +12,8 @@
 
 export type GitlabReviewPromptContext = {
   reviewSettings?: import("../../core/review/prompts/types").ReviewPromptSettings;
+  /** Actual optional lifecycle manifest produced by preparation. */
+  priorFindingsPath?: string;
   projectPath: string;
   mrIid: number;
   mrTitle: string;

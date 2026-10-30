@@ -16,6 +16,13 @@ function positive(value: unknown): number | null {
     : null;
 }
 
+async function copyResponse(response: Response): Promise<Response> {
+  return new Response(await response.clone().arrayBuffer(), {
+    status: response.status,
+    headers: response.headers,
+  });
+}
+
 /** An opt-in bridge, not a claim that GitLab note hooks start CI natively. */
 export function createNotePipelineBridge(options: {
   client: GitlabClient;
@@ -28,7 +35,7 @@ export function createNotePipelineBridge(options: {
   }) => Promise<void>;
 }): (request: Request) => Promise<Response> {
   const completed = new Set<number>();
-  const inFlight = new Set<number>();
+  const inFlight = new Map<number, Promise<Response>>();
   return async (request) => {
     const supplied = Buffer.from(request.headers.get("x-gitlab-token") ?? "");
     const expected = Buffer.from(options.webhookSecret);
@@ -67,60 +74,67 @@ export function createNotePipelineBridge(options: {
       !mrIid
     )
       return Response.json({ skipped: "Not a new note on an allowed MR" });
-    if (completed.has(noteId) || inFlight.has(noteId))
+    if (completed.has(noteId))
       return Response.json({ skipped: "Note already dispatched" });
-    inFlight.add(noteId);
-    try {
-      // The webhook body is merely an addressing hint. Fetch the live note,
-      // actual author, and current MR branch before triggering anything.
-      const [note, mr, user] = await Promise.all([
-        options.client.getNote(options.projectId, mrIid, noteId),
-        options.client.getMr(options.projectId, mrIid),
-        options.client.getCurrentUser(),
-      ]);
-      if (note.author.id === user.id || !parseDroidCommand(note.body))
-        return Response.json({ skipped: "No human Droid command" });
-      if (
-        !hasGitlabWriteAccess(
-          await options.client.getMember(options.projectId, note.author.id),
+    const pending = inFlight.get(noteId);
+    if (pending) return copyResponse(await pending);
+    const dispatch = (async () => {
+      try {
+        // The webhook body is merely an addressing hint. Fetch the live note,
+        // actual author, and current MR branch before triggering anything.
+        const [note, mr, user] = await Promise.all([
+          options.client.getNote(options.projectId, mrIid, noteId),
+          options.client.getMr(options.projectId, mrIid),
+          options.client.getCurrentUser(),
+        ]);
+        if (note.author.id === user.id || !parseDroidCommand(note.body))
+          return Response.json({ skipped: "No human Droid command" });
+        if (
+          !hasGitlabWriteAccess(
+            await options.client.getMember(options.projectId, note.author.id),
+          )
         )
-      )
+          return Response.json(
+            {
+              error:
+                "Droid commands require an active project Developer, Maintainer, or Owner",
+            },
+            { status: 403 },
+          );
+        if (mr.state !== "opened")
+          return Response.json({ skipped: "MR is not open" });
+        if (
+          mr.source_project_id !== options.projectId ||
+          mr.target_project_id !== options.projectId
+        ) {
+          await options.client.createNote(
+            options.projectId,
+            mrIid,
+            "Droid could not start this command: a fork's source branch is not a pipeline ref in the target project. Run the review in an explicitly trusted fork pipeline with correctly scoped credentials, or apply the finding's AI-agent prompt manually. The bridge does not run fork code with target-project secrets.",
+          );
+          completed.add(noteId);
+          return Response.json({
+            skipped:
+              "Fork command pipeline requires an explicitly configured trusted route",
+          });
+        }
+        assertGitlabFixRef(mr.source_branch, mr.diff_refs.head_sha);
+        await options.trigger({ ref: mr.source_branch, mrIid, noteId });
+        completed.add(noteId);
+        return Response.json({ dispatched: true });
+      } catch {
         return Response.json(
           {
             error:
-              "Droid commands require an active project Developer, Maintainer, or Owner",
+              "GitLab could not dispatch the command; check bridge credentials and retry",
           },
-          { status: 403 },
+          { status: 502 },
         );
-      if (mr.state !== "opened")
-        return Response.json({ skipped: "MR is not open" });
-      if (
-        mr.source_project_id !== options.projectId ||
-        mr.target_project_id !== options.projectId
-      ) {
-        await options.client.createNote(
-          options.projectId,
-          mrIid,
-          "Droid could not start this command: a fork's source branch is not a pipeline ref in the target project. Run the review in an explicitly trusted fork pipeline with correctly scoped credentials, or apply the finding's AI-agent prompt manually. The bridge does not run fork code with target-project secrets.",
-        );
-        completed.add(noteId);
-        return Response.json({
-          skipped:
-            "Fork command pipeline requires an explicitly configured trusted route",
-        });
       }
-      assertGitlabFixRef(mr.source_branch, mr.diff_refs.head_sha);
-      await options.trigger({ ref: mr.source_branch, mrIid, noteId });
-      completed.add(noteId);
-      return Response.json({ dispatched: true });
-    } catch {
-      return Response.json(
-        {
-          error:
-            "GitLab could not dispatch the command; check bridge credentials and retry",
-        },
-        { status: 502 },
-      );
+    })();
+    inFlight.set(noteId, dispatch);
+    try {
+      return copyResponse(await dispatch);
     } finally {
       inFlight.delete(noteId);
     }

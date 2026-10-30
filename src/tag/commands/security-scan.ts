@@ -41,6 +41,22 @@ export async function prepareSecurityScanMode({
 
   const date = new Date().toISOString().split("T")[0];
   const branchName = `droid/security-report-${date}`;
+  // Bind evidence to the repository's original revision before model execution.
+  const source = await octokit.rest.repos.getCommit({
+    owner: context.repository.owner,
+    repo: context.repository.repo,
+    ref: defaultBranch,
+  });
+  const sourceRevision = source.data.sha;
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(sourceRevision))
+    throw new Error("Security scan requires an immutable original revision");
+  const { viewer } = await octokit.graphql<{ viewer: { login: string } }>(
+    "query DroidSecurityReportAuthor { viewer { login } }",
+  );
+  if (!viewer?.login?.trim() || !context.actor.trim())
+    throw new Error(
+      "Security scan requires an authenticated report author and actor",
+    );
 
   const branchInfo = {
     baseBranch: defaultBranch,
@@ -53,7 +69,7 @@ export async function prepareSecurityScanMode({
     baseBranch: branchInfo.baseBranch,
     droidBranch: branchInfo.droidBranch,
     generatePrompt: (ctx) =>
-      generateSecurityReportPrompt(ctx, scanScope, branchName),
+      generateSecurityReportPrompt(ctx, scanScope, branchName, sourceRevision),
   });
   // Signal that security skills should be installed
   core.setOutput("install_security_skills", "true");
@@ -86,6 +102,12 @@ export async function prepareSecurityScanMode({
     allowedTools,
     mode: "tag",
     context,
+    securityReportTarget: {
+      sourceRevision,
+      branch: branchName,
+      baseBranch: defaultBranch,
+      author: viewer.login,
+    },
   });
 
   const droidArgParts: string[] = [];

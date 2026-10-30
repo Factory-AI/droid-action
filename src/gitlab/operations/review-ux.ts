@@ -83,6 +83,7 @@ export function reconcileDiscussionState(
 }
 
 export function findingFromState(entry: ReviewStateFinding): ReviewFinding {
+  const threadId = entry.threadId ?? entry.thread;
   const finding =
     entry.finding ??
     normalizeFinding({
@@ -97,6 +98,7 @@ export function findingFromState(entry: ReviewStateFinding): ReviewFinding {
     ...finding,
     state: entry.state,
     isNew: false,
+    ...(typeof threadId === "string" ? { threadId } : {}),
     ...(entry.url ? { threadUrl: entry.url } : {}),
   };
 }

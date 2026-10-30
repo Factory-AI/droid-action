@@ -34,6 +34,7 @@ function describeErrorBody(body: unknown): string {
 export class GitlabApiError extends Error {
   status: number;
   body: unknown;
+  retryAfterMs?: number;
 
   constructor(
     status: number,
@@ -76,14 +77,33 @@ export class GitlabClient {
     path: string,
     init: RequestInitWithJson = {},
   ): Promise<T> {
-    if (!init.method || init.method === "GET")
-      return retryWithBackoff(() => this.requestOnce<T>(path, init), {
-        initialDelayMs: 200,
-        maxDelayMs: 1000,
-        shouldRetry: (error) =>
-          error instanceof GitlabApiError &&
-          (error.status === 429 || error.status >= 500),
-      });
+    if (!init.method || init.method === "GET") {
+      let retryAt = 0;
+      return retryWithBackoff(
+        async () => {
+          const remaining = retryAt - Date.now();
+          if (remaining > 0)
+            await new Promise((resolve) => setTimeout(resolve, remaining));
+          try {
+            return await this.requestOnce<T>(path, init);
+          } catch (error) {
+            retryAt =
+              error instanceof GitlabApiError &&
+              error.retryAfterMs !== undefined
+                ? Date.now() + error.retryAfterMs
+                : 0;
+            throw error;
+          }
+        },
+        {
+          initialDelayMs: 200,
+          maxDelayMs: 1000,
+          shouldRetry: (error) =>
+            error instanceof GitlabApiError &&
+            (error.status === 429 || error.status >= 500),
+        },
+      );
+    }
     // Writes are not blindly retried: an interrupted response can represent
     // an already-created discussion, commit, or merge request.
     return this.requestOnce<T>(path, init);
@@ -134,12 +154,22 @@ export class GitlabClient {
       } catch {
         parsed = text;
       }
-      throw new GitlabApiError(
+      const error = new GitlabApiError(
         response.status,
         response.statusText || "Request failed",
         parsed,
         secrets,
       );
+      const hint = response.headers.get("Retry-After");
+      if (response.status === 429 && hint?.trim()) {
+        const seconds = Number(hint);
+        const delay = Number.isFinite(seconds)
+          ? seconds * 1000
+          : Date.parse(hint) - Date.now();
+        if (Number.isFinite(delay))
+          error.retryAfterMs = Math.min(30000, Math.max(0, delay));
+      }
+      throw error;
     }
 
     if (response.status === 204) {

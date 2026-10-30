@@ -99,33 +99,59 @@ export async function inspectFixDestination(
     defaultBranch: destination.default_branch,
     fork,
   });
-  return { pr, headOwner, headRepo, target, fork };
+  return {
+    pr,
+    headOwner,
+    headRepo,
+    target,
+    fork,
+    repositoryId: destination.node_id,
+  };
 }
 
 /** Fetch immutable source through the API. Fork code is never checked out or executed. */
 export async function fetchFixSources(
   octokit: Octokits,
   binding: FixBinding,
-): Promise<Array<{ path: string; content: string }>> {
+): Promise<{
+  sources: Array<{ path: string; content: string }>;
+  skippedPaths: string[];
+}> {
   const { headOwner: owner, headRepo: repo } = await inspectFixDestination(
     octokit,
     binding,
   );
-  return Promise.all(
+  const fetched = await Promise.all(
     [...new Set(binding.allowedPaths)].map(async (path) => {
       assertFixPath(path);
-      const result = (
-        await retryWithBackoff(
-          () =>
-            octokit.rest.repos.getContent({
-              owner,
-              repo,
-              path,
-              ref: binding.expectedHead,
-            }),
-          retryOptions,
+      let result;
+      try {
+        result = (
+          await retryWithBackoff(
+            () =>
+              octokit.rest.repos.getContent({
+                owner,
+                repo,
+                path,
+                ref: binding.expectedHead,
+              }),
+            {
+              ...retryOptions,
+              shouldRetry: (error) =>
+                !("status" in error && error.status === 404),
+            },
+          )
+        ).data;
+      } catch (error) {
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "status" in error &&
+          error.status === 404
         )
-      ).data;
+          return { path, missing: true as const };
+        throw error;
+      }
       if (
         Array.isArray(result) ||
         result.type !== "file" ||
@@ -134,14 +160,22 @@ export async function fetchFixSources(
       ) {
         throw new Error("Fix source must be a regular file smaller than 1 MiB");
       }
-      return {
-        path,
-        content: redactCredentials(
-          Buffer.from(result.content, "base64").toString("utf8"),
-        ),
-      };
+      const content = Buffer.from(result.content, "base64").toString("utf8");
+      if (redactCredentials(content) !== content)
+        throw new Error(
+          "Fix source requires credential redaction; refusing a destructive replacement",
+        );
+      return { path, content, missing: false as const };
     }),
   );
+  return {
+    sources: fetched.flatMap((file) =>
+      file.missing ? [] : [{ path: file.path, content: file.content }],
+    ),
+    skippedPaths: fetched
+      .filter((file) => file.missing)
+      .map((file) => file.path),
+  };
 }
 
 export type PublishedFix = { sha: string; url?: string; body: string };
@@ -221,6 +255,10 @@ export async function publishReviewFix(
       )
     ).data;
     const oldText = Buffer.from(oldBlob.content, "base64").toString("utf8");
+    if (redactCredentials(oldText) !== oldText)
+      throw new Error(
+        "Fix source requires credential redaction; refusing a destructive replacement",
+      );
     if (file.content === oldText) continue;
     let sha: string | null = null;
     if (file.content !== null) {
@@ -272,14 +310,35 @@ export async function publishReviewFix(
   const fresh = await inspectFixDestination(octokit, binding);
   let url: string | undefined;
   if (fresh.target === "commit") {
+    if (!fresh.repositoryId)
+      throw new Error(
+        "Atomic expected-head publication is unavailable for this repository",
+      );
     try {
-      await octokit.rest.git.updateRef({
-        owner,
-        repo,
-        ref: `heads/${pr.head.ref}`,
-        sha: fixedCommit.sha,
-        force: false,
-      });
+      // beforeOid is a server-side compare-and-swap, including concurrent rewinds.
+      // REST updateRef(force:false) alone can resurrect discarded ancestor history.
+      const published = await octokit.graphql<{
+        updateRefs: { clientMutationId: string | null } | null;
+      }>(
+        `mutation PublishReviewFix($input: UpdateRefsInput!) {
+          updateRefs(input: $input) { clientMutationId }
+        }`,
+        {
+          input: {
+            repositoryId: fresh.repositoryId,
+            refUpdates: [
+              {
+                name: `refs/heads/${pr.head.ref}`,
+                beforeOid: binding.expectedHead,
+                afterOid: fixedCommit.sha,
+                force: false,
+              },
+            ],
+          },
+        },
+      );
+      if (!published.updateRefs)
+        throw new Error("Atomic expected-head publication is unsupported");
     } catch (error) {
       // A lost response can mean the update already succeeded.
       const current = (
@@ -295,8 +354,7 @@ export async function publishReviewFix(
       ).data;
       if (current.object.sha !== fixedCommit.sha) {
         const stillCurrent = await inspectFixDestination(octokit, binding);
-        if (stillCurrent.target !== "pr" && !isPermissionFailure(error))
-          throw error;
+        if (!isPermissionFailure(error)) throw error;
         url = await createStackedFix(
           octokit,
           binding,
@@ -336,7 +394,7 @@ function isPermissionFailure(error: unknown): boolean {
     typeof error === "object" &&
     error !== null &&
     "status" in error &&
-    [403, 422].includes(Number(error.status))
+    Number(error.status) === 403
   );
 }
 function diffPreview(

@@ -1,4 +1,5 @@
 import type { ReviewState } from "../markers";
+import type { SecurityReportProvenance } from "../security-report";
 import type {
   DroppedFinding,
   ReviewFinding,
@@ -46,6 +47,8 @@ export type ReviewRenderInput = RenderOptions & {
   skipReason?: string;
   unchangedSuggestions?: number;
   reviewState?: ReviewState;
+  /** Full repository scan provenance, separate from ordinary review lifecycle. */
+  securityReport?: SecurityReportProvenance;
 };
 export type CheckRunInput = ReviewRenderInput & {
   phase?: "queued" | "in_progress" | "completed";

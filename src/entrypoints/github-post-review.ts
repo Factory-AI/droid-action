@@ -67,8 +67,10 @@ import {
   listDroidThreads,
   loadBoundReviewLifecycle,
   resolveDroidThread,
+  reopenDroidThread,
   saveReviewLifecycle,
   stateFindings,
+  type ReviewSessionIdentity,
 } from "../github/operations/review-lifecycle";
 import {
   isPermissionError,
@@ -139,9 +141,14 @@ function indexedLine(
 ): boolean {
   const line = validatedAnchorLine(comment);
   if (line === null || !file) return false;
-  return comment.side === "LEFT"
-    ? file.oldLines.has(line)
-    : file.newLines.has(line);
+  const start = comment.startLine ?? line;
+  if (!Number.isSafeInteger(start) || start < 1 || start > line) return false;
+  const lines = comment.side === "LEFT" ? file.oldLines : file.newLines;
+  // Never narrow a rendered replacement to only its final line.
+  for (let current = start; current <= line; current++) {
+    if (!lines.has(current)) return false;
+  }
+  return true;
 }
 
 function inlineComment(
@@ -382,6 +389,7 @@ export async function run(
     context?: ParsedGitHubContext;
     client?: GitHubReviewClient;
     octokit?: Octokits;
+    reviewSession?: ReviewSessionIdentity;
   } = {},
 ): Promise<GitHubPostResults> {
   let context = options.context ?? parseGitHubContext();
@@ -412,6 +420,8 @@ export async function run(
   }
 
   const parsed = parseValidatedReview(validatedRaw);
+  if (parsed.conflictingCommitIds)
+    throw new Error("Validated review declares conflicting commit identities.");
   let posted: GitHubPostReviewResult = {
     reviewId: undefined,
     posted: 0,
@@ -423,7 +433,9 @@ export async function run(
   const octokit =
     options.octokit ??
     (!options.client && token ? createOctokit(token) : undefined);
-  const lifecycle = octokit ? await loadBoundReviewLifecycle(octokit) : null;
+  const lifecycle = octokit
+    ? await loadBoundReviewLifecycle(octokit, options.reviewSession)
+    : null;
   if (lifecycle?.superseded) {
     await finishReviewLifecycle({
       octokit: octokit!,
@@ -551,6 +563,7 @@ export async function run(
                 repo: lifecycle.repo,
                 base: lifecycle.state.head,
                 head: lifecycle.head,
+                direct: true,
               }),
             lifecycleWarning(lifecycle),
           )
@@ -574,28 +587,81 @@ export async function run(
       incremental: !!lifecycle.incrementalBaseSha,
       changedPaths: new Set(changedReviewLines(priorDiff ?? diff).keys()),
     });
-    findings = reconciled.findings;
+    const currentIds = new Set(findings.map((finding) => finding.id));
+    findings = reconciled.findings.map((finding) => {
+      const thread = threads.find((thread) => thread.findingId === finding.id);
+      // The live location is on the current head, so apply it only after
+      // eligibility has used the previous reviewed head's coordinates.
+      if (
+        currentIds.has(finding.id) ||
+        !thread ||
+        thread.side !== finding.side ||
+        !thread.path ||
+        thread.line === null ||
+        !Number.isSafeInteger(thread.line) ||
+        thread.line < 1
+      )
+        return finding;
+      return {
+        ...finding,
+        path: thread.path,
+        line: thread.line,
+        startLine:
+          thread.startLine &&
+          Number.isSafeInteger(thread.startLine) &&
+          thread.startLine > 0 &&
+          thread.startLine < thread.line
+            ? thread.startLine
+            : null,
+      };
+    });
     newFindings = reconciled.newFindings;
     resolved = reconciled.resolved;
     unchangedSuggestions = reconciled.unchangedSuggestions;
-    if (config.review_auto_resolve) {
-      for (const finding of resolved) {
+    for (const finding of findings) {
+      if (
+        finding.state === "open" &&
+        finding.pendingThreadAction === "reopen"
+      ) {
         const thread = threads.find(
           (thread) => thread.findingId === finding.id,
         );
-        if (thread && !thread.resolved)
+        if (thread) {
           await optionalGitHubOperation(
-            () =>
-              resolveDroidThread({
-                octokit,
-                owner: lifecycle.owner,
-                repo: lifecycle.repo,
-                prNumber: lifecycle.prNumber,
-                thread,
-                head: commitId || lifecycle.head,
-              }),
+            () => reopenDroidThread({ octokit, thread }),
             lifecycleWarning(lifecycle),
           );
+          if (!thread.resolved) finding.pendingThreadAction = undefined;
+        }
+      }
+    }
+    if (config.review_auto_resolve) {
+      for (const finding of findings.filter(
+        (finding) => finding.state === "resolved" && finding.fixedIn,
+      )) {
+        const thread = threads.find(
+          (thread) => thread.findingId === finding.id,
+        );
+        // A fixed reply is a create, not an idempotent thread mutation. Try
+        // it only for a newly validated fix, never on ambiguous retries.
+        let reply =
+          previous.find((prior) => prior.id === finding.id)?.state !==
+          "resolved";
+        if (thread && !thread.resolved)
+          await optionalGitHubOperation(() => {
+            const sendReply = reply;
+            reply = false;
+            return resolveDroidThread({
+              octokit,
+              owner: lifecycle.owner,
+              repo: lifecycle.repo,
+              prNumber: lifecycle.prNumber,
+              thread,
+              head: finding.fixedIn,
+              reply: sendReply,
+            });
+          }, lifecycleWarning(lifecycle));
+        if (thread?.resolved) finding.pendingThreadAction = undefined;
       }
     }
   }

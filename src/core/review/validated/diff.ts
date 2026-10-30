@@ -139,18 +139,23 @@ export function normalizePatchPath(raw: string): string | null {
     : value;
 }
 
-function pathsFromDiffHeader(line: string): {
+export function pathsFromDiffHeader(line: string): {
   oldPath: string | null;
   newPath: string | null;
 } {
   const value = line.slice("diff --git ".length);
   if (value.startsWith('"')) {
-    // Quoted headers can contain spaces and escapes. The authoritative
-    // `---`/`+++` lines below carry the same paths and are easier to parse.
-    return { oldPath: null, newPath: null };
+    const quoted = /^("(?:\\.|[^"\\])*") (.+)$/.exec(value);
+    return quoted
+      ? {
+          oldPath: normalizePatchPath(quoted[1]!),
+          newPath: normalizePatchPath(quoted[2]!),
+        }
+      : { oldPath: null, newPath: null };
   }
 
-  const separator = value.lastIndexOf(" b/");
+  const quotedNew = value.lastIndexOf(' "b/');
+  const separator = quotedNew >= 0 ? quotedNew : value.lastIndexOf(" b/");
   if (separator < 0) return { oldPath: null, newPath: null };
   return {
     oldPath: normalizePatchPath(value.slice(0, separator)),

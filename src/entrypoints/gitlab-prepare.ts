@@ -441,7 +441,7 @@ async function run(): Promise<void> {
     path.join(promptsDir(), "review_files_skipped.json"),
     JSON.stringify(filesSkipped, null, 2),
   );
-  if (!skipReason && !selectedChanges.changes.length)
+  if (!skipReason && !selectedChanges.changes.length && !command?.securityFull)
     skipReason = "all changed files are excluded by review_ignore_paths";
   const reviewState: ReviewState = previous ?? {
     head: "",
@@ -464,9 +464,32 @@ async function run(): Promise<void> {
     command?.security || config.automatic_security_review,
   );
 
+  // A same-head skip does not revalidate or clear retained open findings.
+  const blocked = Boolean(
+    skipReason &&
+      previous?.head === mr.diff_refs.head_sha &&
+      previous.findings
+        .filter((f) => f.state === "open")
+        .map(findingFromState)
+        .some(
+          (f) =>
+            (f.category === "recovered-unclassified" &&
+              (config.security_block_on_critical ||
+                config.security_block_on_high)) ||
+            (config.fail_on_severity &&
+              Number(f.severity.slice(1)) <=
+                Number(config.fail_on_severity.slice(1))) ||
+            (f.security &&
+              ((config.security_block_on_critical &&
+                f.securitySeverity === "critical") ||
+                (config.security_block_on_high &&
+                  ["critical", "high"].includes(f.securitySeverity ?? "")))),
+        ),
+  );
   const renderInput = {
     ...commonRender,
     state: skipReason ? ("skipped" as const) : ("in_progress" as const),
+    blocked,
     ...(skipReason ? { skipReason } : { startedAt: new Date().toISOString() }),
   };
   const rendered = renderGitlabSummary(renderInput);
@@ -639,6 +662,9 @@ async function run(): Promise<void> {
   const validatedPath = validatedFilePath();
 
   const promptCtx: GitlabReviewPromptContext = {
+    priorFindingsPath: previous
+      ? path.join(promptsDir(), "previous_findings.json")
+      : undefined,
     reviewSettings: reviewPromptSettingsFromEnvironment(
       reviewConfigEnvironment(config),
     ),

@@ -58,6 +58,10 @@ export type GitlabNote = {
   resolvable: boolean;
   resolved?: boolean;
   resolved_by?: GitlabUser | null;
+  position?: Pick<
+    GitlabPosition,
+    "new_path" | "old_path" | "new_line" | "old_line"
+  > | null;
 };
 
 export type GitlabDiscussion = {

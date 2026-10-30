@@ -22,6 +22,7 @@ import {
   secretValuesFromEnv,
 } from "../../utils/redact-credentials";
 import type { GitlabClient } from "../api/client";
+import { setupGitlabToken } from "../token";
 import type { GitlabCommitAction, GitlabMr } from "../types";
 import {
   discussionFinding,
@@ -404,6 +405,8 @@ export async function publishGitlabFix(options: {
       client.getMember(sourceProject, user.id),
       client.getBranch(sourceProject, mr.source_branch),
     ]);
+  if (refreshed.state !== "opened")
+    throw new Error("MR is not open; refusing to publish a fix");
   if (
     refreshed.diff_refs.head_sha !== mr.diff_refs.head_sha ||
     refreshed.source_project_id !== sourceProject ||
@@ -502,8 +505,7 @@ export async function pushFixCommit(input: {
     url.password
   )
     throw new Error("Fix destination must use this GitLab instance over HTTPS");
-  const token = process.env.OVERRIDE_GITLAB_TOKEN || process.env.GITLAB_TOKEN;
-  if (!token) throw new Error("No GitLab publishing token is available");
+  const token = setupGitlabToken();
   const directory = await fs.mkdtemp(
     path.join(os.tmpdir(), "droid-gitlab-publish-"),
   );
@@ -542,8 +544,12 @@ export async function pushFixCommit(input: {
         "Non-force fix publication failed, possibly because the branch advanced or is protected. No existing branch was overwritten",
       );
   };
-  run(["init", "--bare", "."]);
-  const remote = `${url.href.replace(/\/$/, "")}.git`;
-  run(["fetch", "--no-tags", remote, `refs/heads/${input.temporaryBranch}`]);
-  run(["push", remote, `${input.sha}:refs/heads/${input.branch}`]);
+  try {
+    run(["init", "--bare", "."]);
+    const remote = `${url.href.replace(/\/$/, "")}.git`;
+    run(["fetch", "--no-tags", remote, `refs/heads/${input.temporaryBranch}`]);
+    run(["push", remote, `${input.sha}:refs/heads/${input.branch}`]);
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
 }

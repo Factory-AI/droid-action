@@ -4,13 +4,16 @@ import {
   advanceReviewLifecycle,
   finishReviewLifecycle,
   loadBoundReviewLifecycle,
+  type ReviewSessionIdentity,
 } from "../github/operations/review-lifecycle";
 import { redactCredentials } from "../utils/redact-credentials";
 import { readFile } from "fs/promises";
 import { join } from "path";
 import { parseValidatedReview } from "../core/review/validated/parse";
 
-export async function run(options: { octokit?: Octokits } = {}): Promise<void> {
+export async function run(
+  options: { octokit?: Octokits; reviewSession?: ReviewSessionIdentity } = {},
+): Promise<void> {
   if (!process.env.GITHUB_TOKEN && !options.octokit) return;
   if (
     (process.env.REVIEW_POSTED === "true" ||
@@ -19,7 +22,10 @@ export async function run(options: { octokit?: Octokits } = {}): Promise<void> {
   )
     return;
   const octokit = options.octokit ?? createOctokit(process.env.GITHUB_TOKEN!);
-  const lifecycle = await loadBoundReviewLifecycle(octokit);
+  const lifecycle = await loadBoundReviewLifecycle(
+    octokit,
+    options.reviewSession,
+  );
   if (!lifecycle || lifecycle.completed) return;
   const phase = process.env.REVIEW_PHASE || "finalize";
   if (phase === "finalize") {

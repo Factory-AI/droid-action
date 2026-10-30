@@ -79,6 +79,34 @@ function setup(
 }
 
 describe("authenticated GitLab note-to-pipeline bridge", () => {
+  it("shares a pending trigger failure instead of acknowledging its retry", async () => {
+    const t = setup();
+    let entered = () => {};
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let fail = (_error: Error) => {};
+    const pending = new Promise<void>((_resolve, reject) => {
+      fail = reject;
+    });
+    t.trigger.mockImplementation(async () => {
+      entered();
+      await pending;
+    });
+    const original = t.request();
+    await started;
+    const retry = t.request();
+    await Promise.resolve();
+    await Promise.resolve();
+    fail(new Error("controlled trigger failure"));
+    expect((await original).status).toBe(502);
+    expect((await retry).status).toBe(502);
+    expect(t.trigger).toHaveBeenCalledTimes(1);
+    t.trigger.mockImplementation(async () => {});
+    expect((await t.request()).status).toBe(200);
+    expect(t.trigger).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects a bad webhook secret before any API lookup", async () => {
     const t = setup();
     expect((await t.request({ secret: "wrong" })).status).toBe(401);

@@ -55,6 +55,7 @@ export function isPermissionError(error: unknown): boolean {
 export async function optionalGitHubOperation<T>(
   operation: () => Promise<T>,
   warn: (message: string) => void,
+  maxAttempts = 3,
 ): Promise<T | undefined> {
   try {
     return await retryWithBackoff(
@@ -73,7 +74,7 @@ export async function optionalGitHubOperation<T>(
         }
       },
       {
-        maxAttempts: 3,
+        maxAttempts,
         initialDelayMs: 250,
         maxDelayMs: 1000,
         shouldRetry: (error) => !isPermissionError(error),
@@ -87,17 +88,33 @@ export async function optionalGitHubOperation<T>(
   }
 }
 
+export function reviewCheckExternalId(
+  runId = process.env.GITHUB_RUN_ID,
+  runAttempt = process.env.GITHUB_RUN_ATTEMPT || "1",
+): string | undefined {
+  return runId ? `${runId}:${runAttempt}` : undefined;
+}
+
 export async function createReviewCheck(options: {
   octokit: Octokits;
   owner: string;
   repo: string;
   head: string;
+  runId?: string;
+  runAttempt?: string;
   securityOnly?: boolean;
   enabled?: boolean;
   jobUrl?: string;
   warn: (message: string) => void;
 }): Promise<number | undefined> {
   if (options.enabled === false) return undefined;
+  const externalId = reviewCheckExternalId(options.runId, options.runAttempt);
+  if (!externalId) {
+    options.warn(
+      "Droid could not bind a check to this workflow run; no check was created.",
+    );
+    return undefined;
+  }
   const response = await optionalGitHubOperation(
     () =>
       options.octokit.rest.checks.create({
@@ -105,6 +122,7 @@ export async function createReviewCheck(options: {
         repo: options.repo,
         name: options.securityOnly ? "Droid Security Review" : "Droid Review",
         head_sha: options.head,
+        external_id: externalId,
         status: "queued",
         ...(options.jobUrl ? { details_url: options.jobUrl } : {}),
         output: {
@@ -112,7 +130,11 @@ export async function createReviewCheck(options: {
           summary: "Droid is waiting to gather PR context.",
         },
       }),
-    options.warn,
+    () =>
+      options.warn(
+        "Droid could not confirm check creation. It may have succeeded remotely; creation was not retried and no unrelated check will be adopted.",
+      ),
+    1,
   );
   return response?.data.id;
 }
