@@ -24,6 +24,7 @@ describe("review command integration", () => {
   const originalRunnerTemp = process.env.RUNNER_TEMP;
   const originalDroidArgs = process.env.DROID_ARGS;
   const originalSecurityReviewEnabled = process.env.SECURITY_REVIEW_ENABLED;
+  const originalFactoryApiKey = process.env.FACTORY_API_KEY;
   const originalAutomaticInputs = {
     AUTOMATIC_REVIEW: process.env.AUTOMATIC_REVIEW,
     AUTOMATIC_SECURITY_REVIEW: process.env.AUTOMATIC_SECURITY_REVIEW,
@@ -44,6 +45,7 @@ describe("review command integration", () => {
   let promptSpy: ReturnType<typeof spyOn>;
   let computeArtifactsSpy: ReturnType<typeof spyOn>;
   let execSyncSpy: ReturnType<typeof spyOn>;
+  let fetchSpy: ReturnType<typeof spyOn>;
 
   function createAutomaticReviewContext(
     automaticReview: boolean,
@@ -116,7 +118,19 @@ describe("review command integration", () => {
     process.env.RUNNER_TEMP = tmpDir;
     process.env.DROID_ARGS = "";
     process.env.GITHUB_REPOSITORY = "test-owner/test-repo";
+    process.env.FACTORY_API_KEY = "test-factory-api-key";
     delete process.env.SECURITY_REVIEW_ENABLED;
+
+    // Keep the real policy parsing without sending this integration test to
+    // the network or depending on the runner's Factory credentials.
+    const policyFetch = Object.assign(
+      async (input: Parameters<typeof fetch>[0]) => {
+        expect(String(input)).toEndWith("/api/organization/managed-settings");
+        return Response.json({ success: true, settings: {} });
+      },
+      { preconnect: fetch.preconnect },
+    );
+    fetchSpy = spyOn(globalThis, "fetch").mockImplementation(policyFetch);
 
     createCommentSpy = spyOn(
       createInitial,
@@ -163,6 +177,7 @@ describe("review command integration", () => {
     setOutputSpy.mockRestore();
     exportVarSpy.mockRestore();
     execSyncSpy.mockRestore();
+    fetchSpy.mockRestore();
 
     if (process.env.RUNNER_TEMP) {
       await rm(process.env.RUNNER_TEMP, { recursive: true, force: true });
@@ -184,6 +199,12 @@ describe("review command integration", () => {
       process.env.SECURITY_REVIEW_ENABLED = originalSecurityReviewEnabled;
     } else {
       delete process.env.SECURITY_REVIEW_ENABLED;
+    }
+
+    if (originalFactoryApiKey === undefined) {
+      delete process.env.FACTORY_API_KEY;
+    } else {
+      process.env.FACTORY_API_KEY = originalFactoryApiKey;
     }
 
     Object.assign(github.context, originalGitHubContext);

@@ -33,6 +33,8 @@ describe("prepareReviewMode", () => {
   const originalReviewModel = process.env.REVIEW_MODEL;
   const originalRunnerTemp = process.env.RUNNER_TEMP;
   const originalSecurityReviewEnabled = process.env.SECURITY_REVIEW_ENABLED;
+  const originalFactoryApiKey = process.env.FACTORY_API_KEY;
+  const originalReasoningEffort = process.env.REASONING_EFFORT;
   let graphqlSpy: ReturnType<typeof spyOn>;
   let promptSpy: ReturnType<typeof spyOn>;
   let mcpSpy: ReturnType<typeof spyOn>;
@@ -42,12 +44,23 @@ describe("prepareReviewMode", () => {
   let execSyncSpy: ReturnType<typeof spyOn>;
   let writeFileSpy: ReturnType<typeof spyOn>;
   let mkdirSpy: ReturnType<typeof spyOn>;
+  let fetchSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
     process.env.DROID_ARGS = "";
     delete process.env.REVIEW_MODEL;
     delete process.env.SECURITY_REVIEW_ENABLED;
     process.env.RUNNER_TEMP = "/tmp/test-runner";
+    process.env.FACTORY_API_KEY = "test-factory-api-key";
+    // Exercise policy parsing without network timing or runner credentials.
+    const policyFetch = Object.assign(
+      async (input: Parameters<typeof fetch>[0]) => {
+        expect(String(input)).toEndWith("/api/organization/managed-settings");
+        return Response.json({ success: true, settings: {} });
+      },
+      { preconnect: fetch.preconnect },
+    );
+    fetchSpy = spyOn(globalThis, "fetch").mockImplementation(policyFetch);
 
     promptSpy = spyOn(promptModule, "createPrompt").mockResolvedValue();
     mcpSpy = spyOn(mcpInstaller, "prepareMcpTools").mockResolvedValue(
@@ -79,6 +92,7 @@ describe("prepareReviewMode", () => {
   });
 
   afterEach(() => {
+    fetchSpy?.mockRestore();
     graphqlSpy?.mockRestore();
     promptSpy.mockRestore();
     mcpSpy.mockRestore();
@@ -88,7 +102,11 @@ describe("prepareReviewMode", () => {
     execSyncSpy.mockRestore();
     writeFileSpy.mockRestore();
     mkdirSpy.mockRestore();
-    process.env.DROID_ARGS = originalArgs;
+    if (originalArgs === undefined) {
+      delete process.env.DROID_ARGS;
+    } else {
+      process.env.DROID_ARGS = originalArgs;
+    }
     if (originalReviewModel !== undefined) {
       process.env.REVIEW_MODEL = originalReviewModel;
     } else {
@@ -103,6 +121,16 @@ describe("prepareReviewMode", () => {
       process.env.SECURITY_REVIEW_ENABLED = originalSecurityReviewEnabled;
     } else {
       delete process.env.SECURITY_REVIEW_ENABLED;
+    }
+    for (const [name, value] of Object.entries({
+      FACTORY_API_KEY: originalFactoryApiKey,
+      REASONING_EFFORT: originalReasoningEffort,
+    })) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
     }
   });
 
