@@ -702,6 +702,19 @@ async function run(): Promise<void> {
     includeAgentPrompts: config.include_agent_prompts,
     includeCategories: config.review_category_chips,
   };
+  if (
+    memory.note &&
+    config.review_summary !== "off" &&
+    process.env.DROID_SECURITY_FULL !== "true"
+  )
+    renderOptions.factoryFix = {
+      reviewUrl:
+        config.review_summary === "description"
+          ? mr.web_url
+          : `${mr.web_url}#note_${memory.note.id}`,
+      head: mr.diff_refs.head_sha,
+      runId: process.env.CI_JOB_ID,
+    };
   const commentsToPost = parsed.approved.filter((comment) => {
     const candidate = comment.finding ?? normalizeFinding({ ...comment });
     return fresh.has(candidate.id) && !candidate.outside_diff;

@@ -47,6 +47,7 @@ import {
   updateReviewStatus,
 } from "../gitlab/operations/review-ux";
 import { loadGitlabReviewConfig } from "../gitlab/operations/review-config";
+import type { ReviewRenderInput } from "../core/review/render";
 
 async function readPostResults() {
   const filePath = postResultsFilePath();
@@ -135,7 +136,7 @@ async function run(): Promise<void> {
     } catch {
       /* Failure before posting still renders a friendly error. */
     }
-    const input = {
+    const input: ReviewRenderInput = {
       ...(posted?.renderInput ?? {
         head: mr.diff_refs.head_sha,
         reviewState: state.previousReviewState ?? undefined,
@@ -155,13 +156,35 @@ async function run(): Promise<void> {
         ? telemetry.totalDurationMs / 1000
         : undefined,
       jobUrl: jobUrl ?? undefined,
+      // Post-results are a cache, not authority for a new-session task target.
+      factoryFix: undefined,
     };
-    const rendered = renderGitlabSummary(input);
     const noteId = await resolveOwnTrackingNoteId(
       client,
       target,
       state.trackingNoteId,
     );
+    const reviewedHead = process.env.DROID_REVIEW_HEAD_SHA;
+    if (
+      droidSuccess &&
+      posted?.renderInput &&
+      noteId !== null &&
+      config.review_summary !== "off" &&
+      process.env.DROID_SECURITY_FULL !== "true" &&
+      reviewedHead &&
+      /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(reviewedHead) &&
+      mr.diff_refs.head_sha === reviewedHead &&
+      input.head === reviewedHead
+    )
+      input.factoryFix = {
+        reviewUrl:
+          config.review_summary === "description"
+            ? mr.web_url
+            : `${mr.web_url}#note_${noteId}`,
+        head: reviewedHead,
+        runId: process.env.CI_JOB_ID,
+      };
+    const rendered = renderGitlabSummary(input);
     if (config.review_summary === "description")
       await client.updateMrDescription(
         target.projectId,
@@ -173,7 +196,6 @@ async function run(): Promise<void> {
     if (noteId === null)
       await client.createNote(target.projectId, target.mrIid, body);
     else await client.updateNote(target.projectId, target.mrIid, noteId, body);
-    const reviewedHead = process.env.DROID_REVIEW_HEAD_SHA;
     if (
       reviewedHead &&
       /^[a-f0-9]{40}$/i.test(reviewedHead) &&

@@ -17,6 +17,13 @@ export type RenderOptions = {
   repositoryUrl?: string;
   base?: string;
   summaryUrl?: string;
+  /** Publisher-owned review identity, never validator/model output. */
+  factoryFix?: {
+    reviewUrl: string;
+    head: string;
+    runId?: string;
+    runAttempt?: string;
+  };
   jobUrl?: string;
   configureUrl?: string;
   durationSeconds?: number;

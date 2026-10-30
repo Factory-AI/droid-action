@@ -101,8 +101,32 @@ export function buildReviewPreviews(raw: string): Record<string, string> {
       },
     ],
   };
+  const factoryFixHead = "0123456789012345678901234567890123456789";
   const previews: Record<string, string> = {
     "Summary with findings": summary,
+    "Summary with Fix in Factory": renderReviewSummary({
+      ...input,
+      head: factoryFixHead,
+      factoryFix: {
+        reviewUrl: "https://github.com/example/repo/pull/42#issuecomment-123",
+        head: factoryFixHead,
+        runId: "123",
+        runAttempt: "1",
+      },
+      reviewState: {
+        head: factoryFixHead,
+        base: input.base,
+        paused: false,
+        autoRunCount: 1,
+        findings: findings.map((f) => ({
+          id: f.id,
+          sev: f.severity,
+          state: "open",
+          path: f.path,
+          finding: f,
+        })),
+      },
+    }),
     "Clean summary": renderReviewSummary(cleanInput),
     "In-progress summary": renderReviewSummary({
       ...input,
