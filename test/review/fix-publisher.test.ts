@@ -356,7 +356,7 @@ describe("trusted fix publisher", () => {
         sha: fixed,
       });
       expect(f.prs[0].base).toBe("feature");
-      expect(result.url).toBe("https://github.com/org/repo/pull/13");
+      expect(result.body).toContain("https://github.com/org/repo/pull/13");
       expect(f.updates.every((update) => update.force === false)).toBe(true);
     },
   );

@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, test, spyOn } from "bun:test";
 import * as core from "@actions/core";
 import * as lifecycle from "../../src/github/operations/review-lifecycle";
 import * as fixes from "../../src/github/operations/review-fix";
-import { prepareConversationCommand } from "../../src/tag/commands/conversation";
+import {
+  prepareConversationCommand,
+  replyToCommand,
+} from "../../src/tag/commands/conversation";
 import { postCommand } from "../../src/entrypoints/github-post-command";
 import { createMockContext } from "../mockContext";
 import { mkdtemp, readFile, rm, writeFile, symlink } from "fs/promises";
@@ -231,7 +234,7 @@ describe("command execution isolation and replies", () => {
     expect(issueComments[2].body).toBe("Resolved 1 Droid finding thread.");
   });
   test("a question prepares file-only output and freezes the publisher/runtime digests", async () => {
-    await prepareConversationCommand({
+    const result = await prepareConversationCommand({
       context: context(true),
       octokit: client,
       command: {
@@ -244,9 +247,12 @@ describe("command execution isolation and replies", () => {
     expect(output("command_mode")).toBe("question");
     expect(output("command_root_comment_id")).toBe("100");
     expect(output("run_code_review")).toBe("false");
-    expect(output("mcp_tools")).toBe('{"mcpServers":{}}');
-    expect(output("droid_args")).not.toContain("Execute");
-    expect(output("droid_args")).not.toContain("malicious");
+    expect(result.mcpTools).toBe('{"mcpServers":{}}');
+    for (const name of ["mcp_tools", "droid_args", "command_completed"])
+      expect(
+        outputSpy.mock.calls.some((call: unknown[]) => call[0] === name),
+      ).toBe(false);
+    expect(exportSpy).not.toHaveBeenCalled();
     const publisher = await readFile(output("command_publisher_path"));
     expect(createHash("sha256").update(publisher).digest("hex")).toBe(
       output("command_publisher_sha256"),
@@ -265,8 +271,7 @@ describe("command execution isolation and replies", () => {
     expect(sourcesSpy.mock.calls[0]?.[1].allowedPaths).toEqual(["src/file.ts"]);
     expect(output("command_expected_head")).toBe(head);
     expect(output("command_fix_mode")).toBe("commit");
-    expect(output("droid_args")).toContain("ApplyPatch");
-    expect(output("droid_args")).not.toContain("Execute");
+    expect(output("droid_args")).toBe("");
     const prompt = await readFile(
       path.join(dir, "droid-prompts/droid-prompt.txt"),
       "utf8",
@@ -301,6 +306,81 @@ describe("command execution isolation and replies", () => {
         body: "This guard cannot protect the concurrent request.",
       },
     ]);
+    expect(issueComments).toHaveLength(0);
+  });
+  test.each([500, undefined])(
+    "ambiguous publisher POST status %s never triggers a second failure reply",
+    async (status) => {
+      const outputPath = path.join(dir, "answer.txt");
+      await writeFile(outputPath, "Verified answer");
+      client.rest.pulls.createReplyForReviewComment = (async (value: any) => {
+        replies.push(value);
+        if (replies.length === 1)
+          throw Object.assign(
+            new Error("ambiguous reply response"),
+            status === undefined ? {} : { status },
+          );
+        return { data: {} };
+      }) as unknown as typeof client.rest.pulls.createReplyForReviewComment;
+      await expect(
+        postCommand(client, {
+          owner: "org",
+          repo: "repo",
+          prNumber: 12,
+          actor: "maintainer",
+          mode: "question",
+          expectedHead: head,
+          fixMode: "commit",
+          outputPath,
+          rootCommentId: 100,
+          success: true,
+        }),
+      ).rejects.toThrow("ambiguous reply response");
+      expect(replies).toHaveLength(1);
+      expect(issueComments).toHaveLength(0);
+    },
+  );
+  test.each([500, undefined])(
+    "ambiguous preparation POST status %s is not retried",
+    async (status) => {
+      client.rest.pulls.createReplyForReviewComment = (async (value: any) => {
+        replies.push(value);
+        throw Object.assign(
+          new Error("ambiguous command response"),
+          status === undefined ? {} : { status },
+        );
+      }) as unknown as typeof client.rest.pulls.createReplyForReviewComment;
+      await expect(
+        replyToCommand(client, context(true), "command reply"),
+      ).rejects.toThrow("ambiguous command response");
+      expect(replies).toHaveLength(1);
+      expect(replies[0].comment_id).toBe(100);
+      expect(issueComments).toHaveLength(0);
+    },
+  );
+  test("publisher retries explicit 429 rejection without posting a failure reply", async () => {
+    const outputPath = path.join(dir, "answer.txt");
+    await writeFile(outputPath, "Verified answer");
+    client.rest.pulls.createReplyForReviewComment = (async (value: any) => {
+      replies.push(value);
+      if (replies.length === 1)
+        throw Object.assign(new Error("rate limited"), { status: 429 });
+      return { data: {} };
+    }) as typeof client.rest.pulls.createReplyForReviewComment;
+    await postCommand(client, {
+      owner: "org",
+      repo: "repo",
+      prNumber: 12,
+      actor: "maintainer",
+      mode: "question",
+      expectedHead: head,
+      fixMode: "commit",
+      outputPath,
+      rootCommentId: 100,
+      success: true,
+    });
+    expect(replies).toHaveLength(2);
+    expect(replies[1]).toEqual(replies[0]);
     expect(issueComments).toHaveLength(0);
   });
   test("publisher refuses forged root comments and symlink output", async () => {
@@ -391,7 +471,6 @@ describe("command execution isolation and replies", () => {
     });
     const second = output("command_output_path");
     const publishSpy = spyOn(fixes, "publishReviewFix").mockResolvedValue({
-      sha: head,
       body: "stale fix published",
     });
     try {

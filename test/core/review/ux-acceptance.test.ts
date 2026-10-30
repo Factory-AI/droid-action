@@ -2,10 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as core from "@actions/core";
 import { Octokit } from "@octokit/rest";
 import { graphql } from "@octokit/graphql";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import {
+  createControlledRuntime,
+  privateStartupEnvironment,
+} from "../../helpers/controlled-runtime";
 import { createMockContext } from "../../mockContext";
 import { resolveReviewUxConfig } from "../../../src/core/review/config";
 import { loadReviewUxConfigFromBase } from "../../../src/github/data/review-config";
@@ -53,7 +57,12 @@ const FIXED = "3".repeat(40);
 const BOT = "acceptance-droid[bot]";
 const DIFF =
   "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -2 +2 @@\n-before\n+after\n";
-type ApiCall = { method: string; url: URL; body: Record<string, unknown> };
+type ApiCall = {
+  method: string;
+  url: URL;
+  accept: string | null;
+  body: Record<string, unknown>;
+};
 type ApiRoute = (call: ApiCall) => Response;
 
 function object(value: unknown): Record<string, unknown> {
@@ -73,6 +82,10 @@ function boundary(route: ApiRoute) {
       const call: ApiCall = {
         url: new URL(input instanceof Request ? input.url : String(input)),
         method: init?.method ?? "GET",
+        accept: new Headers(
+          init?.headers ??
+            (input instanceof Request ? input.headers : undefined),
+        ).get("accept"),
         body:
           typeof init?.body === "string" ? object(JSON.parse(init.body)) : {},
       };
@@ -187,10 +200,16 @@ function reviewBoundary(
         id: 17,
         user: { id: 99, login: BOT },
         issue_url: "https://api.acceptance.invalid/repos/base/repo/issues/7",
-        body: `${SUMMARY_MARKER}\n${encodeReviewState(options.previous ?? { head: BASE, findings: [] })}\n<!-- droid-review-active:v1 head=${HEAD} run=fixture-run -->`,
+        body: `${SUMMARY_MARKER}\n${encodeReviewState(options.previous ?? { head: BASE, findings: [] })}\n<!-- droid-review-active:v1 head=${HEAD} run=fixture-run attempt=1 -->`,
       });
     if (call.method === "GET" && call.url.pathname.endsWith("/check-runs/11"))
-      return Response.json({ id: 11, name: "Droid Review", head_sha: HEAD });
+      return Response.json({
+        id: 11,
+        name: "Droid Review",
+        head_sha: HEAD,
+        external_id: "fixture-run:1",
+        status: "in_progress",
+      });
     if (call.method === "GET" && call.url.pathname.endsWith("/pulls/7"))
       return Response.json({
         head: { sha: HEAD },
@@ -198,8 +217,18 @@ function reviewBoundary(
         title: "Fixture PR",
         body: options.description ?? "Author text.",
       });
-    if (call.method === "GET" && call.url.pathname.includes("/compare/"))
-      return new Response(DIFF, { headers: { "content-type": "text/plain" } });
+    if (
+      call.method === "GET" &&
+      decodeURIComponent(call.url.pathname) ===
+        `/repos/base/repo/compare/${BASE}...${HEAD}`
+    ) {
+      if (call.accept?.includes("diff"))
+        return new Response(DIFF, {
+          headers: { "content-type": "text/plain" },
+        });
+      if (call.accept?.includes("json"))
+        return Response.json({ merge_base_commit: { sha: BASE } });
+    }
     if (options.forbidden && call.method !== "GET")
       return Response.json(
         { message: `forbidden fk-${"x".repeat(25)}` },
@@ -253,6 +282,8 @@ function lifecycle(): ReviewLifecycleRun {
     commentId: 17,
     head: HEAD,
     base: BASE,
+    runId: "fixture-run",
+    runAttempt: "1",
     state: { head: BASE, findings: [] },
     automatic: false,
     securityOnly: false,
@@ -298,6 +329,13 @@ function fixBoundary(
   const destination = options.fork ? "fork-owner" : "base";
   return boundary((call) => {
     const p = decodeURIComponent(call.url.pathname);
+    if (
+      p === "/graphql" &&
+      String(call.body.query).includes("PublishReviewFix")
+    )
+      return Response.json({
+        data: { updateRefs: { clientMutationId: null } },
+      });
     if (p.endsWith("/collaborators/maintainer/permission"))
       return Response.json({
         permission: p.includes("/fork-owner/") ? "read" : "write",
@@ -320,6 +358,7 @@ function fixBoundary(
     }
     if (call.method === "GET" && p === `/repos/${destination}/repo`)
       return Response.json({
+        node_id: "repository-node",
         permissions: { push: true },
         default_branch: options.defaultBranch ?? "main",
       });
@@ -350,8 +389,6 @@ function fixBoundary(
       return Response.json({ sha: "new-tree" });
     if (call.method === "POST" && p.endsWith("/git/commits"))
       return Response.json({ sha: FIXED });
-    if (call.method === "PATCH" && p.endsWith("/git/refs/heads/feature"))
-      return Response.json({ object: { sha: FIXED } });
     if (call.method === "POST" && p.endsWith("/git/refs"))
       return Response.json({ object: { sha: FIXED } });
     if (call.method === "GET" && p.endsWith("/pulls")) return Response.json([]);
@@ -389,6 +426,7 @@ const envNames = [
   "REVIEW_REACTION_KIND",
   "REVIEW_INCREMENTAL_BASE_SHA",
   "GITHUB_RUN_ID",
+  "GITHUB_RUN_ATTEMPT",
   "REVIEW_AUTOMATIC",
   "REVIEW_SECURITY_ONLY",
   "REVIEW_PHASE",
@@ -439,6 +477,7 @@ beforeEach(async () => {
     REVIEW_REACTION_KIND: "issue",
     REVIEW_INCREMENTAL_BASE_SHA: BASE,
     GITHUB_RUN_ID: "fixture-run",
+    GITHUB_RUN_ATTEMPT: "1",
     REVIEW_AUTOMATIC: "false",
     REVIEW_SECURITY_ONLY: "false",
     REVIEW_PHASE: "finalize",
@@ -1033,8 +1072,9 @@ describe("review UX production boundaries", () => {
       bundlePath,
       `await Bun.write(${JSON.stringify(publishedMarker)}, JSON.stringify(process.env));\n`,
     );
-    const runtime = await Bun.file(process.execPath).arrayBuffer();
+    const runtime = await createControlledRuntime(directory);
     const env = {
+      ...runtime.env,
       PATH: "/untrusted/bin:/usr/bin:/bin",
       BASH_ENV: startup,
       HTTPS_PROXY: "https://untrusted.invalid",
@@ -1045,10 +1085,8 @@ describe("review UX production boundaries", () => {
       COMMAND_PUBLISHER_SHA256: createHash("sha256")
         .update(await readFile(bundlePath))
         .digest("hex"),
-      COMMAND_RUNTIME_PATH: process.execPath,
-      COMMAND_RUNTIME_SHA256: createHash("sha256")
-        .update(Buffer.from(runtime))
-        .digest("hex"),
+      COMMAND_RUNTIME_PATH: runtime.path,
+      COMMAND_RUNTIME_SHA256: runtime.sha256,
       COMMAND_MODE: "question",
       COMMAND_ACTOR: "maintainer",
       COMMAND_PR_NUMBER: "7",
@@ -1165,9 +1203,8 @@ describe("review UX production boundaries", () => {
       await writeFile(bundlePath, bundle);
       await writeFile(cliPath, "#!/bin/sh\nexit 0\n", { mode: 0o700 });
       const cli = await freezeReviewCli(cliPath);
-      const runtimeDigest = createHash("sha256")
-        .update(await readFile(process.execPath))
-        .digest("hex");
+      const runtime = await createControlledRuntime(directory);
+      const runtimeDigest = runtime.sha256;
       const config = JSON.stringify(
         resolveReviewUxConfig({
           inputs: { review_summary: "off", review_max_auto_runs: "0" },
@@ -1218,12 +1255,13 @@ describe("review UX production boundaries", () => {
             .join("\n"),
         );
         const env: Record<string, string> = {
+          ...runtime.env,
           PATH: process.env.PATH ?? "/usr/bin:/bin",
           REVIEW_PUBLISHER_PATH: bundlePath,
           REVIEW_PUBLISHER_SHA256: createHash("sha256")
             .update(bundle)
             .digest("hex"),
-          REVIEW_RUNTIME_PATH: process.execPath,
+          REVIEW_RUNTIME_PATH: runtime.path,
           REVIEW_RUNTIME_SHA256: runtimeDigest,
           REVIEW_CLI_PATH: cli.review_cli_path,
           REVIEW_CLI_SHA256: cli.review_cli_sha256,
@@ -1399,7 +1437,9 @@ describe("review UX production boundaries", () => {
     await writeFile(
       fakeDroid,
       `#!${process.execPath}
-await Bun.write(${JSON.stringify(capturePath)}, JSON.stringify({cwd:process.cwd(),env:process.env,args:process.argv.slice(2)}));
+const settings = await Bun.file(process.cwd() + "/.factory/settings.json").json();
+const mcp = await Bun.file(process.cwd() + "/.factory/mcp.json").json();
+await Bun.write(${JSON.stringify(capturePath)}, JSON.stringify({cwd:process.cwd(),env:process.env,args:process.argv.slice(2),settings,mcp}));
 console.log(JSON.stringify({type:"result",subtype:"success",is_error:false,result:"done"}));
 `,
       { mode: 0o700 },
@@ -1435,6 +1475,7 @@ console.log(JSON.stringify({type:"result",subtype:"success",is_error:false,resul
       {
         cwd: directory,
         env: {
+          ...(await privateStartupEnvironment(directory)),
           PATH: process.env.PATH ?? "/usr/bin:/bin",
           FACTORY_API_KEY: "fixture-factory-key",
           DROID_COMMAND_MODE: "fix",
@@ -1486,14 +1527,11 @@ console.log(JSON.stringify({type:"result",subtype:"success",is_error:false,resul
       expect(JSON.stringify(captured.args)).toContain(
         "Read,Grep,Glob,LS,Edit,Create,ApplyPatch",
       );
-      expect(
-        JSON.parse(
-          await readFile(path.join(cwd, ".factory/settings.json"), "utf8"),
-        ),
-      ).toEqual({ hooksDisabled: true });
-      expect(
-        JSON.parse(await readFile(path.join(cwd, ".factory/mcp.json"), "utf8")),
-      ).toEqual({ mcpServers: {} });
+      expect(captured.settings).toEqual({ hooksDisabled: true });
+      expect(captured.mcp).toEqual({ mcpServers: {} });
+      await expect(stat(path.dirname(cwd))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
     } finally {
       if (
         cwd !== directory &&
@@ -1529,7 +1567,7 @@ console.log(JSON.stringify({type:"result",subtype:"success",is_error:false,resul
   it("publishes only the allowed file with immutable parent, original mode, and non-force ref update", async () => {
     const api = fixBoundary();
     const result = await publishReviewFix(api.octokit, binding, proposal);
-    expect(result.sha).toBe(FIXED);
+    expect(result.body).toContain(FIXED);
     expect(result.body).toContain("Tests were not run");
     expect(
       api.calls.find(
@@ -1545,9 +1583,29 @@ console.log(JSON.stringify({type:"result",subtype:"success",is_error:false,resul
     ).toEqual([
       { path: "src/a.ts", type: "blob", mode: "100755", sha: "new-blob" },
     ]);
+    const mutations = api.calls.filter(
+      (call) =>
+        call.url.pathname === "/graphql" &&
+        String(call.body.query).includes("PublishReviewFix"),
+    );
+    expect(mutations).toHaveLength(1);
+    expect(object(mutations[0]?.body.variables).input).toEqual({
+      repositoryId: "repository-node",
+      refUpdates: [
+        {
+          name: "refs/heads/feature",
+          beforeOid: HEAD,
+          afterOid: FIXED,
+          force: false,
+        },
+      ],
+    });
     expect(
-      api.calls.find((call) => call.method === "PATCH")?.body,
-    ).toMatchObject({ sha: FIXED, force: false });
+      api.calls.filter(
+        (call) =>
+          call.method === "PATCH" && call.url.pathname.includes("/git/refs/"),
+      ),
+    ).toHaveLength(0);
   });
 
   for (const scenario of [
@@ -1603,7 +1661,7 @@ console.log(JSON.stringify({type:"result",subtype:"success",is_error:false,resul
   it("uses a fresh stacked branch for a protected source branch", async () => {
     const api = fixBoundary({ protected: true });
     const result = await publishReviewFix(api.octokit, binding, proposal);
-    expect(result.url).toBe("https://github.example/base/repo/pull/8");
+    expect(result.body).toContain("https://github.example/base/repo/pull/8");
     expect(api.calls.some((call) => call.method === "PATCH")).toBe(false);
     expect(
       api.calls.find(

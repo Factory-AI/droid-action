@@ -21,6 +21,7 @@ import {
 } from "../../github/operations/review-fix";
 import { redactCredentials } from "../../utils/redact-credentials";
 import { retryWithBackoff } from "../../utils/retry";
+import { replyToPullRequestComment } from "../../github/operations/comments/reply";
 
 export function renderCommandHelp(context: ParsedGitHubContext): string {
   const config = context.inputs.reviewConfig ?? reviewConfigFromEnvironment();
@@ -49,33 +50,18 @@ export async function replyToCommand(
   body: string,
 ): Promise<void> {
   const { owner, repo } = context.repository;
-  const safeBody = redactCredentials(body);
-  if (isPullRequestReviewCommentEvent(context)) {
-    await retryWithBackoff(
-      () =>
-        octokit.rest.pulls.createReplyForReviewComment({
-          owner,
-          repo,
-          pull_number: context.entityNumber,
-          comment_id:
-            context.payload.comment.in_reply_to_id ??
-            context.payload.comment.id,
-          body: safeBody,
-        }),
-      { initialDelayMs: 1000 },
-    );
-  } else {
-    await retryWithBackoff(
-      () =>
-        octokit.rest.issues.createComment({
-          owner,
-          repo,
-          issue_number: context.entityNumber,
-          body: safeBody,
-        }),
-      { initialDelayMs: 1000 },
-    );
-  }
+  const review = isPullRequestReviewCommentEvent(context);
+  await replyToPullRequestComment({
+    octokit,
+    owner,
+    repo,
+    prNumber: context.entityNumber,
+    body,
+    type: review ? "review" : "issue",
+    commentId: review
+      ? (context.payload.comment.in_reply_to_id ?? context.payload.comment.id)
+      : 0,
+  });
 }
 
 export async function selectedCommandThreads(
@@ -101,7 +87,6 @@ export async function selectedCommandThreads(
 function completed(reason: string): PrepareResult {
   core.setOutput("run_code_review", "false");
   core.setOutput("run_security_review", "false");
-  core.setOutput("command_completed", "true");
   // Existing workflows already skip Exec on this output; no model is needed.
   core.setOutput("steward_skipped", "true");
   return {
@@ -305,12 +290,6 @@ ${
   await writeFile(path.join(promptDir, "droid-prompt.txt"), prompt, {
     mode: 0o600,
   });
-  const tools = "Read,Grep,Glob,LS,Edit,Create,ApplyPatch";
-  core.setOutput(
-    "droid_args",
-    `--enabled-tools "${tools}" --tag "droid-${fix ? "fix" : "question"}"`,
-  );
-  core.setOutput("mcp_tools", '{"mcpServers":{}}');
   core.setOutput("run_code_review", "false");
   core.setOutput("run_security_review", "false");
   core.setOutput("command_mode", fix ? "fix" : "question");
@@ -353,7 +332,6 @@ ${
       .update(await readFile(bunPath))
       .digest("hex"),
   );
-  core.exportVariable("DROID_COMMAND_MODE", fix ? "fix" : "question");
   return {
     branchInfo: { baseBranch: pr.base.ref, currentBranch: pr.head.ref },
     mcpTools: '{"mcpServers":{}}',

@@ -104,7 +104,6 @@ export async function inspectFixDestination(
     headOwner,
     headRepo,
     target,
-    fork,
     repositoryId: destination.node_id,
   };
 }
@@ -178,7 +177,7 @@ export async function fetchFixSources(
   };
 }
 
-export type PublishedFix = { sha: string; url?: string; body: string };
+export type PublishedFix = { body: string };
 export async function publishReviewFix(
   octokit: Octokits,
   binding: FixBinding,
@@ -383,8 +382,6 @@ export async function publishReviewFix(
     ),
   ].join("\n\n");
   return {
-    sha: fixedCommit.sha,
-    ...(url ? { url } : {}),
     body: redactCredentials(body),
   };
 }

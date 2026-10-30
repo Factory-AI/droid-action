@@ -1,24 +1,17 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { createHash } from "crypto";
-import {
-  chmod,
-  mkdir,
-  mkdtemp,
-  readFile,
-  realpath,
-  rm,
-  writeFile,
-} from "fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { readFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { parse } from "yaml";
+import { createControlledRuntime } from "./helpers/controlled-runtime";
 
 const manifest = parse(
   readFileSync(join(import.meta.dir, "../action.yml"), "utf8"),
 );
 const post = manifest.runs.steps.find(
-  (step: { id?: string }) => step.id === "post_command",
+  (step: { name?: string }) => step.name === "Publish Droid command result",
 );
 const model = manifest.runs.steps.find(
   (step: { id?: string }) => step.id === "droid",
@@ -51,7 +44,7 @@ async function executeGuard(tamper: "none" | "publisher" | "runtime") {
       ? Buffer.from("throw Error('untrusted publisher ran')")
       : source,
   );
-  const runtime = await realpath(process.execPath);
+  const runtime = await createControlledRuntime(directory);
   const script = join(directory, "publish.sh");
   await writeFile(script, post.run);
   const safetyEnv = Object.fromEntries(
@@ -60,6 +53,7 @@ async function executeGuard(tamper: "none" | "publisher" | "runtime") {
   const child = Bun.spawn([...post.shell.split(" ").slice(0, -1), script], {
     cwd: directory,
     env: {
+      ...runtime.env,
       PATH: fakeBin,
       BASH_ENV: hook,
       HTTPS_PROXY: "https://untrusted.invalid",
@@ -81,9 +75,9 @@ async function executeGuard(tamper: "none" | "publisher" | "runtime") {
       DROID_SUCCESS: "true",
       COMMAND_PUBLISHER_PATH: publisher,
       COMMAND_PUBLISHER_SHA256: hash(source),
-      COMMAND_RUNTIME_PATH: runtime,
+      COMMAND_RUNTIME_PATH: runtime.path,
       COMMAND_RUNTIME_SHA256:
-        tamper === "runtime" ? "0".repeat(64) : hash(await readFile(runtime)),
+        tamper === "runtime" ? "0".repeat(64) : runtime.sha256,
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -97,6 +91,16 @@ async function executeGuard(tamper: "none" | "publisher" | "runtime") {
 }
 
 describe("command publisher immutable workflow boundary", () => {
+  it("does not expose unused publisher outputs or retain a dead step ID", () => {
+    expect(post.id).toBeUndefined();
+    expect(post.run).not.toContain("GITHUB_OUTPUT");
+    expect(
+      readFileSync(
+        join(import.meta.dir, "../src/entrypoints/github-post-command.ts"),
+        "utf8",
+      ),
+    ).not.toContain("core.setOutput");
+  });
   it("binds post authority to prepare outputs, not a mutable state JSON", () => {
     for (const name of [
       "MODE",

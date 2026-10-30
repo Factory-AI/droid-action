@@ -169,6 +169,16 @@ export type DroidOptions = {
   isolatedProfile?: { cwd: string; env: Record<string, string> };
 };
 
+export class IsolatedDroidError extends Error {
+  constructor(
+    message: string,
+    readonly exitCode: number,
+  ) {
+    super(message);
+    this.name = "IsolatedDroidError";
+  }
+}
+
 type PreparedConfig = {
   droidArgs: string[];
   promptPath: string;
@@ -240,7 +250,9 @@ export class MaxTurnsExceededError extends Error {
  */
 export class UsageLimitError extends Error {
   constructor(detail: string) {
-    super(`Droid could not run because a usage limit was reached: ${detail}`);
+    super(
+      `Droid could not run because a usage limit was reached: ${redactCredentials(detail)}`,
+    );
     this.name = "UsageLimitError";
   }
 }
@@ -727,6 +739,8 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
     console.error(`Droid Exec failed: ${errorMessage}`);
     core.setOutput("error_message", errorMessage);
     core.setOutput("conclusion", "failure");
+    if (options.isolatedProfile)
+      throw new IsolatedDroidError(errorMessage, lastExitCode);
     process.exit(lastExitCode);
   }
 }

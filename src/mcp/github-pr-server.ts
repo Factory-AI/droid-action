@@ -9,6 +9,8 @@ import { withRequestRedaction } from "../github/api/client";
 import { updateGeneratedDescription } from "../core/review/fill";
 import { retryWithBackoff } from "../utils/retry";
 import { redactCredentials } from "../utils/redact-credentials";
+import { replyToPullRequestComment } from "../github/operations/comments/reply";
+export { replyToPullRequestComment };
 import { parseSecurityReport } from "../core/review/security-report";
 import { renderSecurityReport } from "../core/review/render";
 import { GITHUB_SERVER_URL } from "../github/api/config";
@@ -593,42 +595,6 @@ export async function minimizeComment({
       classifier,
     },
   );
-}
-
-export async function replyToPullRequestComment({
-  owner,
-  repo,
-  prNumber,
-  commentId,
-  body,
-  type,
-  octokit,
-}: {
-  owner: string;
-  repo: string;
-  prNumber: number;
-  commentId: number;
-  body: string;
-  type: "issue" | "review";
-  octokit: OctokitLike;
-}): Promise<void> {
-  if (type === "review") {
-    await octokit.rest.pulls.createReplyForReviewComment({
-      owner,
-      repo,
-      pull_number: prNumber,
-      comment_id: commentId,
-      body,
-    });
-    return;
-  }
-
-  await octokit.rest.issues.createComment({
-    owner,
-    repo,
-    issue_number: prNumber,
-    body,
-  });
 }
 
 export async function resolveReviewThread({

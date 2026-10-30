@@ -5,6 +5,7 @@ import { listDroidThreads } from "../github/operations/review-lifecycle";
 import { publishReviewFix } from "../github/operations/review-fix";
 import { fixProposalSchema, type FixMode } from "../core/review/fix";
 import { redactCredentials } from "../utils/redact-credentials";
+import { replyToPullRequestComment } from "../github/operations/comments/reply";
 
 export type PostCommandOptions = {
   owner: string;
@@ -33,24 +34,18 @@ export async function postCommand(
     throw new Error(
       "The selected comment is not a verified Droid finding on this PR",
     );
+  let replyAttempted = false;
   const reply = async (body: string) => {
-    const safeBody = redactCredentials(body);
-    if (options.rootCommentId) {
-      await octokit.rest.pulls.createReplyForReviewComment({
-        owner,
-        repo,
-        pull_number: prNumber,
-        comment_id: options.rootCommentId,
-        body: safeBody,
-      });
-    } else {
-      await octokit.rest.issues.createComment({
-        owner,
-        repo,
-        issue_number: prNumber,
-        body: safeBody,
-      });
-    }
+    replyAttempted = true;
+    await replyToPullRequestComment({
+      octokit,
+      owner,
+      repo,
+      prNumber,
+      body,
+      type: options.rootCommentId ? "review" : "issue",
+      commentId: options.rootCommentId ?? 0,
+    });
   };
   try {
     if (!options.success)
@@ -108,15 +103,14 @@ export async function postCommand(
         await reply(result.body);
       }
     }
-    core.setOutput("conclusion", "success");
   } catch (error) {
     const message = redactCredentials(
       error instanceof Error ? error.message : String(error),
     );
-    await reply(
-      `Droid could not ${options.mode === "fix" ? "publish this fix" : "answer this question"}. ${message}`,
-    );
-    core.setOutput("conclusion", "failure");
+    if (!replyAttempted)
+      await reply(
+        `Droid could not ${options.mode === "fix" ? "publish this fix" : "answer this question"}. ${message}`,
+      );
     throw new Error(message);
   }
 }

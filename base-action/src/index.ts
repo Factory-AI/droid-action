@@ -2,18 +2,20 @@
 
 import * as core from "@actions/core";
 import { preparePrompt } from "./prepare-prompt";
-import { runDroid } from "./run-droid";
+import { IsolatedDroidError, runDroid } from "./run-droid";
 import { setupDroidSettings } from "./setup-droid-settings";
 import { validateEnvironmentVariables } from "./validate-env";
-import { createCommandProfile } from "./command-profile";
+import { createCommandProfile, type CommandProfile } from "./command-profile";
+import { redactCredentials } from "./utils/redact-credentials";
 import { resolve } from "path";
 
 async function run() {
+  let profile: CommandProfile | undefined;
   try {
     validateEnvironmentVariables();
 
     const commandMode = process.env.DROID_COMMAND_MODE;
-    const profile =
+    profile =
       commandMode === "fix" || commandMode === "question"
         ? await createCommandProfile(commandMode)
         : undefined;
@@ -45,9 +47,16 @@ async function run() {
       isolatedProfile: profile,
     });
   } catch (error) {
-    core.setFailed(`Action failed with error: ${error}`);
+    core.setFailed(redactCredentials(`Action failed with error: ${error}`));
     core.setOutput("conclusion", "failure");
-    process.exit(1);
+    if (profile) {
+      process.exitCode =
+        error instanceof IsolatedDroidError ? error.exitCode : 1;
+    } else {
+      process.exit(1);
+    }
+  } finally {
+    await profile?.cleanup();
   }
 }
 
