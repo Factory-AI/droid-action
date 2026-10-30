@@ -22,12 +22,13 @@ import { githubReviewSessionTagArg } from "../utils/review-session-tag";
 import { initializeReviewConfig } from "../prepare/review-config";
 import { freezeReviewRuntime } from "../prepare/review-runtime";
 import { automaticReviewSkipReason } from "../core/review/config";
+import { isManualReviewRequest } from "../github/utils/review-intent";
 import {
   prepareReviewLifecycle,
   readReviewLifecycle,
 } from "../github/operations/review-lifecycle";
 
-async function run() {
+export async function run() {
   try {
     const githubToken = process.env.GITHUB_TOKEN!;
     const reviewType = process.env.REVIEW_TYPE || "code";
@@ -69,7 +70,10 @@ async function run() {
         "pull_request" in context.payload &&
         !!context.payload.pull_request.draft,
       eventAction: context.eventAction,
-      manual: context.eventName !== "pull_request",
+      manual: isManualReviewRequest(
+        context,
+        reviewType === "security" ? "security" : "code",
+      ),
     });
     const lifecycle = await prepareReviewLifecycle({
       octokit,
@@ -78,6 +82,8 @@ async function run() {
       baseSha: process.env.REVIEW_BASE_SHA,
       trackingCommentId: commentId,
       securityOnly: reviewType === "security",
+      full:
+        reviewType === "security" && isManualReviewRequest(context, "security"),
       skipReason: skipReason ?? undefined,
     });
     commentId = lifecycle.commentId;

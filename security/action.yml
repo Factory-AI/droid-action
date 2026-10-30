@@ -327,6 +327,7 @@ runs:
           GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
           GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
           GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" \
           GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
           GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
           GITHUB_API_URL="${GITHUB_API_URL:-}" \
@@ -360,6 +361,7 @@ runs:
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         GITHUB_API_URL: ${{ github.api_url }}
@@ -452,6 +454,7 @@ runs:
           GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
           GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
           GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" \
           GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
           GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
           GITHUB_API_URL="${GITHUB_API_URL:-}" \
@@ -485,6 +488,7 @@ runs:
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         GITHUB_API_URL: ${{ github.api_url }}
@@ -552,6 +556,7 @@ runs:
           GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
           GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
           GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" \
           GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
           GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
           GITHUB_API_URL="${GITHUB_API_URL:-}" \
@@ -581,6 +586,7 @@ runs:
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         GITHUB_API_URL: ${{ github.api_url }}
@@ -660,6 +666,7 @@ runs:
           GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
           GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
           GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" \
           GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
           GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
           GITHUB_API_URL="${GITHUB_API_URL:-}" \
@@ -692,6 +699,7 @@ runs:
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         GITHUB_API_URL: ${{ github.api_url }}
@@ -756,6 +764,7 @@ runs:
           GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
           GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
           GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" \
           GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
           GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
           GITHUB_API_URL="${GITHUB_API_URL:-}" \
@@ -789,6 +798,7 @@ runs:
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         GITHUB_API_URL: ${{ github.api_url }}
@@ -856,6 +866,7 @@ runs:
           GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
           GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
           GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" \
           GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
           GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
           GITHUB_API_URL="${GITHUB_API_URL:-}" \
@@ -899,6 +910,7 @@ runs:
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         GITHUB_API_URL: ${{ github.api_url }}
@@ -994,6 +1006,7 @@ runs:
           DROID_COMMENT_ID="${DROID_COMMENT_ID:-}" \
           GITHUB_TOKEN="${GITHUB_TOKEN:-}" \
           GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" \
           GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
           OUTPUT_FILE="${OUTPUT_FILE:-}" \
           TRIGGER_USERNAME="${TRIGGER_USERNAME:-}" \
@@ -1043,6 +1056,7 @@ runs:
         DROID_COMMENT_ID: ${{ steps.prompt.outputs.droid_comment_id || inputs.tracking_comment_id }}
         GITHUB_TOKEN: ${{ steps.token.outputs.github_token }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         OUTPUT_FILE: ${{ inputs.output_file }}
         TRIGGER_USERNAME: ${{ github.event.pull_request.user.login || github.event.sender.login || github.triggering_actor || github.actor || '' }}
@@ -1084,6 +1098,7 @@ runs:
           GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
           GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
           GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" \
           GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
           GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
           GITHUB_API_URL="${GITHUB_API_URL:-}" \
@@ -1121,6 +1136,7 @@ runs:
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         GITHUB_API_URL: ${{ github.api_url }}

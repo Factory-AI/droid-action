@@ -14,6 +14,7 @@
  * additionally enforced at the `droid exec` level via `--enabled-tools`.
  */
 
+import { lifecyclePromptContract } from "./lifecycle-contract";
 import type { ReviewPromptContext } from "./types";
 
 export function generateCandidatesPrompt(ctx: ReviewPromptContext): string {
@@ -66,7 +67,7 @@ After all subagents complete (both code review and security-reviewer), merge the
 `
     : "";
 
-  return `You are a senior staff software engineer and expert code reviewer.
+  const prompt = `You are a senior staff software engineer and expert code reviewer.
 
 Your task: Review ${t.entityNoun} ${t.entityNumberSigil}${entityNumber} in ${repoOrProject} and generate a JSON file with **high-confidence, actionable** review comments that pinpoint genuine issues.
 
@@ -144,4 +145,5 @@ ${sideFieldDescription}
 Output ONLY the JSON file—no additional commentary.
 </critical_constraints>
 `;
+  return prompt + lifecyclePromptContract(ctx);
 }

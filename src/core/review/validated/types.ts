@@ -37,6 +37,8 @@ export type ReviewFinding = {
   /** Explicit validator classification, never inferred solely from priority. */
   optionalSuggestion?: boolean;
   fixedIn?: string;
+  /** Native thread work is separate from the validator's finding verdict. */
+  pendingThreadAction?: "resolve" | "reopen";
 };
 
 export type DroppedFinding = {

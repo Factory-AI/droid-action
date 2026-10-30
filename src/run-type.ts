@@ -1,4 +1,4 @@
-import * as core from "@actions/core";
+import { exportRuntimeVariable } from "./utils/runtime-env";
 import type { DroidCommand } from "./core/review/triggers/parse-command";
 
 export enum DroidRunType {
@@ -17,7 +17,7 @@ export type PrValidationRunType =
   | DroidRunType.SecurityScan;
 
 export function setDroidRunType(runType: DroidRunType): void {
-  core.exportVariable("DROID_EXEC_RUN_TYPE", runType);
+  exportRuntimeVariable("DROID_EXEC_RUN_TYPE", runType);
 }
 
 export function assertDroidRunType(

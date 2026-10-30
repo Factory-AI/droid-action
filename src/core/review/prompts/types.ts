@@ -118,6 +118,8 @@ export interface ReviewPromptContext {
   securityReviewEnabled: boolean;
   /** Where the change's code is (or is not) available, e.g. for a fork PR that is not checked out */
   sourceNote?: string;
+  /** Internal lifecycle capability; legacy adapters leave this disabled. */
+  lifecycleContract?: boolean;
   /** Effective trusted config, resolved before model execution. */
   reviewSettings?: ReviewPromptSettings;
   /** Optional trusted prior-review manifest; absence is valid on the first run. */

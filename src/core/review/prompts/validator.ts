@@ -15,6 +15,7 @@
  * via thin adapters that supply a `ReviewTerminology` shape.
  */
 
+import { lifecyclePromptContract } from "./lifecycle-contract";
 import type { ReviewPromptContext, ReviewTerminology } from "./types";
 
 function requireToolField(
@@ -113,7 +114,7 @@ export function generateValidatorPrompt(ctx: ReviewPromptContext): string {
       ? buildFilePostingSection(t, validatedPath)
       : buildToolPostingSection(t, validatedPath);
 
-  return `You are validating candidate review comments for ${t.entityNoun} ${t.entityNumberSigil}${entityNumber} in ${repoOrProject}.
+  const prompt = `You are validating candidate review comments for ${t.entityNoun} ${t.entityNumberSigil}${entityNumber} in ${repoOrProject}.
 
 IMPORTANT: This is Phase 2 (validator) of a two-pass review pipeline.
 
@@ -200,4 +201,5 @@ Tooling note:
 * Otherwise, use \`Create\` (or \`Edit\` if overwriting) to write the file.
 
 ${postingSection}`;
+  return prompt + lifecyclePromptContract(ctx, true);
 }

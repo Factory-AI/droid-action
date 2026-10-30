@@ -25,6 +25,7 @@ export function generateReviewValidatorPrompt(
 
   return generateValidatorPrompt({
     terminology: GITHUB_TERMINOLOGY,
+    lifecycleContract: true,
     postingMode: "file",
     entityNumber: prNumber,
     repoOrProject: context.repository,

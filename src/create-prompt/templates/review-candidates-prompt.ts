@@ -24,6 +24,7 @@ export function generateReviewCandidatesPrompt(
 
   return generateCandidatesPrompt({
     terminology: GITHUB_TERMINOLOGY,
+    lifecycleContract: true,
     entityNumber: prNumber,
     repoOrProject: context.repository,
     headRef: context.prBranchData?.headRefName ?? "unknown",

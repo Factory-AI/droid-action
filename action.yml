@@ -329,6 +329,7 @@ runs:
         ALLOWED_BOTS: ${{ inputs.allowed_bots }}
         ALLOWED_NON_WRITE_USERS: ${{ inputs.allowed_non_write_users }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         USE_STICKY_COMMENT: ${{ inputs.use_sticky_comment }}
         DEFAULT_WORKFLOW_TOKEN: ${{ github.token }}
         TRACK_PROGRESS: ${{ inputs.track_progress }}
@@ -491,6 +492,7 @@ runs:
           GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
           GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
           GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" \
           GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
           GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
           GITHUB_API_URL="${GITHUB_API_URL:-}" \
@@ -524,6 +526,7 @@ runs:
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         GITHUB_API_URL: ${{ github.api_url }}
@@ -646,6 +649,7 @@ runs:
         REPOSITORY: ${{ github.repository }}
         GITHUB_TOKEN: ${{ steps.prepare.outputs.github_token }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         DROID_COMMENT_ID: ${{ steps.prepare.outputs.droid_comment_id }}
         DROID_CONCLUSION: ${{ steps.droid.outputs.conclusion }}
@@ -681,6 +685,7 @@ runs:
           GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
           GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
           GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" \
           GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
           GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
           GITHUB_API_URL="${GITHUB_API_URL:-}" \
@@ -714,6 +719,7 @@ runs:
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         GITHUB_API_URL: ${{ github.api_url }}
@@ -781,6 +787,7 @@ runs:
           GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
           GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
           GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" \
           GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
           GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
           GITHUB_API_URL="${GITHUB_API_URL:-}" \
@@ -810,6 +817,7 @@ runs:
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         GITHUB_API_URL: ${{ github.api_url }}
@@ -889,6 +897,7 @@ runs:
           GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
           GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
           GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" \
           GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
           GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
           GITHUB_API_URL="${GITHUB_API_URL:-}" \
@@ -928,6 +937,7 @@ runs:
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         GITHUB_API_URL: ${{ github.api_url }}
@@ -1002,6 +1012,7 @@ runs:
           GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
           GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
           GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" \
           GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
           GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
           GITHUB_API_URL="${GITHUB_API_URL:-}" \
@@ -1035,6 +1046,7 @@ runs:
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         GITHUB_API_URL: ${{ github.api_url }}
@@ -1102,6 +1114,7 @@ runs:
           GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
           GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
           GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" \
           GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
           GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
           GITHUB_API_URL="${GITHUB_API_URL:-}" \
@@ -1145,6 +1158,7 @@ runs:
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         GITHUB_API_URL: ${{ github.api_url }}
@@ -1239,6 +1253,7 @@ runs:
           PR_NUMBER="${PR_NUMBER:-}" \
           DROID_COMMENT_ID="${DROID_COMMENT_ID:-}" \
           GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" \
           GITHUB_TOKEN="${GITHUB_TOKEN:-}" \
           GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
           TRIGGER_COMMENT_ID="${TRIGGER_COMMENT_ID:-}" \
@@ -1296,6 +1311,7 @@ runs:
         PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
         DROID_COMMENT_ID: ${{ steps.prepare.outputs.droid_comment_id }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         GITHUB_TOKEN: ${{ steps.prepare.outputs.GITHUB_TOKEN }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         TRIGGER_COMMENT_ID: ${{ github.event.comment.id }}
@@ -1345,6 +1361,7 @@ runs:
           GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
           GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" \
           GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" \
           GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
           GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
           GITHUB_API_URL="${GITHUB_API_URL:-}" \
@@ -1383,6 +1400,7 @@ runs:
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         GITHUB_API_URL: ${{ github.api_url }}

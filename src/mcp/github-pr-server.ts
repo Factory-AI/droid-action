@@ -347,10 +347,12 @@ export async function handleSubmitReview({
 
   const hasBody = Boolean(body?.trim());
   const hasComments = (comments?.length ?? 0) > 0;
-  if (!hasBody && !hasComments) {
+  if (!hasComments) {
     return {
       text:
-        "submit_review was called with no comments and no body, so there is nothing to post. " +
+        (hasBody
+          ? "submit_review requires approved inline comments; a body-only call does not publish a review. "
+          : "submit_review was called with no comments and no body, so there is nothing to post. ") +
         "If there are no approved findings, do not call submit_review; update the tracking comment and finish.",
       isError: true,
     };
@@ -368,6 +370,8 @@ export async function handleSubmitReview({
       runType,
       octokit,
     });
+    if (!Number.isSafeInteger(reviewId) || !reviewId || reviewId < 1)
+      throw new Error("GitHub did not return a published review ID");
   } catch (error) {
     guard.recordFailure();
     throw error;
