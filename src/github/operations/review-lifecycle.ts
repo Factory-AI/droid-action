@@ -560,9 +560,14 @@ export async function finishReviewLifecycle(options: {
     summary = redactCredentials(renderReviewSummary(input));
   }
   const config = reviewConfigFromEnvironment();
+  let terminalWriteAttempted = false;
   if (run.commentId && !run.superseded && config.review_summary !== "off")
     await optionalGitHubOperation(async () => {
-      if (!(await ownsReviewSummary(options.octokit, run))) return;
+      if (
+        !(await ownsReviewSummary(options.octokit, run, terminalWriteAttempted))
+      )
+        return;
+      terminalWriteAttempted = true;
       return options.octokit.rest.issues.updateComment({
         owner: run.owner,
         repo: run.repo,

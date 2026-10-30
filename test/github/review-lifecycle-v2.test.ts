@@ -525,6 +525,74 @@ describe("review lifecycle production boundaries", () => {
     expect(f.body()).toContain("Looks good to merge");
     expect(f.body().match(/droid-review-completed:v1/g) || []).toHaveLength(1);
   });
+  it.each(["post", "finalizer"])(
+    "recovers its own applied terminal sticky after a lost response through %s",
+    async (route) => {
+      process.env.REVIEW_SUMMARY = "description";
+      process.env.GITHUB_RUN_ATTEMPT = "2";
+      const f = fixture([]);
+      await f.prepare();
+      const apply = f.octokit.rest.issues.updateComment;
+      let attempts = 0;
+      const update = spyOn(
+        f.octokit.rest.issues,
+        "updateComment",
+      ).mockImplementation((async (input: any) => {
+        const result = await apply(input);
+        if (++attempts === 1)
+          throw new Error("terminal PATCH applied, response lost");
+        return result;
+      }) as any);
+      if (route === "post") await f.post([]);
+      else {
+        process.env.REVIEW_PHASE = "finalize";
+        process.env.DROID_SUCCESS = "false";
+        await lifecyclePhase({ octokit: f.octokit });
+      }
+      expect(update).toHaveBeenCalledTimes(2);
+      expect(f.body()).toContain(
+        `droid-review-completed:v1 head=${HEAD} run=123 attempt=2 -->`,
+      );
+      expect(f.description()).toContain(
+        route === "post" ? "Looks good to merge" : "couldn't finish",
+      );
+      expect(f.description()).not.toContain("Droid is reviewing");
+      const completed = (await readReviewLifecycle())!;
+      expect(completed.completed).toBe(true);
+      expect(completed.superseded).toBe(false);
+    },
+  );
+  it.each([
+    ["456", "2", HEAD],
+    ["123", "3", HEAD],
+    ["123", "2", OLD],
+  ])(
+    "rejects a foreign completed session after a lost terminal response (run=%s attempt=%s head=%s)",
+    async (runId, runAttempt, head) => {
+      process.env.REVIEW_SUMMARY = "description";
+      process.env.GITHUB_RUN_ATTEMPT = "2";
+      const f = fixture([]);
+      await f.prepare();
+      const description = f.description();
+      const foreign = `${SUMMARY_MARKER}\n<!-- droid-review-completed:v1 head=${head} run=${runId} attempt=${runAttempt} -->`;
+      const apply = f.octokit.rest.issues.updateComment;
+      const update = spyOn(
+        f.octokit.rest.issues,
+        "updateComment",
+      ).mockImplementation((async (input: any) => {
+        await apply(input);
+        f.setSummary(foreign);
+        throw new Error(
+          "terminal PATCH applied, a competing session won, response lost",
+        );
+      }) as any);
+      await f.post([]);
+      expect(update).toHaveBeenCalledTimes(1);
+      expect(f.body()).toBe(foreign);
+      expect(f.description()).toBe(description);
+      expect((await readReviewLifecycle())?.superseded).toBe(true);
+    },
+  );
   it("rechecks session ownership before retrying an ambiguous sticky update", async () => {
     const f = fixture([]);
     const prepared = await f.prepare();
