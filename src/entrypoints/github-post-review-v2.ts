@@ -61,6 +61,7 @@ import {
   lifecycleWarning,
   loadBoundReviewLifecycle,
   saveReviewLifecycle,
+  type ReviewSessionIdentity,
 } from "../github/operations/review-lifecycle";
 import {
   isPermissionError,
@@ -131,9 +132,14 @@ function indexedLine(
 ): boolean {
   const line = validatedAnchorLine(comment);
   if (line === null || !file) return false;
-  return comment.side === "LEFT"
-    ? file.oldLines.has(line)
-    : file.newLines.has(line);
+  const start = comment.startLine ?? line;
+  if (!Number.isSafeInteger(start) || start < 1 || start > line) return false;
+  const lines = comment.side === "LEFT" ? file.oldLines : file.newLines;
+  // Never narrow a rendered replacement to only its final line.
+  for (let current = start; current <= line; current++) {
+    if (!lines.has(current)) return false;
+  }
+  return true;
 }
 
 function inlineComment(
@@ -374,6 +380,7 @@ export async function run(
     context?: ParsedGitHubContext;
     client?: GitHubReviewClient;
     octokit?: Octokits;
+    reviewSession?: ReviewSessionIdentity;
   } = {},
 ): Promise<GitHubPostResults> {
   let context = options.context ?? parseGitHubContext();
@@ -404,6 +411,8 @@ export async function run(
   }
 
   const parsed = parseValidatedReview(validatedRaw);
+  if (parsed.conflictingCommitIds)
+    throw new Error("Validated review declares conflicting commit identities.");
   let posted: GitHubPostReviewResult = {
     reviewId: undefined,
     posted: 0,
@@ -415,7 +424,9 @@ export async function run(
   const octokit =
     options.octokit ??
     (!options.client && token ? createOctokit(token) : undefined);
-  const lifecycle = octokit ? await loadBoundReviewLifecycle(octokit) : null;
+  const lifecycle = octokit
+    ? await loadBoundReviewLifecycle(octokit, options.reviewSession)
+    : null;
   if (lifecycle?.superseded) {
     await finishReviewLifecycle({
       octokit: octokit!,

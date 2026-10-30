@@ -91,6 +91,7 @@ describe("review lifecycle production boundaries", () => {
     await rm(directory, { recursive: true, force: true });
   });
   function fixture(prior = [finding()]) {
+    let checkExternalId = "123:1";
     const calls: Array<{ method: string; input: any }> = [];
     const state = {
       head: OLD,
@@ -105,6 +106,9 @@ describe("review lifecycle production boundaries", () => {
       })),
     };
     let body = `${SUMMARY_MARKER}\n${encodeReviewState(state)}`;
+    let liveHead = HEAD;
+    let description =
+      "Preserves cancellation and handles the timeout. Fixes #12.";
     let threads: any[] = [];
     const record = (method: string, input: any) =>
       calls.push({ method, input });
@@ -148,6 +152,7 @@ describe("review lifecycle production boundaries", () => {
         checks: {
           create: async (input: any) => {
             record("checkCreate", input);
+            checkExternalId = input.external_id;
             return { data: { id: 50 } };
           },
           get: async (input: any) => {
@@ -155,6 +160,7 @@ describe("review lifecycle production boundaries", () => {
             return {
               data: {
                 id: 50,
+                external_id: checkExternalId,
                 name: "Droid Review",
                 head_sha: HEAD,
                 status: "in_progress",
@@ -181,10 +187,10 @@ describe("review lifecycle production boundaries", () => {
             record("getPR", input);
             return {
               data: {
-                head: { sha: HEAD },
+                head: { sha: liveHead },
                 base: { sha: BASE },
                 title: "Fix request timeouts",
-                body: "Preserves cancellation and handles the timeout. Fixes #12.",
+                body: description,
               },
             };
           },
@@ -210,6 +216,7 @@ describe("review lifecycle production boundaries", () => {
           },
           update: async (input: any) => {
             record("updatePR", input);
+            description = input.body;
             return { data: {} };
           },
           createReplyForReviewComment: async (input: any) => {
@@ -261,18 +268,23 @@ describe("review lifecycle production boundaries", () => {
       runId: "123",
       repository: { owner: "o", repo: "r", full_name: "o/r" },
     });
-    async function prepare() {
+    async function prepare(runAttempt?: string) {
       const result = await prepareReviewLifecycle({
         octokit,
         context,
         headSha: HEAD,
         baseSha: BASE,
+        ...(runAttempt ? { runAttempt } : {}),
       });
       for (const [name, value] of Object.entries(outputs))
         process.env[name.toUpperCase()] = value;
       return result;
     }
-    async function post(results: unknown[], resolutions?: unknown[]) {
+    async function post(
+      results: unknown[],
+      resolutions?: unknown[],
+      reviewSession?: { runId: string; runAttempt?: string },
+    ) {
       await writeFile(
         join(directory, "droid-prompts/pr.diff"),
         "model can rewrite this artifact",
@@ -286,7 +298,11 @@ describe("review lifecycle production boundaries", () => {
           reviewSummary: { body: "Review complete." },
         }),
       );
-      return postReview({ context, octokit });
+      return postReview({
+        context,
+        octokit,
+        ...(reviewSession ? { reviewSession } : {}),
+      });
     }
     function setThreads(resolved: boolean, author = 138933559) {
       threads = [
@@ -323,8 +339,519 @@ describe("review lifecycle production boundaries", () => {
       post,
       setThreads,
       body: () => body,
+      setSummary: (next: string, head = HEAD) => {
+        body = next;
+        liveHead = head;
+      },
+      description: () => description,
+      setDescription: (next: string) => {
+        description = next;
+      },
     };
   }
+  it("refuses attempt A after attempt B on the same workflow run and keeps B valid", async () => {
+    const f = fixture([]);
+    process.env.GITHUB_RUN_ATTEMPT = "1";
+    const a = await f.prepare();
+    process.env.GITHUB_RUN_ATTEMPT = "2";
+    const b = await f.prepare();
+    const ownedByB = f.body();
+    await finishReviewLifecycle({
+      octokit: f.octokit,
+      run: a.run,
+      input: { state: "clean" },
+    });
+    const afterA = f.body();
+    await finishReviewLifecycle({
+      octokit: f.octokit,
+      run: b.run,
+      input: { state: "clean" },
+    });
+    expect(afterA).toBe(ownedByB);
+    expect(f.body()).toContain(`run=123 attempt=2 -->`);
+    expect(f.body()).toContain("Looks good to merge");
+  });
+  it("uses the trusted prepared attempt at post when ambient attempt is absent and cache is poisoned", async () => {
+    const f = fixture([]);
+    process.env.GITHUB_RUN_ATTEMPT = "2";
+    const prepared = await f.prepare();
+    const reviewSession = JSON.parse(
+      JSON.stringify({ runId: "123", runAttempt: "2" }),
+    );
+    const cache = (await readReviewLifecycle())!;
+    Object.assign(cache, { runAttempt: "99" });
+    await saveReviewLifecycle(cache);
+    delete process.env.GITHUB_RUN_ATTEMPT;
+    await f.post([], undefined, reviewSession);
+    expect(prepared.run).toHaveProperty("runAttempt", "2");
+    expect(f.body()).toContain("droid-review-completed:v1");
+    expect(f.body()).toContain("run=123 attempt=2 -->");
+  });
+  it("does not let a legacy unknown-attempt marker authenticate attempt 2", async () => {
+    const f = fixture([]);
+    process.env.GITHUB_RUN_ATTEMPT = "2";
+    await f.prepare();
+    f.setSummary(
+      `${SUMMARY_MARKER}\n<!-- droid-review-active:v1 head=${HEAD} run=123 -->`,
+    );
+    const loaded = await loadBoundReviewLifecycle(f.octokit);
+    expect(loaded?.superseded).toBe(true);
+  });
+  it("does not downgrade known attempt 2 when an optional identity omits its attempt", async () => {
+    const f = fixture([]);
+    process.env.GITHUB_RUN_ATTEMPT = "2";
+    await f.prepare();
+    const legacy = `${SUMMARY_MARKER}\n<!-- droid-review-active:v1 head=${HEAD} run=123 -->`;
+    f.setSummary(legacy);
+    await expect(f.post([], undefined, { runId: "123" })).rejects.toThrow(
+      "superseded",
+    );
+    expect(f.body()).toBe(legacy);
+  });
+  it("captures the attempt before preparation awaits and retains legacy attempt 1 compatibility", async () => {
+    const f = fixture([]);
+    process.env.GITHUB_RUN_ATTEMPT = "1";
+    const pending = f.prepare();
+    process.env.GITHUB_RUN_ATTEMPT = "2";
+    const prepared = await pending;
+    expect(prepared.run.runAttempt).toBe("1");
+    process.env.GITHUB_RUN_ATTEMPT = "1";
+    f.setSummary(
+      `${SUMMARY_MARKER}\n<!-- droid-review-active:v1 head=${HEAD} run=123 -->`,
+    );
+    const loaded = await loadBoundReviewLifecycle(f.octokit);
+    expect(loaded?.superseded).toBe(false);
+    await finishReviewLifecycle({
+      octokit: f.octokit,
+      run: loaded!,
+      input: { state: "clean" },
+    });
+    expect(f.body()).toContain("droid-review-completed:v1");
+    expect(f.body()).toContain("run=123 attempt=1 -->");
+  });
+  it.each([false, true])(
+    "rejects conflicting declared provenance before publication (outside=%s)",
+    async (outside) => {
+      const f = fixture([]);
+      await f.prepare();
+      f.calls.length = 0;
+      await expect(
+        f.post([
+          {
+            status: "approved",
+            comment: {
+              ...finding(),
+              commit_id: OLD,
+              outside_diff: outside,
+            },
+          },
+        ]),
+      ).rejects.toThrow("conflicting");
+      expect(f.calls.some((call) => call.method === "createReview")).toBe(
+        false,
+      );
+      expect(f.calls.some((call) => call.method === "updateComment")).toBe(
+        false,
+      );
+    },
+  );
+  it.each([false, true])(
+    "rechecks ownership after awaited publication (head changed=%s)",
+    async (changedHead) => {
+      const f = fixture([]);
+      await f.prepare();
+      const newerHead = changedHead ? OLD : HEAD;
+      const newer = `${SUMMARY_MARKER}\n${encodeReviewState({ head: newerHead, findings: [] })}\n<!-- droid-review-active:v1 head=${newerHead} run=456 -->`;
+      let release!: () => void;
+      let entered!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const blocked = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      spyOn(f.octokit.rest.pulls, "createReview").mockImplementation(
+        (async () => {
+          entered();
+          await blocked;
+          return { data: { id: 70 } };
+        }) as any,
+      );
+      f.calls.length = 0;
+      const posting = f.post([{ status: "approved", comment: finding() }]);
+      await waiting;
+      f.setSummary(newer, newerHead);
+      release();
+      await posting;
+      expect(f.body()).toBe(newer);
+      expect(f.calls.some((call) => call.method === "updateComment")).toBe(
+        false,
+      );
+    },
+  );
+  it("does not infer this run completed from a competing active marker at the same head", async () => {
+    const f = fixture([]);
+    await f.prepare();
+    f.setSummary(
+      `${SUMMARY_MARKER}\n${encodeReviewState({ head: HEAD, findings: [] })}\n<!-- droid-review-active:v1 head=${HEAD} run=456 -->`,
+    );
+    const bound = await loadBoundReviewLifecycle(f.octokit);
+    expect(bound?.completed).toBe(false);
+    expect(bound?.superseded).toBe(true);
+  });
+  it("does not accept an active-marker example in a fenced block as ownership", async () => {
+    const f = fixture([]);
+    const prepared = await f.prepare();
+    const newer = `${SUMMARY_MARKER}\n\`\`\`md\n<!-- droid-review-active:v1 head=${HEAD} run=123 -->\n\`\`\`\n<!-- droid-review-active:v1 head=${HEAD} run=456 -->`;
+    f.setSummary(newer);
+    await finishReviewLifecycle({
+      octokit: f.octokit,
+      run: prepared.run,
+      input: { state: "clean" },
+    });
+    expect(f.body()).toBe(newer);
+  });
+  it("recognizes its own completed session without repeating publication", async () => {
+    const f = fixture([]);
+    await f.prepare();
+    await f.post([]);
+    f.calls.length = 0;
+    const bound = await loadBoundReviewLifecycle(f.octokit);
+    expect(bound?.completed).toBe(true);
+    await finishReviewLifecycle({ octokit: f.octokit, run: bound! });
+    expect(f.calls.some((call) => call.method === "updateComment")).toBe(false);
+  });
+  it("keeps a later preparation owned without inheriting the previous session marker", async () => {
+    const f = fixture([]);
+    await f.prepare();
+    await f.post([]);
+    await f.prepare();
+    await f.post([]);
+    expect(f.body()).toContain("Looks good to merge");
+    expect(f.body().match(/droid-review-completed:v1/g) || []).toHaveLength(1);
+  });
+  it.each(["post", "finalizer"])(
+    "recovers its own applied terminal sticky after a lost response through %s",
+    async (route) => {
+      process.env.REVIEW_SUMMARY = "description";
+      process.env.GITHUB_RUN_ATTEMPT = "2";
+      const f = fixture([]);
+      await f.prepare();
+      const apply = f.octokit.rest.issues.updateComment;
+      let attempts = 0;
+      const update = spyOn(
+        f.octokit.rest.issues,
+        "updateComment",
+      ).mockImplementation((async (input: any) => {
+        const result = await apply(input);
+        if (++attempts === 1)
+          throw new Error("terminal PATCH applied, response lost");
+        return result;
+      }) as any);
+      if (route === "post") await f.post([]);
+      else {
+        process.env.REVIEW_PHASE = "finalize";
+        process.env.DROID_SUCCESS = "false";
+        await lifecyclePhase({ octokit: f.octokit });
+      }
+      expect(update).toHaveBeenCalledTimes(2);
+      expect(f.body()).toContain(
+        `droid-review-completed:v1 head=${HEAD} run=123 attempt=2 -->`,
+      );
+      expect(f.description()).toContain(
+        route === "post" ? "Looks good to merge" : "couldn't finish",
+      );
+      expect(f.description()).not.toContain("Droid is reviewing");
+      const completed = (await readReviewLifecycle())!;
+      expect(completed.completed).toBe(true);
+      expect(completed.superseded).toBe(false);
+    },
+  );
+  it.each([
+    ["456", "2", HEAD],
+    ["123", "3", HEAD],
+    ["123", "2", OLD],
+  ])(
+    "rejects a foreign completed session after a lost terminal response (run=%s attempt=%s head=%s)",
+    async (runId, runAttempt, head) => {
+      process.env.REVIEW_SUMMARY = "description";
+      process.env.GITHUB_RUN_ATTEMPT = "2";
+      const f = fixture([]);
+      await f.prepare();
+      const description = f.description();
+      const foreign = `${SUMMARY_MARKER}\n<!-- droid-review-completed:v1 head=${head} run=${runId} attempt=${runAttempt} -->`;
+      const apply = f.octokit.rest.issues.updateComment;
+      const update = spyOn(
+        f.octokit.rest.issues,
+        "updateComment",
+      ).mockImplementation((async (input: any) => {
+        await apply(input);
+        f.setSummary(foreign);
+        throw new Error(
+          "terminal PATCH applied, a competing session won, response lost",
+        );
+      }) as any);
+      await f.post([]);
+      expect(update).toHaveBeenCalledTimes(1);
+      expect(f.body()).toBe(foreign);
+      expect(f.description()).toBe(description);
+      expect((await readReviewLifecycle())?.superseded).toBe(true);
+    },
+  );
+  it("rechecks session ownership before retrying an ambiguous sticky update", async () => {
+    const f = fixture([]);
+    const prepared = await f.prepare();
+    const newer = `${SUMMARY_MARKER}\n<!-- droid-review-active:v1 head=${HEAD} run=456 -->`;
+    const update = spyOn(
+      f.octokit.rest.issues,
+      "updateComment",
+    ).mockImplementation((async () => {
+      f.setSummary(newer);
+      throw new Error("connection lost before confirmation");
+    }) as any);
+    await finishReviewLifecycle({
+      octokit: f.octokit,
+      run: prepared.run,
+      input: { state: "clean" },
+    });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(f.body()).toBe(newer);
+  });
+  it("preserves current author description bytes at the actual publication boundary", async () => {
+    process.env.REVIEW_SUMMARY = "description";
+    const f = fixture([]);
+    const author =
+      "Author text\r\n\r\n```md\r\n<!-- droid-review-summary:start -->\r\nexample\r\n<!-- droid-review-summary:end -->\r\n```\r\n";
+    f.setDescription(author);
+    await f.prepare();
+    const edited = `Updated author preface\r\n${f.description()}`;
+    f.setDescription(edited);
+    await f.post([]);
+    expect(
+      f.description().startsWith(`Updated author preface\r\n${author}`),
+    ).toBe(true);
+    expect(f.description()).toContain("Looks good to merge");
+    expect(f.body()).toContain(
+      `droid-review-completed:v1 head=${HEAD} run=123`,
+    );
+  });
+  it("does not update a newer run's description after ownership changes", async () => {
+    process.env.REVIEW_SUMMARY = "description";
+    const f = fixture([]);
+    const prepared = await f.prepare();
+    const newer = `${SUMMARY_MARKER}\n<!-- droid-review-active:v1 head=${HEAD} run=456 -->`;
+    f.setSummary(newer);
+    f.setDescription("New author description owned by the newer run.");
+    f.calls.length = 0;
+    await finishReviewLifecycle({
+      octokit: f.octokit,
+      run: prepared.run,
+      input: { state: "clean" },
+    });
+    expect(f.description()).toBe(
+      "New author description owned by the newer run.",
+    );
+    expect(
+      f.calls.some(
+        (call) => call.method === "updatePR" || call.method === "updateComment",
+      ),
+    ).toBe(false);
+  });
+  it("trusted check identity posts attempt 2 with ambient metadata absent and cache poisoned", async () => {
+    const f = fixture([]);
+    process.env.GITHUB_RUN_ATTEMPT = "2";
+    await f.prepare();
+    const cached = (await readReviewLifecycle())!;
+    Object.assign(cached, { runId: "999", runAttempt: "99" });
+    await saveReviewLifecycle(cached);
+    delete process.env.GITHUB_RUN_ID;
+    delete process.env.GITHUB_RUN_ATTEMPT;
+    f.calls.length = 0;
+    await f.post([], undefined, { runId: "123", runAttempt: "2" });
+    const updates = f.calls.filter((c) => c.method === "checkUpdate");
+    expect(updates.length).toBeGreaterThan(0);
+    expect(updates.every((c) => c.input.check_run_id === 50)).toBe(true);
+    expect(updates.at(-1)!.input).toMatchObject({
+      status: "completed",
+      conclusion: "success",
+    });
+  });
+  it("trusted check identity creates and posts explicit attempt 2 without ambient metadata", async () => {
+    const f = fixture([]);
+    delete process.env.GITHUB_RUN_ID;
+    delete process.env.GITHUB_RUN_ATTEMPT;
+    const prepared = await f.prepare("2");
+    expect(prepared.run).toMatchObject({ runId: "123", runAttempt: "2" });
+    expect(
+      f.calls.find((c) => c.method === "checkCreate")!.input.external_id,
+    ).toBe("123:2");
+    await f.post([], undefined, { runId: "123", runAttempt: "2" });
+    expect(
+      f.calls.filter((c) => c.method === "checkUpdate").at(-1)!.input,
+    ).toMatchObject({
+      check_run_id: 50,
+      status: "completed",
+      conclusion: "success",
+    });
+  });
+  it("trusted check identity rejects a real own check from a different attempt", async () => {
+    const f = fixture([]);
+    process.env.GITHUB_RUN_ATTEMPT = "2";
+    await f.prepare();
+    delete process.env.GITHUB_RUN_ID;
+    delete process.env.GITHUB_RUN_ATTEMPT;
+    f.calls.length = 0;
+    await expect(
+      f.post([], undefined, { runId: "123", runAttempt: "3" }),
+    ).rejects.toThrow("does not belong");
+    expect(f.calls.filter((c) => c.method === "checkUpdate")).toEqual([]);
+  });
+  it("trusted check identity uses known ambient attempt when the optional identity omits it", async () => {
+    const f = fixture([]);
+    process.env.GITHUB_RUN_ATTEMPT = "2";
+    await f.prepare();
+    await f.post([], undefined, { runId: "123" });
+    expect((await readReviewLifecycle())?.runAttempt).toBe("2");
+    expect(
+      f.calls.filter((c) => c.method === "checkUpdate").at(-1)!.input,
+    ).toMatchObject({
+      check_run_id: 50,
+      status: "completed",
+      conclusion: "success",
+    });
+  });
+  it("trusted check identity captures the attempt before preparation awaits", async () => {
+    const f = fixture([]);
+    process.env.GITHUB_RUN_ATTEMPT = "2";
+    const pending = f.prepare();
+    process.env.GITHUB_RUN_ATTEMPT = "3";
+    await pending;
+    expect(
+      f.calls.find((c) => c.method === "checkCreate")!.input.external_id,
+    ).toBe("123:2");
+    delete process.env.GITHUB_RUN_ID;
+    delete process.env.GITHUB_RUN_ATTEMPT;
+    await f.post([], undefined, { runId: "123", runAttempt: "2" });
+    expect(
+      f.calls.filter((c) => c.method === "checkUpdate").at(-1)!.input.status,
+    ).toBe("completed");
+  });
+  it("trusted check identity finalizes attempt 2 through the actual entrypoint without ambient metadata", async () => {
+    const f = fixture([]);
+    process.env.GITHUB_RUN_ATTEMPT = "2";
+    await f.prepare();
+    delete process.env.GITHUB_RUN_ID;
+    delete process.env.GITHUB_RUN_ATTEMPT;
+    process.env.DROID_SUCCESS = "false";
+    f.calls.length = 0;
+    await lifecyclePhase({
+      octokit: f.octokit,
+      reviewSession: { runId: "123", runAttempt: "2" },
+    });
+    expect(
+      f.calls.filter((c) => c.method === "checkUpdate").at(-1)!.input,
+    ).toMatchObject({
+      check_run_id: 50,
+      status: "completed",
+      conclusion: "neutral",
+    });
+  });
+  it.each(["queued", "in_progress"])(
+    "finalizes only its own %s check after another same-head run completes",
+    async (status) => {
+      const f = fixture([]);
+      await f.prepare();
+      const otherSummary = `${SUMMARY_MARKER}\n${encodeReviewState({ head: HEAD, findings: [] })}\n<!-- droid-review-completed:v1 head=${HEAD} run=456 -->`;
+      f.setSummary(otherSummary);
+      spyOn(f.octokit.rest.checks, "get").mockResolvedValue({
+        data: {
+          id: 50,
+          external_id: "123:1",
+          name: "Droid Review",
+          head_sha: HEAD,
+          status,
+        },
+      } as any);
+      f.calls.length = 0;
+      const bound = await loadBoundReviewLifecycle(f.octokit);
+      expect(bound?.completed).toBe(false);
+      await finishReviewLifecycle({
+        octokit: f.octokit,
+        run: bound!,
+        input: { state: "clean" },
+      });
+      const updates = f.calls.filter((call) => call.method === "checkUpdate");
+      expect(updates).toHaveLength(1);
+      expect(updates[0]!.input).toMatchObject({
+        check_run_id: 50,
+        status: "completed",
+      });
+      expect(f.body()).toBe(otherSummary);
+    },
+  );
+  it("does not adopt an unrelated same-head check with a different run binding", async () => {
+    const f = fixture([]);
+    await f.prepare();
+    spyOn(f.octokit.rest.checks, "get").mockResolvedValue({
+      data: {
+        id: 50,
+        external_id: "456:1",
+        name: "Droid Review",
+        head_sha: HEAD,
+        status: "in_progress",
+      },
+    } as any);
+    f.calls.length = 0;
+    await expect(loadBoundReviewLifecycle(f.octokit)).rejects.toThrow(
+      "does not belong",
+    );
+    expect(f.calls.some((call) => call.method === "checkUpdate")).toBe(false);
+  });
+  it("does not repeat a completed own check", async () => {
+    const f = fixture([]);
+    await f.prepare();
+    spyOn(f.octokit.rest.checks, "get").mockResolvedValue({
+      data: {
+        id: 50,
+        external_id: "123:1",
+        name: "Droid Review",
+        head_sha: HEAD,
+        status: "completed",
+      },
+    } as any);
+    f.calls.length = 0;
+    const bound = await loadBoundReviewLifecycle(f.octokit);
+    await finishReviewLifecycle({ octokit: f.octokit, run: bound! });
+    expect(f.calls.some((call) => call.method === "checkUpdate")).toBe(false);
+  });
+  it("does not duplicate a check whose creation applied but lost its response", async () => {
+    const f = fixture([]);
+    const created: unknown[] = [];
+    const create = spyOn(f.octokit.rest.checks, "create").mockImplementation(
+      (async (input: unknown) => {
+        created.push(input);
+        throw new Error("connection reset after remote creation");
+      }) as any,
+    );
+    const prepared = await f.prepare();
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(created).toHaveLength(1);
+    expect(prepared.run.checkId).toBeUndefined();
+    expect(core.warning).toHaveBeenCalledTimes(1);
+    expect(f.calls.some((call) => call.method === "checkUpdate")).toBe(false);
+  });
+  it("binds successful check creation to this workflow run and attempt", async () => {
+    const f = fixture([]);
+    const prepared = await f.prepare();
+    expect(prepared.run.checkId).toBe(50);
+    expect(
+      f.calls.find((call) => call.method === "checkCreate")!.input,
+    ).toMatchObject({
+      head_sha: HEAD,
+      external_id: "123:1",
+      status: "queued",
+    });
+  });
   it("uses real returned discussion links and deterministic inline markers", async () => {
     const f = fixture([]);
     await f.prepare();
