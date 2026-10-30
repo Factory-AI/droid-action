@@ -17,7 +17,6 @@ import { resolveReviewUxConfig } from "../../src/core/review/config";
 
 const head = "a".repeat(40);
 const thread: lifecycle.DroidReviewThread = {
-  id: "thread",
   nodeId: "thread",
   commentId: 100,
   body: "Verified finding",

@@ -35,6 +35,7 @@ import {
   saveReviewLifecycle,
   fetchImmutableReviewDiff,
 } from "../../src/github/operations/review-lifecycle";
+import { resolveReviewUxConfig } from "../../src/core/review/config";
 import { reviewCheckConclusion } from "../../src/github/operations/review-checks";
 import { run as postReview } from "../../src/entrypoints/github-post-review";
 import { run as lifecyclePhase } from "../../src/entrypoints/github-review-lifecycle";
@@ -104,6 +105,7 @@ describe("review lifecycle production boundaries", () => {
   });
   function fixture(prior = [finding()]) {
     let checkExternalId = "123:1";
+    let checkStatus = "queued";
     let targetHead = HEAD;
     const calls: Array<{ method: string; input: any }> = [];
     const state: ReviewState = {
@@ -166,6 +168,7 @@ describe("review lifecycle production boundaries", () => {
           create: async (input: any) => {
             record("checkCreate", input);
             checkExternalId = input.external_id;
+            checkStatus = input.status;
             return { data: { id: 50 } };
           },
           get: async (input: any) => {
@@ -176,19 +179,20 @@ describe("review lifecycle production boundaries", () => {
                 external_id: checkExternalId,
                 name: "Droid Review",
                 head_sha: targetHead,
-                status: "in_progress",
+                status: checkStatus,
               },
             };
           },
           update: async (input: any) => {
             record("checkUpdate", input);
+            checkStatus = input.status;
             return { data: {} };
           },
         },
         reactions: {
           createForIssue: async (input: any) => {
             record("reactionCreate", input);
-            return { data: { id: 60 } };
+            return { status: 201, data: { id: 60 } };
           },
           deleteForIssue: async (input: any) => {
             record("reactionDelete", input);
@@ -286,13 +290,15 @@ describe("review lifecycle production boundaries", () => {
       entityNumber: 7,
       runId: "123",
       repository: { owner: "o", repo: "r", full_name: "o/r" },
+      inputs: { ...createMockContext().inputs, reviewConfig: undefined },
     });
-    async function prepare(runAttempt?: string) {
+    async function prepare(runAttempt?: string, full = false) {
       const result = await prepareReviewLifecycle({
         octokit,
         context,
         headSha: targetHead,
         baseSha: BASE,
+        full,
         ...(runAttempt ? { runAttempt } : {}),
       });
       for (const [name, value] of Object.entries(outputs))
@@ -413,6 +419,189 @@ describe("review lifecycle production boundaries", () => {
     expect(f.body()).toContain(`run=123 attempt=2 -->`);
     expect(f.body()).toContain("Looks good to merge");
   });
+  it("QA75 2135 exports an explicit immutable base and reloads it rather than the cache", async () => {
+    delete process.env.REVIEW_BASE_SHA;
+    const f = fixture([]);
+    await f.prepare();
+    expect(outputs.review_base_sha).toBe(BASE);
+    const cache = (await readReviewLifecycle())!;
+    cache.base = "f".repeat(40);
+    await saveReviewLifecycle(cache);
+    expect((await loadBoundReviewLifecycle(f.octokit))?.base).toBe(BASE);
+  });
+  it("QA75 2141 retries summary discovery and retains paused history without creating a second sticky", async () => {
+    const f = fixture();
+    const list = f.octokit.rest.issues.listComments;
+    let attempts = 0;
+    spyOn(f.octokit.rest.issues, "listComments").mockImplementation((async (
+      input: any,
+    ) => {
+      if (++attempts === 1)
+        throw Object.assign(new Error("Transient lookup"), { status: 503 });
+      return list(input);
+    }) as typeof list);
+    f.setSummary(
+      `${SUMMARY_MARKER}\n${encodeReviewState({
+        head: OLD,
+        paused: true,
+        findings: [],
+      })}`,
+    );
+    const result = await f.prepare();
+    expect(attempts).toBe(2);
+    expect(result.skipReason).toContain("paused");
+    expect(f.calls.some((call) => call.method === "createComment")).toBe(false);
+  });
+  it("QA75 2141 does not retry a permission-denied summary lookup", async () => {
+    const f = fixture([]);
+    const lookup = spyOn(
+      f.octokit.rest.issues,
+      "listComments",
+    ).mockRejectedValue(Object.assign(new Error("Forbidden"), { status: 403 }));
+    await f.prepare();
+    expect(lookup).toHaveBeenCalledTimes(1);
+  });
+  for (const enabled of [false, true]) {
+    it(`QA75 4138 honors prepared reaction=${enabled} over contrary ambient config`, async () => {
+      const f = fixture([]);
+      process.env.REVIEW_REACTIONS = String(!enabled);
+      f.context.inputs.reviewConfig = resolveReviewUxConfig({
+        inputs: { review_reactions: String(enabled) },
+      });
+      await f.prepare();
+      expect(
+        f.calls.filter((call) => call.method === "reactionCreate"),
+      ).toHaveLength(enabled ? 1 : 0);
+    });
+  }
+  it("QA75 4154 starts no shared eyes without summary session authority", async () => {
+    const f = fixture([]);
+    process.env.REVIEW_SUMMARY = "off";
+    await f.prepare();
+    await f.post([]);
+    expect(f.calls.filter((call) => /reaction/.test(call.method))).toEqual([]);
+  });
+  it("QA75 4154 never adopts a preexisting 200 eyes reaction", async () => {
+    const f = fixture([]);
+    const create = spyOn(
+      f.octokit.rest.reactions,
+      "createForIssue",
+    ).mockResolvedValue({
+      status: 200,
+      data: { id: 999 },
+    } as any);
+    const prepared = await f.prepare();
+    expect(prepared.run.reaction).toBeUndefined();
+    expect(outputs.review_reaction_id).toBe("");
+    await f.post([]);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(f.calls.some((call) => call.method === "reactionDelete")).toBe(
+      false,
+    );
+  });
+  it("QA75 4154 leaves a newer session's shared eyes untouched", async () => {
+    const f = fixture([]);
+    const first = await f.prepare("1");
+    await f.prepare("2");
+    f.calls.length = 0;
+    await finishReviewLifecycle({
+      octokit: f.octokit,
+      run: first.run,
+      input: { state: "clean" },
+    });
+    expect(f.calls.filter((call) => /reaction/.test(call.method))).toEqual([]);
+  });
+  it("QA75 4154 never guesses an eyes ID after an unknown create response", async () => {
+    const f = fixture([]);
+    spyOn(f.octokit.rest.reactions, "createForIssue").mockRejectedValue(
+      new Error("Response lost"),
+    );
+    const prepared = await f.prepare();
+    expect(prepared.run.reaction).toBeUndefined();
+    await f.post([]);
+    expect(f.calls.some((call) => call.method === "reactionDelete")).toBe(
+      false,
+    );
+  });
+  it("QA75 4524 renders canonical trusted model keys instead of hostile aliases", async () => {
+    const f = fixture([]);
+    await f.prepare();
+    process.env.REVIEW_MODEL = "trusted-model";
+    process.env.REASONING_EFFORT = "trusted-effort";
+    process.env.REVIEW_EFFECTIVE_MODEL = "hostile-model";
+    process.env.REVIEW_EFFECTIVE_REASONING = "hostile-effort";
+    await f.post([]);
+    expect(f.body()).toContain("trusted-model");
+    expect(f.body()).toContain("trusted-effort");
+    expect(f.body()).not.toContain("hostile-model");
+    expect(f.body()).not.toContain("hostile-effort");
+  });
+  it("QA75 4564 discovers custom-app stale reviews across pages without changing foreign or unmarked reviews", async () => {
+    const f = fixture([]);
+    spyOn(f.octokit, "graphql").mockImplementation((async (query: string) => {
+      if (query.includes("DroidViewer"))
+        return { viewer: { login: "custom-reviewer[bot]" } };
+      return {
+        repository: {
+          pullRequest: {
+            reviewThreads: { nodes: [], pageInfo: { hasNextPage: false } },
+          },
+        },
+      };
+    }) as typeof f.octokit.graphql);
+    const foreign = Array.from({ length: 100 }, (_, index) => ({
+      id: index + 100,
+      user: { id: 99, login: "foreign[bot]" },
+      body: `<!-- droid-review:v1 head=${OLD} -->`,
+    }));
+    spyOn(f.octokit.rest.pulls, "listReviews").mockImplementation((async (
+      input: any,
+    ) => ({
+      data:
+        input.page === 1
+          ? foreign
+          : [
+              {
+                id: 500,
+                user: { login: "custom-reviewer[bot]" },
+                body: `<!-- droid-review:v1 head=${OLD} -->`,
+              },
+              {
+                id: 501,
+                user: { login: "custom-reviewer[bot]" },
+                body: "Unmarked author review",
+              },
+              {
+                id: 502,
+                user: { login: "custom-reviewer[bot]" },
+                body: `<!-- droid-review:v1 head=${HEAD} -->`,
+              },
+            ],
+    })) as typeof f.octokit.rest.pulls.listReviews);
+    await f.prepare();
+    await f.post([]);
+    expect(
+      f.calls
+        .filter((call) => call.method === "updateReview")
+        .map((call) => call.input.review_id),
+    ).toEqual([500]);
+  });
+  it("QA75 4564 leaves prior reviews untouched when authenticated viewer lookup fails", async () => {
+    const f = fixture([]);
+    await f.prepare();
+    const graphql = f.octokit.graphql;
+    spyOn(f.octokit, "graphql").mockImplementation((async (
+      query: string,
+      variables: Record<string, unknown>,
+    ) => {
+      if (query.includes("DroidViewer")) throw new Error("Viewer unavailable");
+      return graphql(query, variables);
+    }) as typeof f.octokit.graphql);
+    const reviews = spyOn(f.octokit.rest.pulls, "listReviews");
+    await f.post([]);
+    expect(reviews).not.toHaveBeenCalled();
+    expect(f.calls.some((call) => call.method === "updateReview")).toBe(false);
+  });
   it("uses the trusted prepared attempt at post when ambient attempt is absent and cache is poisoned", async () => {
     const f = fixture([]);
     process.env.GITHUB_RUN_ATTEMPT = "2";
@@ -438,6 +627,16 @@ describe("review lifecycle production boundaries", () => {
     );
     const loaded = await loadBoundReviewLifecycle(f.octokit);
     expect(loaded?.superseded).toBe(true);
+  });
+  it("does not invent attempt 1 for an unknown-attempt session", async () => {
+    delete process.env.GITHUB_RUN_ATTEMPT;
+    const f = fixture([]);
+    const prepared = await f.prepare();
+    expect(prepared.run.runAttempt).toBeUndefined();
+    const exactFirst = `${SUMMARY_MARKER}\n<!-- droid-review-active:v1 head=${HEAD} run=123 attempt=1 -->`;
+    f.setSummary(exactFirst);
+    await expect(f.post([])).rejects.toThrow("superseded");
+    expect(f.body()).toBe(exactFirst);
   });
   it("does not downgrade known attempt 2 when an optional identity omits its attempt", async () => {
     const f = fixture([]);
@@ -557,17 +756,22 @@ describe("review lifecycle production boundaries", () => {
     const f = fixture([]);
     await f.prepare();
     await f.post([]);
+    expect(
+      f.calls.filter((call) => call.method === "checkUpdate").at(-1)?.input
+        .status,
+    ).toBe("completed");
     f.calls.length = 0;
     const bound = await loadBoundReviewLifecycle(f.octokit);
     expect(bound?.completed).toBe(true);
     await finishReviewLifecycle({ octokit: f.octokit, run: bound! });
     expect(f.calls.some((call) => call.method === "updateComment")).toBe(false);
   });
-  it("keeps a later preparation owned without inheriting the previous session marker", async () => {
+  it("keeps a later full preparation owned without inheriting the previous session marker", async () => {
     const f = fixture([]);
     await f.prepare();
     await f.post([]);
-    await f.prepare();
+    const later = await f.prepare(undefined, true);
+    expect(later.skipReason).toBeUndefined();
     await f.post([]);
     expect(f.body()).toContain("Looks good to merge");
     expect(f.body().match(/droid-review-completed:v1/g) || []).toHaveLength(1);

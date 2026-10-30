@@ -51,13 +51,15 @@ export function normalizeFinding(data: Record<string, unknown>): ReviewFinding {
   const body = data.title
     ? rawBody
     : rawBody.slice(legacyHeader.length).trim() || title;
-  const suggestionMatch = /```suggestion[^\n]*\n([\s\S]*?)\n```/.exec(body);
+  const suggestionPattern =
+    /```suggestion[^\r\n]*\r?\n([\s\S]*?)^```[ \t]*(?=\r?$)/gm;
+  const suggestionMatch = suggestionPattern.exec(body);
   // Replacement code is not prose: indentation, trailing newlines, and an
   // explicitly empty string (delete the selected lines) are all meaningful.
   const suggestion =
     typeof data.suggestion === "string"
       ? data.suggestion
-      : suggestionMatch?.[1];
+      : suggestionMatch?.[1]?.replace(/\r?\n$/, "");
   const stableKey = `${path}\0${title.toLowerCase()}\0${data.side ?? "RIGHT"}`;
   const id =
     nonempty(data.id) ??
@@ -100,7 +102,7 @@ export function normalizeFinding(data: Record<string, unknown>): ReviewFinding {
           return parsed ? [parsed] : [];
         })
       : [],
-    body: body.replace(/```suggestion[^\n]*\n[\s\S]*?\n```/g, "").trim(),
+    body: body.replace(suggestionPattern, "").trim(),
     why: nonempty(data.why) ?? "",
     verification: nonempty(data.verification) ?? "",
     ...(suggestion !== undefined ? { suggestion } : {}),

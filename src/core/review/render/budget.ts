@@ -181,14 +181,13 @@ function compactInput(
 export function fitReviewOutput(
   input: ReviewRenderInput,
   render: (input: ReviewRenderInput) => string,
-  budget = MAX_REVIEW_OUTPUT_BYTES,
   compactionNotice = NOTICE,
 ): string {
   const initial = render(input);
-  if (outputBytes(initial) <= budget) return initial;
+  if (outputBytes(initial) <= MAX_REVIEW_OUTPUT_BYTES) return initial;
   for (const stage of [1, 2, 3]) {
     const result = `${render(compactInput(input, stage))}${compactionNotice ? `\n\n${compactionNotice}` : ""}`;
-    if (outputBytes(result) <= budget) return result;
+    if (outputBytes(result) <= MAX_REVIEW_OUTPUT_BYTES) return result;
   }
   throw new ReviewOutputBudgetError();
 }

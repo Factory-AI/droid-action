@@ -800,7 +800,7 @@ CWE: CWE-347
 exports[`review render templates Full security report 1`] = `
 "## Droid security review
 
-1 security finding in \`9ea6c83\`.
+1 validated security finding from the original scan (original revision not recorded; locations are unbound).
 
 ### Findings index
 
@@ -810,7 +810,9 @@ exports[`review render templates Full security report 1`] = `
 
 ### \`P1\` \`Security\` Legacy webhooks accept signatures from a different tenant
 
-[<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88)
+<code>src/api/legacy/hooks.ts:88</code>
+
+**Remediation status not reported.** Do not infer that this finding is still open or already fixed.
 
 The legacy route verifies the global key rather than the tenant key, allowing a signed payload to cross tenant boundaries.
 
@@ -818,11 +820,11 @@ CWE: CWE-347
 
 **How to verify**
 
-- [ ] Reproduce the affected path at [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88).
+- [ ] Reproduce the original affected path at <code>src/api/legacy/hooks.ts:88</code>.
 - [ ] Send a tenant A signature to a tenant B webhook and confirm rejection after the fix.
-- [ ] Run regression tests and confirm the unsafe behavior no longer occurs.
+- [ ] Run regression tests on the report branch and confirm the unsafe behavior no longer occurs.
 
-<sub>Reviewed by [Droid](https://factory.ai/) for commit \`9ea6c83\` in 2m 14s · [View job](https://github.com/example/repo/actions/runs/123/job/456)</sub>"
+<sub>Reviewed by [Droid](https://factory.ai/) for commit \`unknown\` in 2m 14s · [View job](https://github.com/example/repo/actions/runs/123/job/456)</sub>"
 `;
 
 exports[`review render templates Summary emoji badges 1`] = `
@@ -1254,7 +1256,7 @@ CWE: CWE-347
 
 exports[`review render templates Summary persisted state 1`] = `
 "<!-- droid-review-summary:v1 -->
-<!-- droid-review-state:v1 {"head":"9ea6c830123456789abcdef0123456789abcdef012","base":"1a2b3c40123456789abcdef0123456789abcdef012","paused":false,"autoRunCount":1,"findings":[{"id":"f-reconnect","sev":"P1","state":"open","path":"src/storage/cacheStore.ts","finding":{"id":"f-reconnect","title":"Redis clients never reconnect after a disconnect","severity":"P1","category":"correctness","security":false,"path":"src/storage/cacheStore.ts","line":40,"startLine":27,"side":"RIGHT","also_at":[{"path":"src/storage/budgetTracker.ts","line":465,"startLine":451}],"body":"Disabling retries leaves the cached client disconnected, so later requests fail until restart. Return a capped backoff instead.","why":"The reconnect callback returns null and no replacement client is created.","verification":"Traced CacheStore.get to client.get and confirmed the error path has no reconnect.","suggestion":"retryStrategy: (times) =\\u003e Math.min(times * 200, 5_000),","agent_prompt":"Verify the reconnect behavior, restore capped retry backoff, and add a disconnect regression test.","outside_diff":false,"source_guideline":{"path":"AGENTS.md","line":18,"startLine":12},"isNew":true,"threadUrl":"https://github.com/example/repo/pull/42#discussion_r4405524178"}},{"id":"f-signature","sev":"P1","state":"open","path":"src/api/legacy/hooks.ts","finding":{"id":"f-signature","title":"Legacy webhooks accept signatures from a different tenant","severity":"P1","category":"security","security":true,"securitySeverity":"high","cwe":"CWE-347","path":"src/api/legacy/hooks.ts","line":88,"startLine":null,"side":"RIGHT","also_at":[],"body":"The legacy route verifies the global key rather than the tenant key, allowing a signed payload to cross tenant boundaries.","why":"The lookup ignores the authenticated tenant.","verification":"Send a tenant A signature to a tenant B webhook and confirm rejection after the fix.","agent_prompt":"Check the legacy webhook key lookup, bind verification to the current tenant, and cover cross-tenant rejection.","outside_diff":true,"isNew":true}}]} -->
+<!-- droid-review-state:v1 {"head":"9ea6c830123456789abcdef0123456789abcdef012","base":"1a2b3c40123456789abcdef0123456789abcdef012","paused":false,"autoRunCount":1,"findings":[{"id":"f-reconnect","sev":"P1","state":"open","finding":{"id":"f-reconnect","title":"Redis clients never reconnect after a disconnect","severity":"P1","category":"correctness","security":false,"path":"src/storage/cacheStore.ts","line":40,"startLine":27,"side":"RIGHT","also_at":[{"path":"src/storage/budgetTracker.ts","line":465,"startLine":451}],"body":"Disabling retries leaves the cached client disconnected, so later requests fail until restart. Return a capped backoff instead.","why":"The reconnect callback returns null and no replacement client is created.","verification":"Traced CacheStore.get to client.get and confirmed the error path has no reconnect.","suggestion":"retryStrategy: (times) =\\u003e Math.min(times * 200, 5_000),","agent_prompt":"Verify the reconnect behavior, restore capped retry backoff, and add a disconnect regression test.","outside_diff":false,"source_guideline":{"path":"AGENTS.md","line":18,"startLine":12},"isNew":true,"threadUrl":"https://github.com/example/repo/pull/42#discussion_r4405524178","state":"open"}},{"id":"f-signature","sev":"P1","state":"open","finding":{"id":"f-signature","title":"Legacy webhooks accept signatures from a different tenant","severity":"P1","category":"security","security":true,"securitySeverity":"high","cwe":"CWE-347","path":"src/api/legacy/hooks.ts","line":88,"startLine":null,"side":"RIGHT","also_at":[],"body":"The legacy route verifies the global key rather than the tenant key, allowing a signed payload to cross tenant boundaries.","why":"The lookup ignores the authenticated tenant.","verification":"Send a tenant A signature to a tenant B webhook and confirm rejection after the fix.","agent_prompt":"Check the legacy webhook key lookup, bind verification to the current tenant, and cover cross-tenant rejection.","outside_diff":true,"isNew":true,"state":"open"}}]} -->
 
 ### 🟡 Changes recommended
 

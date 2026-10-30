@@ -18,6 +18,7 @@ export const GITHUB_CREDENTIAL_ENV_NAMES = [
   "DEFAULT_WORKFLOW_TOKEN",
   "WORKFLOW_GITHUB_TOKEN",
   "FACTORY_API_KEY",
+  "APP_PRIVATE_KEY",
   "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
   "ACTIONS_RUNTIME_TOKEN",
 ] as const;
@@ -121,7 +122,24 @@ export function redactCredentialPatterns(content: string): string {
   );
   content = content.replace(GITLAB_TOKEN_PATTERN, "[REDACTED_GITLAB_TOKEN]");
   content = content.replace(PRIVATE_KEY_PATTERN, "[REDACTED_PRIVATE_KEY]");
-  return content;
+  return content
+    .replace(
+      /\b(?:gh[pousr]_[A-Za-z0-9_]{8,}|github_pat_[A-Za-z0-9_]+|sk-(?:ant-)?[A-Za-z0-9_-]{8,}|fk_[A-Za-z0-9_-]{8,}|AKIA[A-Z0-9]{16})\b/g,
+      REDACTED,
+    )
+    .replace(
+      /(\bauthorization\s*[:=]\s*(?:bearer|basic)?\s*)["']?[^\s,"';]+["']?/gi,
+      "$1[REDACTED]",
+    )
+    .replace(
+      /(\b(?:FACTORY_API_KEY|GITHUB_TOKEN|APP_PRIVATE_KEY|api[_-]?key|access[_-]?token|password|secret)\s*[:=]\s*)["']?[^\s,"';]+["']?/gi,
+      "$1[REDACTED]",
+    )
+    .replace(/(https?:\/\/)[^/\s:@]+:[^/\s@]+@/g, "$1[REDACTED]@")
+    .replace(
+      /([?&](?:token|key|secret|password|signature|credential|access_token|api_key)=)[^&#\s]+/gi,
+      "$1[REDACTED]",
+    );
 }
 
 /** Reads the named variables, longest value first so no secret is left partly redacted by a shorter one it contains. */

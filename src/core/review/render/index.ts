@@ -101,7 +101,10 @@ function locationLabel(loc: FindingLocation): string {
   return `${loc.path}${loc.line ? `:${loc.startLine && loc.startLine !== loc.line ? `${loc.startLine}-` : ""}${loc.line}` : ""}`;
 }
 function reference(loc: FindingLocation, options: RenderOptions): string {
-  return link(inlineCode(locationLabel(loc)), locationUrl(loc, options));
+  return link(
+    inlineCode(locationLabel(loc)).replace(/([\\[\]()])/g, "\\$1"),
+    locationUrl(loc, options),
+  );
 }
 function findingLocation(f: ReviewFinding): FindingLocation {
   return {
@@ -235,7 +238,7 @@ function reviewDetails(
 export function safeDiagram(value: string): string | null {
   if (
     !/^(?:flowchart|graph|sequenceDiagram)\b/.test(value.trim()) ||
-    /<\/?[a-z][^>]*>|[&`~]|%%|(?:^|\n)\s*(?:click|linkStyle|style|classDef|accTitle|accDescr)\b|https?:|javascript:/i.test(
+    /<\/?[a-z][^>]*>|[&`~]|%%|(?:^|[\n;])\s*(?:click|linkStyle|style|classDef|accTitle|accDescr)\b|https?:|javascript:/i.test(
       value,
     )
   )
@@ -632,7 +635,6 @@ export function renderReviewStateNote(state?: ReviewState): string {
       ]
         .filter(Boolean)
         .join("\n"),
-    undefined,
     "",
   );
 }

@@ -41,9 +41,10 @@ import {
 import { reviewConfigFromEnvironment } from "../../core/review/config";
 import { fitReviewOutput } from "../../core/review/render/budget";
 import { isManualReviewRequest } from "../utils/review-intent";
+import { retryWithBackoff } from "../../utils/retry";
+import { isPermissionError } from "./review-checks";
 
 export type DroidReviewThread = {
-  id: string;
   nodeId: string;
   commentId: number;
   body: string;
@@ -54,7 +55,7 @@ export type DroidReviewThread = {
   resolved: boolean;
   url: string;
   findingId: string;
-  comments: Array<{ id: number; body: string; author?: string }>;
+  comments: Array<{ id: number; body: string }>;
 };
 export type ReviewLifecycleRun = {
   owner: string;
@@ -84,7 +85,6 @@ export type ReviewLifecycleRun = {
   renderInput?: ReviewRenderInput;
   completed?: boolean;
   superseded?: boolean;
-  pendingDiffHash?: string;
   pullRequest?: { title: string; body: string; baseSha: string };
   previousState?: ReviewState;
   full?: boolean;
@@ -204,7 +204,6 @@ export async function loadBoundReviewLifecycle(
     securityOnly: process.env.REVIEW_SECURITY_ONLY === "true",
     renderInput: undefined,
     eligibleFixedIds: undefined,
-    pendingDiffHash: undefined,
     skipReason: undefined,
     superseded: false,
     previousState: undefined,
@@ -418,7 +417,9 @@ function trustedAuthor(author: CommentAuthor, viewer?: string): boolean {
       author.login === (process.env.DROID_BOT_LOGIN || viewer))
   );
 }
-async function viewerLogin(octokit: Octokits): Promise<string | undefined> {
+export async function viewerLogin(
+  octokit: Octokits,
+): Promise<string | undefined> {
   try {
     const result = await octokit.graphql<{ viewer: { login: string } }>(
       "query DroidViewer { viewer { login } }",
@@ -491,13 +492,21 @@ export async function findReviewSummary(options: {
 }) {
   const viewer = await viewerLogin(options.octokit);
   for (let page = 1; ; page++) {
-    const response = await options.octokit.rest.issues.listComments({
-      owner: options.owner,
-      repo: options.repo,
-      issue_number: options.prNumber,
-      per_page: 100,
-      page,
-    });
+    const response = await retryWithBackoff(
+      () =>
+        options.octokit.rest.issues.listComments({
+          owner: options.owner,
+          repo: options.repo,
+          issue_number: options.prNumber,
+          per_page: 100,
+          page,
+        }),
+      {
+        initialDelayMs: 250,
+        maxDelayMs: 1000,
+        shouldRetry: (error) => !isPermissionError(error),
+      },
+    );
     const comment = response.data.find(
       (comment) =>
         trustedAuthor(comment.user, viewer) &&
@@ -521,6 +530,7 @@ export async function listDroidThreads(options: {
     diffSide?: "LEFT" | "RIGHT";
     startLine?: number | null;
     comments: {
+      pageInfo?: { hasNextPage: boolean; endCursor: string | null };
       nodes: Array<{
         databaseId: number;
         body: string;
@@ -546,6 +556,7 @@ export async function listDroidThreads(options: {
         repository(owner:$owner,name:$repo) { pullRequest(number:$number) {
           reviewThreads(first:100,after:$cursor) { nodes { id isResolved path line diffSide startLine comments(first:100) {
             nodes { databaseId body url author { login ... on User { databaseId } ... on Bot { databaseId } } }
+            pageInfo { hasNextPage endCursor }
           } } pageInfo { hasNextPage endCursor } }
         } }
       }`,
@@ -571,8 +582,43 @@ export async function listDroidThreads(options: {
         continue;
       const marker = decodeFindingMarker(root.body);
       if (!marker) continue;
+      const comments = node.comments.nodes.map((comment) => ({
+        id: comment.databaseId,
+        body: comment.body,
+      }));
+      let commentPage = node.comments.pageInfo;
+      const seenCursors = new Set<string>();
+      while (commentPage?.hasNextPage) {
+        const after = commentPage.endCursor;
+        if (!after || seenCursors.has(after))
+          throw new Error(
+            "GitHub did not provide a new review-comment page cursor.",
+          );
+        seenCursors.add(after);
+        const next = await options.octokit.graphql<{
+          node: {
+            comments: {
+              nodes: Array<{ databaseId: number; body: string }>;
+              pageInfo: { hasNextPage: boolean; endCursor: string | null };
+            };
+          };
+        }>(
+          `query DroidReviewThreadComments($id:ID!,$cursor:String!) {
+            node(id:$id) { ... on PullRequestReviewThread { comments(first:100,after:$cursor) {
+              nodes { databaseId body } pageInfo { hasNextPage endCursor }
+            } } }
+          }`,
+          { id: node.id, cursor: after },
+        );
+        comments.push(
+          ...next.node.comments.nodes.map((comment) => ({
+            id: comment.databaseId,
+            body: comment.body,
+          })),
+        );
+        commentPage = next.node.comments.pageInfo;
+      }
       threads.push({
-        id: node.id,
         nodeId: node.id,
         commentId: root.databaseId,
         body: root.body,
@@ -583,11 +629,7 @@ export async function listDroidThreads(options: {
         resolved: node.isResolved,
         url: root.url,
         findingId: marker.id,
-        comments: node.comments.nodes.map((comment) => ({
-          id: comment.databaseId,
-          body: comment.body,
-          author: comment.author?.login,
-        })),
+        comments,
       });
     }
     cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
@@ -714,8 +756,9 @@ async function createEyes(
   octokit: Octokits,
   context: ParsedGitHubContext,
   run: ReviewLifecycleRun,
+  enabled: boolean,
 ): Promise<void> {
-  if (!reviewConfigFromEnvironment().review_reactions) return;
+  if (!enabled) return;
   const target =
     "comment" in context.payload
       ? context.payload.comment.id
@@ -750,7 +793,9 @@ async function createEyes(
             }),
     lifecycleWarning(run),
   );
-  if (response) run.reaction = { id: response.data.id, kind, targetId: target };
+  // 200 means the token user already had this shared reaction, not a new run-owned award.
+  if (response?.status === 201)
+    run.reaction = { id: response.data.id, kind, targetId: target };
 }
 export async function prepareReviewLifecycle(options: {
   octokit: Octokits;
@@ -843,7 +888,12 @@ export async function prepareReviewLifecycle(options: {
     jobUrl,
     warn,
   });
-  await createEyes(options.octokit, options.context, run);
+  await createEyes(
+    options.octokit,
+    options.context,
+    run,
+    config.review_reactions && config.review_summary !== "off",
+  );
   const input: ReviewRenderInput = {
     state: run.skipReason ? "skipped" : "in_progress",
     head: run.head,
@@ -886,6 +936,7 @@ export async function prepareReviewLifecycle(options: {
     repo_name: repo,
     pr_number: run.prNumber,
     review_head_sha: run.head,
+    review_base_sha: run.base || "",
     review_comment_id: run.commentId,
     review_check_id: run.checkId || "",
     review_started_at: run.startedAt,
@@ -1078,32 +1129,31 @@ export async function finishReviewLifecycle(options: {
     ...output,
     warn,
   });
-  if (run.reaction) {
+  if (config.review_reactions && run.reaction && !run.superseded) {
     const { id, targetId, kind } = run.reaction;
-    await optionalGitHubOperation(
-      () =>
-        kind === "review_comment"
-          ? options.octokit.rest.reactions.deleteForPullRequestComment({
+    await optionalGitHubOperation(async () => {
+      if (!(await ownsReviewSummary(options.octokit, run, true))) return;
+      return kind === "review_comment"
+        ? options.octokit.rest.reactions.deleteForPullRequestComment({
+            owner: run.owner,
+            repo: run.repo,
+            comment_id: targetId,
+            reaction_id: id,
+          })
+        : kind === "issue_comment"
+          ? options.octokit.rest.reactions.deleteForIssueComment({
               owner: run.owner,
               repo: run.repo,
               comment_id: targetId,
               reaction_id: id,
             })
-          : kind === "issue_comment"
-            ? options.octokit.rest.reactions.deleteForIssueComment({
-                owner: run.owner,
-                repo: run.repo,
-                comment_id: targetId,
-                reaction_id: id,
-              })
-            : options.octokit.rest.reactions.deleteForIssue({
-                owner: run.owner,
-                repo: run.repo,
-                issue_number: targetId,
-                reaction_id: id,
-              }),
-      warn,
-    );
+          : options.octokit.rest.reactions.deleteForIssue({
+              owner: run.owner,
+              repo: run.repo,
+              issue_number: targetId,
+              reaction_id: id,
+            });
+    }, warn);
     const content =
       failed || input.state === "failed"
         ? "confused"
@@ -1111,30 +1161,29 @@ export async function finishReviewLifecycle(options: {
           ? "hooray"
           : undefined;
     if (content)
-      await optionalGitHubOperation(
-        () =>
-          kind === "review_comment"
-            ? options.octokit.rest.reactions.createForPullRequestReviewComment({
+      await optionalGitHubOperation(async () => {
+        if (!(await ownsReviewSummary(options.octokit, run, true))) return;
+        return kind === "review_comment"
+          ? options.octokit.rest.reactions.createForPullRequestReviewComment({
+              owner: run.owner,
+              repo: run.repo,
+              comment_id: targetId,
+              content,
+            })
+          : kind === "issue_comment"
+            ? options.octokit.rest.reactions.createForIssueComment({
                 owner: run.owner,
                 repo: run.repo,
                 comment_id: targetId,
                 content,
               })
-            : kind === "issue_comment"
-              ? options.octokit.rest.reactions.createForIssueComment({
-                  owner: run.owner,
-                  repo: run.repo,
-                  comment_id: targetId,
-                  content,
-                })
-              : options.octokit.rest.reactions.createForIssue({
-                  owner: run.owner,
-                  repo: run.repo,
-                  issue_number: targetId,
-                  content,
-                }),
-        warn,
-      );
+            : options.octokit.rest.reactions.createForIssue({
+                owner: run.owner,
+                repo: run.repo,
+                issue_number: targetId,
+                content,
+              });
+      }, warn);
   }
   if (process.env.GITHUB_STEP_SUMMARY)
     await fs.appendFile(
@@ -1162,7 +1211,7 @@ export function stateFindings(state: ReviewState): ReviewFinding[] {
             ...finding,
             state: item.state,
             threadUrl: item.url || finding.threadUrl,
-            threadId: item.threadId || item.thread,
+            threadId: item.threadId || item.thread || finding.threadId,
           },
         ]
       : [];

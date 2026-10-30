@@ -117,7 +117,7 @@ describe("automatic renderer output budgets", () => {
   });
   it("refuses to truncate essential identities in hidden state notes", () => {
     const state = oversizedReview().reviewState!;
-    state.findings[0]!.id = "essential-id".repeat(10000);
+    state.findings[0]!.finding!.id = "essential-id".repeat(10000);
     expect(() => renderReviewStateNote(state)).toThrow(ReviewOutputBudgetError);
   });
   it("bounds large visible/hidden summaries without losing finding identity or lifecycle state", () => {
@@ -177,7 +177,7 @@ describe("automatic renderer output budgets", () => {
   });
   it("fails safely if essential identities cannot fit instead of dropping them", () => {
     const input = oversizedReview();
-    input.reviewState!.findings[0]!.id = "essential-id".repeat(10000);
+    input.reviewState!.findings[0]!.finding!.id = "essential-id".repeat(10000);
     expect(() => renderReviewSummary(input)).toThrow(ReviewOutputBudgetError);
     expect(() => renderReviewSummary(input)).toThrow(
       "no truncated state was published",

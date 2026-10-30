@@ -3,14 +3,13 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 import {
-  MAX_GITHUB_REVIEW_BODY_BYTES,
   MAX_GITHUB_REVIEW_COMMENTS,
-  fallbackReviewBody,
   postGitHubReview,
   prepareGitHubReview,
   run,
-  type GitHubReviewClient,
 } from "../../src/entrypoints/github-post-review";
+import type { GitHubReviewCreateClient } from "../../src/github/operations/reviews";
+import { MAX_REVIEW_OUTPUT_BYTES } from "../../src/core/review/render/budget";
 import { buildUnifiedDiffIndex } from "../../src/core/review/validated/diff";
 import type { ValidatedReviewComment } from "../../src/core/review/validated/parse";
 import { createMockContext } from "../mockContext";
@@ -86,19 +85,6 @@ describe("prepareGitHubReview", () => {
   });
 });
 
-describe("fallbackReviewBody", () => {
-  it("includes each location, finding, and fallback reason", () => {
-    const body = fallbackReviewBody([
-      { comment: comment(), reason: "line is not part of the PR diff" },
-    ]);
-
-    expect(body).toContain("## Findings without inline anchors");
-    expect(body).toContain("`src/x.ts:10`");
-    expect(body).toContain("[P1] Finding");
-    expect(body).toContain("line is not part of the PR diff");
-  });
-});
-
 describe("postGitHubReview", () => {
   it("creates one nonempty review and preserves fallback findings for the sticky summary", async () => {
     const createReview = mock(async (_payload: any) => ({
@@ -106,7 +92,7 @@ describe("postGitHubReview", () => {
     }));
     const client = {
       rest: { pulls: { createReview } },
-    } as GitHubReviewClient;
+    } as GitHubReviewCreateClient;
 
     const result = await postGitHubReview({
       client,
@@ -146,7 +132,7 @@ describe("postGitHubReview", () => {
     }));
     const client = {
       rest: { pulls: { createReview } },
-    } as GitHubReviewClient;
+    } as GitHubReviewCreateClient;
 
     await postGitHubReview({
       client,
@@ -170,7 +156,7 @@ describe("postGitHubReview", () => {
     }));
     const client = {
       rest: { pulls: { createReview } },
-    } as GitHubReviewClient;
+    } as GitHubReviewCreateClient;
 
     await postGitHubReview({
       client,
@@ -193,7 +179,7 @@ describe("postGitHubReview", () => {
     }));
     const client = {
       rest: { pulls: { createReview } },
-    } as GitHubReviewClient;
+    } as GitHubReviewCreateClient;
 
     const result = await postGitHubReview({
       client,
@@ -218,7 +204,7 @@ describe("postGitHubReview", () => {
     });
     const client = {
       rest: { pulls: { createReview } },
-    } as GitHubReviewClient;
+    } as GitHubReviewCreateClient;
 
     const result = await postGitHubReview({
       client,
@@ -241,7 +227,7 @@ describe("postGitHubReview", () => {
     }));
     const client = {
       rest: { pulls: { createReview } },
-    } as GitHubReviewClient;
+    } as GitHubReviewCreateClient;
 
     const result = await postGitHubReview({
       client,
@@ -251,7 +237,7 @@ describe("postGitHubReview", () => {
       comments: [
         comment({
           path: "missing.ts",
-          body: "x".repeat(MAX_GITHUB_REVIEW_BODY_BYTES),
+          body: "x".repeat(MAX_REVIEW_OUTPUT_BYTES),
         }),
       ],
       diff: DIFF,

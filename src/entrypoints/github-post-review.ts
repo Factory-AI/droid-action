@@ -28,7 +28,10 @@ import {
   validatedAnchorLine,
   type ValidatedReviewComment,
 } from "../core/review/validated/parse";
-import type { ReviewPostResults } from "../core/review/tracking/types";
+import type {
+  ReviewPostFailure,
+  ReviewPostResults,
+} from "../core/review/tracking/types";
 import {
   createGitHubCommentReview,
   type GitHubReviewCommentPayload,
@@ -73,6 +76,7 @@ import {
   reopenDroidThread,
   saveReviewLifecycle,
   stateFindings,
+  viewerLogin,
   type ReviewSessionIdentity,
 } from "../github/operations/review-lifecycle";
 import {
@@ -82,7 +86,6 @@ import {
 } from "../github/operations/review-checks";
 import { redactCredentials } from "../utils/redact-credentials";
 import { GITHUB_SERVER_URL } from "../github/api/config";
-import { DROID_APP_BOT_ID } from "../github/bot-identity";
 import {
   reviewConfigFromEnvironment,
   shouldIgnoreReviewPath,
@@ -90,7 +93,6 @@ import {
 import { enrichReviewSummary } from "../core/review/validated/metadata";
 
 export const MAX_GITHUB_REVIEW_COMMENTS = 30;
-export const MAX_GITHUB_REVIEW_BODY_BYTES = 60 * 1024;
 
 type GitHubInlineComment = GitHubReviewCommentPayload & {
   line: number;
@@ -98,8 +100,6 @@ type GitHubInlineComment = GitHubReviewCommentPayload & {
   start_line?: number;
   start_side?: "LEFT" | "RIGHT";
 };
-
-export type GitHubReviewClient = GitHubReviewCreateClient;
 
 type FallbackFinding = {
   comment: ValidatedReviewComment;
@@ -110,11 +110,9 @@ export type GitHubPostReviewResult = {
   reviewId: number | undefined;
   posted: number;
   fallbackPosted: number;
-  failures: Array<{ path: string; line: number | null; error: string }>;
+  failures: ReviewPostFailure[];
   findings?: ReviewFinding[];
 };
-
-export type GitHubPostResults = ReviewPostResults;
 
 function promptsDir(): string {
   return path.join(process.env.RUNNER_TEMP || "/tmp", "droid-prompts");
@@ -222,22 +220,6 @@ export function prepareGitHubReview(
   return { inline, fallback };
 }
 
-export function fallbackReviewBody(findings: FallbackFinding[]): string {
-  const sections = findings.map(({ comment, reason }) => {
-    const line = validatedAnchorLine(comment);
-    const location = line === null ? comment.path : `${comment.path}:${line}`;
-    return `### \`${location}\`\n\n${comment.body}\n\n<sub>Posted in the review body because ${reason}.</sub>`;
-  });
-
-  return [
-    "## Findings without inline anchors",
-    "",
-    "These approved findings could not be attached to an inline diff position.",
-    "",
-    ...sections,
-  ].join("\n");
-}
-
 function errorMessage(error: unknown): string {
   return redactCredentials(
     error instanceof Error ? error.message : String(error),
@@ -254,7 +236,7 @@ function errorMessage(error: unknown): string {
  * anchors bound to that commit even if the PR head has moved since.
  */
 export async function postGitHubReview(options: {
-  client: GitHubReviewClient;
+  client: GitHubReviewCreateClient;
   owner: string;
   repo: string;
   prNumber: number;
@@ -390,11 +372,11 @@ export async function postGitHubReview(options: {
 export async function run(
   options: {
     context?: ParsedGitHubContext;
-    client?: GitHubReviewClient;
+    client?: GitHubReviewCreateClient;
     octokit?: Octokits;
     reviewSession?: ReviewSessionIdentity;
   } = {},
-): Promise<GitHubPostResults> {
+): Promise<ReviewPostResults> {
   let context = options.context ?? parseGitHubContext();
   const target = options.context ? undefined : authoritativeReviewTarget();
   if (target)
@@ -681,14 +663,8 @@ export async function run(
             : undefined,
     jobUrl: `${GITHUB_SERVER_URL}/${context.repository.owner}/${context.repository.repo}/actions/runs/${context.runId}`,
     depth: config.review_depth,
-    model:
-      process.env.REVIEW_EFFECTIVE_MODEL ||
-      process.env.REVIEW_MODEL ||
-      "default",
-    reasoning:
-      process.env.REVIEW_EFFECTIVE_REASONING ||
-      process.env.REASONING_EFFORT ||
-      undefined,
+    model: process.env.REVIEW_MODEL || "default",
+    reasoning: process.env.REASONING_EFFORT || undefined,
     badges: config.review_badges,
     includeCategories: config.review_category_chips,
     includeAgentPrompts: config.include_agent_prompts,
@@ -748,7 +724,7 @@ export async function run(
   posted.fallbackPosted += newFindings.filter(
     (finding) => finding.outside_diff,
   ).length;
-  const results: GitHubPostResults = {
+  const results: ReviewPostResults = {
     posted: posted.posted,
     fallbackPosted: posted.fallbackPosted,
     approved: parsed.approvedCount,
@@ -791,10 +767,6 @@ export async function run(
           id: finding.id,
           sev: finding.severity,
           state: finding.state || "open",
-          path: finding.path,
-          ...(finding.line ? { line: finding.line } : {}),
-          title: finding.title,
-          body: finding.body,
           finding,
           thread: finding.threadId,
           threadId: thread?.nodeId,
@@ -939,6 +911,13 @@ async function markPreviousReviewsStale(
   head: string,
   warn: (message: string) => void,
 ): Promise<void> {
+  const viewer = await viewerLogin(octokit);
+  if (!viewer) {
+    warn(
+      "Droid could not verify the authenticated review author; previous reviews were not changed.",
+    );
+    return;
+  }
   await optionalGitHubOperation(async () => {
     for (let page = 1; ; page++) {
       const reviews = await octokit.rest.pulls.listReviews({
@@ -954,8 +933,7 @@ async function markPreviousReviewsStale(
           !marker ||
           marker.head === head ||
           marker.stale ||
-          (review.user?.id !== DROID_APP_BOT_ID &&
-            review.user?.login !== process.env.DROID_BOT_LOGIN)
+          review.user?.login !== viewer
         )
           continue;
         await octokit.rest.pulls.updateReview({

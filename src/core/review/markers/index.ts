@@ -112,15 +112,14 @@ function topLevelCommentSpans(
         continue;
       }
     }
-    // Backtick runs delimit inline code, including code spans across lines.
-    for (const match of line.matchAll(/`+/g)) {
+    // Process tags and code delimiters in order, including multiline code spans.
+    for (const match of line.matchAll(/`+|<\/?details(?:\s[^>]*)?>/gi)) {
       const prefix = line.slice(0, match.index).match(/\\+$/)?.[0].length ?? 0;
       if (prefix % 2) continue;
-      if (inlineTicks === 0) inlineTicks = match[0].length;
-      else if (match[0].length === inlineTicks) inlineTicks = 0;
-    }
-    if (inlineTicks === 0) {
-      for (const match of line.matchAll(/<\/?details(?:\s[^>]*)?>/g)) {
+      if (match[0].startsWith("`")) {
+        if (inlineTicks === 0) inlineTicks = match[0].length;
+        else if (match[0].length === inlineTicks) inlineTicks = 0;
+      } else if (inlineTicks === 0) {
         detailsDepth = Math.max(
           0,
           detailsDepth + (match[0].startsWith("</") ? -1 : 1),
@@ -212,8 +211,77 @@ export function hasSummaryMarker(body: string): boolean {
   );
 }
 export function encodeReviewState(state: ReviewState): string {
-  return jsonMarker("droid-review-state:v1", state);
+  return jsonMarker("droid-review-state:v1", {
+    ...state,
+    findings: state.findings.map((item) =>
+      item.finding
+        ? {
+            ...item,
+            id: item.finding.id,
+            sev: item.finding.severity,
+            path: undefined,
+            line: undefined,
+            title: undefined,
+            body: undefined,
+            finding: { ...item.finding, state: item.state },
+          }
+        : item,
+    ),
+  });
 }
+
+/** Only owned persisted state, never validator/model input, carries lifecycle metadata. */
+function persistedFinding(value: unknown): ReviewFinding | undefined {
+  const data = record(value);
+  if (!data || typeof data.path !== "string" || typeof data.body !== "string")
+    return undefined;
+  const finding = normalizeFinding(data);
+  return {
+    ...finding,
+    also_at: Array.isArray(data.also_at)
+      ? data.also_at.flatMap((raw) => {
+          const location = normalizeFinding({ also_at: [raw] }).also_at[0];
+          const url = record(raw)?.url;
+          return location
+            ? [{ ...location, ...(typeof url === "string" ? { url } : {}) }]
+            : [];
+        })
+      : [],
+    ...(finding.source_guideline &&
+    typeof record(data.source_guideline)?.url === "string"
+      ? {
+          source_guideline: {
+            ...finding.source_guideline,
+            url: String(record(data.source_guideline)!.url),
+          },
+        }
+      : {}),
+    ...(typeof data.threadUrl === "string"
+      ? { threadUrl: data.threadUrl }
+      : {}),
+    ...(typeof data.threadId === "string" ||
+    (typeof data.threadId === "number" &&
+      Number.isSafeInteger(data.threadId) &&
+      data.threadId > 0)
+      ? { threadId: data.threadId }
+      : {}),
+    ...(data.state === "open" ||
+    data.state === "resolved" ||
+    data.state === "dismissed"
+      ? { state: data.state }
+      : {}),
+    ...(typeof data.isNew === "boolean" ? { isNew: data.isNew } : {}),
+    ...(typeof data.fixedIn === "string" &&
+    /^[a-f0-9]{7,64}$/i.test(data.fixedIn)
+      ? { fixedIn: data.fixedIn }
+      : {}),
+    ...(data.pendingThreadAction === "resolve" ||
+    data.pendingThreadAction === "reopen"
+      ? { pendingThreadAction: data.pendingThreadAction }
+      : {}),
+  };
+}
+
 export function decodeReviewState(body: string): ReviewState | null {
   const value = readJson(body, "droid-review-state:v1");
   if (
@@ -224,29 +292,47 @@ export function decodeReviewState(body: string): ReviewState | null {
     return null;
   const findings: ReviewStateFinding[] = value.findings.flatMap((raw) => {
     const f = record(raw);
+    const finding =
+      persistedFinding(f?.finding) ??
+      (f &&
+      typeof f.path === "string" &&
+      (typeof f.body === "string" || typeof f.title === "string")
+        ? normalizeFinding({ ...f, severity: f.sev, body: f.body || f.title })
+        : undefined);
     if (
       !f ||
-      typeof f.id !== "string" ||
-      !["P0", "P1", "P2"].includes(String(f.sev)) ||
+      (!finding &&
+        (typeof f.id !== "string" ||
+          !["P0", "P1", "P2"].includes(String(f.sev)))) ||
       !["open", "resolved", "dismissed"].includes(String(f.state))
     )
       return [];
     return [
       {
-        id: f.id,
-        sev: f.sev as ReviewSeverity,
+        id: finding?.id ?? String(f.id),
+        sev: finding?.severity ?? (f.sev as ReviewSeverity),
         state: f.state as ReviewStateFinding["state"],
         ...(typeof f.thread === "string" || typeof f.thread === "number"
           ? { thread: f.thread }
           : {}),
-        ...(typeof f.path === "string" ? { path: f.path } : {}),
-        ...(typeof f.line === "number" &&
-        Number.isSafeInteger(f.line) &&
-        f.line > 0
-          ? { line: f.line }
-          : {}),
-        ...(typeof f.title === "string" ? { title: f.title } : {}),
-        ...(typeof f.body === "string" ? { body: f.body } : {}),
+        ...(finding
+          ? {
+              path: finding.path,
+              ...(finding.line !== null ? { line: finding.line } : {}),
+              title: finding.title,
+              body: finding.body,
+              finding,
+            }
+          : {
+              ...(typeof f.path === "string" ? { path: f.path } : {}),
+              ...(typeof f.line === "number" &&
+              Number.isSafeInteger(f.line) &&
+              f.line > 0
+                ? { line: f.line }
+                : {}),
+              ...(typeof f.title === "string" ? { title: f.title } : {}),
+              ...(typeof f.body === "string" ? { body: f.body } : {}),
+            }),
         ...(typeof f.threadId === "string" ? { threadId: f.threadId } : {}),
         ...(typeof f.commentId === "number" &&
         Number.isSafeInteger(f.commentId) &&
@@ -254,27 +340,6 @@ export function decodeReviewState(body: string): ReviewState | null {
           ? { commentId: f.commentId }
           : {}),
         ...(typeof f.url === "string" ? { url: f.url } : {}),
-        ...(record(f.finding) &&
-        typeof record(f.finding)?.path === "string" &&
-        typeof record(f.finding)?.body === "string"
-          ? {
-              finding: {
-                ...normalizeFinding(record(f.finding)!),
-                ...(typeof record(f.finding)?.threadUrl === "string"
-                  ? { threadUrl: String(record(f.finding)?.threadUrl) }
-                  : {}),
-                ...(typeof record(f.finding)?.fixedIn === "string" &&
-                /^[a-f0-9]{7,64}$/i.test(String(record(f.finding)?.fixedIn))
-                  ? { fixedIn: String(record(f.finding)?.fixedIn) }
-                  : {}),
-                ...(record(f.finding)?.pendingThreadAction === "resolve"
-                  ? { pendingThreadAction: "resolve" as const }
-                  : record(f.finding)?.pendingThreadAction === "reopen"
-                    ? { pendingThreadAction: "reopen" as const }
-                    : {}),
-              },
-            }
-          : {}),
       },
     ];
   });

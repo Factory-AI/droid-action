@@ -1,8 +1,4 @@
-import {
-  CREDENTIAL_ENV_NAMES,
-  redactSecrets as redactCredentialSecrets,
-  secretValuesFromEnv,
-} from "../../../utils/redact-credentials";
+import { redactCredentials } from "../../../utils/redact-credentials";
 
 export function pluralize(
   count: number,
@@ -25,27 +21,7 @@ export function redactSecrets(
   text: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  return redactCredentialSecrets(
-    text,
-    secretValuesFromEnv([...CREDENTIAL_ENV_NAMES, "APP_PRIVATE_KEY"], env),
-  )
-    .replace(
-      /\b(?:gh[pousr]_[A-Za-z0-9_]{8,}|github_pat_[A-Za-z0-9_]+|sk-(?:ant-)?[A-Za-z0-9_-]{8,}|fk_[A-Za-z0-9_-]{8,}|AKIA[A-Z0-9]{16})\b/g,
-      "[REDACTED]",
-    )
-    .replace(
-      /(\bauthorization\s*[:=]\s*(?:bearer|basic)?\s*)["']?[^\s,"';]+["']?/gi,
-      "$1[REDACTED]",
-    )
-    .replace(
-      /(\b(?:FACTORY_API_KEY|GITHUB_TOKEN|APP_PRIVATE_KEY|api[_-]?key|access[_-]?token|password|secret)\s*[:=]\s*)["']?[^\s,"';]+["']?/gi,
-      "$1[REDACTED]",
-    )
-    .replace(/(https?:\/\/)[^/\s:@]+:[^/\s@]+@/g, "$1[REDACTED]@")
-    .replace(
-      /([?&](?:token|key|secret|password|signature|credential|access_token|api_key)=)[^&#\s]+/gi,
-      "$1[REDACTED]",
-    );
+  return redactCredentials(text, env);
 }
 export function escapeHtml(text: string): string {
   return text

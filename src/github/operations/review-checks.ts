@@ -4,7 +4,6 @@ import type {
   ReviewSeverity,
 } from "../../core/review/validated/types";
 import { retryWithBackoff } from "../../utils/retry";
-import { redactCredentials } from "../../utils/redact-credentials";
 
 export type ReviewCheckConclusion = "success" | "neutral" | "failure";
 export type ReviewCheckPolicy = {
@@ -58,28 +57,12 @@ export async function optionalGitHubOperation<T>(
   maxAttempts = 3,
 ): Promise<T | undefined> {
   try {
-    return await retryWithBackoff(
-      async () => {
-        try {
-          return await operation();
-        } catch (error) {
-          const safeError = new Error(
-            redactCredentials(
-              error instanceof Error ? error.message : String(error),
-            ),
-          );
-          if (error && typeof error === "object" && "status" in error)
-            Object.assign(safeError, { status: error.status });
-          throw safeError;
-        }
-      },
-      {
-        maxAttempts,
-        initialDelayMs: 250,
-        maxDelayMs: 1000,
-        shouldRetry: (error) => !isPermissionError(error),
-      },
-    );
+    return await retryWithBackoff(operation, {
+      maxAttempts,
+      initialDelayMs: 250,
+      maxDelayMs: 1000,
+      shouldRetry: (error) => !isPermissionError(error),
+    });
   } catch {
     warn(
       "Droid could not update all review metadata. Check token permissions (checks: write and pull-requests: write). The review result is unchanged.",

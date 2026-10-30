@@ -383,10 +383,6 @@ export async function computeReviewArtifacts(opts: {
           previousBody: lifecycle.previousBody,
         },
       });
-    } else {
-      // Commit this hash only when posting completes successfully.
-      lifecycle.pendingDiffHash = diffHash;
-      await saveReviewLifecycle(lifecycle);
     }
   }
   return { diffPath, commentsPath, descriptionPath };
