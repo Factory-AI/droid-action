@@ -35,9 +35,9 @@ export function generateCandidatesPrompt(ctx: ReviewPromptContext): string {
   } = ctx;
 
   const bodyFieldDescription = includeSuggestions
-    ? "  - `body`: Comment text starting with priority tag [P0|P1|P2], then title, then 1 paragraph explanation.\n" +
+    ? "  - `body`: One short explanation-only paragraph, without the title or priority tag.\n" +
       "    Follow the suggestion block rules from the review skill when including suggestions."
-    : "  - `body`: Comment text starting with priority tag [P0|P1|P2], then title, then 1 paragraph explanation";
+    : "  - `body`: One short explanation-only paragraph, without the title or priority tag.";
 
   const sideFieldDescription = includeSuggestions
     ? '  - `side`: "RIGHT" for new/modified code (default). Use "LEFT" only for removed code **without** suggestions.\n' +
@@ -63,7 +63,7 @@ Spawn it with:
 
 **IMPORTANT**: Spawn the security-reviewer in the SAME response as the code review subagents so they all run in parallel.
 
-After all subagents complete (both code review and security-reviewer), merge the security findings into the \`comments\` array alongside code review findings. Security findings use the same schema but are prefixed with \`[security]\` in their body (e.g., \`[P1] [security] Title\`).
+After all subagents complete (both code review and security-reviewer), merge the security findings into the \`comments\` array alongside code review findings. Use the same structured schema: \`security: true\`, a separate outcome-style \`title\`, \`severity: "P1"\` (or the evidenced priority), and \`securitySeverity\`. Keep \`body\` explanation-only, without security or priority prefixes.
 `
     : "";
 
@@ -109,7 +109,7 @@ Write output to \`${candidatesPath}\` using this exact schema:
       "category": "correctness",
       "security": false,
       "path": "src/index.ts",
-      "body": "[P1] Title\\n\\n1 paragraph.",
+      "body": "One short paragraph explaining what breaks, when, and what to do.",
       "line": 42,
       "startLine": null,
       "side": "RIGHT",

@@ -182,6 +182,7 @@ Dropped candidates:
 
 <!-- droid-review-summary:v1 -->
 
+<!-- prettier-ignore -->
 > [!NOTE]
 > Droid is reviewing `9ea6c83` (deep). This usually takes 2–5 minutes. Running since <relative-time datetime="2026-10-28T12:00:00.000Z">2026-10-28T12:00:00.000Z</relative-time>. [View job](https://github.com/example/repo/actions/runs/123/job/456)
 
@@ -302,7 +303,9 @@ CWE: CWE-347
 
 <!-- droid-review-summary:v1 -->
 
-> [!WARNING] > **Droid couldn't finish this review.** The Factory API key is missing or expired.
+<!-- prettier-ignore -->
+> [!WARNING]
+> **Droid couldn't finish this review.** The Factory API key is missing or expired.
 >
 > Update the FACTORY_API_KEY secret, then comment `@droid review` to retry. [View job](https://github.com/example/repo/actions/runs/123/job/456)
 
@@ -321,7 +324,9 @@ Factory API 401: FACTORY_API_KEY=[REDACTED]
 
 <!-- droid-review-summary:v1 -->
 
-> [!IMPORTANT] > **Review skipped:** Draft PR.
+<!-- prettier-ignore -->
+> [!IMPORTANT]
+> **Review skipped:** Draft PR.
 >
 > Comment `@droid review --full` to request a full review. [View job](https://github.com/example/repo/actions/runs/123/job/456)
 
@@ -464,6 +469,7 @@ CWE: CWE-347
 
 ### 🔴 Blocking issues found
 
+<!-- prettier-ignore -->
 > [!CAUTION]
 > The Droid Review check is blocking this change at the configured severity threshold.
 
@@ -835,7 +841,7 @@ CWE: CWE-347
 
 ## Droid security review
 
-1 security finding in `9ea6c83`.
+1 validated security finding from the original scan (original revision not recorded; locations are unbound).
 
 ### Findings index
 
@@ -845,7 +851,9 @@ CWE: CWE-347
 
 ### `P1` `Security` Legacy webhooks accept signatures from a different tenant
 
-[<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88)
+<code>src/api/legacy/hooks.ts:88</code>
+
+**Remediation status not reported.** Do not infer that this finding is still open or already fixed.
 
 The legacy route verifies the global key rather than the tenant key, allowing a signed payload to cross tenant boundaries.
 
@@ -853,11 +861,11 @@ CWE: CWE-347
 
 **How to verify**
 
-- [ ] Reproduce the affected path at [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88).
+- [ ] Reproduce the original affected path at <code>src/api/legacy/hooks.ts:88</code>.
 - [ ] Send a tenant A signature to a tenant B webhook and confirm rejection after the fix.
-- [ ] Run regression tests and confirm the unsafe behavior no longer occurs.
+- [ ] Run regression tests on the report branch and confirm the unsafe behavior no longer occurs.
 
-<sub>Reviewed by [Droid](https://factory.ai/) for commit `9ea6c83` in 2m 14s · [View job](https://github.com/example/repo/actions/runs/123/job/456)</sub>
+<sub>Reviewed by [Droid](https://factory.ai/) for commit `unknown` in 2m 14s · [View job](https://github.com/example/repo/actions/runs/123/job/456)</sub>
 
 ---
 

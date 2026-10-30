@@ -261,22 +261,24 @@ Pull requests from forks are reviewed without checking out their code. The actio
 
 ## Using the Commands
 
-| Command                                       | Behavior                                                                         |
-| --------------------------------------------- | -------------------------------------------------------------------------------- |
-| `@droid help`                                 | Show commands and effective review settings.                                     |
-| `@droid review`                               | Review changes since the last successful review, full review on first use.       |
-| `@droid review --full`                        | Review the full diff, bypassing identical-diff skips.                            |
-| `@droid review <focus text>`                  | Focus on the requested behavior or area.                                         |
-| `@droid security`, `@droid review security`   | Run a security-focused review.                                                   |
-| `@droid security --full`                      | Run a full repository security audit and create a report PR/MR.                  |
-| `@droid fix`                                  | In a Droid finding thread, fix that finding; at PR level, fix all open findings. |
-| `@droid resolve`                              | Resolve open Droid threads as dismissed, without claiming the code was fixed.    |
-| `@droid pause`, `@droid resume`               | Pause automatic reviews; resume resets the automatic-run budget.                 |
-| `@droid fill`                                 | Replace only Droid's marked description block, preserving author text.           |
-| `@droid <question>` in a Droid finding thread | Answer in that thread, without starting a review.                                |
+| Command                                       | Behavior                                                                                         |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `@droid help`                                 | Show commands and effective review settings.                                                     |
+| `@droid review`                               | Review changes since the last successful review, full review on first use.                       |
+| `@droid review --full`                        | Review the full diff, bypassing identical-diff skips.                                            |
+| `@droid review <focus text>`                  | Focus on the requested behavior or area.                                                         |
+| `@droid security`, `@droid review security`   | Run a security-focused review.                                                                   |
+| `@droid security --full`                      | Run a full repository security audit and create a report PR/MR.                                  |
+| `@droid fix`                                  | In a Droid finding thread, fix that finding; at PR level, fix open inline Droid finding threads. |
+| `@droid resolve`                              | Resolve open Droid threads as dismissed, without claiming the code was fixed.                    |
+| `@droid pause`, `@droid resume`               | Pause automatic reviews; resume resets the automatic-run budget.                                 |
+| `@droid fill`                                 | Replace only Droid's marked description block, preserving author text.                           |
+| `@droid <question>` in a Droid finding thread | Answer in that thread, without starting a review.                                                |
 
 Unknown top-level commands show help. Mentions inside fenced or inline code do not trigger commands.
 GitLab commands require an [authenticated note-to-pipeline bridge](docs/gitlab-setup.md#commands-and-the-pipeline-bridge); ordinary MR pipelines do not react to new notes.
+
+PR-level `@droid fix` selects open inline Droid finding threads, not summary-only or outside-diff findings without a thread. For those findings, use the finding's safe agent prompt to verify and fix it separately.
 
 ### `@droid fill`
 

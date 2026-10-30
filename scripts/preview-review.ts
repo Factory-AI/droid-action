@@ -229,7 +229,13 @@ if (import.meta.main) {
   await fs.writeFile(
     output,
     Object.entries(previews)
-      .map(([name, body]) => `# ${name}\n\n${body}`)
+      .map(
+        ([name, body]) =>
+          `# ${name}\n\n${body.replace(
+            /^(> \[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\])$/gm,
+            "<!-- prettier-ignore -->\n$1",
+          )}`,
+      )
       .join("\n\n---\n\n") + "\n",
   );
   console.log(

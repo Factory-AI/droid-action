@@ -81,9 +81,9 @@ permissions:
 - `checks: write` belongs to the **caller workflow token**. It does not broaden the Factory App token. Missing check permission warns once and degrades without failing the review.
 - `id-token: write` is required for default Factory App authentication. A supplied `github_token` must have its own necessary permissions.
 - Keep checkout `persist-credentials: false`. A model step does not need publishing credentials. Token withholding is hygiene, not an OS sandbox; code and tools still run as the job user.
-- Require the `Droid Review` check in branch protection if you want `fail_on_severity` or security thresholds to block merging. Droid never approves or requests changes.
+- Require `Droid Review` for code review and `Droid Security Review` for standalone security review if you want the corresponding priority or security thresholds to block merging. Droid never approves or requests changes.
 
-The default surface is one sticky comment with a verdict and linked findings, native text severity labels, collapsed safe agent prompts, and a clean-review message. Lifecycle reactions are eyes, hooray, and confused, never thumbs feedback. Reviews are incremental by default; the validator confirms fixes before automatic thread resolution. Generated/lock files are excluded and recorded in review details.
+The default surface is one sticky comment with a verdict and linked findings, native text severity labels, collapsed safe agent prompts, and a clean-review message. Lifecycle reactions are eyes, hooray, and confused, never thumbs feedback. With `review_summary: off`, lifecycle reactions are skipped when no current owned summary session can establish safe run ownership. Reviews are incremental by default; the validator confirms fixes before automatic thread resolution. Generated/lock files are excluded and recorded in review details.
 
 See the [effective-default table and base configuration example](../README.md#review-ux-inputs). Configuration precedence is built-in defaults, immutable base-branch `.factory/review.yaml`, then explicit nonempty workflow inputs. Explicit `false` and `0` override the file. An empty config-enabled input inherits; `off` clears a priority gate and `[]` clears a list. Labels are not a supported trigger; `label_trigger` is retained only as an unsupported legacy input.
 

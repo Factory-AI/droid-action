@@ -70,7 +70,9 @@ describe("generateGitlabReviewCandidatesPrompt", () => {
     );
     expect(on).toContain("security-reviewer");
     expect(on).toContain("Task tool");
-    expect(on).toContain("[security]");
+    expect(on).toContain("`security: true`");
+    expect(on).toContain("`securitySeverity`");
+    expect(on).not.toContain("prefixed with `[security]` in their body");
   });
 
   it("drops suggestion-block guidance when includeSuggestions is false", () => {

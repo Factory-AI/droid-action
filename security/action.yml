@@ -314,13 +314,22 @@ runs:
           echo "Missing trusted review executable digest"
           exit 1
         fi
-        publisher_hash=$(/usr/bin/sha256sum -- "$REVIEW_PUBLISHER_PATH")
-        runtime_hash=$(/usr/bin/sha256sum -- "$REVIEW_RUNTIME_PATH")
+        if [ -x /usr/bin/sha256sum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/sha256sum --)
+        elif [ -x /usr/bin/shasum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/shasum -a256 --)
+        else
+          echo "No trusted SHA-256 verifier is available; refusing execution"
+          exit 1
+        fi
+        publisher_hash=$("${digest_command[@]}" "$REVIEW_PUBLISHER_PATH")
+        runtime_hash=$("${digest_command[@]}" "$REVIEW_RUNTIME_PATH")
         if [ "${publisher_hash%% *}" != "$REVIEW_PUBLISHER_SHA256" ] || [ "${runtime_hash%% *}" != "$REVIEW_RUNTIME_SHA256" ]; then
           echo "Review publisher or runtime changed during execution; refusing to publish"
           exit 1
         fi
         /usr/bin/env -i \
+          DROID_EXEC_RUN_TYPE="${DROID_EXEC_RUN_TYPE:-}" \
           PATH=/usr/bin:/bin \
           GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-}" GITHUB_EVENT_PATH="${GITHUB_EVENT_PATH:-}" \
           RUNNER_TEMP="${RUNNER_TEMP:-}" \
@@ -357,6 +366,7 @@ runs:
           REVIEW_PHASE="${REVIEW_PHASE:-}" \
           "$REVIEW_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$REVIEW_PUBLISHER_PATH"
       env:
+        DROID_EXEC_RUN_TYPE: ${{ steps.prompt.outputs.droid_exec_run_type }}
         RUNNER_TEMP: ${{ runner.temp }}
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
@@ -441,13 +451,22 @@ runs:
           echo "Missing trusted review executable digest"
           exit 1
         fi
-        publisher_hash=$(/usr/bin/sha256sum -- "$REVIEW_PUBLISHER_PATH")
-        runtime_hash=$(/usr/bin/sha256sum -- "$REVIEW_RUNTIME_PATH")
+        if [ -x /usr/bin/sha256sum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/sha256sum --)
+        elif [ -x /usr/bin/shasum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/shasum -a256 --)
+        else
+          echo "No trusted SHA-256 verifier is available; refusing execution"
+          exit 1
+        fi
+        publisher_hash=$("${digest_command[@]}" "$REVIEW_PUBLISHER_PATH")
+        runtime_hash=$("${digest_command[@]}" "$REVIEW_RUNTIME_PATH")
         if [ "${publisher_hash%% *}" != "$REVIEW_PUBLISHER_SHA256" ] || [ "${runtime_hash%% *}" != "$REVIEW_RUNTIME_SHA256" ]; then
           echo "Review publisher or runtime changed during execution; refusing to publish"
           exit 1
         fi
         /usr/bin/env -i \
+          DROID_EXEC_RUN_TYPE="${DROID_EXEC_RUN_TYPE:-}" \
           PATH=/usr/bin:/bin \
           GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-}" GITHUB_EVENT_PATH="${GITHUB_EVENT_PATH:-}" \
           RUNNER_TEMP="${RUNNER_TEMP:-}" \
@@ -484,6 +503,7 @@ runs:
           REVIEW_PHASE="${REVIEW_PHASE:-}" \
           "$REVIEW_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$REVIEW_PUBLISHER_PATH"
       env:
+        DROID_EXEC_RUN_TYPE: ${{ steps.prompt.outputs.droid_exec_run_type }}
         RUNNER_TEMP: ${{ runner.temp }}
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
@@ -543,13 +563,22 @@ runs:
           echo "Missing trusted review executable digest"
           exit 1
         fi
-        publisher_hash=$(/usr/bin/sha256sum -- "$REVIEW_PUBLISHER_PATH")
-        runtime_hash=$(/usr/bin/sha256sum -- "$REVIEW_RUNTIME_PATH")
+        if [ -x /usr/bin/sha256sum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/sha256sum --)
+        elif [ -x /usr/bin/shasum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/shasum -a256 --)
+        else
+          echo "No trusted SHA-256 verifier is available; refusing execution"
+          exit 1
+        fi
+        publisher_hash=$("${digest_command[@]}" "$REVIEW_PUBLISHER_PATH")
+        runtime_hash=$("${digest_command[@]}" "$REVIEW_RUNTIME_PATH")
         if [ "${publisher_hash%% *}" != "$REVIEW_PUBLISHER_SHA256" ] || [ "${runtime_hash%% *}" != "$REVIEW_RUNTIME_SHA256" ]; then
           echo "Review publisher or runtime changed during execution; refusing to publish"
           exit 1
         fi
         /usr/bin/env -i \
+          DROID_EXEC_RUN_TYPE="${DROID_EXEC_RUN_TYPE:-}" \
           PATH=/usr/bin:/bin \
           GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-}" GITHUB_EVENT_PATH="${GITHUB_EVENT_PATH:-}" \
           RUNNER_TEMP="${RUNNER_TEMP:-}" \
@@ -582,6 +611,7 @@ runs:
           DROID_COMMENT_ID="${DROID_COMMENT_ID:-}" \
           "$REVIEW_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$REVIEW_PUBLISHER_PATH"
       env:
+        DROID_EXEC_RUN_TYPE: ${{ steps.prompt.outputs.droid_exec_run_type }}
         RUNNER_TEMP: ${{ runner.temp }}
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
@@ -615,8 +645,8 @@ runs:
         REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
         REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
         REVIEW_DEPTH: ${{ fromJSON(steps.prompt.outputs.review_config_json).review_depth }}
-        REVIEW_MODEL: ${{ inputs.review_model }}
-        REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+        REVIEW_MODEL: ${{ steps.prompt.outputs.review_model }}
+        REASONING_EFFORT: ${{ steps.prompt.outputs.review_reasoning_effort }}
         INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}
         DROID_COMMENT_ID: ${{ steps.prompt.outputs.droid_comment_id || inputs.tracking_comment_id }}
 
@@ -638,8 +668,16 @@ runs:
           echo "Missing trusted review executable digest"
           exit 1
         fi
-        publisher_hash=$(/usr/bin/sha256sum -- "$REVIEW_PUBLISHER_PATH")
-        runtime_hash=$(/usr/bin/sha256sum -- "$REVIEW_RUNTIME_PATH")
+        if [ -x /usr/bin/sha256sum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/sha256sum --)
+        elif [ -x /usr/bin/shasum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/shasum -a256 --)
+        else
+          echo "No trusted SHA-256 verifier is available; refusing execution"
+          exit 1
+        fi
+        publisher_hash=$("${digest_command[@]}" "$REVIEW_PUBLISHER_PATH")
+        runtime_hash=$("${digest_command[@]}" "$REVIEW_RUNTIME_PATH")
         if [ "${publisher_hash%% *}" != "$REVIEW_PUBLISHER_SHA256" ] || [ "${runtime_hash%% *}" != "$REVIEW_RUNTIME_SHA256" ]; then
           echo "Review publisher or runtime changed during execution; refusing to publish"
           exit 1
@@ -649,12 +687,13 @@ runs:
           echo "Missing trusted Droid executable"
           exit 1
         fi
-        cli_hash=$(/usr/bin/sha256sum -- "$REVIEW_CLI_PATH")
+        cli_hash=$("${digest_command[@]}" "$REVIEW_CLI_PATH")
         if [ "${cli_hash%% *}" != "$REVIEW_CLI_SHA256" ]; then
           echo "Droid executable changed during execution; refusing to run validator"
           exit 1
         fi
         /usr/bin/env -i \
+          DROID_EXEC_RUN_TYPE="${DROID_EXEC_RUN_TYPE:-}" \
           PATH="$PATH" \
           GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-}" GITHUB_EVENT_PATH="${GITHUB_EVENT_PATH:-}" \
           FACTORY_DROID_AUTO_UPDATE_ENABLED="${FACTORY_DROID_AUTO_UPDATE_ENABLED:-}" \
@@ -689,6 +728,7 @@ runs:
           FACTORY_API_KEY="${FACTORY_API_KEY:-}" \
           "$REVIEW_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$REVIEW_PUBLISHER_PATH"
       env:
+        DROID_EXEC_RUN_TYPE: ${{ steps.prompt.outputs.droid_exec_run_type }}
         FACTORY_DROID_AUTO_UPDATE_ENABLED: "false"
         HOME: ${{ steps.review_cli.outputs.review_home }}
         PATH: ${{ steps.review_cli.outputs.review_path }}
@@ -751,13 +791,22 @@ runs:
           echo "Missing trusted review executable digest"
           exit 1
         fi
-        publisher_hash=$(/usr/bin/sha256sum -- "$REVIEW_PUBLISHER_PATH")
-        runtime_hash=$(/usr/bin/sha256sum -- "$REVIEW_RUNTIME_PATH")
+        if [ -x /usr/bin/sha256sum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/sha256sum --)
+        elif [ -x /usr/bin/shasum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/shasum -a256 --)
+        else
+          echo "No trusted SHA-256 verifier is available; refusing execution"
+          exit 1
+        fi
+        publisher_hash=$("${digest_command[@]}" "$REVIEW_PUBLISHER_PATH")
+        runtime_hash=$("${digest_command[@]}" "$REVIEW_RUNTIME_PATH")
         if [ "${publisher_hash%% *}" != "$REVIEW_PUBLISHER_SHA256" ] || [ "${runtime_hash%% *}" != "$REVIEW_RUNTIME_SHA256" ]; then
           echo "Review publisher or runtime changed during execution; refusing to publish"
           exit 1
         fi
         /usr/bin/env -i \
+          DROID_EXEC_RUN_TYPE="${DROID_EXEC_RUN_TYPE:-}" \
           PATH=/usr/bin:/bin \
           GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-}" GITHUB_EVENT_PATH="${GITHUB_EVENT_PATH:-}" \
           RUNNER_TEMP="${RUNNER_TEMP:-}" \
@@ -794,6 +843,7 @@ runs:
           REVIEW_PHASE="${REVIEW_PHASE:-}" \
           "$REVIEW_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$REVIEW_PUBLISHER_PATH"
       env:
+        DROID_EXEC_RUN_TYPE: ${{ steps.prompt.outputs.droid_exec_run_type }}
         RUNNER_TEMP: ${{ runner.temp }}
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
@@ -853,13 +903,22 @@ runs:
           echo "Missing trusted review executable digest"
           exit 1
         fi
-        publisher_hash=$(/usr/bin/sha256sum -- "$REVIEW_PUBLISHER_PATH")
-        runtime_hash=$(/usr/bin/sha256sum -- "$REVIEW_RUNTIME_PATH")
+        if [ -x /usr/bin/sha256sum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/sha256sum --)
+        elif [ -x /usr/bin/shasum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/shasum -a256 --)
+        else
+          echo "No trusted SHA-256 verifier is available; refusing execution"
+          exit 1
+        fi
+        publisher_hash=$("${digest_command[@]}" "$REVIEW_PUBLISHER_PATH")
+        runtime_hash=$("${digest_command[@]}" "$REVIEW_RUNTIME_PATH")
         if [ "${publisher_hash%% *}" != "$REVIEW_PUBLISHER_SHA256" ] || [ "${runtime_hash%% *}" != "$REVIEW_RUNTIME_SHA256" ]; then
           echo "Review publisher or runtime changed during execution; refusing to publish"
           exit 1
         fi
         /usr/bin/env -i \
+          DROID_EXEC_RUN_TYPE="${DROID_EXEC_RUN_TYPE:-}" \
           PATH=/usr/bin:/bin \
           GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-}" GITHUB_EVENT_PATH="${GITHUB_EVENT_PATH:-}" \
           RUNNER_TEMP="${RUNNER_TEMP:-}" \
@@ -898,12 +957,9 @@ runs:
           REVIEW_POST_RESULTS_PATH="${REVIEW_POST_RESULTS_PATH:-}" \
           REVIEW_MODEL="${REVIEW_MODEL:-}" \
           REASONING_EFFORT="${REASONING_EFFORT:-}" \
-          REVIEW_EFFECTIVE_MODEL="${REVIEW_EFFECTIVE_MODEL:-}" \
-          REVIEW_EFFECTIVE_REASONING="${REVIEW_EFFECTIVE_REASONING:-}" \
           "$REVIEW_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$REVIEW_PUBLISHER_PATH"
       env:
-        REVIEW_EFFECTIVE_REASONING: ${{ steps.prompt.outputs.review_reasoning_effort }}
-        REVIEW_EFFECTIVE_MODEL: ${{ steps.prompt.outputs.review_model }}
+        DROID_EXEC_RUN_TYPE: ${{ steps.prompt.outputs.droid_exec_run_type }}
         REASONING_EFFORT: ${{ steps.prompt.outputs.review_reasoning_effort }}
         REVIEW_MODEL: ${{ steps.prompt.outputs.review_model }}
         RUNNER_TEMP: ${{ runner.temp }}
@@ -967,13 +1023,22 @@ runs:
           echo "Missing trusted review executable digest"
           exit 1
         fi
-        publisher_hash=$(/usr/bin/sha256sum -- "$REVIEW_PUBLISHER_PATH")
-        runtime_hash=$(/usr/bin/sha256sum -- "$REVIEW_RUNTIME_PATH")
+        if [ -x /usr/bin/sha256sum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/sha256sum --)
+        elif [ -x /usr/bin/shasum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/shasum -a256 --)
+        else
+          echo "No trusted SHA-256 verifier is available; refusing execution"
+          exit 1
+        fi
+        publisher_hash=$("${digest_command[@]}" "$REVIEW_PUBLISHER_PATH")
+        runtime_hash=$("${digest_command[@]}" "$REVIEW_RUNTIME_PATH")
         if [ "${publisher_hash%% *}" != "$REVIEW_PUBLISHER_SHA256" ] || [ "${runtime_hash%% *}" != "$REVIEW_RUNTIME_SHA256" ]; then
           echo "Review publisher or runtime changed during execution; refusing to publish"
           exit 1
         fi
         /usr/bin/env -i \
+          DROID_EXEC_RUN_TYPE="${DROID_EXEC_RUN_TYPE:-}" \
           PATH=/usr/bin:/bin \
           GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-}" GITHUB_EVENT_PATH="${GITHUB_EVENT_PATH:-}" \
           RUNNER_TEMP="${RUNNER_TEMP:-}" \
@@ -1018,6 +1083,7 @@ runs:
           REVIEW_POST_RESULTS_PATH="${REVIEW_POST_RESULTS_PATH:-}" \
           "$REVIEW_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$REVIEW_PUBLISHER_PATH"
       env:
+        DROID_EXEC_RUN_TYPE: ${{ steps.prompt.outputs.droid_exec_run_type }}
         RUNNER_TEMP: ${{ runner.temp }}
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_REPOSITORY: ${{ github.repository }}
@@ -1085,13 +1151,22 @@ runs:
           echo "Missing trusted review executable digest"
           exit 1
         fi
-        publisher_hash=$(/usr/bin/sha256sum -- "$REVIEW_PUBLISHER_PATH")
-        runtime_hash=$(/usr/bin/sha256sum -- "$REVIEW_RUNTIME_PATH")
+        if [ -x /usr/bin/sha256sum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/sha256sum --)
+        elif [ -x /usr/bin/shasum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/shasum -a256 --)
+        else
+          echo "No trusted SHA-256 verifier is available; refusing execution"
+          exit 1
+        fi
+        publisher_hash=$("${digest_command[@]}" "$REVIEW_PUBLISHER_PATH")
+        runtime_hash=$("${digest_command[@]}" "$REVIEW_RUNTIME_PATH")
         if [ "${publisher_hash%% *}" != "$REVIEW_PUBLISHER_SHA256" ] || [ "${runtime_hash%% *}" != "$REVIEW_RUNTIME_SHA256" ]; then
           echo "Review publisher or runtime changed during execution; refusing to publish"
           exit 1
         fi
         /usr/bin/env -i \
+          DROID_EXEC_RUN_TYPE="${DROID_EXEC_RUN_TYPE:-}" \
           PATH=/usr/bin:/bin \
           GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-}" GITHUB_EVENT_PATH="${GITHUB_EVENT_PATH:-}" \
           RUNNER_TEMP="${RUNNER_TEMP:-}" \
@@ -1132,6 +1207,7 @@ runs:
           DROID_POST_ERROR_MESSAGE="${DROID_POST_ERROR_MESSAGE:-}" \
           "$REVIEW_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$REVIEW_PUBLISHER_PATH"
       env:
+        DROID_EXEC_RUN_TYPE: ${{ steps.prompt.outputs.droid_exec_run_type }}
         RUNNER_TEMP: ${{ runner.temp }}
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
@@ -1196,8 +1272,16 @@ runs:
           echo "::warning::Missing trusted token cleanup executable digest"
           exit 1
         fi
-        publisher_hash=$(/usr/bin/sha256sum -- "$TRUSTED_TAIL_PATH")
-        runtime_hash=$(/usr/bin/sha256sum -- "$TRUSTED_RUNTIME_PATH")
+        if [ -x /usr/bin/sha256sum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/sha256sum --)
+        elif [ -x /usr/bin/shasum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/shasum -a256 --)
+        else
+          echo "No trusted SHA-256 verifier is available; refusing execution"
+          exit 1
+        fi
+        publisher_hash=$("${digest_command[@]}" "$TRUSTED_TAIL_PATH")
+        runtime_hash=$("${digest_command[@]}" "$TRUSTED_RUNTIME_PATH")
         if [ "${publisher_hash%% *}" != "$TRUSTED_TAIL_SHA256" ] || [ "${runtime_hash%% *}" != "$TRUSTED_RUNTIME_SHA256" ]; then
           echo "::warning::Token cleanup publisher or runtime changed; refusing to execute"
           exit 1

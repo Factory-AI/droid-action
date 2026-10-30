@@ -1,60 +1,10 @@
 /**
- * Platform-agnostic Pass 2 (validator) prompt.
- *
- * The validator reads the candidates JSON produced by Pass 1, validates
- * each one, and writes a refined JSON to disk. What happens next depends
- * on `postingMode`:
- *
- *   - "tool": the agent posts approved findings through an MCP tool.
- *   - "file" (GitHub and GitLab): the validated JSON is the deliverable,
- *     and a deterministic CI step posts it through the platform API. The
- *     agent holds no PR/MR mutation tools.
- *
- * Both `src/create-prompt/templates/review-validator-prompt.ts` (GitHub)
- * and `src/gitlab/prompts/validator.ts` (GitLab) delegate to this builder
- * via thin adapters that supply a `ReviewTerminology` shape.
+ * Legacy file-only Pass 2 prompt used by Bitbucket and Azure DevOps.
+ * Preserve their existing validated JSON and prompt bytes. The rich
+ * GitHub/GitLab validator uses the separate validator.ts builder.
  */
 
 import type { ReviewPromptContext, ReviewTerminology } from "./types";
-
-function requireToolField(
-  value: string | undefined,
-  field: keyof ReviewTerminology,
-): string {
-  if (value === undefined) {
-    throw new Error(
-      `validator prompt with postingMode "tool" requires terminology.${field}`,
-    );
-  }
-  return value;
-}
-
-function buildToolPostingSection(
-  t: ReviewTerminology,
-  validatedPath: string,
-): string {
-  const submitReviewToolName = requireToolField(
-    t.submitReviewToolName,
-    "submitReviewToolName",
-  );
-  const updateTrackingToolName = requireToolField(
-    t.updateTrackingToolName,
-    "updateTrackingToolName",
-  );
-  return `### Post approved items
-
-After writing \`${validatedPath}\`, post comments ONLY for \`status === "approved"\`:
-
-* Collect all approved comments and submit them as a **single batched review** via \`${submitReviewToolName}\`, passing them in the \`comments\` array parameter${t.submitReviewExtraArg ?? ""}.
-* Do **NOT** post comments individually — batch them all into one \`submit_review\` call.
-* Call \`submit_review\` **exactly once**. Once it returns a success message the review is posted; do NOT call it again to "confirm", retry, or re-post the same findings. If it reports that the review was already submitted, the review is complete — move on to the tracking comment and finish.
-* If there are no approved comments, do NOT call \`submit_review\` at all.
-* Do **NOT** include a \`body\` parameter in \`submit_review\`${t.submitReviewBodyExclusionTrailer ?? ""}.
-* Use \`${updateTrackingToolName}\` to update the ${t.trackingCommentName ?? "tracking comment"} with the review summary.
-* Do **NOT** post the summary as a separate ${t.summaryEntityName ?? "comment"}${t.summaryPostingExtraExclusion ?? ""}.
-* ${t.approvalChangesNote ?? ""}
-`;
-}
 
 function buildFilePostingSection(
   t: ReviewTerminology,
@@ -96,7 +46,6 @@ export function generateValidatorPrompt(ctx: ReviewPromptContext): string {
     candidatesPath,
     validatedPath,
     includeSuggestions,
-    postingMode = "tool",
     sourceNote,
   } = ctx;
 
@@ -108,10 +57,7 @@ export function generateValidatorPrompt(ctx: ReviewPromptContext): string {
     ? "Invoke the 'review' skill to load the review methodology, then execute its **Pass 2: Validation** procedure — including suggestion block rules."
     : "Invoke the 'review' skill to load the review methodology, then execute its **Pass 2: Validation** procedure. Do NOT include code suggestion blocks.";
 
-  const postingSection =
-    postingMode === "file"
-      ? buildFilePostingSection(t, validatedPath)
-      : buildToolPostingSection(t, validatedPath);
+  const postingSection = buildFilePostingSection(t, validatedPath);
 
   return `You are validating candidate review comments for ${t.entityNoun} ${t.entityNumberSigil}${entityNumber} in ${repoOrProject}.
 
@@ -139,13 +85,9 @@ If the diff is large, read in chunks (offset/limit). **Do not proceed until you 
 ${sourceNote ? `\n${sourceNote}\n` : ""}
 ### Critical Requirements
 
-1. You MUST read and validate **every** candidate before ${postingMode === "file" ? `writing \`${validatedPath}\`` : "posting anything"}.
+1. You MUST read and validate **every** candidate before writing \`${validatedPath}\`.
 2. Preserve ordering: keep results in the same order as candidates.
-3. ${
-    postingMode === "file"
-      ? `**Approval rule (STRICT):** mark a candidate \`"approved"\` only if you would stand behind posting it as-is — approved entries are posted verbatim. Everything else must be \`"rejected"\`.`
-      : `**Posting rule (STRICT):** Only post comments where \`status === "approved"\`. Never post rejected items.`
-  }
+3. **Approval rule (STRICT):** mark a candidate \`"approved"\` only if you would stand behind posting it as-is — approved entries are posted verbatim. Everything else must be \`"rejected"\`.
 
 ### Output: Write \`${validatedPath}\`
 

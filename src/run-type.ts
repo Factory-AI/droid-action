@@ -1,3 +1,4 @@
+import * as core from "@actions/core";
 import { exportRuntimeVariable } from "./utils/runtime-env";
 import type { DroidCommand } from "./core/review/triggers/parse-command";
 
@@ -22,6 +23,7 @@ export type PrValidationRunType =
 
 export function setDroidRunType(runType: DroidRunType): void {
   exportRuntimeVariable("DROID_EXEC_RUN_TYPE", runType);
+  core.setOutput("droid_exec_run_type", runType);
 }
 
 export function assertDroidRunType(

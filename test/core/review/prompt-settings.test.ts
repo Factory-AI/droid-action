@@ -47,8 +47,8 @@ describe("trusted review prompt settings", () => {
       ...context(),
       reviewSettings: settings,
     });
-    expect(prompt).toContain('"threshold": "high"');
-    expect(prompt).toContain('"blockOnCritical": false');
+    expect(prompt).toContain('"securitySeverityThreshold": "high"');
+    expect(prompt).toContain('"securityBlockOnCritical": false');
     expect(prompt).toContain('"diagram": "off"');
     expect(prompt).toContain("Emit effort only when effort is enabled");
     expect(prompt).toContain("optionalSuggestion: true");
