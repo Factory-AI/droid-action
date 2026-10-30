@@ -37,7 +37,6 @@ export async function initializeReviewConfig(
   context.inputs.securityBlockOnHigh = config.security_block_on_high;
   const serializedConfig = JSON.stringify(config);
   core.setOutput("review_config_json", serializedConfig);
-  core.exportVariable("REVIEW_CONFIG_JSON", serializedConfig);
   for (const [key, value] of Object.entries(reviewConfigEnvironment(config))) {
     core.exportVariable(key, value);
   }
