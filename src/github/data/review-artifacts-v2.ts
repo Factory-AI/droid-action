@@ -21,6 +21,10 @@ import {
   stateFindings,
 } from "../operations/review-lifecycle";
 import { redactCredentials } from "../../utils/redact-credentials";
+import {
+  normalizePatchPath,
+  pathsFromDiffHeader,
+} from "../../core/review/validated/diff";
 
 const DIFF_MAX_BUFFER = 50 * 1024 * 1024; // 50MB buffer for large diffs
 
@@ -96,14 +100,14 @@ export async function computeAndStoreDiff(
       /^[a-f0-9]{7,64}$/i.test(options.incrementalBaseSha)
     ) {
       try {
-        execSync(
-          `git merge-base --is-ancestor ${options.incrementalBaseSha} ${headRevision}`,
-          { encoding: "utf8", stdio: "pipe" },
-        );
+        execSync(`git cat-file -e ${options.incrementalBaseSha}^{commit}`, {
+          encoding: "utf8",
+          stdio: "pipe",
+        });
         incrementalBase = options.incrementalBaseSha;
       } catch {
         console.log(
-          "The previous reviewed commit is unavailable or no longer an ancestor; reviewing the full PR.",
+          "The previous reviewed commit is unavailable; reviewing the full PR.",
         );
       }
     }
@@ -286,9 +290,13 @@ export async function computeReviewArtifacts(opts: {
   const filtered = rawDiff
     .split(/(?=^diff --git )/m)
     .filter((block) => {
+      const headers = block.split("\n@@", 1)[0]!;
+      const oldHeader = /^--- (.+)$/m.exec(headers)?.[1];
+      const newHeader = /^\+\+\+ (.+)$/m.exec(headers)?.[1];
+      const paths = pathsFromDiffHeader(headers.split("\n", 1)[0]!);
       const filePath =
-        /^\+\+\+ b\/(.+)$/m.exec(block)?.[1] ??
-        /^--- a\/(.+)$/m.exec(block)?.[1];
+        (newHeader ? normalizePatchPath(newHeader) : paths.newPath) ??
+        (oldHeader ? normalizePatchPath(oldHeader) : paths.oldPath);
       if (!filePath) return true;
       if (shouldIgnoreReviewPath(filePath, config)) {
         skipped.push({
@@ -322,6 +330,7 @@ export async function computeReviewArtifacts(opts: {
           repo: opts.repo,
           base: lifecycle.state.head,
           head: lifecycle.head,
+          direct: true,
         });
       } catch {
         /* No fixed eligibility without the actual prior-head diff. */

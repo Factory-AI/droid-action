@@ -74,6 +74,10 @@ export function changedFindingCandidates(
     const file =
       index.get(finding.oldPath ?? finding.path) ?? index.get(finding.path);
     if (!file) return false;
+    // LEFT coordinates refer to code deleted before the reviewed head.
+    // Restoring it can be insertion-only in the prior-head comparison.
+    // Additions only grant eligibility; an explicit fixed decision is required.
+    if (finding.side === "LEFT" && file.newLines.size > 0) return true;
     if (finding.line === null) return true;
     const start = finding.startLine ?? finding.line;
     for (let line = start; line <= finding.line; line++) {
@@ -153,6 +157,7 @@ export function reconcileFindings(options: {
   const resolvedThreads = new Set(
     options.threads?.filter((t) => t.resolved).map((t) => t.findingId),
   );
+  const knownThreads = new Set(options.threads?.map((t) => t.findingId));
   const eligible = new Set(options.eligibleFixedIds ?? []);
   const currentIds = new Set(options.current.map((finding) => finding.id));
   const fixed = new Set(
@@ -164,10 +169,33 @@ export function reconcileFindings(options: {
   const resolved: ReviewFinding[] = [];
   for (const finding of options.previous) {
     let next = { ...finding, isNew: false };
-    if (resolvedThreads.has(finding.id) && finding.state !== "resolved") {
+    if (
+      finding.state === "dismissed" ||
+      (finding.state === "resolved" && resolvedThreads.has(finding.id))
+    )
+      next.pendingThreadAction = undefined;
+    if (
+      resolvedThreads.has(finding.id) &&
+      finding.state !== "resolved" &&
+      finding.pendingThreadAction !== "reopen"
+    ) {
       next = { ...next, state: "dismissed" };
     } else if (fixed.has(finding.id) && finding.state !== "dismissed") {
-      next = { ...next, state: "resolved", fixedIn: options.head };
+      next = {
+        ...next,
+        state: "resolved",
+        fixedIn: options.head,
+        pendingThreadAction: "resolve",
+      };
+      resolved.push(next);
+    } else if (
+      finding.state === "resolved" &&
+      finding.fixedIn &&
+      knownThreads.has(finding.id) &&
+      !resolvedThreads.has(finding.id) &&
+      !currentIds.has(finding.id)
+    ) {
+      next = { ...next, pendingThreadAction: "resolve" };
       resolved.push(next);
     }
     byId.set(next.id, next);
@@ -175,7 +203,28 @@ export function reconcileFindings(options: {
   let unchangedSuggestions = 0;
   const newFindings: ReviewFinding[] = [];
   for (const finding of options.current) {
-    if (resolvedThreads.has(finding.id)) {
+    const previous = byId.get(finding.id);
+    if (previous?.state === "resolved" && previous.fixedIn) {
+      const next: ReviewFinding = {
+        ...previous,
+        ...finding,
+        threadId: previous.threadId,
+        threadUrl: previous.threadUrl,
+        state: "open",
+        fixedIn: undefined,
+        pendingThreadAction: resolvedThreads.has(finding.id)
+          ? "reopen"
+          : undefined,
+        isNew: !knownThreads.has(finding.id) && !previous.threadId,
+      };
+      byId.set(next.id, next);
+      if (next.isNew) newFindings.push(next);
+      continue;
+    }
+    if (
+      resolvedThreads.has(finding.id) &&
+      previous?.pendingThreadAction !== "reopen"
+    ) {
       byId.set(finding.id, {
         ...finding,
         ...byId.get(finding.id),
@@ -184,7 +233,6 @@ export function reconcileFindings(options: {
       });
       continue;
     }
-    const previous = byId.get(finding.id);
     if (previous) {
       byId.set(finding.id, {
         ...previous,

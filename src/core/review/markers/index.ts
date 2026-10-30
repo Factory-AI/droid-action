@@ -133,6 +133,24 @@ function topLevelComments(body: string): string[] {
   return topLevelCommentSpans(body).map((comment) => comment.text);
 }
 
+/** Examples and ambiguous competing sessions never establish ownership. */
+export function hasReviewSessionMarker(body: string, marker: string): boolean {
+  const sessions = topLevelComments(body).filter((comment) =>
+    /^<!-- droid-review-(?:active|completed):v1 /.test(comment),
+  );
+  return sessions.length === 1 && sessions[0] === marker;
+}
+
+/** Historical review text must not carry a prior session into a new summary. */
+export function stripReviewSessionMarkers(body: string): string {
+  const sessions = topLevelCommentSpans(body).filter((comment) =>
+    /^<!-- droid-review-(?:active|completed):v1 /.test(comment.text),
+  );
+  for (const session of sessions.reverse())
+    body = body.slice(0, session.start) + body.slice(session.end);
+  return body;
+}
+
 /** Trusted standalone delimiter pair. Offsets address the original, unnormalized body. */
 export function findTopLevelCommentRange(
   body: string,
@@ -243,6 +261,15 @@ export function decodeReviewState(body: string): ReviewState | null {
                 ...(typeof record(f.finding)?.threadUrl === "string"
                   ? { threadUrl: String(record(f.finding)?.threadUrl) }
                   : {}),
+                ...(typeof record(f.finding)?.fixedIn === "string" &&
+                /^[a-f0-9]{7,64}$/i.test(String(record(f.finding)?.fixedIn))
+                  ? { fixedIn: String(record(f.finding)?.fixedIn) }
+                  : {}),
+                ...(record(f.finding)?.pendingThreadAction === "resolve"
+                  ? { pendingThreadAction: "resolve" as const }
+                  : record(f.finding)?.pendingThreadAction === "reopen"
+                    ? { pendingThreadAction: "reopen" as const }
+                    : {}),
               },
             }
           : {}),
