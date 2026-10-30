@@ -79,9 +79,14 @@ function indexedLine(
 ): boolean {
   const line = validatedAnchorLine(comment);
   if (line === null || !file) return false;
-  return comment.side === "LEFT"
-    ? file.oldLines.has(line)
-    : file.newLines.has(line);
+  const start = comment.startLine ?? line;
+  if (!Number.isSafeInteger(start) || start < 1 || start > line) return false;
+  const lines = comment.side === "LEFT" ? file.oldLines : file.newLines;
+  // Never narrow a rendered replacement to only its final line.
+  for (let current = start; current <= line; current++) {
+    if (!lines.has(current)) return false;
+  }
+  return true;
 }
 
 function inlineComment(
