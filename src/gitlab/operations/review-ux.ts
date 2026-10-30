@@ -175,13 +175,15 @@ export async function updateReviewStatus(
   phase?: "queued" | "in_progress",
 ): Promise<void> {
   if (!enabled || !sha) return;
-  const rendered = renderCheckRun({ ...input, phase: phase ?? "completed" });
+  const resolvedPhase =
+    phase ?? (input.state === "in_progress" ? "in_progress" : "completed");
+  const rendered = renderCheckRun({ ...input, phase: resolvedPhase });
   // Commit statuses have no neutral result or markdown text. Nonblocking
   // findings/errors are successful statuses; the sticky note carries detail.
   const state =
-    phase === "queued"
+    resolvedPhase === "queued"
       ? "pending"
-      : phase === "in_progress"
+      : resolvedPhase === "in_progress"
         ? "running"
         : input.blocked
           ? "failed"

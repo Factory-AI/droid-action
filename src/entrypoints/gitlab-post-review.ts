@@ -42,7 +42,10 @@ import {
   validatedFilePath,
   type PrepareState,
 } from "./gitlab-prepare";
-import { normalizeFinding } from "../core/review/validated/finding";
+import {
+  normalizeFinding,
+  SECURITY_SEVERITY_RANK,
+} from "../core/review/validated/finding";
 import {
   renderInlineComment,
   type RenderOptions,
@@ -639,7 +642,6 @@ async function run(): Promise<void> {
   } catch (error) {
     warnCapability("discussion state", error);
   }
-  const securityRank = { critical: 0, high: 1, medium: 2, low: 3 };
   const normalizedTitle = (value: string) =>
     value
       .toLowerCase()
@@ -657,8 +659,8 @@ async function run(): Promise<void> {
             ? `Below report priority threshold ${config.review_severity_threshold}`
             : finding.security &&
                 finding.securitySeverity &&
-                securityRank[finding.securitySeverity] >
-                  securityRank[config.security_severity_threshold]
+                SECURITY_SEVERITY_RANK[finding.securitySeverity] >
+                  SECURITY_SEVERITY_RANK[config.security_severity_threshold]
               ? `Below security threshold ${config.security_severity_threshold}`
               : null;
       if (reason)

@@ -473,6 +473,28 @@ describe("GitLab review UX v2", () => {
     expect(t.requests.filter((r) => r.method !== "GET")).toHaveLength(0);
   });
 
+  it("infers running for an omitted optional status phase", async () => {
+    const t = setup();
+    await updateReviewStatus(t.client, 42, HEAD, {
+      state: "in_progress",
+      head: HEAD,
+    });
+    expect(t.requests.map((r) => r.body.state)).toEqual(["running"]);
+  });
+
+  it("preserves explicit queued precedence over the optional status phase", async () => {
+    const t = setup();
+    await updateReviewStatus(
+      t.client,
+      42,
+      HEAD,
+      { state: "in_progress", head: HEAD },
+      true,
+      "queued",
+    );
+    expect(t.requests.map((r) => r.body.state)).toEqual(["pending"]);
+  });
+
   it("uses success for nonblocking findings/errors and failed only for thresholds", async () => {
     const t = setup();
     await updateReviewStatus(t.client, 42, HEAD, {
@@ -512,7 +534,7 @@ describe("GitLab review UX v2", () => {
     const listAwards = mock(() => {
       throw new Error("Reaction reads are forbidden");
     });
-    t.client.listAwards = listAwards;
+    Object.defineProperty(t.client, "listAwards", { value: listAwards });
     const ownEyes = await updateLifecycleAward(t.client, 42, 7, "running");
     await updateLifecycleAward(t.client, 42, 7, "clean", true, ownEyes);
     expect(t.requests.find((r) => r.method === "DELETE")?.path).toEndWith(
@@ -709,7 +731,6 @@ describe("GitLab fix publisher, API and push mocked", () => {
   ) =>
     publishGitlabFix({
       client,
-      projectId: 42,
       mr,
       config: config(),
       findings: state.findings,

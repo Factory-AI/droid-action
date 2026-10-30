@@ -328,9 +328,7 @@ export class GitlabClient {
     filePath: string,
     ref: string,
   ): Promise<string> {
-    const file = await this.request<{ content: string; encoding: string }>(
-      `${this.projectPath(projectId)}/repository/files/${encodeURIComponent(filePath)}?ref=${encodeURIComponent(ref)}`,
-    );
+    const file = await this.getFileInfo(projectId, filePath, ref);
     if (file.encoding !== "base64" || typeof file.content !== "string")
       throw new Error("Unsupported GitLab repository file response");
     return Buffer.from(file.content, "base64").toString("utf8");
@@ -360,15 +358,6 @@ export class GitlabClient {
     return this.request(
       `${this.projectPath(projectId)}/statuses/${encodeURIComponent(sha)}`,
       { method: "POST", json: status },
-    );
-  }
-
-  listAwards(
-    projectId: string | number,
-    mrIid: number,
-  ): Promise<GitlabAward[]> {
-    return this.pages(
-      `${this.projectPath(projectId)}/merge_requests/${mrIid}/award_emoji`,
     );
   }
 

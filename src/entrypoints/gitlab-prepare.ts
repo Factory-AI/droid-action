@@ -44,6 +44,7 @@ import {
 } from "../utils/review-session-tag";
 import { setupDroidSettings } from "../../base-action/src/setup-droid-settings";
 import {
+  automaticReviewSkipReason,
   reviewConfigEnvironment,
   shouldIgnoreReviewPath,
   type ReviewUxConfig,
@@ -51,6 +52,7 @@ import {
 import {
   planIncrementalReview,
   changedFindingCandidates,
+  identicalReviewDiffSkipReason,
 } from "../core/review/incremental";
 import { createHash } from "node:crypto";
 import type { ReviewState } from "../core/review/markers";
@@ -145,12 +147,9 @@ export type PrepareState = {
   reviewConfig?: ReviewUxConfig;
   previousReviewState?: ReviewState | null;
   reviewState?: ReviewState;
-  changedPaths?: string[];
   filesSkipped?: Array<{ path: string; reason: string }>;
   fullReview?: boolean;
-  focus?: string;
   automatic?: boolean;
-  securityFull?: boolean;
   summaryBody?: string;
 
   reason?: string;
@@ -385,22 +384,26 @@ async function run(): Promise<void> {
         ? "draft MR. Comment @droid review to run anyway."
         : plan.skipReason;
   const eventAction = previous?.head ? "synchronize" : "opened";
-  if (
-    !skipReason &&
-    automatic &&
-    !config.review_auto_triggers.includes(eventAction)
-  )
-    skipReason = `automatic trigger ${eventAction} is disabled`;
+  if (!skipReason)
+    skipReason =
+      automaticReviewSkipReason({
+        config,
+        draft: mr.draft,
+        eventAction,
+        manual: !automatic,
+      }) ?? undefined;
   const diffHash = createHash("sha256")
     .update(buildDiffContent(fullChanges))
     .digest("hex");
-  if (
-    !skipReason &&
-    !fullReview &&
-    config.review_incremental &&
-    previous?.diffHash === diffHash
-  )
-    skipReason = `No new changes since ${previous.head.slice(0, 7)}`;
+  if (!skipReason && config.review_incremental)
+    skipReason = identicalReviewDiffSkipReason({
+      full: fullReview,
+      incrementalUsed: false,
+      empty: false,
+      hash: diffHash,
+      previousHash: previous?.diffHash,
+      previousHead: previous?.head,
+    });
   let selectedChanges = fullChanges;
   if (!skipReason && plan.incrementalBaseSha) {
     try {
@@ -415,8 +418,13 @@ async function run(): Promise<void> {
         changes: comparison.diffs,
         diff_refs: fullChanges.diff_refs,
       };
-      if (!comparison.diffs.length)
-        skipReason = `No new changes since ${plan.incrementalBaseSha.slice(0, 7)}`;
+      skipReason = identicalReviewDiffSkipReason({
+        full: fullReview,
+        incrementalUsed: true,
+        empty: !comparison.diffs.length,
+        hash: diffHash,
+        previousHead: plan.incrementalBaseSha,
+      });
     } catch (error) {
       warnCapability("incremental compare (using full MR diff)", error);
     }
@@ -590,10 +598,6 @@ async function run(): Promise<void> {
       ),
     );
   }
-  await fs.writeFile(
-    path.join(promptsDir(), "review_files_skipped.json"),
-    JSON.stringify(filesSkipped, null, 2),
-  );
   console.log(
     `Artifacts written:\n  ${artifacts.diffPath}\n  ${artifacts.commentsPath}\n  ${artifacts.descriptionPath}`,
   );
@@ -715,14 +719,9 @@ async function run(): Promise<void> {
     reviewConfig: config,
     previousReviewState: previous,
     reviewState: { ...reviewState, diffHash },
-    changedPaths: selectedChanges.changes.map(
-      (change) => change.new_path || change.old_path,
-    ),
     filesSkipped,
     fullReview,
     automatic,
-    securityFull: command?.securityFull,
-    focus: command?.command?.focus,
     summaryBody: existing?.body,
   });
 }

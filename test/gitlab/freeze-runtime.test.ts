@@ -72,6 +72,30 @@ async function run(command: string) {
 }
 
 describe("GitLab frozen privileged runtime", () => {
+  it("builds and permits every entry in its readonly runtime manifest", async () => {
+    const result = await run(
+      'for entry in "${DROID_FROZEN_ENTRIES[@]}"; do droid_run_trusted "$entry"; done',
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim().split("\n").slice(-entries.length)).toEqual(
+      entries,
+    );
+  });
+
+  for (const entry of ["unknown", "../gitlab-post-review", "$(touch pwned)"])
+    it(`rejects an unlisted entry before expansion or digest indexing: ${entry}`, async () => {
+      const result = await run(`droid_run_trusted '${entry}'`);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain("Unknown trusted GitLab entrypoint");
+      expect(await fs.exists(path.join(directory, "pwned"))).toBe(false);
+    });
+
+  it("does not allow the trusted manifest to acquire a new publishing role", async () => {
+    const result = await run("DROID_FROZEN_ENTRIES+=(attacker-entry)");
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("readonly");
+  });
+
   it("builds and invokes real isolated bundles rather than loading checkout config", async () => {
     const result = await run("droid_run_trusted gitlab-post-review");
     expect(result.exitCode).toBe(0);

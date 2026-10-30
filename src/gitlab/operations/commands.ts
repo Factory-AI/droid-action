@@ -14,7 +14,11 @@ import {
   UNTRUSTED_FINDING_PREAMBLE,
 } from "../../core/review/fix";
 import { updateGeneratedDescription } from "../../core/review/fill";
-import { encodeReviewState, type ReviewState } from "../../core/review/markers";
+import {
+  encodeReviewState,
+  SUMMARY_MARKER,
+  type ReviewState,
+} from "../../core/review/markers";
 import { fenced, prose } from "../../core/review/render";
 import type { ReviewUxConfig } from "../../core/review/config";
 import {
@@ -22,6 +26,7 @@ import {
   secretValuesFromEnv,
 } from "../../utils/redact-credentials";
 import type { GitlabClient } from "../api/client";
+import { GITLAB_SERVER_URL } from "../api/config";
 import { setupGitlabToken } from "../token";
 import type { GitlabCommitAction, GitlabMr } from "../types";
 import {
@@ -187,7 +192,7 @@ export async function dispatchGitlabCommand(options: {
       await client.createNote(
         projectId,
         mr.iid,
-        `<!-- droid-review-summary:v1 -->\n${encodeReviewState(state)}`,
+        `${SUMMARY_MARKER}\n${encodeReviewState(state)}`,
       );
     await respond(
       parsed.command === "pause"
@@ -245,7 +250,6 @@ export async function dispatchGitlabCommand(options: {
         );
       const published = await publishGitlabFix({
         client,
-        projectId,
         mr,
         config,
         findings: scoped,
@@ -272,7 +276,6 @@ export async function dispatchGitlabCommand(options: {
 
 export async function publishGitlabFix(options: {
   client: GitlabClient;
-  projectId: string | number;
   mr: GitlabMr;
   config: ReviewUxConfig;
   findings: ReviewState["findings"];
@@ -399,7 +402,7 @@ export async function publishGitlabFix(options: {
     throw new Error("The proposal contains no changes to publish");
   const [refreshed, latestProject, latestActor, latestToken, publishBranch] =
     await Promise.all([
-      client.getMr(options.projectId, mr.iid),
+      client.getMr(mr.project_id, mr.iid),
       client.getProject(sourceProject),
       client.getMember(sourceProject, options.actorId),
       client.getMember(sourceProject, user.id),
@@ -497,7 +500,7 @@ export async function pushFixCommit(input: {
   assertGitlabFixRef(input.branch, input.sha);
   assertGitlabFixRef(input.temporaryBranch, input.sha);
   const url = new URL(input.projectUrl);
-  const instance = new URL(process.env.CI_SERVER_URL || "https://gitlab.com");
+  const instance = new URL(GITLAB_SERVER_URL);
   if (
     url.origin !== instance.origin ||
     url.protocol !== "https:" ||

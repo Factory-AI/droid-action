@@ -4,12 +4,8 @@ import { GitlabClient } from "../src/gitlab/api/client";
 import { parseDroidCommand } from "../src/core/review/triggers/parse-command";
 import { hasGitlabWriteAccess } from "../src/gitlab/operations/review-ux";
 import { assertGitlabFixRef } from "../src/gitlab/operations/commands";
+import { record } from "../src/core/review/validated/finding";
 
-function object(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? Object.fromEntries(Object.entries(value))
-    : null;
-}
 function positive(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0
     ? value
@@ -55,13 +51,13 @@ export function createNotePipelineBridge(options: {
       return Response.json({ error: "Webhook too large" }, { status: 413 });
     let payload: Record<string, unknown> | null;
     try {
-      payload = object(JSON.parse(text));
+      payload = record(JSON.parse(text));
     } catch {
       return Response.json({ error: "Invalid JSON" }, { status: 400 });
     }
-    const attributes = object(payload?.object_attributes);
-    const project = object(payload?.project);
-    const mergeRequest = object(payload?.merge_request);
+    const attributes = record(payload?.object_attributes);
+    const project = record(payload?.project);
+    const mergeRequest = record(payload?.merge_request);
     const noteId = positive(attributes?.id);
     const mrIid = positive(mergeRequest?.iid);
     if (

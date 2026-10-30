@@ -1,10 +1,25 @@
 import { describe, expect, it } from "bun:test";
 import { parseValidatedReview } from "../../../src/core/review/validated/parse";
+import { SECURITY_SEVERITY_RANK } from "../../../src/core/review/validated/finding";
 const approved = (comment: Record<string, unknown>) => ({
   status: "approved",
   comment,
 });
 describe("rich validated review schema", () => {
+  it("shares the exact publisher security-level ordering without changing priority policy", () => {
+    expect(SECURITY_SEVERITY_RANK).toEqual({
+      critical: 0,
+      high: 1,
+      medium: 2,
+      low: 3,
+    });
+    expect(
+      SECURITY_SEVERITY_RANK.critical < SECURITY_SEVERITY_RANK.high &&
+        SECURITY_SEVERITY_RANK.high < SECURITY_SEVERITY_RANK.medium &&
+        SECURITY_SEVERITY_RANK.medium < SECURITY_SEVERITY_RANK.low,
+    ).toBe(true);
+  });
+
   it("parses explicit prior finding resolutions without inventing candidate results", () => {
     const parsed = parseValidatedReview(
       JSON.stringify({

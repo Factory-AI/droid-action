@@ -5,6 +5,10 @@ import type {
   ReviewSummaryData,
 } from "./types";
 
+export const SECURITY_SEVERITY_RANK: Readonly<
+  Record<NonNullable<ReviewFinding["securitySeverity"]>, number>
+> = { critical: 0, high: 1, medium: 2, low: 3 };
+
 export function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)

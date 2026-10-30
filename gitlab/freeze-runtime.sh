@@ -3,6 +3,14 @@
 # in this parent shell, never in model-writable files or a fresh after_script.
 # This detects changed executable content; it is not a same-user OS sandbox.
 
+readonly -a DROID_FROZEN_ENTRIES=(
+  gitlab-prepare
+  gitlab-prepare-validator
+  gitlab-post-review
+  gitlab-collect-debug-artifacts
+  gitlab-update-comment-link
+)
+
 droid_freeze_runtime() {
   DROID_FROZEN_BUN="$(readlink -f "$(command -v bun)")" || return 1
   DROID_FROZEN_CLI="$(readlink -f "$(command -v droid)")" || return 1
@@ -10,12 +18,12 @@ droid_freeze_runtime() {
   DROID_FROZEN_DIR="$(mktemp -d /tmp/droid-trusted.XXXXXX)" || return 1
   local entry digest
   local -a sources=()
-  for entry in gitlab-prepare gitlab-prepare-validator gitlab-post-review gitlab-collect-debug-artifacts gitlab-update-comment-link; do
+  for entry in "${DROID_FROZEN_ENTRIES[@]}"; do
     sources+=("$DROID_ACTION_DIR/src/entrypoints/$entry.ts")
   done
   env -u BUN_OPTIONS -u NODE_OPTIONS "$DROID_FROZEN_BUN" --config=/dev/null --env-file=/dev/null build --target=bun --outdir "$DROID_FROZEN_DIR" "${sources[@]}" || return 1
   declare -gA DROID_FROZEN_SHA=()
-  for entry in gitlab-prepare gitlab-prepare-validator gitlab-post-review gitlab-collect-debug-artifacts gitlab-update-comment-link; do
+  for entry in "${DROID_FROZEN_ENTRIES[@]}"; do
     digest="$(/usr/bin/sha256sum -- "$DROID_FROZEN_DIR/$entry.js")" || return 1
     DROID_FROZEN_SHA["$entry"]="${digest%% *}"
   done
@@ -40,11 +48,14 @@ droid_verify_cli() {
 }
 
 droid_run_trusted() {
-  local entry="$1"
-  case "$entry" in
-    gitlab-prepare|gitlab-prepare-validator|gitlab-post-review|gitlab-collect-debug-artifacts|gitlab-update-comment-link) ;;
-    *) printf '%s\n' "Unknown trusted GitLab entrypoint" >&2; return 1 ;;
-  esac
+  local entry="$1" allowed matched=false
+  for allowed in "${DROID_FROZEN_ENTRIES[@]}"; do
+    if [ "$entry" = "$allowed" ]; then matched=true; break; fi
+  done
+  if [ "$matched" != true ]; then
+    printf '%s\n' "Unknown trusted GitLab entrypoint" >&2
+    return 1
+  fi
   droid_verify_file "$DROID_FROZEN_BUN" "$DROID_FROZEN_BUN_SHA" || return 1
   droid_verify_file "$DROID_FROZEN_DIR/$entry.js" "${DROID_FROZEN_SHA[$entry]}" || return 1
   env -u BUN_OPTIONS -u NODE_OPTIONS "$DROID_FROZEN_BUN" --config=/dev/null --env-file=/dev/null run "$DROID_FROZEN_DIR/$entry.js"

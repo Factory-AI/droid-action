@@ -38,7 +38,10 @@ import {
   parsePrValidationRunType,
   type PrValidationRunType,
 } from "../run-type";
-import { normalizeFinding } from "../core/review/validated/finding";
+import {
+  normalizeFinding,
+  SECURITY_SEVERITY_RANK,
+} from "../core/review/validated/finding";
 import {
   decodeFindingMarker,
   decodeReviewMarker,
@@ -469,15 +472,14 @@ export async function run(
   let findings = parsed.findings;
   const config = reviewConfigFromEnvironment();
   const priority = { P0: 0, P1: 1, P2: 2 };
-  const securityPriority = { critical: 0, high: 1, medium: 2, low: 3 };
   const excluded = findings.filter(
     (finding) =>
       shouldIgnoreReviewPath(finding.path, config) ||
       priority[finding.severity] > priority[config.review_severity_threshold] ||
       (finding.security &&
         finding.securitySeverity &&
-        securityPriority[finding.securitySeverity] >
-          securityPriority[config.security_severity_threshold]),
+        SECURITY_SEVERITY_RANK[finding.securitySeverity] >
+          SECURITY_SEVERITY_RANK[config.security_severity_threshold]),
   );
   const excludedIds = new Set(excluded.map((finding) => finding.id));
   findings = findings.filter((finding) => !excludedIds.has(finding.id));

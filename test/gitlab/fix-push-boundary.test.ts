@@ -4,9 +4,17 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { pushFixCommit } from "../../src/gitlab/operations/commands";
+import { GITLAB_SERVER_URL } from "../../src/gitlab/api/config";
 
 describe("GitLab push boundary credentials and owned cleanup", () => {
-  for (const failAt of ["precedence", "", "init", "fetch", "push"])
+  for (const failAt of [
+    "precedence",
+    "canonical-instance",
+    "",
+    "init",
+    "fetch",
+    "push",
+  ])
     it(`removes only its bare directory after ${failAt || "success"}`, async () => {
       const saved = {
         GITLAB_TOKEN: process.env.GITLAB_TOKEN,
@@ -19,7 +27,10 @@ describe("GitLab push boundary credentials and owned cleanup", () => {
       );
       Object.assign(process.env, {
         GITLAB_TOKEN: "fake-primary-token",
-        CI_SERVER_URL: "https://127.0.0.1:9",
+        CI_SERVER_URL:
+          failAt === "canonical-instance"
+            ? "https://mutable-ambient.invalid"
+            : GITLAB_SERVER_URL,
         TMPDIR: parent,
       });
       if (failAt === "precedence")
@@ -49,12 +60,12 @@ describe("GitLab push boundary credentials and owned cleanup", () => {
       }) as never);
       try {
         const result = pushFixCommit({
-          projectUrl: "https://127.0.0.1:9/group/project",
+          projectUrl: `${GITLAB_SERVER_URL}/group/project`,
           branch: "feat/retry",
           temporaryBranch: "droid/fix-owned",
           sha: "a".repeat(40),
         });
-        if (failAt && failAt !== "precedence")
+        if (["init", "fetch", "push"].includes(failAt))
           await expect(result).rejects.toThrow("Non-force");
         else await result;
         expect(spawn).toHaveBeenCalled();
