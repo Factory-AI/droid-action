@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, describe, expect, it, mock, spyOn } from "bun:test";
 import { GitlabClient } from "../../src/gitlab/api/client";
 import { resolveReviewUxConfig } from "../../src/core/review/config";
 import {
@@ -40,6 +40,8 @@ import { publishGitlabSecurityReport } from "../../src/gitlab/operations/securit
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as modelPolicy from "../../src/utils/model-policy";
+import * as droidSettings from "../../base-action/src/setup-droid-settings";
 
 const HEAD = "a".repeat(40);
 const BASE = "b".repeat(40);
@@ -126,6 +128,11 @@ function setup(
     statusDenied?: boolean;
     head?: string;
     advanceAfterMrFetch?: boolean;
+    refreshState?: string;
+    refreshHead?: string;
+    refreshDescription?: string;
+    refreshProject?: number;
+    refreshNativeId?: number;
   } = {},
 ) {
   const trigger = note(20, options.command ?? "@droid help", 5);
@@ -145,6 +152,7 @@ function setup(
     trigger,
   ];
   let sourceBranchReads = 0;
+  let mrReads = 0;
   server = startFakeServer((req, url) => {
     if (url.pathname === "/api/v4/user")
       return json({ id: 1, username: "droid" });
@@ -223,8 +231,12 @@ function setup(
       if (created) created.body = req.body.body;
       return json(created ?? note(99, req.body.body));
     }
+    if (url.pathname.endsWith("/notes/99") && req.method === "GET")
+      return json(notes.find((n) => n.id === 99));
     if (url.pathname.endsWith("/notes/1") && req.method === "PUT")
       return json(note(1, "updated"));
+    if (url.pathname.endsWith("/notes/1") && req.method === "GET")
+      return json(notes[0]);
     if (url.pathname.endsWith("/discussions") && req.method === "GET")
       return json(
         options.noState && !options.existingDiscussions ? [] : [discussion],
@@ -275,14 +287,30 @@ function setup(
         ? new Response("Forbidden", { status: 403 })
         : json({ id: 4 });
     if (url.pathname.endsWith("/merge_requests/7") && req.method === "GET") {
+      const refreshed = mrReads++ > 0;
       const currentMr = {
         ...mr,
+        ...(refreshed
+          ? {
+              state: options.refreshState ?? mr.state,
+              description: options.refreshDescription ?? mr.description,
+              project_id: options.refreshProject ?? mr.project_id,
+              id: options.refreshNativeId ?? mr.id,
+            }
+          : {}),
         draft: options.draft ?? false,
-        diff_refs: { ...mr.diff_refs, head_sha: options.head ?? HEAD },
+        diff_refs: {
+          ...mr.diff_refs,
+          head_sha: refreshed
+            ? (options.refreshHead ?? options.head ?? HEAD)
+            : (options.head ?? HEAD),
+        },
       };
       if (options.advanceAfterMrFetch) options.head = FIX;
       return json(currentMr);
     }
+    if (url.pathname.endsWith("/merge_requests/7") && req.method === "PUT")
+      return json({ ...mr, description: req.body.description });
     if (url.pathname.endsWith("/merge_requests") && req.method === "POST")
       return json({
         ...mr,
@@ -876,9 +904,32 @@ describe("GitLab v2 production entrypoints, local API only", () => {
       DROID_PASS1_LOG: path.join(directory, "missing1.jsonl"),
       DROID_PASS2_LOG: path.join(directory, "missing2.jsonl"),
     });
+    const settings = spyOn(
+      droidSettings,
+      "setupDroidSettings",
+    ).mockResolvedValue(undefined);
+    const pending: Promise<Response>[] = [];
+    const fetch = globalThis.fetch;
+    globalThis.fetch = Object.assign(
+      (...args: Parameters<typeof fetch>) => {
+        const request = fetch(...args).then(async (response) => {
+          await response.clone().arrayBuffer();
+          return response;
+        });
+        pending.push(request);
+        return request;
+      },
+      { preconnect: fetch.preconnect },
+    );
     try {
+      if (process.env.DROID_VALIDATION_HOME)
+        expect(os.homedir()).toBe(process.env.DROID_VALIDATION_HOME);
       await test(directory);
     } finally {
+      // A preparation fault can leave sibling Promise.all reads in flight.
+      await Promise.allSettled(pending);
+      globalThis.fetch = fetch;
+      settings.mockRestore();
       // Preparation exports every resolved setting into this process.
       for (const key of keys) {
         if (saved[key] === undefined) delete process.env[key];
@@ -913,6 +964,519 @@ describe("GitLab v2 production entrypoints, local API only", () => {
       expect(t.requests.find((r) => r.method === "PUT")?.body.body).toContain(
         "[!NOTE]",
       );
+    });
+  });
+
+  describe("pre-binding preparation compensation", () => {
+    for (const phase of [
+      "artifact",
+      "policy",
+      "prompt",
+      "shim",
+      "initial-cache",
+      "final-cache",
+    ]) {
+      it(`compensates a ${phase} failure with the original trusted target and error`, async () => {
+        const t = setup({ noState: true });
+        await environment(async () => {
+          const original = new Error(`controlled ${phase} failure`);
+          const write = fs.writeFile;
+          let stateWrites = 0;
+          const writes = spyOn(fs, "writeFile").mockImplementation(
+            async (file, data, options) => {
+              const name = path.basename(String(file));
+              if (name === "state.json") stateWrites++;
+              if (
+                (phase === "artifact" && name === "mr.diff") ||
+                (phase === "prompt" && name === "prompt.txt") ||
+                (phase === "shim" && name === "resolved-env.sh") ||
+                (phase === "initial-cache" &&
+                  name === "state.json" &&
+                  stateWrites === 1) ||
+                (phase === "final-cache" &&
+                  name === "state.json" &&
+                  stateWrites === 2)
+              )
+                throw original;
+              return write(file, data, options);
+            },
+          );
+          const policy =
+            phase === "policy"
+              ? spyOn(
+                  modelPolicy,
+                  "applyModelPolicyFallback",
+                ).mockImplementation(async () => {
+                  throw original;
+                })
+              : null;
+          try {
+            await expect(prepareRun()).rejects.toBe(original);
+            const updates = t.requests.filter(
+              (r) => r.method === "PUT" && r.path.endsWith("/notes/1"),
+            );
+            expect(updates).toHaveLength(2);
+            expect(updates[1]!.body.body).toContain(
+              "Review preparation failed",
+            );
+            expect(decodeReviewState(updates[1]!.body.body)?.head).toBe("");
+            expect(decodeReviewState(updates[1]!.body.body)?.findings).toEqual(
+              [],
+            );
+            expect(updates[0]!.body.body).toContain(
+              `Droid is reviewing \`${HEAD.slice(0, 7)}\``,
+            );
+            const statuses = t.requests.filter((r) =>
+              r.path.includes("/statuses/"),
+            );
+            expect(statuses.at(-1)?.body.state).toBe("success");
+            expect(statuses.at(-1)?.body.description).toContain("failed");
+            expect(
+              statuses.every((r) =>
+                r.path.endsWith(`/projects/42/statuses/${HEAD}`),
+              ),
+            ).toBe(true);
+            const awards = t.requests.filter(
+              (r) => r.method === "POST" && r.path.endsWith("/award_emoji"),
+            );
+            expect(awards.map((r) => r.body.name)).toEqual(
+              phase === "initial-cache" ? [] : ["eyes", "confused"],
+            );
+            expect(
+              t.requests
+                .filter((r) => r.method === "DELETE")
+                .map((r) => r.path),
+            ).toEqual(
+              phase === "initial-cache"
+                ? []
+                : ["/api/v4/projects/42/merge_requests/7/award_emoji/3"],
+            );
+            expect(
+              t.requests.some(
+                (r) => r.method === "GET" && r.path.endsWith("/award_emoji"),
+              ),
+            ).toBe(false);
+          } finally {
+            writes.mockRestore();
+            policy?.mockRestore();
+          }
+        });
+      });
+    }
+
+    for (const refreshed of [
+      { refreshState: "closed" },
+      { refreshHead: FIX },
+      { refreshProject: 99 },
+      { refreshNativeId: 700 },
+    ]) {
+      it(`does not compensate an ineligible refreshed MR ${JSON.stringify(refreshed)}`, async () => {
+        const t = setup({ noState: true, ...refreshed });
+        await environment(async () => {
+          const original = new Error("controlled artifact failure");
+          const write = fs.writeFile;
+          const writes = spyOn(fs, "writeFile").mockImplementation(
+            async (file, data, options) => {
+              if (path.basename(String(file)) === "mr.diff") throw original;
+              return write(file, data, options);
+            },
+          );
+          try {
+            await expect(prepareRun()).rejects.toBe(original);
+            expect(
+              t.requests.filter(
+                (r) => r.path.endsWith("/notes/1") && r.method === "PUT",
+              ),
+            ).toHaveLength(1);
+            expect(
+              t.requests
+                .filter((r) => r.path.includes("/statuses/"))
+                .map((r) => r.body.state),
+            ).toEqual(["pending", "running"]);
+            expect(
+              t.requests.filter((r) => r.method === "DELETE"),
+            ).toHaveLength(0);
+            expect(
+              t.requests
+                .filter(
+                  (r) => r.path.endsWith("/award_emoji") && r.method === "POST",
+                )
+                .map((r) => r.body.name),
+            ).toEqual(["eyes"]);
+          } finally {
+            writes.mockRestore();
+          }
+        });
+      });
+    }
+
+    it("ignores poisoned mutable target/cache/award hints during lexical compensation", async () => {
+      const t = setup({ noState: true });
+      await environment(async (directory) => {
+        const original = new Error("controlled artifact failure");
+        const write = fs.writeFile;
+        const writes = spyOn(fs, "writeFile").mockImplementation(
+          async (file, data, options) => {
+            if (path.basename(String(file)) === "mr.diff") {
+              await write(
+                path.join(directory, "state.json"),
+                JSON.stringify({
+                  projectId: 99,
+                  mrIid: 8,
+                  trackingNoteId: 666,
+                }),
+              );
+              process.env.CI_PROJECT_ID = "99";
+              process.env.CI_MERGE_REQUEST_IID = "8";
+              process.env.DROID_LIFECYCLE_AWARD_CONTEXT =
+                '{"projectId":"99","mrIid":8,"id":2}';
+              throw original;
+            }
+            return write(file, data, options);
+          },
+        );
+        try {
+          await expect(prepareRun()).rejects.toBe(original);
+          expect(
+            t.requests.filter((r) => r.method === "DELETE").map((r) => r.path),
+          ).toEqual(["/api/v4/projects/42/merge_requests/7/award_emoji/3"]);
+          expect(
+            t.requests
+              .filter((r) => r.method !== "GET")
+              .every((r) => r.path.includes("/projects/42/")),
+          ).toBe(true);
+          expect(t.requests.some((r) => r.path.includes("/notes/666"))).toBe(
+            false,
+          );
+        } finally {
+          writes.mockRestore();
+        }
+      });
+    });
+
+    it("does not mutate anything when preparation fails before its first lifecycle mutation", async () => {
+      const t = setup({ noState: true });
+      const original = new Error("controlled pre-start failure");
+      const changes = spyOn(
+        GitlabClient.prototype,
+        "getMrChanges",
+      ).mockImplementation(async () => {
+        throw original;
+      });
+      try {
+        await environment(async () => {
+          await expect(prepareRun()).rejects.toBe(original);
+          expect(t.requests.some((r) => r.method !== "GET")).toBe(false);
+        });
+      } finally {
+        changes.mockRestore();
+      }
+    });
+
+    it("retains an existing configured blocking finding when the first cache write fails", async () => {
+      const t = setup({ priorHead: HEAD, yaml: "fail_on_severity: P1" });
+      await environment(async () => {
+        const original = new Error("controlled initial cache failure");
+        const write = fs.writeFile;
+        const writes = spyOn(fs, "writeFile").mockImplementation(
+          async (file, data, options) => {
+            if (path.basename(String(file)) === "state.json") throw original;
+            return write(file, data, options);
+          },
+        );
+        try {
+          await expect(prepareRun()).rejects.toBe(original);
+          expect(
+            t.requests
+              .filter((r) => r.path.includes("/statuses/"))
+              .map((r) => r.body.state),
+          ).toEqual(["failed"]);
+          const updated = t.requests
+            .filter((r) => r.path.endsWith("/notes/1") && r.method === "PUT")
+            .at(-1);
+          expect(decodeReviewState(updated?.body.body)?.findings[0]?.id).toBe(
+            finding.id,
+          );
+          expect(t.requests.some((r) => r.path.includes("/award_emoji"))).toBe(
+            false,
+          );
+        } finally {
+          writes.mockRestore();
+        }
+      });
+    });
+
+    it("preserves the original error when the fresh MR lookup itself fails", async () => {
+      const t = setup({ noState: true });
+      await environment(async () => {
+        const original = new Error("controlled artifact failure");
+        const get = GitlabClient.prototype.getMr;
+        let reads = 0;
+        const refresh = spyOn(
+          GitlabClient.prototype,
+          "getMr",
+        ).mockImplementation(async function (
+          this: GitlabClient,
+          ...args: Parameters<GitlabClient["getMr"]>
+        ) {
+          if (++reads > 1)
+            throw new Error("controlled cleanup refresh failure");
+          return get.apply(this, args);
+        });
+        const write = fs.writeFile;
+        const writes = spyOn(fs, "writeFile").mockImplementation(
+          async (file, data, options) => {
+            if (path.basename(String(file)) === "mr.diff") throw original;
+            return write(file, data, options);
+          },
+        );
+        try {
+          await expect(prepareRun()).rejects.toBe(original);
+          expect(reads).toBe(2);
+          expect(
+            t.requests
+              .filter((r) => r.path.includes("/statuses/"))
+              .map((r) => r.body.state),
+          ).toEqual(["pending", "running"]);
+          expect(t.requests.some((r) => r.method === "DELETE")).toBe(false);
+        } finally {
+          writes.mockRestore();
+          refresh.mockRestore();
+        }
+      });
+    });
+
+    it("preserves freshly edited description text outside its review delimiter", async () => {
+      const fresh =
+        "Fresh human intro\n\n<!-- droid-review-description:start -->\nold review\n<!-- droid-review-description:end -->\n\nFresh human footer";
+      const t = setup({
+        noState: true,
+        yaml: "review_summary: description",
+        refreshDescription: fresh,
+      });
+      await environment(async () => {
+        const original = new Error("controlled artifact failure");
+        const write = fs.writeFile;
+        const writes = spyOn(fs, "writeFile").mockImplementation(
+          async (file, data, options) => {
+            if (path.basename(String(file)) === "mr.diff") throw original;
+            return write(file, data, options);
+          },
+        );
+        try {
+          await expect(prepareRun()).rejects.toBe(original);
+          const descriptions = t.requests.filter(
+            (r) => r.method === "PUT" && r.path.endsWith("/merge_requests/7"),
+          );
+          expect(descriptions).toHaveLength(2);
+          expect(descriptions[1]!.body.description).toContain(
+            "Fresh human intro",
+          );
+          expect(descriptions[1]!.body.description).toContain(
+            "Fresh human footer",
+          );
+          expect(descriptions[1]!.body.description).toContain(
+            "Review preparation failed",
+          );
+          expect(
+            descriptions[1]!.body.description.startsWith(
+              "Fresh human intro\n\n",
+            ),
+          ).toBe(true);
+          expect(
+            descriptions[1]!.body.description.endsWith(
+              "\n\nFresh human footer",
+            ),
+          ).toBe(true);
+          expect(descriptions[1]!.body.description).not.toContain("old review");
+        } finally {
+          writes.mockRestore();
+        }
+      });
+    });
+
+    for (const changed of [
+      { id: 888 },
+      { author: { id: 5, username: "human" } },
+      { noteable_id: 700 },
+      { noteable_iid: 8 },
+    ]) {
+      it(`does not edit a known-ID note failing fresh ownership/target checks ${JSON.stringify(changed)}`, async () => {
+        const t = setup({ noState: true });
+        await environment(async () => {
+          const original = new Error("controlled artifact failure");
+          const write = fs.writeFile;
+          const writes = spyOn(fs, "writeFile").mockImplementation(
+            async (file, data, options) => {
+              if (path.basename(String(file)) === "mr.diff") {
+                Object.assign(t.notes[0]!, changed);
+                throw original;
+              }
+              return write(file, data, options);
+            },
+          );
+          try {
+            await expect(prepareRun()).rejects.toBe(original);
+            expect(
+              t.requests.filter(
+                (r) => r.path.endsWith("/notes/1") && r.method === "PUT",
+              ),
+            ).toHaveLength(1);
+            expect(
+              t.requests.filter((r) => r.path.includes("/statuses/")).at(-1)
+                ?.body.state,
+            ).toBe("success");
+            expect(
+              t.requests
+                .filter((r) => r.method === "DELETE")
+                .map((r) => r.path),
+            ).toEqual(["/api/v4/projects/42/merge_requests/7/award_emoji/3"]);
+          } finally {
+            writes.mockRestore();
+          }
+        });
+      });
+    }
+
+    it("compensates only the actual newly created note ID", async () => {
+      const t = setup({ noState: true });
+      t.notes.splice(0, 1);
+      await environment(async () => {
+        const original = new Error("controlled artifact failure");
+        const write = fs.writeFile;
+        const writes = spyOn(fs, "writeFile").mockImplementation(
+          async (file, data, options) => {
+            if (path.basename(String(file)) === "mr.diff") throw original;
+            return write(file, data, options);
+          },
+        );
+        try {
+          await expect(prepareRun()).rejects.toBe(original);
+          const updates = t.requests.filter(
+            (r) => r.path.endsWith("/notes/99") && r.method === "PUT",
+          );
+          expect(updates).toHaveLength(1);
+          expect(updates[0]!.body.body).toContain("Review preparation failed");
+          expect(t.requests.some((r) => r.path.endsWith("/notes/1"))).toBe(
+            false,
+          );
+        } finally {
+          writes.mockRestore();
+        }
+      });
+    });
+
+    it("never adopts a lost creation-response award ID", async () => {
+      const t = setup({ noState: true });
+      await environment(async () => {
+        const original = new Error("controlled artifact failure");
+        const write = fs.writeFile;
+        const addAward = GitlabClient.prototype.addAward;
+        const lost = spyOn(
+          GitlabClient.prototype,
+          "addAward",
+        ).mockImplementation(async function (
+          this: GitlabClient,
+          ...args: Parameters<GitlabClient["addAward"]>
+        ) {
+          await addAward.apply(this, args);
+          throw new Error("controlled lost creation response");
+        });
+        const writes = spyOn(fs, "writeFile").mockImplementation(
+          async (file, data, options) => {
+            if (path.basename(String(file)) === "mr.diff") throw original;
+            return write(file, data, options);
+          },
+        );
+        try {
+          await expect(prepareRun()).rejects.toBe(original);
+          expect(
+            t.requests
+              .filter(
+                (r) => r.method === "POST" && r.path.endsWith("/award_emoji"),
+              )
+              .map((r) => r.body.name),
+          ).toEqual(["eyes"]);
+          expect(t.requests.some((r) => r.method === "DELETE")).toBe(false);
+          expect(
+            t.requests.some(
+              (r) => r.method === "GET" && r.path.endsWith("/award_emoji"),
+            ),
+          ).toBe(false);
+          expect(
+            t.requests
+              .filter((r) => r.path.endsWith("/notes/1") && r.method === "PUT")
+              .at(-1)?.body.body,
+          ).toContain("Review preparation failed");
+        } finally {
+          writes.mockRestore();
+          lost.mockRestore();
+        }
+      });
+    });
+
+    it("rethrows the identical original failure even when every cleanup API fails", async () => {
+      const t = setup({ noState: true });
+      await environment(async () => {
+        const original = new Error("controlled artifact failure");
+        const write = fs.writeFile;
+        const update = GitlabClient.prototype.updateNote;
+        let noteCalls = 0;
+        const updates = spyOn(
+          GitlabClient.prototype,
+          "updateNote",
+        ).mockImplementation(async function (
+          this: GitlabClient,
+          ...args: Parameters<GitlabClient["updateNote"]>
+        ) {
+          if (++noteCalls > 1)
+            throw new Error("controlled note cleanup failure");
+          return update.apply(this, args);
+        });
+        const status = GitlabClient.prototype.setCommitStatus;
+        let statusCalls = 0;
+        const statuses = spyOn(
+          GitlabClient.prototype,
+          "setCommitStatus",
+        ).mockImplementation(async function (
+          this: GitlabClient,
+          ...args: Parameters<GitlabClient["setCommitStatus"]>
+        ) {
+          if (++statusCalls > 2)
+            throw new Error("controlled status cleanup failure");
+          return status.apply(this, args);
+        });
+        const remove = spyOn(
+          GitlabClient.prototype,
+          "removeAward",
+        ).mockImplementation(async () => {
+          throw new Error("controlled award cleanup failure");
+        });
+        const writes = spyOn(fs, "writeFile").mockImplementation(
+          async (file, data, options) => {
+            if (path.basename(String(file)) === "mr.diff") throw original;
+            return write(file, data, options);
+          },
+        );
+        try {
+          await expect(prepareRun()).rejects.toBe(original);
+          expect(noteCalls).toBe(2);
+          expect(statusCalls).toBe(3);
+          expect(remove).toHaveBeenCalledWith("42", 7, 3);
+          expect(
+            t.requests
+              .filter(
+                (r) => r.path.endsWith("/award_emoji") && r.method === "POST",
+              )
+              .map((r) => r.body.name),
+          ).toEqual(["eyes"]);
+        } finally {
+          writes.mockRestore();
+          updates.mockRestore();
+          statuses.mockRestore();
+          remove.mockRestore();
+        }
+      });
     });
   });
 

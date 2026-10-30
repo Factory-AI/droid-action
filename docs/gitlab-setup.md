@@ -332,6 +332,38 @@ Deploy it outside the untrusted MR runner, from a trusted action checkout:
    `GITLAB_PIPELINE_TRIGGER_TOKEN`. Set `GITLAB_BRIDGE_PROJECT_ID` to the
    numeric project ID. Prefer the same project bot identity as the review
    poster so its own notes are ignored.
+   Also set the required trusted service authorization policy:
+
+   ```bash
+   GITLAB_BRIDGE_PIPELINE_DELEGATIONS='[{"authorId":123,"sourceBranches":["feature/review"]}]'
+   ```
+
+   Each tuple grants one actual GitLab user ID permission to start pipelines
+   on the listed **exact, case-sensitive source-branch names**, in this
+   configured project only. There are no wildcards, role-based automatic
+   grants, or blanket enable switches. Missing, empty, or malformed policy
+   refuses startup; an unmatched actual author/branch receives HTTP 403.
+   Keep this policy on the trusted bridge host, never in MR content or
+   pipeline-supplied CI variables. GitLab user IDs are specific to the
+   configured trusted API instance.
+
+   **This is explicit delegation of the trigger-token owner's entire
+   pipeline authority, not impersonation of the note author.** Triggered
+   jobs and their `CI_JOB_TOKEN` can have the owner's protected-ref,
+   deployment, and other-project access. Only grant tuples to people and
+   branch contents you trust with all of that authority. This delegation
+   covers **all pipeline jobs, CI configuration, code, and writers able to
+   change the admitted branch**, not only the note author or one approved
+   command. The ordinary
+   Developer membership check does not establish equivalent permissions.
+   Do not grant this policy to untrusted contributors. If that delegation
+   is unacceptable, do not deploy the bridge; use the manual/native pipeline
+   route under an appropriately authorized user instead. Existing bridge
+   deployments must add this policy before upgrading.
+   Pipelines run branch content at trigger time. Re-fetching the MR and
+   validating its ref/head syntax is not an atomic commit pin or an
+   impersonated-author permission check.
+
 3. For self-managed GitLab, set `GITLAB_BRIDGE_API_URL` to its HTTPS API v4
    base URL. Optionally set `GITLAB_BRIDGE_PORT` (default `8787`). The service
    binds only to `127.0.0.1`; put an authenticated TLS reverse proxy in front
@@ -348,8 +380,9 @@ Deploy it outside the untrusted MR runner, from a trusted action checkout:
    `CI_MERGE_REQUEST_IID` in any project-level `workflow: rules`.
 
 The handler checks the webhook secret in constant time, restricts the
-project/event, re-fetches the actual note and author, verifies membership,
-and triggers the live source branch with **only** the MR IID and note ID.
+project/event, re-fetches the actual note and author, verifies membership
+and the exact trusted author/branch delegation, and triggers the live source
+branch with **only** the MR IID and note ID.
 The job repeats author authorization. The bridge suppresses duplicate
 in-flight/completed note events in memory; command response receipts also
 avoid repeat writes after job retries. MR jobs share a resource group so

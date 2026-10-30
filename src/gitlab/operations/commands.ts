@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { createCommandProfile } from "../../../base-action/src/command-profile";
 import {
   parseDroidCommand,
   type ParsedCommand,
@@ -62,43 +63,48 @@ export type CommandExecution = (
 
 /** File-only model output, with GitLab publishing reserved for trusted code. */
 export const executeGitlabCommand: CommandExecution = async (prompt, mode) => {
-  const directory = await fs.mkdtemp(
-    path.join(os.tmpdir(), "droid-gitlab-command-"),
+  const profile = await createCommandProfile(
+    mode === "fix" ? "fix" : "question",
   );
-  const output = path.join(directory, "result.txt");
-  const promptPath = path.join(directory, "prompt.txt");
-  await fs.writeFile(
-    promptPath,
-    `${prompt}\n\nWrite your final ${mode === "fix" ? "JSON proposal" : "Markdown answer"} to ${output}. Do not mutate GitLab, git refs, remotes, or commits. That output file is your only deliverable.`,
-  );
-  const env: NodeJS.ProcessEnv = { ...process.env };
-  for (const key of Object.keys(env))
-    if (
-      /^(?:GITLAB_TOKEN|OVERRIDE_GITLAB_TOKEN|CI_JOB_TOKEN|CI_REPOSITORY_URL|GITHUB_TOKEN|GH_TOKEN|INPUT_|ACTIONS_|DROID_ARGS|GIT_CONFIG|GIT_ASKPASS|SSH_ASKPASS)/.test(
-        key,
-      )
-    )
-      delete env[key];
-  const result = spawnSync(
-    "droid",
-    [
-      "exec",
-      "-f",
+  let commandFailed = false;
+  try {
+    const output = path.join(profile.cwd, "result.txt");
+    const promptPath = path.join(profile.cwd, "prompt.txt");
+    await fs.writeFile(
       promptPath,
-      "--enabled-tools",
-      "Read,Grep,Glob,LS,Execute,Create,Edit,ApplyPatch,Skill",
-      "--skip-permissions-unsafe",
-    ],
-    { env, encoding: "utf8", timeout: 10 * 60_000, maxBuffer: 1024 * 1024 },
-  );
-  if (result.status !== 0)
-    throw new Error(
-      "Droid command execution failed; inspect the job log and retry",
+      `${prompt}\n\nWrite your final ${mode === "fix" ? "JSON proposal" : "Markdown answer"} to ${output}. Do not mutate GitLab, git refs, remotes, or commits. That output file is your only deliverable.`,
     );
-  const stat = await fs.lstat(output);
-  if (!stat.isFile() || stat.size > 32 * 1024 * 1024)
-    throw new Error("Droid command output is not a bounded regular file");
-  return fs.readFile(output, "utf8");
+    const result = spawnSync(
+      "droid",
+      ["exec", ...profile.argv, "-f", promptPath],
+      {
+        cwd: profile.cwd,
+        env: profile.env,
+        shell: false,
+        encoding: "utf8",
+        timeout: 10 * 60_000,
+        maxBuffer: 1024 * 1024,
+      },
+    );
+    if (result.status !== 0)
+      throw new Error(
+        "Droid command execution failed; inspect the job log and retry",
+      );
+    const stat = await fs.lstat(output);
+    if (!stat.isFile() || stat.size > 32 * 1024 * 1024)
+      throw new Error("Droid command output is not a bounded regular file");
+    return await fs.readFile(output, "utf8");
+  } catch (error) {
+    commandFailed = true;
+    throw error;
+  } finally {
+    try {
+      await profile.cleanup();
+    } catch (error) {
+      if (!commandFailed) throw error;
+      warnCapability("command profile cleanup", error);
+    }
+  }
 };
 
 export type GitlabCommandResult = {

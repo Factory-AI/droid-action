@@ -17,6 +17,13 @@ function setup(
     role?: number;
     fork?: boolean;
     noteAuthor?: number;
+    delegations?: unknown;
+    sourceBranch?: string;
+    liveProject?: number;
+    liveIid?: number;
+    state?: string;
+    head?: string;
+    expiresAt?: string;
   } = {},
 ) {
   server = startFakeServer((request, url) => {
@@ -28,15 +35,19 @@ function setup(
       });
     if (url.pathname.endsWith("/merge_requests/7"))
       return json({
-        iid: 7,
-        state: "opened",
+        project_id: options.liveProject ?? 42,
+        iid: options.liveIid ?? 7,
+        state: options.state ?? "opened",
         source_project_id: options.fork ? 99 : 42,
         target_project_id: 42,
-        source_branch: "feature",
-        diff_refs: { head_sha: "a".repeat(40) },
+        source_branch: options.sourceBranch ?? "feature",
+        diff_refs: { head_sha: options.head ?? "a".repeat(40) },
       });
-    if (url.pathname.endsWith("/members/all/5"))
-      return json({ access_level: options.role ?? 40 });
+    if (/\/members\/all\/\d+$/.test(url.pathname))
+      return json({
+        access_level: options.role ?? 40,
+        expires_at: options.expiresAt,
+      });
     if (url.pathname.endsWith("/user")) return json({ id: 1 });
     if (request.method === "POST" && url.pathname.endsWith("/notes"))
       return json({ id: 21 });
@@ -49,10 +60,20 @@ function setup(
     client: new GitlabClient("test-token", `${server.url}/api/v4`),
     projectId: 42,
     webhookSecret: "webhook-test-secret",
+    pipelineDelegations:
+      "delegations" in options
+        ? options.delegations
+        : [{ authorId: 5, sourceBranches: ["feature"] }],
     trigger,
   });
   const request = (
-    extra: { secret?: string; projectId?: number; note?: string } = {},
+    extra: {
+      secret?: string;
+      projectId?: number;
+      note?: string;
+      authorId?: number;
+      sourceBranch?: string;
+    } = {},
   ) =>
     handler(
       new Request("https://bridge.example.test/gitlab", {
@@ -64,13 +85,16 @@ function setup(
         body: JSON.stringify({
           object_kind: "note",
           project: { id: extra.projectId ?? 42 },
-          merge_request: { iid: 7 },
+          merge_request: {
+            iid: 7,
+            source_branch: extra.sourceBranch ?? "forged-payload-branch",
+          },
           object_attributes: {
             id: 20,
             noteable_type: "MergeRequest",
             action: "create",
             note: extra.note ?? "@droid fix",
-            author_id: 999,
+            author_id: extra.authorId ?? 999,
           },
         }),
       }),
@@ -79,6 +103,140 @@ function setup(
 }
 
 describe("authenticated GitLab note-to-pipeline bridge", () => {
+  for (const [label, delegations] of [
+    ["missing", undefined],
+    ["null", null],
+    ["empty", []],
+    ["boolean bypass", true],
+    [
+      "raw JSON instead of parsed policy",
+      '[{"authorId":5,"sourceBranches":["feature"]}]',
+    ],
+    ["zero user", [{ authorId: 0, sourceBranches: ["feature"] }]],
+    ["negative user", [{ authorId: -5, sourceBranches: ["feature"] }]],
+    ["fractional user", [{ authorId: 5.5, sourceBranches: ["feature"] }]],
+    [
+      "unsafe user",
+      [{ authorId: Number.MAX_SAFE_INTEGER + 1, sourceBranches: ["feature"] }],
+    ],
+    ["string user", [{ authorId: "5", sourceBranches: ["feature"] }]],
+    ["empty refs", [{ authorId: 5, sourceBranches: [] }]],
+    ["blank ref", [{ authorId: 5, sourceBranches: [""] }]],
+    ["padded ref", [{ authorId: 5, sourceBranches: ["feature "] }]],
+    ["wildcard", [{ authorId: 5, sourceBranches: ["feature/*"] }]],
+    ["character pattern", [{ authorId: 5, sourceBranches: ["[feature]"] }]],
+    ["role grant", [{ authorId: 5, sourceBranches: ["feature"], role: 30 }]],
+    [
+      "project override",
+      [{ authorId: 5, sourceBranches: ["feature"], projectId: 99 }],
+    ],
+  ]) {
+    it(`refuses ${label} delegation policy at construction`, () => {
+      expect(() => setup({ delegations })).toThrow(
+        "GITLAB_BRIDGE_PIPELINE_DELEGATIONS",
+      );
+    });
+  }
+
+  it("rejects an unlisted actual author even when the payload claims a delegated author", async () => {
+    const t = setup({ noteAuthor: 6 });
+    expect((await t.request({ authorId: 5 })).status).toBe(403);
+    expect(t.trigger).not.toHaveBeenCalled();
+    expect(t.requests.some((r) => r.path.endsWith("/members/all/6"))).toBe(
+      true,
+    );
+    expect(t.requests.some((r) => r.method === "POST")).toBe(false);
+  });
+
+  it("rejects a newly changed live source branch even when the payload names the allowed ref", async () => {
+    const t = setup({ sourceBranch: "unlisted-live-ref" });
+    expect((await t.request({ sourceBranch: "feature" })).status).toBe(403);
+    expect(t.trigger).not.toHaveBeenCalled();
+  });
+
+  it("does not combine separate delegated users and branches into a cross-product", async () => {
+    const t = setup({
+      delegations: [
+        { authorId: 5, sourceBranches: ["main"] },
+        { authorId: 6, sourceBranches: ["feature"] },
+      ],
+    });
+    expect((await t.request()).status).toBe(403);
+    expect(t.trigger).not.toHaveBeenCalled();
+  });
+
+  it("rejects an entire policy containing an invalid row instead of retaining a valid grant", () => {
+    expect(() =>
+      setup({
+        delegations: [
+          { authorId: 5, sourceBranches: ["feature"] },
+          { authorId: 6, sourceBranches: ["*"] },
+        ],
+      }),
+    ).toThrow("GITLAB_BRIDGE_PIPELINE_DELEGATIONS");
+  });
+
+  it("refuses invalid branch-prefix policy instead of interpreting it as a grant", () => {
+    expect(() =>
+      setup({ delegations: [{ authorId: 5, sourceBranches: ["feature/"] }] }),
+    ).toThrow("GITLAB_BRIDGE_PIPELINE_DELEGATIONS");
+  });
+
+  it("retains valid but nonmatching exact names as denied", async () => {
+    const t = setup({
+      delegations: [
+        { authorId: 5, sourceBranches: ["Feature", "feature/other"] },
+      ],
+    });
+    expect((await t.request()).status).toBe(403);
+    expect(t.trigger).not.toHaveBeenCalled();
+  });
+
+  it("keeps validated delegation policy independent of later caller mutations", async () => {
+    const delegations = [{ authorId: 6, sourceBranches: ["feature"] }];
+    const t = setup({ delegations });
+    delegations[0]!.authorId = 5;
+    expect((await t.request()).status).toBe(403);
+    expect(t.trigger).not.toHaveBeenCalled();
+  });
+
+  for (const target of [{ liveProject: 99 }, { liveIid: 8 }]) {
+    it(`refuses a live MR outside its configured target ${JSON.stringify(target)}`, async () => {
+      const t = setup(target);
+      expect((await t.request()).status).toBe(403);
+      expect(t.trigger).not.toHaveBeenCalled();
+      expect(t.requests.some((r) => r.method === "POST")).toBe(false);
+    });
+  }
+
+  it("does not grant a delegated expired member pipeline authority", async () => {
+    const t = setup({ expiresAt: "2000-01-01" });
+    expect((await t.request()).status).toBe(403);
+    expect(t.trigger).not.toHaveBeenCalled();
+  });
+
+  it("does not dispatch a closed MR even for a delegated author/ref", async () => {
+    const t = setup({ state: "closed" });
+    expect((await t.request()).status).toBe(200);
+    expect(t.trigger).not.toHaveBeenCalled();
+  });
+
+  it("retains full head SHA syntax checks alongside delegation", async () => {
+    const t = setup({ head: "not-a-full-head" });
+    expect((await t.request()).status).toBe(502);
+    expect(t.trigger).not.toHaveBeenCalled();
+  });
+
+  it("delegates the current exact branch, not a pretend atomic head pin", async () => {
+    const t = setup({ head: "b".repeat(40) });
+    expect((await t.request()).status).toBe(200);
+    expect(t.trigger).toHaveBeenCalledWith({
+      ref: "feature",
+      mrIid: 7,
+      noteId: 20,
+    });
+  });
+
   it("shares a pending trigger failure instead of acknowledging its retry", async () => {
     const t = setup();
     let entered = () => {};

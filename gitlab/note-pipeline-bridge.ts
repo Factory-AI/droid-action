@@ -5,6 +5,30 @@ import { parseDroidCommand } from "../src/core/review/triggers/parse-command";
 import { hasGitlabWriteAccess } from "../src/gitlab/operations/review-ux";
 import { assertGitlabFixRef } from "../src/gitlab/operations/commands";
 import { record } from "../src/core/review/validated/finding";
+import { z } from "zod";
+
+const pipelineDelegationsSchema = z
+  .array(
+    z
+      .object({
+        authorId: z.number().int().positive().safe(),
+        sourceBranches: z
+          .array(
+            z.string().refine((branch) => {
+              try {
+                // Reuse ref syntax validation; this is not a pipeline head.
+                assertGitlabFixRef(branch, "0".repeat(40));
+                return true;
+              } catch {
+                return false;
+              }
+            }),
+          )
+          .min(1),
+      })
+      .strict(),
+  )
+  .min(1);
 
 function positive(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0
@@ -24,17 +48,29 @@ export function createNotePipelineBridge(options: {
   client: GitlabClient;
   projectId: number;
   webhookSecret: string;
+  pipelineDelegations: unknown;
   trigger: (input: {
     ref: string;
     mrIid: number;
     noteId: number;
   }) => Promise<void>;
 }): (request: Request) => Promise<Response> {
+  const { client, projectId, webhookSecret, trigger } = options;
+  if (!Number.isSafeInteger(projectId) || projectId <= 0)
+    throw new Error("The bridge requires a positive configured project ID");
+  const policy = pipelineDelegationsSchema.safeParse(
+    options.pipelineDelegations,
+  );
+  if (!policy.success)
+    throw new Error(
+      "GITLAB_BRIDGE_PIPELINE_DELEGATIONS must be a nonempty list of positive safe author IDs and exact valid source-branch lists",
+    );
+  const delegations = policy.data;
   const completed = new Set<number>();
   const inFlight = new Map<number, Promise<Response>>();
   return async (request) => {
     const supplied = Buffer.from(request.headers.get("x-gitlab-token") ?? "");
-    const expected = Buffer.from(options.webhookSecret);
+    const expected = Buffer.from(webhookSecret);
     if (
       !expected.length ||
       supplied.length !== expected.length ||
@@ -62,7 +98,7 @@ export function createNotePipelineBridge(options: {
     const mrIid = positive(mergeRequest?.iid);
     if (
       payload?.object_kind !== "note" ||
-      project?.id !== options.projectId ||
+      project?.id !== projectId ||
       attributes?.noteable_type !== "MergeRequest" ||
       attributes?.system === true ||
       (attributes?.action && attributes.action !== "create") ||
@@ -79,15 +115,15 @@ export function createNotePipelineBridge(options: {
         // The webhook body is merely an addressing hint. Fetch the live note,
         // actual author, and current MR branch before triggering anything.
         const [note, mr, user] = await Promise.all([
-          options.client.getNote(options.projectId, mrIid, noteId),
-          options.client.getMr(options.projectId, mrIid),
-          options.client.getCurrentUser(),
+          client.getNote(projectId, mrIid, noteId),
+          client.getMr(projectId, mrIid),
+          client.getCurrentUser(),
         ]);
         if (note.author.id === user.id || !parseDroidCommand(note.body))
           return Response.json({ skipped: "No human Droid command" });
         if (
           !hasGitlabWriteAccess(
-            await options.client.getMember(options.projectId, note.author.id),
+            await client.getMember(projectId, note.author.id),
           )
         )
           return Response.json(
@@ -99,12 +135,32 @@ export function createNotePipelineBridge(options: {
           );
         if (mr.state !== "opened")
           return Response.json({ skipped: "MR is not open" });
+        if (mr.project_id !== projectId || mr.iid !== mrIid)
+          return Response.json(
+            { error: "The live MR does not belong to this bridge target" },
+            { status: 403 },
+          );
+        assertGitlabFixRef(mr.source_branch, mr.diff_refs.head_sha);
         if (
-          mr.source_project_id !== options.projectId ||
-          mr.target_project_id !== options.projectId
+          !delegations.some(
+            (entry) =>
+              entry.authorId === note.author.id &&
+              entry.sourceBranches.includes(mr.source_branch),
+          )
+        )
+          return Response.json(
+            {
+              error:
+                "The operator has not delegated pipeline authority to this author and source branch",
+            },
+            { status: 403 },
+          );
+        if (
+          mr.source_project_id !== projectId ||
+          mr.target_project_id !== projectId
         ) {
-          await options.client.createNote(
-            options.projectId,
+          await client.createNote(
+            projectId,
             mrIid,
             "Droid could not start this command: a fork's source branch is not a pipeline ref in the target project. Run the review in an explicitly trusted fork pipeline with correctly scoped credentials, or apply the finding's AI-agent prompt manually. The bridge does not run fork code with target-project secrets.",
           );
@@ -114,8 +170,7 @@ export function createNotePipelineBridge(options: {
               "Fork command pipeline requires an explicitly configured trusted route",
           });
         }
-        assertGitlabFixRef(mr.source_branch, mr.diff_refs.head_sha);
-        await options.trigger({ ref: mr.source_branch, mrIid, noteId });
+        await trigger({ ref: mr.source_branch, mrIid, noteId });
         completed.add(noteId);
         return Response.json({ dispatched: true });
       } catch {
@@ -142,18 +197,26 @@ if (import.meta.main) {
     GITLAB_BRIDGE_WEBHOOK_SECRET: webhookSecret,
     GITLAB_BRIDGE_API_TOKEN: token,
     GITLAB_PIPELINE_TRIGGER_TOKEN: triggerToken,
+    GITLAB_BRIDGE_PIPELINE_DELEGATIONS: rawDelegations,
   } = process.env;
   const projectId = Number(process.env.GITLAB_BRIDGE_PROJECT_ID);
   if (
     !webhookSecret ||
     !token ||
     !triggerToken ||
+    !rawDelegations ||
     !Number.isSafeInteger(projectId) ||
     projectId <= 0
   )
     throw new Error(
-      "Set GITLAB_BRIDGE_WEBHOOK_SECRET, GITLAB_BRIDGE_API_TOKEN, GITLAB_PIPELINE_TRIGGER_TOKEN, and GITLAB_BRIDGE_PROJECT_ID",
+      "Set GITLAB_BRIDGE_WEBHOOK_SECRET, GITLAB_BRIDGE_API_TOKEN, GITLAB_PIPELINE_TRIGGER_TOKEN, GITLAB_BRIDGE_PROJECT_ID, and GITLAB_BRIDGE_PIPELINE_DELEGATIONS",
     );
+  let pipelineDelegations: unknown;
+  try {
+    pipelineDelegations = JSON.parse(rawDelegations);
+  } catch {
+    throw new Error("GITLAB_BRIDGE_PIPELINE_DELEGATIONS must be valid JSON");
+  }
   const apiUrl = new URL(
     process.env.GITLAB_BRIDGE_API_URL || "https://gitlab.com/api/v4",
   );
@@ -172,6 +235,7 @@ if (import.meta.main) {
     client,
     projectId,
     webhookSecret,
+    pipelineDelegations,
     trigger: async ({ ref, mrIid, noteId }) => {
       const body = new URLSearchParams({
         token: triggerToken,
