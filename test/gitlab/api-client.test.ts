@@ -85,6 +85,76 @@ describe("GitlabClient", () => {
     await client.getMr(1, 2);
   });
 
+  it("does not expose an unused reaction-enumeration transport", () => {
+    expect("listAwards" in new GitlabClient("synthetic-test-token")).toBe(
+      false,
+    );
+  });
+
+  it("delegates repository decoding to the existing metadata transport", async () => {
+    const file = {
+      content: Buffer.from("résumé\n").toString("base64"),
+      encoding: "base64",
+      last_commit_id: "a".repeat(40),
+      execute_filemode: false,
+    };
+    const fetchMock = mockFetch(() => jsonResponse(file));
+    const client = new GitlabClient("synthetic-test-token");
+    const metadata = mock(async () => file);
+    client.getFileInfo = metadata;
+    expect(await client.getRepositoryFile("group/repo", "a b.ts", "main")).toBe(
+      "résumé\n",
+    );
+    expect(metadata).toHaveBeenCalledWith("group/repo", "a b.ts", "main");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("retains repository-file endpoint encoding through the metadata transport", async () => {
+    const fetchMock = mockFetch((url) => {
+      expect(url).toBe(
+        "https://gitlab.example/api/v4/projects/group%2Frepo/repository/files/a%20b%2F%C3%A9.ts?ref=feat%2Fone",
+      );
+      return jsonResponse({
+        encoding: "base64",
+        content: Buffer.from("source\n").toString("base64"),
+      });
+    });
+    const client = new GitlabClient(
+      "synthetic-test-token",
+      "https://gitlab.example/api/v4",
+    );
+    expect(
+      await client.getRepositoryFile("group/repo", "a b/é.ts", "feat/one"),
+    ).toBe("source\n");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  for (const file of [
+    { encoding: "text", content: "source" },
+    { encoding: "base64", content: null },
+  ])
+    it(`rejects unsupported repository content ${JSON.stringify(file)}`, async () => {
+      mockFetch(() => jsonResponse(file));
+      await expect(
+        new GitlabClient("synthetic-test-token").getRepositoryFile(
+          42,
+          "a.ts",
+          "main",
+        ),
+      ).rejects.toThrow("Unsupported GitLab repository file response");
+    });
+
+  it("preserves missing-file API errors through repository decoding", async () => {
+    mockFetch(() => jsonResponse({ message: "404 Not Found" }, 404));
+    await expect(
+      new GitlabClient("synthetic-test-token").getRepositoryFile(
+        42,
+        "missing.ts",
+        "main",
+      ),
+    ).rejects.toBeInstanceOf(GitlabApiError);
+  });
+
   it("throws GitlabApiError with parsed body on non-2xx", async () => {
     mockFetch(
       () =>

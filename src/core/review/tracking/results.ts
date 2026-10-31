@@ -1,15 +1,10 @@
 import * as fs from "fs/promises";
+import { record as asRecord } from "../validated/finding";
 import type {
   ReviewPostFailure,
   ReviewPostOutcome,
   ReviewPostResults,
 } from "./types";
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
 
 function count(root: Record<string, unknown>, field: string): number {
   const value = root[field];

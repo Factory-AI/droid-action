@@ -328,7 +328,27 @@ describe("debug artifact entrypoints", () => {
   const runEntrypoint = (script: string, env: Record<string, string>) =>
     Bun.spawnSync({
       cmd: [process.execPath, "run", path.join(repoRoot, script)],
-      env: { PATH: process.env.PATH ?? "", ...env },
+      env: {
+        PATH: process.env.PATH ?? "",
+        ...Object.fromEntries(
+          [
+            "HOME",
+            "USERPROFILE",
+            "XDG_CONFIG_HOME",
+            "XDG_CACHE_HOME",
+            "XDG_DATA_HOME",
+            "XDG_STATE_HOME",
+            "XDG_RUNTIME_DIR",
+            "TMPDIR",
+            "TMP",
+            "TEMP",
+          ].flatMap((key) => {
+            const value = process.env[key];
+            return value === undefined ? [] : [[key, value]];
+          }),
+        ),
+        ...env,
+      },
       stdout: "pipe",
       stderr: "pipe",
     });

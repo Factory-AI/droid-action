@@ -57,12 +57,37 @@ export type GitlabNote = {
   noteable_type: string;
   resolvable: boolean;
   resolved?: boolean;
+  position?: Pick<
+    GitlabPosition,
+    "new_path" | "old_path" | "new_line" | "old_line"
+  > | null;
 };
 
 export type GitlabDiscussion = {
   id: string;
   individual_note: boolean;
   notes: GitlabNote[];
+};
+
+export type GitlabAward = { id: number; name: string; user: GitlabUser };
+export type GitlabProject = {
+  id: number;
+  default_branch: string;
+  web_url: string;
+};
+export type GitlabBranch = {
+  name: string;
+  protected: boolean;
+  can_push: boolean;
+  commit: { id: string };
+};
+export type GitlabCommitAction = {
+  action: "create" | "update" | "delete";
+  file_path: string;
+  content?: string;
+  encoding?: "base64";
+  last_commit_id?: string;
+  execute_filemode?: boolean;
 };
 
 export type GitlabPosition = {

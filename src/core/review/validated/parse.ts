@@ -8,6 +8,19 @@
  * `src/entrypoints/gitlab-post-review.ts` and
  * `src/entrypoints/github-post-review.ts` consume the parsed shape.
  */
+import {
+  normalizeFinding,
+  normalizeSummary,
+  record as asRecord,
+} from "./finding";
+import type { DroppedFinding, ReviewFinding, ReviewSummaryData } from "./types";
+export type {
+  ReviewFinding,
+  ReviewSeverity,
+  ReviewSummaryData,
+  DroppedFinding,
+  FindingLocation,
+} from "./types";
 
 export type ValidatedReviewComment = {
   path: string;
@@ -19,6 +32,7 @@ export type ValidatedReviewComment = {
   side: "LEFT" | "RIGHT";
   old_path: string | null;
   old_line: number | null;
+  finding?: ReviewFinding;
 };
 
 export type ParsedValidatedReview = {
@@ -33,6 +47,13 @@ export type ParsedValidatedReview = {
    * single SHA; the poster then omits `commit_id` rather than guess one.
    */
   commitId: string | null;
+  /** Conflicting declarations are not the same as absent legacy provenance. */
+  conflictingCommitIds: boolean;
+  findings: ReviewFinding[];
+  outsideDiff: ReviewFinding[];
+  dropped: DroppedFinding[];
+  summary: ReviewSummaryData;
+  fixedFindings: Array<{ id: string; evidence: string }>;
 };
 
 export class InvalidValidatedReviewError extends Error {
@@ -40,12 +61,6 @@ export class InvalidValidatedReviewError extends Error {
     super(`Invalid validated review file: ${message}`);
     this.name = "InvalidValidatedReviewError";
   }
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
 }
 
 function asPositiveInt(value: unknown): number | null {
@@ -97,6 +112,10 @@ export function parseValidatedReview(raw: string): ParsedValidatedReview {
   }
 
   const approved: ValidatedReviewComment[] = [];
+  const findings: ReviewFinding[] = [];
+  const outsideDiff: ReviewFinding[] = [];
+  const dropped: DroppedFinding[] = [];
+  const fixedFindings: ParsedValidatedReview["fixedFindings"] = [];
   const skipped: ParsedValidatedReview["skipped"] = [];
   let approvedCount = 0;
   let rejectedCount = 0;
@@ -114,10 +133,30 @@ export function parseValidatedReview(raw: string): ParsedValidatedReview {
     const record = asRecord(entry);
     if (!record) return skip("entry is not an object");
 
+    if (record.status === "fixed") {
+      const candidate = asRecord(record.candidate) ?? asRecord(record.comment);
+      const id =
+        asNonEmptyString(record.id) ??
+        (candidate ? asNonEmptyString(candidate.id) : null);
+      const evidence =
+        asNonEmptyString(record.evidence) ?? asNonEmptyString(record.reason);
+      if (id && evidence) fixedFindings.push({ id, evidence });
+      else skip("fixed entry requires a finding id and verification evidence");
+      return;
+    }
     if (record.status !== "approved") {
       // Anything not explicitly approved never reaches the PR/MR; an unknown
       // status counts the same as rejected.
       rejectedCount += 1;
+      const candidate = asRecord(record.candidate) ?? asRecord(record.comment);
+      dropped.push({
+        index,
+        path: candidate ? asNonEmptyString(candidate.path) : null,
+        ...(candidate && asNonEmptyString(candidate.title)
+          ? { title: asNonEmptyString(candidate.title)! }
+          : {}),
+        reason: asNonEmptyString(record.reason) ?? "Not approved by validation",
+      });
       return;
     }
     approvedCount += 1;
@@ -139,30 +178,60 @@ export function parseValidatedReview(raw: string): ParsedValidatedReview {
     ) {
       return skip("approved comment has an invalid `side`", filePath);
     }
+    if (
+      comment.severity !== undefined &&
+      !["P0", "P1", "P2"].includes(String(comment.severity))
+    ) {
+      return skip("approved comment has an invalid `severity`", filePath);
+    }
     const side = comment.side === "LEFT" ? "LEFT" : "RIGHT";
     const line = asPositiveInt(comment.line);
     const oldLine = asPositiveInt(comment.old_line);
     const anchor = side === "LEFT" ? (oldLine ?? line) : line;
-    if (anchor === null) {
+    const rich =
+      comment.title !== undefined ||
+      comment.severity !== undefined ||
+      comment.outside_diff === true;
+    if (anchor === null && !rich) {
       return skip(`no usable line anchor (side=${side})`, filePath);
     }
 
     const startLine = asPositiveInt(comment.startLine);
     const commentSha = asCommitSha(comment.commit_id);
     if (commentSha) shas.add(commentSha.toLowerCase());
+    const finding = normalizeFinding(comment);
+    findings.push(finding);
+    if (finding.outside_diff) {
+      outsideDiff.push(finding);
+      return;
+    }
 
     approved.push({
       path: filePath,
       body,
       line,
-      startLine: startLine !== null && startLine < anchor ? startLine : null,
+      startLine:
+        startLine !== null && anchor !== null && startLine < anchor
+          ? startLine
+          : null,
       side,
       old_path: asNonEmptyString(comment.old_path),
       old_line: oldLine,
+      ...(rich ? { finding } : {}),
     });
   });
 
   const summary = asRecord(root.reviewSummary);
+  if (Array.isArray(root.findingResolutions)) {
+    for (const rawResolution of root.findingResolutions) {
+      const resolution = asRecord(rawResolution);
+      if (!resolution || resolution.status !== "fixed") continue;
+      const id = asNonEmptyString(resolution.id);
+      const evidence = asNonEmptyString(resolution.evidence);
+      if (id && evidence && !fixedFindings.some((f) => f.id === id))
+        fixedFindings.push({ id, evidence });
+    }
+  }
 
   // Disagreeing SHAs mean the model anchored comments against more than one
   // commit; pinning to any of them would misplace the others.
@@ -175,5 +244,11 @@ export function parseValidatedReview(raw: string): ParsedValidatedReview {
     skipped,
     summaryBody: summary ? asNonEmptyString(summary.body) : null,
     commitId,
+    conflictingCommitIds: shas.size > 1,
+    findings,
+    outsideDiff,
+    dropped,
+    summary: normalizeSummary(root.reviewSummary),
+    fixedFindings,
   };
 }

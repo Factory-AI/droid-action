@@ -1,3 +1,5 @@
+import type { ReviewUxConfig } from "../config";
+
 /**
  * Shared types for the platform-agnostic review prompts.
  *
@@ -76,6 +78,19 @@ export interface ReviewTerminology {
  */
 export type ReviewPostingMode = "tool" | "file";
 
+export type ReviewPromptSettings = {
+  depth: ReviewUxConfig["review_depth"];
+  diagram: ReviewUxConfig["review_diagram"];
+  effort: ReviewUxConfig["review_effort"];
+  suggestReviewers: ReviewUxConfig["review_suggest_reviewers"];
+  preMergeChecks: ReviewUxConfig["review_pre_merge_checks"];
+  ignorePaths: ReviewUxConfig["review_ignore_paths"];
+  severityThreshold: ReviewUxConfig["review_severity_threshold"];
+  securitySeverityThreshold: ReviewUxConfig["security_severity_threshold"];
+  securityBlockOnCritical: ReviewUxConfig["security_block_on_critical"];
+  securityBlockOnHigh: ReviewUxConfig["security_block_on_high"];
+};
+
 export interface ReviewPromptContext {
   terminology: ReviewTerminology;
   /** PR number / MR IID */
@@ -105,4 +120,8 @@ export interface ReviewPromptContext {
   securityReviewEnabled: boolean;
   /** Where the change's code is (or is not) available, e.g. for a fork PR that is not checked out */
   sourceNote?: string;
+  /** Effective trusted config, resolved before model execution. */
+  reviewSettings?: ReviewPromptSettings;
+  /** Optional trusted prior-review manifest; absence is valid on the first run. */
+  priorFindingsPath?: string;
 }

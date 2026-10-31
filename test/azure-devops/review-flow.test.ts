@@ -1,3 +1,10 @@
+import { parseValidatedReview } from "../../src/core/review/validated/parse";
+import {
+  LEGACY_INLINE_BODY,
+  LEGACY_FALLBACK_BODY,
+  legacyCandidatesFromPrompt,
+  legacyValidatedFromPrompt,
+} from "../helpers/legacy-review-contract";
 import { afterAll, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "fs";
 import * as path from "path";
@@ -648,5 +655,90 @@ describe("validator + posting + tracking update", () => {
     await expect(postReview({ env, fetch: fake.fetch })).rejects.toThrow(
       "did not write",
     );
+  });
+});
+
+describe("legacy platform contract through real Azure DevOps pipeline", () => {
+  it("preserves the generated legacy contract through inline and outside-hunk fallback", async () => {
+    const fake = fakeAdo();
+    const env = envFor({
+      INCLUDE_SUGGESTIONS: "true",
+      AUTOMATIC_SECURITY_REVIEW: "true",
+    });
+    const state = await prepare(deps(env, fake));
+    const candidatesPrompt = fs.readFileSync(state.promptPath!, "utf8");
+    const candidates = legacyCandidatesFromPrompt(candidatesPrompt, {
+      path: "app.ts",
+      inlineLine: 4,
+      headSha: repo.source,
+    });
+    expect(candidates.comments).toHaveLength(2);
+    expect(candidatesPrompt).toContain("suggestion block rules");
+    fs.writeFileSync(state.candidatesPath!, JSON.stringify(candidates));
+    await prepareValidator(env);
+    const validatorPrompt = fs.readFileSync(state.promptPath!, "utf8");
+    const validated = legacyValidatedFromPrompt(validatorPrompt, {
+      path: "app.ts",
+      inlineLine: 4,
+      headSha: repo.source,
+    });
+    expect(validated.results).toHaveLength(2);
+    const parsed = parseValidatedReview(JSON.stringify(validated));
+    expect(parsed.approved).toHaveLength(2);
+    expect(parsed.outsideDiff).toHaveLength(0);
+    expect(parsed.skipped).toEqual([]);
+    expect(parsed.approved.map((comment) => comment.body)).toEqual([
+      LEGACY_INLINE_BODY,
+      LEGACY_FALLBACK_BODY,
+    ]);
+    fs.writeFileSync(state.validatedPath!, JSON.stringify(validated));
+    fake.requests.length = 0;
+    const results = await postReview({ env, fetch: fake.fetch });
+    const posts = fake.requests.filter(
+      (request) =>
+        request.method === "POST" && request.url.includes("/threads"),
+    );
+    expect(posts).toHaveLength(2);
+    expect(posts[0]!.body).toMatchObject({
+      comments: [
+        {
+          parentCommentId: 0,
+          content: LEGACY_INLINE_BODY,
+          commentType: "text",
+        },
+      ],
+      threadContext: {
+        filePath: "/app.ts",
+        rightFileStart: { line: 4, offset: 1 },
+        rightFileEnd: { line: 4, offset: 1 },
+      },
+    });
+    expect(posts[1]!.body).not.toHaveProperty("threadContext");
+    expect(posts[1]!.body).not.toHaveProperty("pullRequestThreadContext");
+    expect(posts[1]!.body).toMatchObject({
+      comments: [
+        {
+          parentCommentId: 0,
+          content:
+            "**`app.ts:40`** (could not be posted inline, so the finding is posted as a general comment)\n\n" +
+            LEGACY_FALLBACK_BODY,
+          commentType: "text",
+        },
+      ],
+    });
+    expect(results).toMatchObject({
+      posted: 1,
+      fallbackPosted: 1,
+      approved: 2,
+      rejected: 0,
+      failed: 0,
+      skipped: 0,
+      failures: [],
+      summaryBody: validated.reviewSummary.body,
+    });
+    const persisted = JSON.parse(
+      fs.readFileSync(postResultsFilePath(env), "utf8"),
+    );
+    expect(persisted).toEqual(results);
   });
 });

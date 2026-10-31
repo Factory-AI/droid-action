@@ -35,6 +35,10 @@ export function extractCommandFromContext(
     if (body) {
       const command = parseDroidCommand(body);
       if (command) {
+        // PR prose is reviewed data, not authorization to mutate branches or state.
+        if (["fix", "resolve", "pause", "resume"].includes(command.command)) {
+          return { ...command, command: "unknown", location: "body" };
+        }
         return { ...command, location: "body" };
       }
     }
@@ -45,6 +49,9 @@ export function extractCommandFromContext(
     if (body) {
       const command = parseDroidCommand(body);
       if (command) {
+        if (["fix", "resolve", "pause", "resume"].includes(command.command)) {
+          return { ...command, command: "unknown", location: "body" };
+        }
         return { ...command, location: "body" };
       }
     }
@@ -74,6 +81,12 @@ export function extractCommandFromContext(
       if (command) {
         return {
           ...command,
+          ...(command.command === "unknown" &&
+          /(?:\?|^(?:why|what|when|where|who|how|is|are|can|could|would|does|do|explain|tell|please explain)\b)/i.test(
+            command.text ?? "",
+          )
+            ? { command: "question" as const }
+            : {}),
           location: "comment",
           timestamp: comment.created_at,
         };

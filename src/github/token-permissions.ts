@@ -39,14 +39,24 @@ export function appTokenPermissionsFor(
   }
 
   // A full scan pushes a report branch and opens a pull request for it.
-  const fullScan =
-    resolveTagRunType({
-      automaticReview: context.inputs.automaticReview,
-      automaticSecurityReview: context.inputs.automaticSecurityReview,
-      command: extractCommandFromContext(context)?.command ?? null,
-    }) === DroidRunType.SecurityScan;
+  const parsed = extractCommandFromContext(context);
+  const command = parsed?.command ?? null;
+  const runType = resolveTagRunType({
+    automaticReview:
+      parsed?.location === "comment" ? false : context.inputs.automaticReview,
+    automaticSecurityReview:
+      parsed?.location === "comment"
+        ? false
+        : context.inputs.automaticSecurityReview,
+    command,
+  });
+  const fullScan = runType === DroidRunType.SecurityScan;
+  const fixes = runType === DroidRunType.Fix;
   if (context.isPR) {
-    return { contents: fullScan ? "write" : "read", pull_requests: "write" };
+    return {
+      contents: fullScan || fixes ? "write" : "read",
+      pull_requests: "write",
+    };
   }
   return fullScan
     ? { contents: "write", issues: "write", pull_requests: "write" }

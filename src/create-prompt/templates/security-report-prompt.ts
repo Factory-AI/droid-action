@@ -5,6 +5,7 @@ export function generateSecurityReportPrompt(
   context: PreparedContext,
   scanScope: ScanScope,
   branchName: string,
+  sourceRevision?: string,
 ): string {
   const date = new Date().toISOString().split("T")[0];
   const repoFullName = context.repository;
@@ -39,6 +40,7 @@ The gh CLI is installed and authenticated via GH_TOKEN.
 - Scope: ${scopeDescription}
 - Severity Threshold: ${severityThreshold} (only report findings at or above this level)
 - Output Branch: ${branchName}
+- Original Scan Revision: ${sourceRevision ?? "Record the original HEAD before making any edits"}
 - Report Path: .factory/security/reports/security-report-${date}.md
 
 ## Security Skills Available
@@ -54,8 +56,10 @@ You have access to security skills from the security-engineer plugin (security-e
 
 ### Step 1: Create Branch
 \`\`\`bash
-git checkout -b ${branchName}
+${sourceRevision ? `git fetch origin ${sourceRevision}\n` : ""}git checkout -b ${branchName}${sourceRevision ? ` ${sourceRevision}` : ""}
 \`\`\`
+${sourceRevision ? "- Scan the exact original revision checked out above, not the later report branch head." : "- Before edits, record the full original revision with `git rev-parse HEAD`."}
+- Keep the original revision and original finding locations unchanged in validator JSON, including any \`meta.headSha\` and comment \`commit_id\`. They identify pre-patch evidence, not the later report branch head.
 
 ### Step 2: Threat Model Check
 - Check if \`.factory/threat-model.md\` exists in the repository
@@ -84,10 +88,13 @@ For each file:
   - Invoke **security-review** skill to generate patches
   - Apply the patch to the codebase
   - Commit the fix with message: \`fix(security): [VULN-XXX] Brief description\`
+  - Record the full fix commit SHA and the exact regression check/outcome separately from the original evidence. Classify every remaining validated finding as requiring manual remediation. A reported patch is not independent proof that an existing review thread is fixed.
 
 ### Step 6: Generate Report
 - Create directory: \`mkdir -p .factory/security/reports\`
 - Write report to: \`.factory/security/reports/security-report-${date}.md\`
+- Also write the validator's structured results to \`$RUNNER_TEMP/droid-prompts/security_report_validated.json\`. Use the review validator format: \`{"version":1,"results":[{"status":"approved","comment":{"id":"VULN-001","title":"Outcome title","severity":"P1","security":true,"securitySeverity":"high","path":"src/file.ts","line":10,"body":"Verified impact","why":"Reachability and guards","verification":"Exact regression check","agent_prompt":"Verify and fix this issue","outside_diff":true}}],"reviewSummary":{"body":"Assessment"}}\`. Include only independently validated findings; rejected findings must have status \`"rejected"\` and a reason.
+- Add a scan-only top-level envelope to that same JSON: \`"securityReport":{"sourceRevision":"${sourceRevision ?? "<full original pre-patch SHA>"}","outcomes":[{"id":"VULN-001","disposition":"patched","fixCommit":"<full fix commit SHA>","verification":"<exact check and outcome>"},{"id":"VULN-002","disposition":"manual"}]}\`. Outcomes must refer only to approved finding IDs. Use \`patched\` only with a distinct full fix commit and a nonempty verification outcome; otherwise use \`manual\`. Never replace the original revision/locations with post-fix evidence.
 
 ### Step 7: Create PR
 \`\`\`bash
@@ -95,20 +102,9 @@ git add .
 git commit -m "fix(security): Security scan report - ${date}"
 git -c credential.helper= -c "credential.helper=!gh auth git-credential" push origin ${branchName}
 gh pr create --title "fix(security): Security scan report - ${date} (N findings)" \\
-  --body "## Security Scan Report
-
-See \`.factory/security/reports/security-report-${date}.md\` for details.
-
-### Summary
-| Severity | Count | Auto-fixed | Manual Required |
-|----------|-------|------------|-----------------|
-| CRITICAL | X | X | X |
-| HIGH | X | X | X |
-| MEDIUM | X | X | X |
-| LOW | X | X | X |
-
-${notifyTeam ? `cc ${notifyTeam}` : ""}"
+  --body "Droid is preparing the validated security report.${notifyTeam ? ` cc ${notifyTeam}` : ""}"
 \`\`\`
+- Read the structured validator JSON, then call \`github_pr___update_pr_description\` with \`mode: "security-report"\`, the explicit new report PR's number (never the triggering issue or original PR number), and the exact JSON string as \`body\`. The TypeScript renderer distinguishes reported patches from manual remediation and links evidence to the original scan revision. Do not use replace/merge/generated mode, write a free-form PR findings index, or submit a review event.
 
 ## Report Format
 
