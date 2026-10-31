@@ -224,13 +224,27 @@ describe("mode-specific manual requests do not inherit unrelated automatic flags
   });
   it("an unrelated body edit does not refresh the same previous command", async () => {
     (context.payload as any).changes.body.from =
-      "@droid review\nPrevious description";
+      "Previous description\n\n@droid review";
+    (context.payload as any).pull_request.body =
+      "Updated description\n\n@droid review";
     await review.prepareReviewMode({
       context,
       octokit: kit,
       githubToken: "test-only",
     });
     expect(lifecycleSpy.mock.calls[0]?.[0].skipReason).toBeDefined();
+  });
+  it("a changed review focus is a current manual request", async () => {
+    (context.payload as any).changes.body.from =
+      "@droid review Previous description";
+    (context.payload as any).pull_request.body = "@droid review Updated focus";
+    await review.prepareReviewMode({
+      context,
+      octokit: kit,
+      githubToken: "test-only",
+    });
+    expect(lifecycleSpy.mock.calls[0]?.[0].skipReason).toBeUndefined();
+    expect(promptSpy).toHaveBeenCalledTimes(1);
   });
   for (const eventAction of ["synchronize", "reopened"]) {
     it(`${eventAction} does not refresh a persistent body request`, async () => {
@@ -267,6 +281,87 @@ describe("mode-specific manual requests do not inherit unrelated automatic flags
       });
       expect(mode === "code" ? codeSpy : securitySpy).toHaveBeenCalledTimes(1);
       expect(mode === "code" ? securitySpy : codeSpy).not.toHaveBeenCalled();
+      expect(
+        (mode === "code" ? codeSpy : securitySpy).mock.calls[0]?.[0].context
+          .inputs,
+      ).toMatchObject({
+        automaticReview: false,
+        automaticSecurityReview: false,
+      });
+    });
+  }
+  it("tag dispatch preserves a current manual code request's full flag and quoted focus", async () => {
+    context.inputs.automaticSecurityReview = true;
+    (context.payload as any).pull_request.body =
+      '@droid review --full "authorization boundaries"';
+    const codeSpy = spyOn(review, "prepareReviewMode").mockResolvedValue({
+      branchInfo: { baseBranch: "main", currentBranch: "feature" },
+      mcpTools: "",
+    });
+    const securitySpy = spyOn(
+      security,
+      "prepareSecurityReviewMode",
+    ).mockResolvedValue({
+      branchInfo: { baseBranch: "main", currentBranch: "feature" },
+      mcpTools: "",
+    });
+    await prepareTagExecution({
+      context,
+      octokit: kit,
+      githubToken: "test-only",
+    });
+    expect(codeSpy).toHaveBeenCalledTimes(1);
+    expect(codeSpy.mock.calls[0]?.[0]).toMatchObject({
+      fullReview: true,
+      focus: '"authorization boundaries"',
+      context: {
+        inputs: { automaticReview: false, automaticSecurityReview: false },
+      },
+    });
+    expect(securitySpy).not.toHaveBeenCalled();
+  });
+  for (const scenario of [
+    "stale",
+    "title-only",
+    "synchronize",
+    "fenced",
+    "quoted-code",
+  ]) {
+    it(`tag dispatch does not grant manual code authority to a ${scenario} body mention`, async () => {
+      context.inputs.automaticSecurityReview = true;
+      const request = "@droid review --full focus";
+      (context.payload as any).pull_request.body = request;
+      if (scenario === "stale")
+        (context.payload as any).changes.body.from = request;
+      if (scenario === "title-only")
+        (context.payload as any).changes = { title: { from: "Old title" } };
+      if (scenario === "synchronize") context.eventAction = "synchronize";
+      if (scenario === "fenced")
+        (context.payload as any).pull_request.body =
+          `\`\`\`md\n${request}\n\`\`\``;
+      if (scenario === "quoted-code")
+        (context.payload as any).pull_request.body = `> \`${request}\``;
+      const result = {
+        branchInfo: { baseBranch: "main", currentBranch: "feature" },
+        mcpTools: "",
+      };
+      const codeSpy = spyOn(review, "prepareReviewMode").mockResolvedValue(
+        result,
+      );
+      const securitySpy = spyOn(
+        security,
+        "prepareSecurityReviewMode",
+      ).mockResolvedValue(result);
+      await prepareTagExecution({
+        context,
+        octokit: kit,
+        githubToken: "test-only",
+      });
+      expect(codeSpy).not.toHaveBeenCalled();
+      expect(securitySpy).toHaveBeenCalledTimes(1);
+      expect(
+        securitySpy.mock.calls[0]?.[0].context.inputs.automaticSecurityReview,
+      ).toBe(true);
     });
   }
 });

@@ -4,6 +4,11 @@ import {
   createOctokit,
   withRequestRedaction,
 } from "../../../src/github/api/client";
+import {
+  redactCredentialPatterns,
+  redactCredentials,
+  redactSecrets,
+} from "../../../src/utils/redact-credentials";
 
 const TOKEN = `ghs_${"B".repeat(36)}`;
 // Matches no token format, so only exact-value redaction can catch it.
@@ -17,6 +22,124 @@ type CapturedRequest = {
   body: string;
   headers: Record<string, string>;
 };
+
+describe("canonical credential quote preservation", () => {
+  const secret = "fixture-sensitive-value";
+  for (const scheme of ["Basic", "Bearer"]) {
+    for (const quote of ["'", '"']) {
+      test(`${scheme}: preserves outer shell and value quote delimiters ${quote}`, () => {
+        const cases = [
+          [
+            `curl -H ${quote}Authorization: ${scheme} ${secret}${quote}`,
+            `curl -H ${quote}Authorization: ${scheme} [REDACTED]${quote}`,
+          ],
+          [
+            `Authorization: ${scheme} ${quote}${secret}${quote}`,
+            `Authorization: ${scheme} ${quote}[REDACTED]${quote}`,
+          ],
+          [
+            `Authorization: ${quote}${scheme} ${secret}${quote}`,
+            `Authorization: ${quote}${scheme} [REDACTED]${quote}`,
+          ],
+          [
+            `Authorization: ${quote}${scheme} ${secret} with spaces${quote}`,
+            `Authorization: ${quote}${scheme} [REDACTED]${quote}`,
+          ],
+          [
+            `Authorization: ${quote}${scheme} ${secret}`,
+            `Authorization: ${quote}${scheme} [REDACTED]`,
+          ],
+        ];
+        for (const [raw, expected] of cases) {
+          const actual = redactCredentialPatterns(raw!);
+          expect(actual).toBe(expected!);
+          expect(actual).not.toContain(secret);
+          expect(redactCredentialPatterns(actual)).toBe(actual);
+        }
+      });
+    }
+  }
+  for (const name of [
+    "FACTORY_API_KEY",
+    "APP_PRIVATE_KEY",
+    "password",
+    "secret",
+  ]) {
+    for (const quote of ["'", '"']) {
+      test(`${name}: preserves quoted assignment delimiters ${quote}`, () => {
+        for (const [raw, expected] of [
+          [
+            `${name}=${quote}${secret}${quote}`,
+            `${name}=${quote}[REDACTED]${quote}`,
+          ],
+          [
+            `${name}=${quote}${secret} with spaces${quote}`,
+            `${name}=${quote}[REDACTED]${quote}`,
+          ],
+          [`${name}=${quote}${secret}`, `${name}=${quote}[REDACTED]`],
+          [`'${name}=${secret}'`, `'${name}=[REDACTED]'`],
+        ]) {
+          const actual = redactCredentialPatterns(raw!);
+          expect(actual).toBe(expected!);
+          expect(actual).not.toContain(secret);
+          expect(redactCredentialPatterns(actual)).toBe(actual);
+        }
+      });
+    }
+  }
+  for (const quote of ["'", '"']) {
+    for (const prefix of [
+      "password=",
+      "Authorization: Basic ",
+      "Authorization: ",
+    ]) {
+      for (const slashes of [1, 2, 3, 4]) {
+        test(`escape-aware quoted ${prefix} delimiter ${quote}, backslashes=${slashes}`, () => {
+          const scheme = prefix === "Authorization: " ? "Bearer " : "";
+          const credential =
+            slashes % 2
+              ? `alpha${"\\".repeat(slashes)}${quote}omega`
+              : `alpha${"\\".repeat(slashes)}`;
+          const suffix = ', "safe": "visible"';
+          const raw = `${prefix}${quote}${scheme}${credential}${quote}${suffix}`;
+          const actual = redactCredentialPatterns(raw);
+          expect(actual).toBe(
+            `${prefix}${quote}${scheme}[REDACTED]${quote}${suffix}`,
+          );
+          expect(actual).not.toContain("alpha");
+          expect(actual).not.toContain("omega");
+          expect(redactCredentialPatterns(actual)).toBe(actual);
+        });
+      }
+      test(`masks an unclosed quoted ${prefix} value ending in a backslash ${quote}`, () => {
+        const scheme = prefix === "Authorization: " ? "Bearer " : "";
+        const raw = `${prefix}${quote}${scheme}alpha\\\nnext_safe_field=visible`;
+        const actual = redactCredentialPatterns(raw);
+        expect(actual).toBe(
+          `${prefix}${quote}${scheme}[REDACTED]\nnext_safe_field=visible`,
+        );
+        expect(actual).not.toContain("alpha");
+        expect(redactCredentialPatterns(actual)).toBe(actual);
+      });
+    }
+  }
+  test("keeps exact-secret-first redaction and canonical token placeholders idempotent", () => {
+    const raw = `curl -H 'Authorization: Basic ${secret}'`;
+    expect(redactSecrets(raw, [secret])).toBe(
+      "curl -H 'Authorization: Basic [REDACTED]'",
+    );
+    expect(
+      redactCredentials(`APP_PRIVATE_KEY="${secret}"`, {
+        APP_PRIVATE_KEY: secret,
+      }),
+    ).toBe('APP_PRIVATE_KEY="[REDACTED]"');
+    const token = `ghs_${"Z".repeat(36)}`;
+    expect(redactCredentialPatterns(token)).toBe("[REDACTED_GITHUB_TOKEN]");
+    expect(redactCredentialPatterns(redactCredentialPatterns(token))).toBe(
+      "[REDACTED_GITHUB_TOKEN]",
+    );
+  });
+});
 
 describe("GitHub client request redaction", () => {
   let requests: CapturedRequest[];

@@ -56,7 +56,12 @@ describe("credential exposure wiring", () => {
       "ACTIONS_RUNTIME_TOKEN",
       "GH_TOKEN",
     ]);
+    // This collector never holds the App private key. Do not grant it access
+    // merely because the canonical redactor also protects processes that do.
+    expect(collect.env.APP_PRIVATE_KEY).toBeUndefined();
+    expect(collect.run).not.toContain("APP_PRIVATE_KEY=");
     for (const name of GITHUB_CREDENTIAL_ENV_NAMES) {
+      if (name === "APP_PRIVATE_KEY") continue;
       if (!notSetByAction.has(name)) expect(collect.env[name]).toBeDefined();
       expect(collect.run).toContain(`${name}="\${${name}:-}"`);
     }

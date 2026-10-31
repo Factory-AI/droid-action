@@ -135,6 +135,7 @@ export async function prepareTagExecution({
       : "code";
   const manualReview = isManualReviewRequest(context, requestedMode);
   if (
+    !manualReview &&
     commandContext?.location === "body" &&
     (context.inputs.automaticReview || context.inputs.automaticSecurityReview)
   ) {

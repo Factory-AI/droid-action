@@ -11,7 +11,10 @@ type MockCall<TArgs extends unknown[]> = {
   args: TArgs;
 };
 
-function createMockOctokit(existingBody = "") {
+function createMockOctokit(
+  existingBody = "",
+  pullData = { body: existingBody, head: { sha: "abc123456789" } },
+) {
   const updateCalls: MockCall<[any]>[] = [];
   const getCalls: MockCall<[any]>[] = [];
 
@@ -24,9 +27,7 @@ function createMockOctokit(existingBody = "") {
         },
         get: async (params: any) => {
           getCalls.push({ args: [params] });
-          return {
-            data: { body: existingBody, head: { sha: "abc123456789" } },
-          };
+          return { data: pullData };
         },
         listReviewComments: async () => ({ data: [] }),
         createReview: async () => ({ data: { id: 1 } }),
@@ -131,10 +132,36 @@ describe("github-pr-server", () => {
     expect(updated).not.toContain("\nold\n");
   });
   it("renders the security-full PR index and verification checklist from approved validation only", async () => {
-    const oldType = process.env.DROID_EXEC_RUN_TYPE;
-    process.env.DROID_EXEC_RUN_TYPE = "droid-security-scan";
+    const source = "a".repeat(40);
+    const fixed = "b".repeat(40);
+    const branch = "droid/security-report-fixture";
+    const env = {
+      DROID_EXEC_RUN_TYPE: "droid-security-scan",
+      SECURITY_REPORT_SOURCE_REVISION: source,
+      SECURITY_REPORT_BRANCH: branch,
+      SECURITY_REPORT_BASE_BRANCH: "main",
+      SECURITY_REPORT_AUTHOR: "factory-droid[bot]",
+      SECURITY_REPORT_ACTOR: "human",
+      SECURITY_REPORT_TRIGGER_NUMBER: "41",
+    };
+    const saved = new Map(
+      Object.keys(env).map((key) => [key, process.env[key]]),
+    );
+    Object.assign(process.env, env);
     try {
-      const octokit = createMockOctokit();
+      const ownedReport = {
+        state: "open",
+        merged: false,
+        body: "Owned report placeholder",
+        user: { login: "factory-droid[bot]", type: "Bot" },
+        head: {
+          sha: fixed,
+          ref: branch,
+          repo: { full_name: "org/repo" },
+        },
+        base: { ref: "main", repo: { full_name: "org/repo" } },
+      };
+      const octokit = createMockOctokit("", ownedReport);
       const updated = await handleUpdatePRDescription({
         owner: "org",
         repo: "repo",
@@ -142,6 +169,18 @@ describe("github-pr-server", () => {
         mode: "security-report",
         octokit,
         body: JSON.stringify({
+          meta: { headSha: source },
+          securityReport: {
+            sourceRevision: source,
+            outcomes: [
+              {
+                id: "f-sec",
+                disposition: "patched",
+                fixCommit: fixed,
+                verification: "Cross-tenant regression passed after patch",
+              },
+            ],
+          },
           results: [
             {
               status: "approved",
@@ -155,6 +194,7 @@ describe("github-pr-server", () => {
                 body: "A tenant can read another tenant's data.",
                 verification: "Run the cross-tenant regression test",
                 outside_diff: true,
+                commit_id: source,
               },
             },
             {
@@ -170,9 +210,27 @@ describe("github-pr-server", () => {
       expect(updated).toContain("**How to verify**");
       expect(updated).toContain("cross-tenant regression test");
       expect(updated).not.toContain("Rejected allegation");
+      expect(updated).toContain(`/blob/${source}/src/auth.ts`);
+      expect(updated).not.toContain(`/blob/${fixed}/src/auth.ts`);
+      expect(updated).toContain(
+        `**Reported patched** in \`${fixed.slice(0, 7)}\` (reported by the scan, not independently verified by this renderer).`,
+      );
+      expect(octokit.__calls.get.map((call) => call.args[0])).toEqual([
+        { owner: "org", repo: "repo", pull_number: 12 },
+        { owner: "org", repo: "repo", pull_number: 12 },
+      ]);
+      expect(octokit.__calls.update).toHaveLength(1);
+      expect(octokit.__calls.update[0]?.args[0]).toEqual({
+        owner: "org",
+        repo: "repo",
+        pull_number: 12,
+        body: updated,
+      });
     } finally {
-      if (oldType === undefined) delete process.env.DROID_EXEC_RUN_TYPE;
-      else process.env.DROID_EXEC_RUN_TYPE = oldType;
+      for (const [key, value] of saved) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
     }
   });
 });

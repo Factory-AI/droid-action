@@ -128,12 +128,28 @@ export function redactCredentialPatterns(content: string): string {
       REDACTED,
     )
     .replace(
-      /(\bauthorization\s*[:=]\s*(?:bearer|basic)?\s*)["']?[^\s,"';]+["']?/gi,
-      "$1[REDACTED]",
+      /(\bauthorization\s*[:=]\s*(?:(?:bearer|basic)\s+)?)(?:(["'])((?:(?:bearer|basic)\s+)?)(?:\\[^\r\n]|(?!\2)[^\\\r\n])*(?:\\(?=\r?$))?(\2|(?=\r?$))|([^\s,"';]+)(["']?))/gim,
+      (
+        _match,
+        prefix: string,
+        opening: string | undefined,
+        scheme: string | undefined,
+        closing: string | undefined,
+        _value: string | undefined,
+        trailing: string | undefined,
+      ) =>
+        `${prefix}${opening ?? ""}${scheme ?? ""}${REDACTED}${closing ?? trailing ?? ""}`,
     )
     .replace(
-      /(\b(?:FACTORY_API_KEY|GITHUB_TOKEN|APP_PRIVATE_KEY|api[_-]?key|access[_-]?token|password|secret)\s*[:=]\s*)["']?[^\s,"';]+["']?/gi,
-      "$1[REDACTED]",
+      /(\b(?:FACTORY_API_KEY|GITHUB_TOKEN|APP_PRIVATE_KEY|api[_-]?key|access[_-]?token|password|secret)\s*[:=]\s*)(?:(["'])(?:\\[^\r\n]|(?!\2)[^\\\r\n])*(?:\\(?=\r?$))?(\2|(?=\r?$))|([^\s,"';]+)(["']?))/gim,
+      (
+        _match,
+        prefix: string,
+        opening: string | undefined,
+        closing: string | undefined,
+        _value: string | undefined,
+        trailing: string | undefined,
+      ) => `${prefix}${opening ?? ""}${REDACTED}${closing ?? trailing ?? ""}`,
     )
     .replace(/(https?:\/\/)[^/\s:@]+:[^/\s@]+@/g, "$1[REDACTED]@")
     .replace(

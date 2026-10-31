@@ -11,13 +11,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
+import { DroidRunType } from "../src/run-type";
+import { createControlledRuntime } from "./helpers/controlled-runtime";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const temporary = mkdtempSync(join(tmpdir(), "droid-runtime-env-"));
 const runtime = realpathSync(process.execPath);
-const runtimeHash = createHash("sha256")
-  .update(readFileSync(runtime))
-  .digest("hex");
 const marker = "RUNTIME_ENV_RECEIPT:";
 const values = {
   DROID_EXEC_RUN_TYPE: "droid-security-review",
@@ -27,6 +26,7 @@ const values = {
 let sequence = 0;
 let validator = "";
 let validatorWithNetworkFixtures = "";
+let controlledRuntime: Awaited<ReturnType<typeof createControlledRuntime>>;
 
 function file(name: string, contents = ""): string {
   const path = join(temporary, `${sequence++}-${name}`);
@@ -119,8 +119,7 @@ function child(
 ) {
   const env: Record<string, string> = {
     PATH: "/usr/bin:/bin",
-    HOME: temporary,
-    RUNNER_TEMP: temporary,
+    ...controlledRuntime.env,
     FIXTURE_MODE: mode,
     FIXTURE_VALUES: JSON.stringify(overrides),
   };
@@ -182,7 +181,7 @@ console.log("FROZEN_VALIDATOR_PATH:" + built.outputs[0].path);
   const built = Bun.spawnSync({
     cmd: [runtime, "--config=/dev/null", "--env-file=/dev/null", "-e", source],
     cwd: root,
-    env: { PATH: "/usr/bin:/bin", HOME: temporary },
+    env: { PATH: "/usr/bin:/bin", ...controlledRuntime.env },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -243,7 +242,7 @@ function wrapper(action: string, fullPath: boolean) {
   const publisher = fullPath ? validatorWithNetworkFixtures : validator;
   const env: Record<string, string> = {
     PATH: "/usr/bin:/bin",
-    HOME: temporary,
+    ...controlledRuntime.env,
     GITHUB_ENV: outerEnv,
     GITHUB_OUTPUT: output,
     GITHUB_EVENT_PATH: event,
@@ -254,16 +253,19 @@ function wrapper(action: string, fullPath: boolean) {
     GITHUB_SERVER_URL: "https://github.com",
     GITHUB_API_URL: "https://api.github.com",
     GITHUB_TOKEN: "fixture-token-not-a-real-credential",
-    RUNNER_TEMP: temporary,
     REVIEW_PUBLISHER_PATH: publisher,
     REVIEW_PUBLISHER_SHA256: createHash("sha256")
       .update(readFileSync(publisher))
       .digest("hex"),
-    REVIEW_RUNTIME_PATH: runtime,
-    REVIEW_RUNTIME_SHA256: runtimeHash,
+    REVIEW_RUNTIME_PATH: controlledRuntime.path,
+    REVIEW_RUNTIME_SHA256: controlledRuntime.sha256,
     REVIEW_CANDIDATES_PATH: candidates,
     REVIEW_VALIDATED_PATH: join(temporary, "validated.json"),
     DROID_COMMENT_ID: "7",
+    DROID_EXEC_RUN_TYPE:
+      action === "security/action.yml"
+        ? DroidRunType.SecurityReview
+        : DroidRunType.Review,
   };
   const result = Bun.spawnSync({
     cmd: [
@@ -291,6 +293,7 @@ function wrapper(action: string, fullPath: boolean) {
 }
 
 beforeAll(async () => {
+  controlledRuntime = await createControlledRuntime(temporary);
   validator = await bundleValidator(false);
   validatorWithNetworkFixtures = await bundleValidator(true);
 });
@@ -362,21 +365,31 @@ describe("existing callers use real core", () => {
       const result = wrapper(action, false);
       expect(result.exitCode).toBe(0);
       expect(commandFile(result.output).validator_should_run).toBe("false");
+      expect(commandFile(result.output).droid_exec_run_type).toBe(
+        action === "security/action.yml"
+          ? DroidRunType.SecurityReview
+          : DroidRunType.Review,
+      );
       expect(readFileSync(result.outerEnv, "utf8")).toBe("");
       expect(result.stdout).not.toContain("::set-env");
     },
   );
 
-  it("hands actual validator args and MCP outputs onward without job-env persistence", () => {
+  it("hands actual validator role and MCP outputs onward without job-env persistence", () => {
     const result = wrapper("action.yml", true);
     expect(result.exitCode).toBe(0);
     const output = commandFile(result.output);
     expect(output.validator_should_run).toBe("true");
+    expect(output.droid_exec_run_type).toBe(DroidRunType.Review);
     expect(output.droid_args).toContain(
       '--enabled-tools "Read,Grep,Glob,LS,Execute,ApplyPatch,Create,Edit,Skill"',
     );
     expect(output.droid_args).not.toContain("github_comment");
+    expect(output.droid_args).toContain('--model "openai-latest-balanced"');
+    expect(output.droid_args).toContain('--reasoning-effort "medium"');
     expect(output.mcp_tools).toBe('{"mcpServers":{}}');
+    expect(output.review_pr_number).toBe("1");
+    expect(output.droid_comment_id).toBe("7");
     expect(Object.keys(output)).not.toContain("GITHUB_TOKEN");
     expect(JSON.stringify(output)).not.toContain(
       "fixture-token-not-a-real-credential",
