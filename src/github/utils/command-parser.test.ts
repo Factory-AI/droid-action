@@ -137,17 +137,30 @@ describe("Command Parser", () => {
     });
 
     it("should handle multiline text", () => {
-      const text = `
-        ## Description
-        This is a PR description
-        
-        @droid fill
-        
-        Some other content
-      `;
+      const text = [
+        "## Description",
+        "This is a PR description",
+        "",
+        "@droid fill",
+        "",
+        "Some other content",
+      ].join("\n");
       const result = parseDroidCommand(text);
       expect(result?.command).toBe("fill");
     });
+
+    for (const spaces of [4, 8]) {
+      it(`does not execute a command in ${spaces}-space indented Markdown code`, () => {
+        const text = [
+          "## Description",
+          "",
+          `${" ".repeat(spaces)}@droid fill`,
+          "",
+          "Some other content",
+        ].join("\n");
+        expect(parseDroidCommand(text)).toBeNull();
+      });
+    }
 
     it("should return null for text without @droid", () => {
       const result = parseDroidCommand("Please review this PR");

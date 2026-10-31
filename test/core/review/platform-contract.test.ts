@@ -261,7 +261,7 @@ describe("unchanged legacy builder mode semantics", () => {
     ).toBe(legacyCandidates(context));
   });
 
-  it("keeps default and explicit tool mode identical without rich file rules", () => {
+  it("keeps the legacy validator file-only when dead tool mode is supplied", () => {
     const toolContext = {
       ...context,
       terminology: {
@@ -274,23 +274,34 @@ describe("unchanged legacy builder mode semantics", () => {
     expect(legacyValidator({ ...toolContext, postingMode: "tool" })).toBe(
       implicit,
     );
-    expect(implicit).toContain("### Post approved items");
+    expect(legacyValidator({ ...toolContext, postingMode: "file" })).toBe(
+      implicit,
+    );
+    expect(implicit).toContain("### Do not post anything yourself");
+    expect(implicit).not.toContain("### Post approved items");
+    expect(implicit).not.toContain("test_submit_review");
+    expect(implicit).not.toContain("test_update_tracking");
     expect(implicit).not.toContain("outside_diff");
     expect(implicit).not.toContain("layout-free structured fields");
     expect(implicit).not.toContain("raw replacement code");
   });
 
-  it("refuses default or explicit tool mode for file-only BB and ADO terminology", () => {
+  it("ignores dead tool mode for file-only BB and ADO terminology", () => {
     for (const terminology of [
       BITBUCKET_TERMINOLOGY,
       AZURE_DEVOPS_TERMINOLOGY,
     ]) {
-      expect(() => legacyValidator({ ...context, terminology })).toThrow(
-        'postingMode "tool" requires terminology.submitReviewToolName',
-      );
-      expect(() =>
+      const file = legacyValidator({
+        ...context,
+        terminology,
+        postingMode: "file",
+      });
+      expect(legacyValidator({ ...context, terminology })).toBe(file);
+      expect(
         legacyValidator({ ...context, terminology, postingMode: "tool" }),
-      ).toThrow('postingMode "tool" requires terminology.submitReviewToolName');
+      ).toBe(file);
+      expect(file).toContain("### Do not post anything yourself");
+      expect(file).not.toContain("### Post approved items");
     }
   });
 

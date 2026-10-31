@@ -141,6 +141,149 @@ describe("canonical credential quote preservation", () => {
   });
 });
 
+describe("canonical credential JSONL separator preservation", () => {
+  test("keeps adjacent exact-redacted assignments and JSONL formatting byte-for-byte", () => {
+    const raw =
+      '{"output":"GITHUB_TOKEN=unknownAlpha\\nFACTORY_API_KEY=unknownOmega"}\n';
+    expect(redactSecrets(raw, ["unknownAlpha", "unknownOmega"])).toBe(
+      '{"output":"GITHUB_TOKEN=[REDACTED]\\nFACTORY_API_KEY=[REDACTED]"}\n',
+    );
+  });
+  for (const separator of [
+    String.raw`\n`,
+    String.raw`\r`,
+    String.raw`\t`,
+    String.raw`\r\n`,
+  ]) {
+    for (const [first, second] of [
+      ["GITHUB_TOKEN=", "FACTORY_API_KEY="],
+      ["Authorization: Basic ", "password="],
+      ["password=", "Authorization: Bearer "],
+      ["Authorization: Bearer ", "Authorization: Basic "],
+    ]) {
+      test(`masks both unknown fields without exact secrets across ${separator}: ${first} then ${second}`, () => {
+        const raw = `{"output":"${first}unknownAlpha${separator}${second}unknownOmega"}\n`;
+        const expected = `{"output":"${first}[REDACTED]${separator}${second}[REDACTED]"}\n`;
+        const actual = redactSecrets(raw, []);
+        expect(actual).toBe(expected);
+        expect(actual).not.toContain("unknownAlpha");
+        expect(actual).not.toContain("unknownOmega");
+        expect(redactCredentialPatterns(actual)).toBe(actual);
+      });
+    }
+  }
+  for (const separatorEnd of ["n", "r", "t", String.raw`r\n`]) {
+    for (const slashes of [1, 2, 3, 4]) {
+      test(`keeps auth-to-auth continuation masked with ${slashes} backslashes before ${separatorEnd}`, () => {
+        const raw = `Authorization: Basic unknownAlpha${"\\".repeat(slashes)}${separatorEnd}Authorization: Bearer unknownOmega`;
+        const retainedSeparator =
+          slashes % 2
+            ? `\\${separatorEnd}`
+            : separatorEnd === String.raw`r\n`
+              ? String.raw`\n`
+              : "";
+        const expected = retainedSeparator
+          ? `Authorization: Basic [REDACTED]${retainedSeparator}Authorization: Bearer [REDACTED]`
+          : "Authorization: Basic [REDACTED]";
+        const actual = redactSecrets(raw, []);
+        expect(actual).toBe(expected);
+        expect(actual).not.toContain("unknownAlpha");
+        expect(actual).not.toContain("unknownOmega");
+        expect(redactCredentialPatterns(actual)).toBe(actual);
+      });
+    }
+  }
+  for (const quote of ["'", '"']) {
+    for (const continuation of [
+      `Authorization: ${quote}Bearer unknownOmega`,
+      `Authorization: Basic ${quote}unknownOmega`,
+      `password = ${quote}unknownOmega`,
+    ]) {
+      test(`masks unclosed even-run quoted continuation through line end: ${continuation}`, () => {
+        const raw = `password=unknownAlpha\\\\n${continuation}\\\nnext_safe_field=visible`;
+        const actual = redactSecrets(raw, []);
+        expect(actual).toBe("password=[REDACTED]\nnext_safe_field=visible");
+        expect(actual).not.toContain("unknownAlpha");
+        expect(actual).not.toContain("unknownOmega");
+        expect(redactCredentialPatterns(actual)).toBe(actual);
+      });
+    }
+    for (const continuation of [
+      `Authorization: ${quote}Bearer unknownOmega${quote}`,
+      `Authorization: Basic ${quote}unknownOmega${quote}`,
+      `password = ${quote}unknownOmega${quote}`,
+      "password = unknownOmega",
+    ]) {
+      test(`masks even-run recognized continuation and leaves safe adjacent fields: ${continuation}`, () => {
+        const suffix = ", safe=visible";
+        const raw = `password=unknownAlpha\\\\n${continuation}${suffix}`;
+        const actual = redactSecrets(raw, []);
+        expect(actual).toBe(`password=[REDACTED]${suffix}`);
+        expect(actual).not.toContain("unknownAlpha");
+        expect(actual).not.toContain("unknownOmega");
+        expect(redactCredentialPatterns(actual)).toBe(actual);
+      });
+    }
+  }
+  test("does not cross an actual line break when masking an embedded field prefix", () => {
+    const raw =
+      "password=unknownAlpha\\\\nAuthorization:\nnext_safe_field=visible";
+    expect(redactCredentialPatterns(raw)).toBe(
+      "password=[REDACTED]\nnext_safe_field=visible",
+    );
+  });
+  for (const newline of ["\n", "\r\n"]) {
+    test(`preserves safe fields after an empty authorization header across ${JSON.stringify(newline)}`, () => {
+      const raw = `Authorization:${newline}next_safe_field=visible`;
+      expect(redactCredentialPatterns(raw)).toBe(raw);
+      const embedded = `password=unknownAlpha\\\\nAuthorization:${newline}next_safe_field=visible`;
+      expect(redactCredentialPatterns(embedded)).toBe(
+        `password=[REDACTED]${newline}next_safe_field=visible`,
+      );
+    });
+    test(`does not extend a quoted authorization scheme over ${JSON.stringify(newline)}`, () => {
+      const raw = `Authorization: "Bearer${newline}next_safe_field=visible`;
+      const actual = redactCredentialPatterns(raw);
+      expect(actual).toBe(
+        `Authorization: "[REDACTED]${newline}next_safe_field=visible`,
+      );
+      expect(redactCredentialPatterns(actual)).toBe(actual);
+    });
+  }
+  for (const first of ["password=", "Authorization: Basic "]) {
+    for (const slashes of [1, 2, 3, 4]) {
+      test(`retains even backslash pairs inside unknown ${first} values, slashes=${slashes}`, () => {
+        const separator = `${"\\".repeat(slashes)}n`;
+        const raw = `${first}unknownAlpha${separator}FACTORY_API_KEY=unknownOmega`;
+        const actual = redactCredentialPatterns(raw);
+        expect(actual).toBe(
+          slashes % 2
+            ? `${first}[REDACTED]\\nFACTORY_API_KEY=[REDACTED]`
+            : `${first}[REDACTED]`,
+        );
+        expect(actual).not.toContain("unknownAlpha");
+        expect(actual).not.toContain("unknownOmega");
+        expect(redactCredentialPatterns(actual)).toBe(actual);
+      });
+    }
+    for (const suffix of [
+      String.raw`alpha\omega`,
+      String.raw`alpha\nordinarySuffix`,
+      String.raw`alpha\runknown_field=omega`,
+      String.raw`alpha\\nFACTORY_API_KEY=omega`,
+      "alpha\\",
+    ]) {
+      test(`does not expose arbitrary backslash credential suffixes: ${first}${suffix}`, () => {
+        const actual = redactCredentialPatterns(`${first}${suffix}`);
+        expect(actual).toBe(`${first}[REDACTED]`);
+        expect(actual).not.toContain("alpha");
+        expect(actual).not.toContain("omega");
+        expect(redactCredentialPatterns(actual)).toBe(actual);
+      });
+    }
+  }
+});
+
 describe("GitHub client request redaction", () => {
   let requests: CapturedRequest[];
   let fetchSpy: ReturnType<typeof spyOn>;

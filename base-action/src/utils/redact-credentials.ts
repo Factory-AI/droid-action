@@ -67,6 +67,16 @@ const GITHUB_TOKEN_LABEL = "[REDACTED_GITHUB_TOKEN]";
 const AFTER_JSON_ESCAPE = String.raw`(?<=\\[nrt])`;
 const TOKEN_START = String.raw`(?:(?<![\w.$-])|${AFTER_JSON_ESCAPE})`;
 const GITHUB_TOKEN_START = String.raw`(?:\b|${AFTER_JSON_ESCAPE})`;
+const ASSIGNMENT_KEY = String.raw`(?:FACTORY_API_KEY|GITHUB_TOKEN|APP_PRIVATE_KEY|api[_-]?key|access[_-]?token|password|secret)`;
+// Split encoded log lines only where the following value is also redacted.
+// Other backslashes, including escaped backslash pairs, stay inside the secret.
+const NEXT_CREDENTIAL_FIELD = String.raw`(?:authorization|${ASSIGNMENT_KEY})\s*[:=]`;
+// A literal (even-backslash) continuation is still one secret. Consume its
+// known field prefix and quoted value too, rather than stranding a token after
+// the prefix's whitespace. These atoms never consume an actual line break.
+const EMBEDDED_CREDENTIAL_PREFIX = String.raw`(?:authorization[^\S\r\n]*[:=][^\S\r\n]*(?:(?:bearer|basic)[^\S\r\n]+)?|${ASSIGNMENT_KEY}[^\S\r\n]*[:=][^\S\r\n]*)`;
+const EMBEDDED_QUOTED_VALUE = String.raw`(?:"(?:\\[^\r\n]|[^"\\\r\n])*(?:\\(?=\r?$))?(?:"|(?=\r?$))|'(?:\\[^\r\n]|[^'\\\r\n])*(?:\\(?=\r?$))?(?:'|(?=\r?$)))`;
+const BARE_CREDENTIAL_VALUE = String.raw`(?:\\(?!(?:r\\n|[nrt])(?=${NEXT_CREDENTIAL_FIELD}))[^\s,"';]?|${EMBEDDED_CREDENTIAL_PREFIX}(?:${EMBEDDED_QUOTED_VALUE})?|[^\\\s,"';])+`;
 
 const FACTORY_API_KEY_PATTERN = new RegExp(
   `${TOKEN_START}fk-[A-Za-z0-9_-]{20,}`,
@@ -128,7 +138,10 @@ export function redactCredentialPatterns(content: string): string {
       REDACTED,
     )
     .replace(
-      /(\bauthorization\s*[:=]\s*(?:(?:bearer|basic)\s+)?)(?:(["'])((?:(?:bearer|basic)\s+)?)(?:\\[^\r\n]|(?!\2)[^\\\r\n])*(?:\\(?=\r?$))?(\2|(?=\r?$))|([^\s,"';]+)(["']?))/gim,
+      new RegExp(
+        String.raw`((?:\b|${AFTER_JSON_ESCAPE})authorization[^\S\r\n]*[:=][^\S\r\n]*(?:(?:bearer|basic)[^\S\r\n]+)?)(?:(["'])((?:(?:bearer|basic)[^\S\r\n]+)?)(?:\\[^\r\n]|(?!\2)[^\\\r\n])*(?:\\(?=\r?$))?(\2|(?=\r?$))|(${BARE_CREDENTIAL_VALUE})(["']?))`,
+        "gim",
+      ),
       (
         _match,
         prefix: string,
@@ -141,7 +154,10 @@ export function redactCredentialPatterns(content: string): string {
         `${prefix}${opening ?? ""}${scheme ?? ""}${REDACTED}${closing ?? trailing ?? ""}`,
     )
     .replace(
-      /(\b(?:FACTORY_API_KEY|GITHUB_TOKEN|APP_PRIVATE_KEY|api[_-]?key|access[_-]?token|password|secret)\s*[:=]\s*)(?:(["'])(?:\\[^\r\n]|(?!\2)[^\\\r\n])*(?:\\(?=\r?$))?(\2|(?=\r?$))|([^\s,"';]+)(["']?))/gim,
+      new RegExp(
+        String.raw`((?:\b|${AFTER_JSON_ESCAPE})${ASSIGNMENT_KEY}\s*[:=]\s*)(?:(["'])(?:\\[^\r\n]|(?!\2)[^\\\r\n])*(?:\\(?=\r?$))?(\2|(?=\r?$))|(${BARE_CREDENTIAL_VALUE})(["']?))`,
+        "gim",
+      ),
       (
         _match,
         prefix: string,
