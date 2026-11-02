@@ -79,10 +79,10 @@ describe("Command Parser", () => {
       expect(result?.raw).toBe("@droid review");
     });
 
-    it("should parse @droid review security as review", () => {
+    it("should parse @droid review security as security", () => {
       const result = parseDroidCommand("@droid review security");
-      expect(result?.command).toBe("review");
-      expect(result?.raw).toBe("@droid review");
+      expect(result?.command).toBe("security");
+      expect(result?.raw).toBe("@droid review security");
     });
 
     it("should parse @droid security review as security", () => {
@@ -130,24 +130,37 @@ describe("Command Parser", () => {
       expect(result?.command).toBe("fill");
     });
 
-    it("should detect generic @droid as default command", () => {
+    it("should detect unknown text as an unknown command", () => {
       const result = parseDroidCommand("@droid please implement this feature");
-      expect(result?.command).toBe("default");
+      expect(result?.command).toBe("unknown");
       expect(result?.raw).toBe("@droid");
     });
 
     it("should handle multiline text", () => {
-      const text = `
-        ## Description
-        This is a PR description
-        
-        @droid fill
-        
-        Some other content
-      `;
+      const text = [
+        "## Description",
+        "This is a PR description",
+        "",
+        "@droid fill",
+        "",
+        "Some other content",
+      ].join("\n");
       const result = parseDroidCommand(text);
       expect(result?.command).toBe("fill");
     });
+
+    for (const spaces of [4, 8]) {
+      it(`does not execute a command in ${spaces}-space indented Markdown code`, () => {
+        const text = [
+          "## Description",
+          "",
+          `${" ".repeat(spaces)}@droid fill`,
+          "",
+          "Some other content",
+        ].join("\n");
+        expect(parseDroidCommand(text)).toBeNull();
+      });
+    }
 
     it("should return null for text without @droid", () => {
       const result = parseDroidCommand("Please review this PR");
@@ -338,7 +351,7 @@ describe("Command Parser", () => {
       expect(result).toBeNull();
     });
 
-    it("should extract default command when no specific command", () => {
+    it("should extract unknown command when no specific command", () => {
       const context = createContext("issue_comment", {
         action: "created",
         comment: {
@@ -351,7 +364,7 @@ describe("Command Parser", () => {
         },
       } as unknown as IssueCommentEvent);
       const result = extractCommandFromContext(context);
-      expect(result?.command).toBe("default");
+      expect(result?.command).toBe("unknown");
       expect(result?.location).toBe("comment");
     });
   });

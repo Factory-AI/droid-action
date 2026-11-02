@@ -10,6 +10,7 @@ import * as childProcess from "child_process";
 import * as fsPromises from "fs/promises";
 import { DroidRunType } from "../../../src/run-type";
 import { parseSessionTagFromDroidArgs } from "../../utils/session-tag-helpers";
+import * as lifecycle from "../../../src/github/operations/review-lifecycle";
 
 const MOCK_PR_DATA = {
   title: "PR for review",
@@ -45,8 +46,22 @@ describe("prepareReviewMode", () => {
   let writeFileSpy: ReturnType<typeof spyOn>;
   let mkdirSpy: ReturnType<typeof spyOn>;
   let fetchSpy: ReturnType<typeof spyOn>;
+  let lifecycleSpy: ReturnType<typeof spyOn>;
+  let readLifecycleSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
+    lifecycleSpy = spyOn(
+      lifecycle,
+      "prepareReviewLifecycle",
+    ).mockImplementation(async (options) => ({
+      commentId: options.trackingCommentId ?? 777,
+      state: { head: "", findings: [] },
+      run: {} as lifecycle.ReviewLifecycleRun,
+    }));
+    readLifecycleSpy = spyOn(
+      lifecycle,
+      "readReviewLifecycle",
+    ).mockResolvedValue(null);
     process.env.DROID_ARGS = "";
     delete process.env.REVIEW_MODEL;
     delete process.env.SECURITY_REVIEW_ENABLED;
@@ -92,6 +107,8 @@ describe("prepareReviewMode", () => {
   });
 
   afterEach(() => {
+    lifecycleSpy.mockRestore();
+    readLifecycleSpy.mockRestore();
     fetchSpy?.mockRestore();
     graphqlSpy?.mockRestore();
     promptSpy.mockRestore();
@@ -189,10 +206,19 @@ describe("prepareReviewMode", () => {
       octokit,
       githubToken: "token",
       trackingCommentId: 555,
+      fullReview: true,
+      focus: "the migration for locking issues",
     });
 
     expect(graphqlSpy).toHaveBeenCalled();
     expect(promptSpy).toHaveBeenCalled();
+    expect(lifecycleSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ full: true }),
+    );
+    const generated = promptSpy.mock.calls[0]?.[0]?.generatePrompt(
+      promptModule.prepareContext(context),
+    );
+    expect(generated).toContain("the migration for locking issues");
     expect(mcpSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         runType: DroidRunType.Review,
@@ -434,11 +460,8 @@ describe("prepareReviewMode", () => {
       githubToken: "token",
     });
 
-    expect(createInitialSpy).toHaveBeenCalledWith(
-      octokit.rest,
-      context,
-      "default",
-      DroidRunType.Review,
+    expect(lifecycleSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ octokit, context }),
     );
     expect(result.commentId).toBe(777);
   });
@@ -520,6 +543,10 @@ describe("prepareReviewMode", () => {
     expect(droidArgsCall?.[1]).toContain(
       '--model "claude-sonnet-4-5-20250929"',
     );
+    expect(setOutputSpy).toHaveBeenCalledWith(
+      "review_model",
+      "claude-sonnet-4-5-20250929",
+    );
   });
 
   it("does not add --model flag when REVIEW_MODEL is empty", async () => {
@@ -588,6 +615,14 @@ describe("prepareReviewMode", () => {
     // When REVIEW_MODEL is empty the deep depth preset kicks in (openai-latest-balanced, medium reasoning).
     expect(droidArgsCall?.[1]).toContain('--model "openai-latest-balanced"');
     expect(droidArgsCall?.[1]).toContain('--reasoning-effort "medium"');
+    expect(setOutputSpy).toHaveBeenCalledWith(
+      "review_model",
+      "openai-latest-balanced",
+    );
+    expect(setOutputSpy).toHaveBeenCalledWith(
+      "review_reasoning_effort",
+      "medium",
+    );
   });
 
   it("stores PR description as an artifact file", async () => {

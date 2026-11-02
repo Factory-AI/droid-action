@@ -19,7 +19,7 @@ describe("comments common helpers", () => {
     const link = createJobRunLink("factory", "droid", "12345");
 
     expect(link).toBe(
-      `[View job run](${GITHUB_SERVER_URL}/factory/droid/actions/runs/12345)`,
+      `[View job](${GITHUB_SERVER_URL}/factory/droid/actions/runs/12345)`,
     );
   });
 

@@ -1,3 +1,5 @@
+import { redactCredentials } from "./redact-credentials";
+
 export type RetryOptions = {
   maxAttempts?: number;
   initialDelayMs?: number;
@@ -32,7 +34,10 @@ export async function retryWithBackoff<T>(
       return await operation();
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
-      console.error(`Attempt ${attempt} failed:`, lastError.message);
+      console.error(
+        `Attempt ${attempt} failed:`,
+        redactCredentials(lastError.message),
+      );
 
       if (shouldRetry && !shouldRetry(lastError)) {
         console.error("Error is not retryable; giving up");

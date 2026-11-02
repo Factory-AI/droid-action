@@ -14,11 +14,11 @@ function specInputs(): Record<string, { default?: unknown }> {
 }
 
 describe("droid-review GitLab template defaults", () => {
-  it("enables automatic security review by default", () => {
-    expect(specInputs().automatic_security_review?.default).toBe("true");
+  it("leaves automatic security unset so base config can override its effective true default", () => {
+    expect(specInputs().automatic_security_review?.default).toBe("");
   });
 
-  it("enables automatic code review by default", () => {
-    expect(specInputs().automatic_review?.default).toBe("true");
+  it("leaves automatic code review unset so base config can override its effective true default", () => {
+    expect(specInputs().automatic_review?.default).toBe("");
   });
 });

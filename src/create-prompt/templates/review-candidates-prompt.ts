@@ -8,6 +8,7 @@
  */
 
 import { generateCandidatesPrompt } from "../../core/review/prompts/candidates";
+import { reviewPromptSettingsFromEnvironment } from "../../core/review/prompts/settings";
 import { forkPrSourceNote } from "../fork-notice";
 import { GITHUB_TERMINOLOGY } from "../terminology";
 import type { PreparedContext } from "../types";
@@ -41,6 +42,8 @@ export function generateReviewCandidatesPrompt(
       "$RUNNER_TEMP/droid-prompts/review_candidates.json",
     includeSuggestions: context.includeSuggestions !== false,
     securityReviewEnabled: process.env.SECURITY_REVIEW_ENABLED === "true",
+    reviewSettings: reviewPromptSettingsFromEnvironment(),
+    priorFindingsPath: process.env.REVIEW_PRIOR_FINDINGS_PATH,
     sourceNote: forkPrSourceNote(
       context.prBranchData,
       context.eventData.baseBranch ?? "base",

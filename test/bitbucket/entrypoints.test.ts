@@ -1,3 +1,10 @@
+import { parseValidatedReview } from "../../src/core/review/validated/parse";
+import {
+  LEGACY_INLINE_BODY,
+  LEGACY_FALLBACK_BODY,
+  legacyCandidatesFromPrompt,
+  legacyValidatedFromPrompt,
+} from "../helpers/legacy-review-contract";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "fs/promises";
 import * as os from "os";
@@ -1095,4 +1102,81 @@ describe("Bitbucket Data Center review steps (Jenkins)", () => {
       /Bitbucket API 401: Unauthorized .*Authentication failed/,
     );
   });
+});
+
+describe("legacy platform contract through real Bitbucket pipeline", () => {
+  for (const variant of ["Cloud", "Data Center"]) {
+    it(`${variant} preserves the generated legacy contract through inline and outside-hunk fallback`, async () => {
+      const f = variant === "Cloud" ? useCloud() : useDataCenter();
+      process.env.INCLUDE_SUGGESTIONS = "true";
+      process.env.AUTOMATIC_SECURITY_REVIEW = "true";
+      const state = await prepare(deps);
+      const candidatesPrompt = await fs.readFile(state.promptPath!, "utf8");
+      const candidates = legacyCandidatesFromPrompt(candidatesPrompt, {
+        path: "src/app.ts",
+        inlineLine: 3,
+        headSha: state.headSha!,
+      });
+      expect(candidates.comments).toHaveLength(2);
+      expect(candidatesPrompt).toContain("suggestion block rules");
+      await fs.writeFile(state.candidatesPath!, JSON.stringify(candidates));
+      await prepareValidator();
+      const validatorPrompt = await fs.readFile(state.promptPath!, "utf8");
+      const validated = legacyValidatedFromPrompt(validatorPrompt, {
+        path: "src/app.ts",
+        inlineLine: 3,
+        headSha: state.headSha!,
+      });
+      expect(validated.results).toHaveLength(2);
+      const parsed = parseValidatedReview(JSON.stringify(validated));
+      expect(parsed.approved).toHaveLength(2);
+      expect(parsed.outsideDiff).toHaveLength(0);
+      expect(parsed.skipped).toEqual([]);
+      expect(parsed.approved.map((comment) => comment.body)).toEqual([
+        LEGACY_INLINE_BODY,
+        LEGACY_FALLBACK_BODY,
+      ]);
+      await fs.writeFile(state.validatedPath!, JSON.stringify(validated));
+      const commentsPath =
+        variant === "Cloud"
+          ? "/pullrequests/42/comments"
+          : "/pull-requests/12/comments";
+      const before = reqs(f, "POST", commentsPath).length;
+      await postReview({ retryDelayMs: 0 });
+      const posted = reqs(f, "POST", commentsPath).slice(before);
+      expect(posted).toHaveLength(2);
+      const inline = posted[0]!.body;
+      const fallback = posted[1]!.body;
+      if (variant === "Cloud") {
+        expect(inline.content.raw).toBe(LEGACY_INLINE_BODY);
+        expect(inline.inline).toEqual({ path: "src/app.ts", to: 3 });
+        expect(fallback).not.toHaveProperty("inline");
+        expect(fallback.content.raw).toBe(
+          "**`src/app.ts:40`** (could not be posted inline, so the finding is posted as a regular comment)\n\n" +
+            LEGACY_FALLBACK_BODY,
+        );
+      } else {
+        expect(inline.text).toBe(LEGACY_INLINE_BODY);
+        expect(inline.anchor).toMatchObject({ path: "src/app.ts", line: 3 });
+        expect(fallback).not.toHaveProperty("anchor");
+        expect(fallback.text).toBe(
+          "**`src/app.ts:40`** (could not be posted inline, so the finding is posted as a regular comment)\n\n" +
+            LEGACY_FALLBACK_BODY,
+        );
+      }
+      const results = JSON.parse(
+        await fs.readFile(path.join(tmp, "review_post_results.json"), "utf8"),
+      );
+      expect(results).toMatchObject({
+        posted: 1,
+        fallbackPosted: 1,
+        approved: 2,
+        rejected: 0,
+        failed: 0,
+        skipped: 0,
+        failures: [],
+      });
+      expect(results.summaryBody).toBe(validated.reviewSummary.body);
+    });
+  }
 });

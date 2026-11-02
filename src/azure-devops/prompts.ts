@@ -6,8 +6,8 @@
  * `azure-devops-post-review` posts the validated findings afterwards.
  */
 
-import { generateCandidatesPrompt } from "../core/review/prompts/candidates";
-import { generateValidatorPrompt } from "../core/review/prompts/validator";
+import { generateCandidatesPrompt } from "../core/review/prompts/legacy-candidates";
+import { generateValidatorPrompt } from "../core/review/prompts/legacy-validator";
 import type { ReviewTerminology } from "../core/review/prompts/types";
 
 export const AZURE_DEVOPS_TERMINOLOGY: ReviewTerminology = {

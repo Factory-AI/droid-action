@@ -23,6 +23,17 @@ export const REVIEW_DEPTH_PRESETS: Record<
   [ReviewDepth.Deep]: DEEP_DEFAULTS,
 };
 
+/** Normalize action/environment input, not strict repository file policy. */
+export function normalizeReviewDepth(reviewDepth?: string): ReviewDepth {
+  const value = reviewDepth?.trim().toLowerCase();
+  const depth =
+    value === ReviewDepth.Shallow ? ReviewDepth.Shallow : ReviewDepth.Deep;
+  if (value && value !== ReviewDepth.Deep && value !== ReviewDepth.Shallow) {
+    console.warn("Unknown review_depth; falling back to deep.");
+  }
+  return depth;
+}
+
 /**
  * Resolve the effective review model and reasoning effort based on depth.
  * Explicit overrides (review_model, reasoning_effort) take priority over depth presets.
@@ -32,9 +43,8 @@ export function resolveReviewConfig(options?: {
   reasoningEffort?: string;
   reviewDepth?: string;
 }): { model: string; reasoningEffort: string | undefined } {
-  const depth = (options?.reviewDepth || ReviewDepth.Deep) as ReviewDepth;
   const defaults =
-    REVIEW_DEPTH_PRESETS[depth] ?? REVIEW_DEPTH_PRESETS[ReviewDepth.Shallow];
+    REVIEW_DEPTH_PRESETS[normalizeReviewDepth(options?.reviewDepth)];
 
   return {
     model: options?.reviewModel || defaults.model,

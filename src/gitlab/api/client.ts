@@ -6,12 +6,17 @@ import type {
   GitlabDiscussion,
   GitlabPosition,
   GitlabUser,
+  GitlabAward,
+  GitlabProject,
+  GitlabBranch,
+  GitlabCommitAction,
 } from "../types";
 import {
   redactDeep,
   redactSecrets,
   secretValuesFromEnv,
 } from "../../utils/redact-credentials";
+import { retryWithBackoff } from "../../utils/retry";
 
 /**
  * The interesting part of a GitLab error is the response body (e.g.
@@ -29,6 +34,7 @@ function describeErrorBody(body: unknown): string {
 export class GitlabApiError extends Error {
   status: number;
   body: unknown;
+  retryAfterMs?: number;
 
   constructor(
     status: number,
@@ -71,6 +77,42 @@ export class GitlabClient {
     path: string,
     init: RequestInitWithJson = {},
   ): Promise<T> {
+    if (!init.method || init.method === "GET") {
+      let retryAt = 0;
+      return retryWithBackoff(
+        async () => {
+          const remaining = retryAt - Date.now();
+          if (remaining > 0)
+            await new Promise((resolve) => setTimeout(resolve, remaining));
+          try {
+            return await this.requestOnce<T>(path, init);
+          } catch (error) {
+            retryAt =
+              error instanceof GitlabApiError &&
+              error.retryAfterMs !== undefined
+                ? Date.now() + error.retryAfterMs
+                : 0;
+            throw error;
+          }
+        },
+        {
+          initialDelayMs: 200,
+          maxDelayMs: 1000,
+          shouldRetry: (error) =>
+            error instanceof GitlabApiError &&
+            (error.status === 429 || error.status >= 500),
+        },
+      );
+    }
+    // Writes are not blindly retried: an interrupted response can represent
+    // an already-created discussion, commit, or merge request.
+    return this.requestOnce<T>(path, init);
+  }
+
+  private async requestOnce<T>(
+    path: string,
+    init: RequestInitWithJson,
+  ): Promise<T> {
     // Only API-relative paths: an absolute URL would send PRIVATE-TOKEN to
     // whatever host it names.
     if (!path.startsWith("/") || path.startsWith("//")) {
@@ -112,12 +154,22 @@ export class GitlabClient {
       } catch {
         parsed = text;
       }
-      throw new GitlabApiError(
+      const error = new GitlabApiError(
         response.status,
         response.statusText || "Request failed",
         parsed,
         secrets,
       );
+      const hint = response.headers.get("Retry-After");
+      if (response.status === 429 && hint?.trim()) {
+        const seconds = Number(hint);
+        const delay = Number.isFinite(seconds)
+          ? seconds * 1000
+          : Date.parse(hint) - Date.now();
+        if (Number.isFinite(delay))
+          error.retryAfterMs = Math.min(30000, Math.max(0, delay));
+      }
+      throw error;
     }
 
     if (response.status === 204) {
@@ -129,6 +181,19 @@ export class GitlabClient {
 
   private projectPath(projectId: string | number): string {
     return `/projects/${encodeURIComponent(String(projectId))}`;
+  }
+
+  private async pages<T>(path: string): Promise<T[]> {
+    const all: T[] = [];
+    for (let page = 1; ; page++) {
+      const batch = await this.request<T[]>(
+        `${path}${path.includes("?") ? "&" : "?"}per_page=100${page > 1 ? `&page=${page}` : ""}`,
+      );
+      if (!Array.isArray(batch))
+        throw new Error("GitLab returned an invalid paginated response");
+      all.push(...batch);
+      if (batch.length < 100) return all;
+    }
   }
 
   getMr(projectId: string | number, mrIid: number): Promise<GitlabMr> {
@@ -147,8 +212,8 @@ export class GitlabClient {
   }
 
   listNotes(projectId: string | number, mrIid: number): Promise<GitlabNote[]> {
-    return this.request<GitlabNote[]>(
-      `${this.projectPath(projectId)}/merge_requests/${mrIid}/notes?per_page=100`,
+    return this.pages<GitlabNote>(
+      `${this.projectPath(projectId)}/merge_requests/${mrIid}/notes`,
     );
   }
 
@@ -210,6 +275,180 @@ export class GitlabClient {
       `${this.projectPath(projectId)}/merge_requests/${mrIid}`,
       { method: "PUT", json: { description } },
     );
+  }
+
+  listDiscussions(
+    projectId: string | number,
+    mrIid: number,
+  ): Promise<GitlabDiscussion[]> {
+    return this.pages<GitlabDiscussion>(
+      `${this.projectPath(projectId)}/merge_requests/${mrIid}/discussions`,
+    );
+  }
+
+  replyToDiscussion(
+    projectId: string | number,
+    mrIid: number,
+    discussionId: string,
+    body: string,
+  ): Promise<GitlabNote> {
+    return this.request(
+      `${this.projectPath(projectId)}/merge_requests/${mrIid}/discussions/${encodeURIComponent(discussionId)}/notes`,
+      { method: "POST", json: { body } },
+    );
+  }
+
+  resolveDiscussion(
+    projectId: string | number,
+    mrIid: number,
+    discussionId: string,
+  ): Promise<GitlabDiscussion> {
+    return this.request(
+      `${this.projectPath(projectId)}/merge_requests/${mrIid}/discussions/${encodeURIComponent(discussionId)}`,
+      { method: "PUT", json: { resolved: true } },
+    );
+  }
+
+  compare(
+    projectId: string | number,
+    from: string,
+    to: string,
+  ): Promise<{
+    diffs: GitlabMrChanges["changes"];
+    compare_timeout?: boolean;
+    compare_same_ref?: boolean;
+  }> {
+    return this.request(
+      `${this.projectPath(projectId)}/repository/compare?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&straight=true`,
+    );
+  }
+
+  async getRepositoryFile(
+    projectId: string | number,
+    filePath: string,
+    ref: string,
+  ): Promise<string> {
+    const file = await this.getFileInfo(projectId, filePath, ref);
+    if (file.encoding !== "base64" || typeof file.content !== "string")
+      throw new Error("Unsupported GitLab repository file response");
+    return Buffer.from(file.content, "base64").toString("utf8");
+  }
+
+  getProject(projectId: string | number): Promise<GitlabProject> {
+    return this.request(this.projectPath(projectId));
+  }
+
+  getMember(
+    projectId: string | number,
+    userId: number,
+  ): Promise<{ access_level: number; expires_at?: string | null }> {
+    return this.request(`${this.projectPath(projectId)}/members/all/${userId}`);
+  }
+
+  setCommitStatus(
+    projectId: string | number,
+    sha: string,
+    status: {
+      state: "pending" | "running" | "success" | "failed" | "skipped";
+      name: string;
+      description: string;
+      target_url?: string;
+    },
+  ): Promise<unknown> {
+    return this.request(
+      `${this.projectPath(projectId)}/statuses/${encodeURIComponent(sha)}`,
+      { method: "POST", json: status },
+    );
+  }
+
+  addAward(
+    projectId: string | number,
+    mrIid: number,
+    name: "eyes" | "tada" | "confused",
+  ): Promise<GitlabAward> {
+    return this.request(
+      `${this.projectPath(projectId)}/merge_requests/${mrIid}/award_emoji`,
+      { method: "POST", json: { name } },
+    );
+  }
+
+  removeAward(
+    projectId: string | number,
+    mrIid: number,
+    id: number,
+  ): Promise<void> {
+    return this.request(
+      `${this.projectPath(projectId)}/merge_requests/${mrIid}/award_emoji/${id}`,
+      { method: "DELETE" },
+    );
+  }
+
+  getBranch(projectId: string | number, branch: string): Promise<GitlabBranch> {
+    return this.request(
+      `${this.projectPath(projectId)}/repository/branches/${encodeURIComponent(branch)}`,
+    );
+  }
+
+  getFileInfo(
+    projectId: string | number,
+    filePath: string,
+    ref: string,
+  ): Promise<{
+    content: string;
+    encoding: string;
+    last_commit_id: string;
+    execute_filemode: boolean;
+  }> {
+    return this.request(
+      `${this.projectPath(projectId)}/repository/files/${encodeURIComponent(filePath)}?ref=${encodeURIComponent(ref)}`,
+    );
+  }
+
+  getTree(
+    projectId: string | number,
+    directory: string,
+    ref: string,
+  ): Promise<Array<{ path: string; mode: string; type: string }>> {
+    return this.pages(
+      `${this.projectPath(projectId)}/repository/tree?path=${encodeURIComponent(directory)}&ref=${encodeURIComponent(ref)}`,
+    );
+  }
+
+  deleteBranch(projectId: string | number, branch: string): Promise<void> {
+    return this.request(
+      `${this.projectPath(projectId)}/repository/branches/${encodeURIComponent(branch)}`,
+      { method: "DELETE" },
+    );
+  }
+
+  createCommit(
+    projectId: string | number,
+    input: {
+      branch: string;
+      start_sha?: string;
+      commit_message: string;
+      actions: GitlabCommitAction[];
+    },
+  ): Promise<{ id: string; web_url: string }> {
+    return this.request(`${this.projectPath(projectId)}/repository/commits`, {
+      method: "POST",
+      json: input,
+    });
+  }
+
+  createMr(
+    projectId: string | number,
+    input: {
+      source_branch: string;
+      target_branch: string;
+      title: string;
+      description: string;
+    },
+  ): Promise<GitlabMr> {
+    return this.request(`${this.projectPath(projectId)}/merge_requests`, {
+      method: "POST",
+      json: input,
+    });
   }
 }
 
