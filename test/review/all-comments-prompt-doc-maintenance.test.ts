@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -174,11 +174,19 @@ describe("QA75 prompt output behavior", () => {
 });
 
 describe("QA75 legacy FILE byte compatibility, not a new behavior fix", () => {
-  const source = execFileSync(
-    "/usr/bin/git",
-    ["show", `${accepted}:src/core/review/prompts/legacy-validator.ts`],
-    { cwd: root, encoding: "utf8" },
+  // Verbatim accepted source, pinned so shallow checkouts need no Git history.
+  // Git blob: b268f78e3d4481bcb5402ff34ab3c93b611a2921.
+  const source = readFileSync(
+    join(root, "test/fixtures/review-ux/legacy-validator-9bc0ab98476f.ts.txt"),
+    "utf8",
   );
+  if (
+    createHash("sha256").update(source).digest("hex") !==
+    "1abe7d734482660d4d2ab7febb55774fad655ae33370423d4ed90d51d2c8cbec"
+  )
+    throw new Error(
+      `Accepted ${accepted}:src/core/review/prompts/legacy-validator.ts fixture digest mismatch`,
+    );
   const compiled = transpileModule(source, {
     compilerOptions: { module: ModuleKind.CommonJS },
   });
