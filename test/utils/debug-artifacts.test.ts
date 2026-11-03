@@ -220,6 +220,78 @@ describe("collectDebugArtifacts with the GitHub layout", () => {
     );
   });
 
+  it("redacts quoted unknown credentials in JSONL without changing Unicode or binary bytes", async () => {
+    const { home, runnerTemp } = createRunner();
+    const secret = "fixture-sensitive-left with spaces fixture-sensitive-right";
+    const metadata = {
+      escaped: "é € 🚀",
+      utf8: "é € 🚀",
+      keep: [true, 2, null],
+      prose: String.raw`ordinary "quoted" prose and safe\backslashes`,
+    };
+    const records = [
+      { id: 7, output: `password="${secret}" tail=SAFE`, metadata },
+      {
+        id: 8,
+        output: `Authorization: "Bearer ${secret}" tail=SAFE`,
+        metadata,
+      },
+    ];
+    const input =
+      records
+        .map((record) =>
+          JSON.stringify(record).replace(
+            '"escaped":"é € 🚀"',
+            String.raw`"escaped":"\u00e9 \u20ac \ud83d\ude80"`,
+          ),
+        )
+        .join("\r\n") + "\r\n";
+    expect(input).toContain(String.raw`\u20ac`);
+    const expected = input.replaceAll(secret, REDACTED);
+    const sessionPath = path.join(
+      home,
+      ".factory/sessions/-home-runner-work/abc.jsonl",
+    );
+    write(sessionPath, input);
+    const prefix = Buffer.from([0xff, 0xfe, 0x00, 0x80]);
+    const suffix = Buffer.from([0xc3]);
+    write(
+      path.join(runnerTemp, "droid-prompts", "quoted-credentials.bin"),
+      Buffer.concat([prefix, Buffer.from(input, "utf8"), suffix]),
+    );
+    const outputDir = path.join(runnerTemp, "droid-debug-artifacts");
+
+    await collectDebugArtifacts({
+      sources: githubDebugArtifactSources(home, runnerTemp),
+      outputDir,
+      secrets: [],
+    });
+
+    const actual = readFileSync(
+      path.join(outputDir, "factory/sessions/-home-runner-work/abc.jsonl"),
+    );
+    expect(actual).toEqual(Buffer.from(expected, "utf8"));
+    expect(
+      actual
+        .toString("utf8")
+        .trimEnd()
+        .split("\r\n")
+        .map((line) => JSON.parse(line)),
+    ).toEqual(
+      records.map((record) => ({
+        ...record,
+        output: record.output.replace(secret, REDACTED),
+      })),
+    );
+    expect(actual.toString("latin1")).not.toContain("fixture-sensitive-left");
+    expect(actual.toString("latin1")).not.toContain("fixture-sensitive-right");
+    expect(
+      readFileSync(
+        path.join(outputDir, "droid-prompts", "quoted-credentials.bin"),
+      ),
+    ).toEqual(Buffer.concat([prefix, Buffer.from(expected, "utf8"), suffix]));
+  });
+
   it("replaces a symlink planted at the output directory without writing through it", async () => {
     const { home, runnerTemp } = createRunner();
     const target = path.join(sandbox, "elsewhere");

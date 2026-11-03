@@ -6,7 +6,6 @@ export type CommandProfile = {
   cwd: string;
   env: Record<string, string>;
   args: string;
-  argv: readonly string[];
   cleanup: () => Promise<void>;
 };
 
@@ -76,7 +75,7 @@ export async function createCommandProfile(
     const settingsPath = resolve(cwd, ".factory", "settings.json");
     if (!isAbsolute(settingsPath))
       throw new Error("Command settings path must be absolute");
-    // One trusted policy serves both the legacy string runner and argv consumers.
+    // Serialize a trusted local argument vector for the string runner.
     const argv: readonly string[] = [
       "--cwd",
       cwd,
@@ -95,7 +94,6 @@ export async function createCommandProfile(
       // documented hooksDisabled + --settings override also blocks managed hooks.
       // Literal quoting also preserves $ and backticks through shell-quote.parse.
       args: argv.map((arg) => `'${arg.replace(/'/g, "'\\''")}'`).join(" "),
-      argv,
       cleanup,
     };
   } catch (error) {

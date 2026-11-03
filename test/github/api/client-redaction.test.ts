@@ -141,6 +141,111 @@ describe("canonical credential quote preservation", () => {
   });
 });
 
+describe("canonical JSON-encoded credential quote preservation", () => {
+  const secret = "fixture-sensitive-left with spaces fixture-sensitive-right";
+  const metadata = {
+    keep: true,
+    count: 2,
+    values: ["ordinary quoted prose", String.raw`safe\backslashes`, null],
+  };
+  const encode = (
+    record: Record<string, unknown>,
+    unicodeQuotes: boolean,
+    unicodeBackslashes = false,
+  ) => {
+    const serialized = unicodeBackslashes
+      ? JSON.stringify(record).replaceAll(String.raw`\\`, String.raw`\u005c`)
+      : JSON.stringify(record);
+    return unicodeQuotes
+      ? serialized.replaceAll(String.raw`\"`, String.raw`\u0022`)
+      : serialized;
+  };
+
+  for (const [prefix, scheme] of [
+    ["password=", ""],
+    ["APP_PRIVATE_KEY=", ""],
+    ["FACTORY_API_KEY\t=\t", ""],
+    ["Authorization: Bearer ", ""],
+    ["Authorization: ", "Bearer "],
+    ["Authorization:\t", "Basic\t"],
+  ]) {
+    for (const unicodeQuotes of [false, true]) {
+      test(`preserves JSON shape and quoted ${prefix} ${scheme}, unicode=${unicodeQuotes}`, () => {
+        const record = {
+          id: 7,
+          output: `${prefix}"${scheme}${secret}" tail=SAFE`,
+          metadata,
+        };
+        const expected = {
+          ...record,
+          output: `${prefix}"${scheme}[REDACTED]" tail=SAFE`,
+        };
+        const input = encode(record, unicodeQuotes);
+        for (const actual of [
+          redactCredentialPatterns(input),
+          redactSecrets(input, []),
+        ]) {
+          expect(JSON.parse(actual)).toEqual(expected);
+          expect(actual).toBe(encode(expected, unicodeQuotes));
+          expect(actual).not.toContain("fixture-sensitive-left");
+          expect(actual).not.toContain("fixture-sensitive-right");
+          expect(redactCredentialPatterns(actual)).toBe(actual);
+        }
+      });
+    }
+  }
+
+  for (const [prefix, scheme] of [
+    ["password=", ""],
+    ["Authorization: Basic ", ""],
+    ["Authorization: ", "Bearer "],
+  ]) {
+    for (const slashes of [0, 1, 2, 3, 4, 5]) {
+      test(`preserves native and JSON inner-quote parity: ${prefix} backslashes=${slashes}`, () => {
+        const output = `${prefix}"${scheme}fixture-left${"\\".repeat(slashes)}"fixture-right" tail=SAFE`;
+        const expected = `${prefix}"${scheme}[REDACTED]"${slashes % 2 ? "" : 'fixture-right"'} tail=SAFE`;
+        expect(redactCredentialPatterns(output)).toBe(expected);
+        for (const unicodeQuotes of [false, true]) {
+          for (const unicodeBackslashes of [false, true]) {
+            const record = { id: 8, output, metadata };
+            const expectedRecord = { ...record, output: expected };
+            const actual = redactSecrets(
+              encode(record, unicodeQuotes, unicodeBackslashes),
+              [],
+            );
+            expect(JSON.parse(actual)).toEqual(expectedRecord);
+            expect(actual).toBe(
+              encode(expectedRecord, unicodeQuotes, unicodeBackslashes),
+            );
+            expect(actual).not.toContain("fixture-left");
+            expect(actual.includes("fixture-right")).toBe(slashes % 2 === 0);
+            expect(redactCredentialPatterns(actual)).toBe(actual);
+          }
+        }
+      });
+    }
+  }
+
+  test("preserves unrelated identifiers and native authorization line boundaries", () => {
+    const safe = {
+      output:
+        'xauthorization="fixture-public-value" notpassword="fixture-public-value"',
+      metadata,
+    };
+    expect(redactCredentialPatterns(JSON.stringify(safe))).toBe(
+      JSON.stringify(safe),
+    );
+    expect(redactCredentialPatterns("Authorization:\nSAFE_NEXT")).toBe(
+      "Authorization:\nSAFE_NEXT",
+    );
+    const jwt =
+      "eyJhbGciOiJub25lIn0.eyJmaXh0dXJlIjp0cnVlfQ.fixture_signature";
+    expect(
+      redactCredentialPatterns(`Authorization: Bearer ${jwt}\nSAFE_NEXT`),
+    ).toBe("Authorization: Bearer [REDACTED]\nSAFE_NEXT");
+  });
+});
+
 describe("canonical credential JSONL separator preservation", () => {
   test("keeps adjacent exact-redacted assignments and JSONL formatting byte-for-byte", () => {
     const raw =

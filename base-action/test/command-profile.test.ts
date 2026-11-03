@@ -124,8 +124,7 @@ describe("file-only command CLI profile isolation", () => {
     expect(profile.args).toContain("--settings");
     expect(profile.args).toContain("--disable-builtin-skills");
     expect(profile.args).not.toContain("Execute");
-    expect(parse(profile.args)).toEqual(Array.from(profile.argv ?? []));
-    expect(profile.argv).toEqual([
+    expect(parse(profile.args)).toEqual([
       "--cwd",
       profile.cwd,
       "--settings",
@@ -155,7 +154,17 @@ describe("file-only command CLI profile isolation", () => {
       await profile.cleanup();
     }
     expect(await exists(root)).toBe(false);
-    expect(parse(profile.args)).toEqual(Array.from(profile.argv ?? []));
+    expect(parse(profile.args)).toEqual([
+      "--cwd",
+      profile.cwd,
+      "--settings",
+      join(profile.cwd, ".factory/settings.json"),
+      "--disable-builtin-skills",
+      "--enabled-tools",
+      "Read,Grep,Glob,LS,Edit,Create,ApplyPatch",
+      "--tag",
+      "droid-question",
+    ]);
     expect(await readFile(join(outside, "keep.txt"), "utf8")).toBe(
       "caller output",
     );

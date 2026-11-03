@@ -76,6 +76,12 @@ const NEXT_CREDENTIAL_FIELD = String.raw`(?:authorization|${ASSIGNMENT_KEY})\s*[
 const EMBEDDED_CREDENTIAL_PREFIX = String.raw`(?:authorization[^\S\r\n]*[:=][^\S\r\n]*(?:(?:bearer|basic)[^\S\r\n]+)?|${ASSIGNMENT_KEY}[^\S\r\n]*[:=][^\S\r\n]*)`;
 const EMBEDDED_QUOTED_VALUE = String.raw`(?:"(?:\\[^\r\n]|[^"\\\r\n])*(?:\\(?=\r?$))?(?:"|(?=\r?$))|'(?:\\[^\r\n]|[^'\\\r\n])*(?:\\(?=\r?$))?(?:'|(?=\r?$)))`;
 const BARE_CREDENTIAL_VALUE = String.raw`(?:\\(?!(?:r\\n|[nrt])(?=${NEXT_CREDENTIAL_FIELD}))[^\s,"';]?|${EMBEDDED_CREDENTIAL_PREFIX}(?:${EMBEDDED_QUOTED_VALUE})?|[^\\\s,"';])+`;
+const JSON_HORIZONTAL_SPACE = String.raw`(?:[^\S\r\n]|\\t)`;
+const JSON_QUOTED_DELIMITER = String.raw`\\(?:"|u0022)`;
+const JSON_ESCAPED_BACKSLASH = String.raw`(?:\\{2}|\\u005[cC])`;
+// JSON doubles each original backslash and escapes the quote delimiter.
+// Consume encoded escape pairs before deciding whether a quote closes a value.
+const JSON_QUOTED_VALUE = String.raw`(?:${JSON_ESCAPED_BACKSLASH}{2}|${JSON_ESCAPED_BACKSLASH}${JSON_QUOTED_DELIMITER}|${JSON_ESCAPED_BACKSLASH}|\\(?!u0022)[^"rn\r\n]|[^"\\\r\n])*`;
 
 const FACTORY_API_KEY_PATTERN = new RegExp(
   `${TOKEN_START}fk-[A-Za-z0-9_-]{20,}`,
@@ -138,33 +144,41 @@ export function redactCredentialPatterns(content: string): string {
     )
     .replace(
       new RegExp(
-        String.raw`((?:\b|${AFTER_JSON_ESCAPE})authorization[^\S\r\n]*[:=][^\S\r\n]*(?:(?:bearer|basic)[^\S\r\n]+)?)(?:(["'])((?:(?:bearer|basic)[^\S\r\n]+)?)(?:\\[^\r\n]|(?!\2)[^\\\r\n])*(?:\\(?=\r?$))?(\2|(?=\r?$))|(${BARE_CREDENTIAL_VALUE})(["']?))`,
+        String.raw`((?:\b|${AFTER_JSON_ESCAPE})authorization${JSON_HORIZONTAL_SPACE}*[:=]${JSON_HORIZONTAL_SPACE}*(?:(?:bearer|basic)${JSON_HORIZONTAL_SPACE}+)?)(${JSON_QUOTED_DELIMITER})((?:(?:bearer|basic)${JSON_HORIZONTAL_SPACE}+)?)(?:${JSON_QUOTED_VALUE})(${JSON_QUOTED_DELIMITER}|(?="|\\[rn]|\r?$))|((?:\b|${AFTER_JSON_ESCAPE})authorization[^\S\r\n]*[:=][^\S\r\n]*(?:(?:bearer|basic)[^\S\r\n]+)?)(?:(["'])((?:(?:bearer|basic)[^\S\r\n]+)?)(?:\\[^\r\n]|(?!\6)[^\\\r\n])*(?:\\(?=\r?$))?(\6|(?=\r?$))|(${BARE_CREDENTIAL_VALUE})(["']?))`,
         "gim",
       ),
       (
         _match,
-        prefix: string,
+        jsonPrefix: string | undefined,
+        jsonOpening: string | undefined,
+        jsonScheme: string | undefined,
+        jsonClosing: string | undefined,
+        prefix: string | undefined,
         opening: string | undefined,
         scheme: string | undefined,
         closing: string | undefined,
         _value: string | undefined,
         trailing: string | undefined,
       ) =>
-        `${prefix}${opening ?? ""}${scheme ?? ""}${REDACTED}${closing ?? trailing ?? ""}`,
+        `${jsonPrefix ?? prefix}${jsonOpening ?? opening ?? ""}${jsonScheme ?? scheme ?? ""}${REDACTED}${jsonClosing ?? closing ?? trailing ?? ""}`,
     )
     .replace(
       new RegExp(
-        String.raw`((?:\b|${AFTER_JSON_ESCAPE})${ASSIGNMENT_KEY}\s*[:=]\s*)(?:(["'])(?:\\[^\r\n]|(?!\2)[^\\\r\n])*(?:\\(?=\r?$))?(\2|(?=\r?$))|(${BARE_CREDENTIAL_VALUE})(["']?))`,
+        String.raw`((?:\b|${AFTER_JSON_ESCAPE})${ASSIGNMENT_KEY}${JSON_HORIZONTAL_SPACE}*[:=]${JSON_HORIZONTAL_SPACE}*)(${JSON_QUOTED_DELIMITER})(?:${JSON_QUOTED_VALUE})(${JSON_QUOTED_DELIMITER}|(?="|\\[rn]|\r?$))|((?:\b|${AFTER_JSON_ESCAPE})${ASSIGNMENT_KEY}\s*[:=]\s*)(?:(["'])(?:\\[^\r\n]|(?!\5)[^\\\r\n])*(?:\\(?=\r?$))?(\5|(?=\r?$))|(${BARE_CREDENTIAL_VALUE})(["']?))`,
         "gim",
       ),
       (
         _match,
-        prefix: string,
+        jsonPrefix: string | undefined,
+        jsonOpening: string | undefined,
+        jsonClosing: string | undefined,
+        prefix: string | undefined,
         opening: string | undefined,
         closing: string | undefined,
         _value: string | undefined,
         trailing: string | undefined,
-      ) => `${prefix}${opening ?? ""}${REDACTED}${closing ?? trailing ?? ""}`,
+      ) =>
+        `${jsonPrefix ?? prefix}${jsonOpening ?? opening ?? ""}${REDACTED}${jsonClosing ?? closing ?? trailing ?? ""}`,
     )
     .replace(/(https?:\/\/)[^/\s:@]+:[^/\s@]+@/g, "$1[REDACTED]@")
     .replace(
