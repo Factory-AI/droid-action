@@ -4,6 +4,7 @@ import { isEntityContext } from "../../github/context";
 import type { Octokits } from "../../github/api/client";
 import { fetchPRBranchData } from "../../github/data/pr-fetcher";
 import { fetchedForkHeadRef } from "../../github/data/pr-checkout";
+import { fetchAndStoreReviewGuidelines } from "../../github/data/review-guidelines";
 import { createPrompt } from "../../create-prompt";
 import type { ReviewArtifacts } from "../../create-prompt/types";
 import {
@@ -59,6 +60,14 @@ export async function prepareReviewValidatorMode(options: {
     descriptionPath: `${promptsDir}/pr_description.txt`,
   };
 
+  const reviewGuidelines = await fetchAndStoreReviewGuidelines({
+    octokit,
+    owner: context.repository.owner,
+    repo: context.repository.repo,
+    defaultBranch: context.payload.repository?.default_branch,
+    tempDir,
+  });
+
   const includeSuggestions = process.env.INCLUDE_SUGGESTIONS !== "false";
 
   await createPrompt({
@@ -76,6 +85,7 @@ export async function prepareReviewValidatorMode(options: {
     },
     generatePrompt: generateReviewValidatorPrompt,
     reviewArtifacts,
+    reviewGuidelines,
     includeSuggestions,
   });
 

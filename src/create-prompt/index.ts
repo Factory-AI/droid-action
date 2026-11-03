@@ -22,6 +22,7 @@ import type {
   PrBranchPromptData,
   ReviewArtifacts,
 } from "./types";
+import type { RepoReviewGuidelines } from "../core/review/prompts/types";
 
 export type { CommonFields, PreparedContext, ReviewArtifacts } from "./types";
 
@@ -304,6 +305,7 @@ export type PromptCreationOptions = {
   disallowedTools?: string[];
   includeActionsTools?: boolean;
   reviewArtifacts?: ReviewArtifacts;
+  reviewGuidelines?: RepoReviewGuidelines;
   outputFilePath?: string;
   includeSuggestions?: boolean;
 };
@@ -319,6 +321,7 @@ export async function createPrompt({
   disallowedTools = [],
   includeActionsTools = false,
   reviewArtifacts,
+  reviewGuidelines,
   outputFilePath,
   includeSuggestions,
 }: PromptCreationOptions) {
@@ -339,6 +342,10 @@ export async function createPrompt({
 
     if (includeSuggestions !== undefined) {
       preparedContext.includeSuggestions = includeSuggestions;
+    }
+
+    if (reviewGuidelines) {
+      preparedContext.reviewGuidelines = reviewGuidelines;
     }
 
     await mkdir(`${process.env.RUNNER_TEMP || "/tmp"}/droid-prompts`, {

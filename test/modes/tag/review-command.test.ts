@@ -807,4 +807,74 @@ describe("prepareReviewMode", () => {
     expect(droidArgsCall?.[1]).toContain("FetchUrl");
     expect(droidArgsCall?.[1]).toContain("Task");
   });
+
+  it("reads the repository's review guidelines from its default branch into the prompt", async () => {
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: {
+        comment: { id: 109, body: "@droid review" },
+        repository: { default_branch: "develop" },
+      } as any,
+      entityNumber: 32,
+    });
+
+    const getContent = spyOn(
+      { getContent: async () => ({}) },
+      "getContent",
+    ).mockResolvedValue({
+      data: {
+        content: Buffer.from(
+          "---\nname: review-guidelines\n---\n# Rules\n- Never swallow errors.\n",
+        ).toString("base64"),
+      },
+    });
+    const octokit = {
+      rest: {
+        issues: { listComments: () => Promise.resolve({ data: [] }) },
+        pulls: { listReviewComments: () => Promise.resolve({ data: [] }) },
+        repos: { getContent },
+      },
+      graphql: () => Promise.resolve({}),
+    } as any;
+    graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
+      repository: {
+        pullRequest: {
+          baseRefName: MOCK_PR_DATA.baseRefName,
+          headRefName: MOCK_PR_DATA.headRefName,
+          headRefOid: MOCK_PR_DATA.headRefOid,
+          isCrossRepository: false,
+          title: MOCK_PR_DATA.title,
+          body: MOCK_PR_DATA.body,
+        },
+      },
+    });
+
+    await prepareReviewMode({
+      context,
+      octokit,
+      githubToken: "token",
+      trackingCommentId: 562,
+    });
+
+    expect(getContent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: ".factory/skills/review-guidelines/SKILL.md",
+        ref: "develop",
+      }),
+    );
+    expect(promptSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reviewGuidelines: {
+          source: ".factory/skills/review-guidelines/SKILL.md@develop",
+          body: "# Rules\n- Never swallow errors.",
+          path: "/tmp/test-runner/droid-prompts/review_guidelines.md",
+        },
+      }),
+    );
+    expect(writeFileSpy).toHaveBeenCalledWith(
+      "/tmp/test-runner/droid-prompts/review_guidelines.md",
+      "# Rules\n- Never swallow errors.",
+    );
+  });
 });

@@ -50,5 +50,6 @@ export function generateReviewValidatorPrompt(
       context.prBranchData,
       context.eventData.baseBranch ?? "base",
     ),
+    repoGuidelines: context.reviewGuidelines,
   });
 }

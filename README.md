@@ -444,7 +444,7 @@ Additional checks for this codebase:
 - Prisma query performance issues
 ```
 
-These guidelines are automatically loaded whenever the `review` skill runs, which covers both the code review candidate-generation and validation passes. No workflow changes needed.
+The action reads this file from the repository's default branch and places its text in the prompt of both the code review candidate-generation and validation passes, so the guidelines apply to every pull request, including ones opened before the file was merged. No workflow changes needed.
 
 ### Learning guidelines from past reviews
 

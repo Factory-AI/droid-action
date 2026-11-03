@@ -15,6 +15,7 @@
  * via thin adapters that supply a `ReviewTerminology` shape.
  */
 
+import { buildRepoGuidelinesSection } from "./guidelines";
 import type { ReviewPromptContext, ReviewTerminology } from "./types";
 
 function requireToolField(
@@ -98,6 +99,7 @@ export function generateValidatorPrompt(ctx: ReviewPromptContext): string {
     includeSuggestions,
     postingMode = "tool",
     sourceNote,
+    repoGuidelines,
   } = ctx;
 
   if (!validatedPath) {
@@ -113,12 +115,17 @@ export function generateValidatorPrompt(ctx: ReviewPromptContext): string {
       ? buildFilePostingSection(t, validatedPath)
       : buildToolPostingSection(t, validatedPath);
 
+  const guidelinesSection = buildRepoGuidelinesSection(
+    repoGuidelines,
+    "validator",
+  );
+
   return `You are validating candidate review comments for ${t.entityNoun} ${t.entityNumberSigil}${entityNumber} in ${repoOrProject}.
 
 IMPORTANT: This is Phase 2 (validator) of a two-pass review pipeline.
 
 ${skillInstruction}
-
+${guidelinesSection ? `\n${guidelinesSection}\n` : ""}
 ### Context
 
 * ${t.repoLabel}: ${repoOrProject}

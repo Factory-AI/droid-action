@@ -3,6 +3,7 @@ import type { GitHubContext } from "../../github/context";
 import { fetchPRBranchData } from "../../github/data/pr-fetcher";
 import { preparePullRequestHead } from "../../github/data/pr-checkout";
 import { computeReviewArtifacts } from "../../github/data/review-artifacts";
+import { fetchAndStoreReviewGuidelines } from "../../github/data/review-guidelines";
 import { createPrompt } from "../../create-prompt";
 import { prepareMcpTools } from "../../mcp/install-mcp-server";
 import { createInitialComment } from "../../github/operations/comments/create-initial";
@@ -81,6 +82,14 @@ export async function prepareReviewMode({
     headRevision,
   });
 
+  const reviewGuidelines = await fetchAndStoreReviewGuidelines({
+    octokit,
+    owner: context.repository.owner,
+    repo: context.repository.repo,
+    defaultBranch: context.payload.repository?.default_branch,
+    tempDir,
+  });
+
   const includeSuggestions = process.env.INCLUDE_SUGGESTIONS !== "false";
 
   await createPrompt({
@@ -96,6 +105,7 @@ export async function prepareReviewMode({
     },
     generatePrompt: generateReviewCandidatesPrompt,
     reviewArtifacts,
+    reviewGuidelines,
     includeSuggestions,
   });
   const rawUserArgs = process.env.DROID_ARGS || "";
@@ -118,7 +128,7 @@ export async function prepareReviewMode({
 
   // Task tool is needed for parallel subagent reviews in candidate generation phase.
   // FetchUrl is needed to fetch linked tickets from the PR description.
-  // Skill is needed so review subagents can invoke the review-guidelines skill.
+  // Skill is needed to load the review skill and any other repository skills.
   const candidateGenerationTools = ["Task", "FetchUrl", "Skill"];
 
   const safeUserAllowedMCPTools = userAllowedMCPTools.filter(
