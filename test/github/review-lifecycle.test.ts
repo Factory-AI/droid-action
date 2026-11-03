@@ -14,6 +14,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import type { Octokits } from "../../src/github/api/client";
 import { createMockContext } from "../mockContext";
+import { expectFactoryFixAction } from "../helpers/factory-fix";
 import { normalizeFinding } from "../../src/core/review/validated/finding";
 import {
   decodeReviewState,
@@ -431,9 +432,7 @@ describe("review lifecycle production boundaries", () => {
         expect(body).not.toContain("[Fix in Factory]");
         return;
       }
-      const raw = /\[Fix in Factory\]\(([^)]+)\)/.exec(body)?.[1];
-      expect(raw).toBeDefined();
-      const task = new URL(raw!).searchParams.get("prompt")!;
+      const { task } = expectFactoryFixAction(body);
       expect(task).toContain(
         `github.com/o/r/pull/7#${mode === "description" ? "droid-review-summary" : "issuecomment-40"}`,
       );

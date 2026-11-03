@@ -9,6 +9,7 @@ import {
   SUMMARY_MARKER,
 } from "../../src/core/review/markers";
 import { normalizeFinding } from "../../src/core/review/validated/finding";
+import { expectFactoryFixAction } from "../helpers/factory-fix";
 import {
   assertGitlabFixRef,
   dispatchGitlabCommand,
@@ -2437,9 +2438,7 @@ describe("GitLab v2 production entrypoints, local API only", () => {
             request.method === "PUT" && request.path.endsWith("/notes/1"),
         )
         .at(-1)?.body.body;
-      const raw = /\[Fix in Factory\]\(([^)]+)\)/.exec(finalized)?.[1];
-      expect(raw).toBeDefined();
-      const task = new URL(raw!).searchParams.get("prompt")!;
+      const { task } = expectFactoryFixAction(finalized);
       expect(task).toContain("gitlab.com/group/repo/-/merge_requests/7#note_1");
       expect(task).toContain(HEAD);
       expect(task).not.toContain("/other/repo/");
