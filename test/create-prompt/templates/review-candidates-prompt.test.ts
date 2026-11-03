@@ -82,6 +82,16 @@ describe("generateReviewCandidatesPrompt", () => {
     expect(prompt).toContain("reviewSummary");
   });
 
+  it("lets the summary carry whole-change observations from review guidelines", () => {
+    const context = createBaseContext();
+
+    const prompt = generateReviewCandidatesPrompt(context);
+
+    expect(prompt).toContain("whole-change observations");
+    expect(prompt).toContain("up to three short");
+    expect(prompt).toContain("never in `comments`");
+  });
+
   it("includes critical constraints to not post to GitHub", () => {
     const context = createBaseContext();
 

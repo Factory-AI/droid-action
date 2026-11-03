@@ -93,6 +93,17 @@ describe("generateReviewValidatorPrompt", () => {
     expect(prompt).toContain("updates the tracking comment");
   });
 
+  it("carries whole-change observations in the summary without judging them", () => {
+    const context = createBaseContext();
+    const prompt = generateReviewValidatorPrompt(context);
+
+    expect(prompt).toContain("up to three short bullets of whole-change");
+    expect(prompt).toContain("Carry them\n  through unchanged");
+    expect(prompt).toContain(
+      "never approved,\n  rejected, or moved into `results`",
+    );
+  });
+
   it("includes correct PR context", () => {
     const context = createBaseContext({
       prBranchData: {

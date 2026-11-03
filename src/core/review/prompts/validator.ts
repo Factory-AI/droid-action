@@ -186,7 +186,7 @@ ${sourceNote ? `\n${sourceNote}\n` : ""}
   ],
   "reviewSummary": {
     "status": "approved",
-    "body": "1-3 sentence overall assessment"
+    "body": "1-3 sentence overall assessment\n\n- optional whole-change observation (at most three bullets)"
   }
 }
 \`\`\`
@@ -194,6 +194,10 @@ ${sourceNote ? `\n${sourceNote}\n` : ""}
 Notes:
 * Use \`commit_id\` = \`${headSha}\`.
 * \`results\` MUST have exactly one entry per candidate, in the same order.
+* \`reviewSummary.body\` may end with up to three short bullets of whole-change
+  observations that the repository's review guidelines asked for. Carry them
+  through unchanged: they are not candidates, so they are never approved,
+  rejected, or moved into \`results\`.
 
 Tooling note:
 * If the tools list includes \`ApplyPatch\` (common for OpenAI models like GPT-5.2), use \`ApplyPatch\` to create/update the file at the exact path.
