@@ -14,6 +14,7 @@ import {
   validateRenderedMarkdown,
   type ReviewRenderInput,
 } from "../../../src/core/review/render";
+import { fitReviewOutput } from "../../../src/core/review/render/budget";
 import { normalizeFinding } from "../../../src/core/review/validated/finding";
 import {
   decodeFindingMarker,
@@ -73,6 +74,180 @@ function oversizedReview(): ReviewRenderInput {
   };
 }
 describe("automatic renderer output budgets", () => {
+  it("drops optional evidence only at the last stage while preserving all lifecycle identities", () => {
+    const input = oversizedReview();
+    const finding = input.findings![0]!;
+    finding.cwe = "CWE-79";
+    finding.also_at = [{ path: "src/related.ts", line: 20 }];
+    finding.source_guideline = { path: "AGENTS.md", line: 1 };
+    finding.state = "open";
+    finding.isNew = false;
+    finding.threadId = 123;
+    finding.pendingThreadAction = "reopen";
+    const state = input.reviewState!;
+    state.base = "1234567";
+    state.diffHash = "trusted-diff";
+    state.securityReviewedHead = input.head;
+    const entry = state.findings[0]!;
+    state.findings.push(
+      {
+        ...entry,
+        id: "f-resolved",
+        state: "resolved",
+        finding: {
+          ...finding,
+          id: "f-resolved",
+          state: "resolved",
+          fixedIn: "1234567",
+          pendingThreadAction: "resolve",
+        },
+      },
+      {
+        ...entry,
+        id: "f-dismissed",
+        state: "dismissed",
+        finding: { ...finding, id: "f-dismissed", state: "dismissed" },
+      },
+    );
+    const original = structuredClone(input);
+    const attempted: ReviewRenderInput[] = [];
+    const body = fitReviewOutput(input, (compact) => {
+      attempted.push(compact);
+      const hasEvidence = compact.findings?.some(
+        (item) =>
+          item.why ||
+          item.verification ||
+          item.cwe ||
+          item.also_at.length ||
+          item.source_guideline,
+      );
+      return hasEvidence
+        ? "x".repeat(MAX_REVIEW_OUTPUT_BYTES + 1)
+        : renderReviewStateNote(compact.reviewState);
+    });
+    expect(attempted).toHaveLength(4);
+    expect(attempted.slice(0, 3).every((item) => item.findings?.[0]?.why)).toBe(
+      true,
+    );
+    const final = attempted[3]!;
+    expect(final.findings).toHaveLength(1);
+    expect(final.findings![0]).toMatchObject({
+      id: finding.id,
+      title: finding.title,
+      path: finding.path,
+      line: finding.line,
+      severity: "P1",
+      securitySeverity: "high",
+      state: "open",
+      isNew: false,
+      threadId: 123,
+      threadUrl: finding.threadUrl,
+      pendingThreadAction: "reopen",
+      why: "",
+      verification: "",
+      also_at: [],
+    });
+    expect(final.findings![0]!.cwe).toBeUndefined();
+    expect(final.findings![0]!.source_guideline).toBeUndefined();
+    expect(outputBytes(body)).toBeLessThanOrEqual(MAX_REVIEW_OUTPUT_BYTES);
+    const decoded = decodeReviewState(body)!;
+    expect(decoded).toMatchObject({
+      head: state.head,
+      base: state.base,
+      diffHash: state.diffHash,
+      securityReviewedHead: input.head,
+      paused: true,
+      autoRunCount: 7,
+    });
+    expect(decoded.findings.map((item) => [item.id, item.state])).toEqual([
+      ["f-real", "open"],
+      ["f-resolved", "resolved"],
+      ["f-dismissed", "dismissed"],
+    ]);
+    for (const item of decoded.findings) {
+      expect(item).toMatchObject({
+        threadId: "PRRT_real",
+        thread: 123,
+        url: finding.threadUrl,
+        finding: { cwe: "CWE-79", securitySeverity: "high", threadId: 123 },
+      });
+    }
+    expect(decoded.findings[0]!.finding?.pendingThreadAction).toBe("reopen");
+    expect(decoded.findings[1]!.finding?.pendingThreadAction).toBe("resolve");
+    expect(decoded.findings[1]!.finding?.fixedIn).toBe("1234567");
+    expect(input).toEqual(original);
+  });
+  it("publishes all 70 ordinary findings and persisted state when optional context overflows", () => {
+    const head = "a".repeat(40);
+    const findings = Array.from({ length: 70 }, (_, index) => {
+      const finding = normalizeFinding({
+        id: `f-${index}`,
+        title: `Verified finding ${index}`,
+        path: `src/file-${index}.ts`,
+        line: index + 1,
+        severity: "P1",
+        body: "Required check is missing.",
+        why: "Context-only evidence. ".repeat(30),
+        verification: "Context-only verification. ".repeat(30),
+      });
+      finding.threadId = index + 1;
+      finding.threadUrl = `https://github.com/example/repo/pull/42#discussion_r${index + 1}`;
+      return finding;
+    });
+    const state: ReviewState = {
+      head,
+      paused: true,
+      autoRunCount: 7,
+      findings: findings.map(
+        (finding, index): ReviewState["findings"][number] => ({
+          id: finding.id,
+          sev: finding.severity,
+          state: "open",
+          threadId: `PRRT_${index + 1}`,
+          thread: index + 1,
+          url: finding.threadUrl,
+          finding,
+        }),
+      ),
+    };
+    const input: ReviewRenderInput = {
+      state: "findings",
+      head,
+      repositoryUrl: "https://github.com/example/repo",
+      includeAgentPrompts: false,
+      findings,
+      reviewState: state,
+    };
+    const original = structuredClone(input);
+    const essential = renderReviewSummary({
+      ...input,
+      sections: ["verdict", "findings"],
+    });
+    expect(outputBytes(essential)).toBeLessThanOrEqual(MAX_REVIEW_OUTPUT_BYTES);
+    const body = renderReviewSummary(input);
+    expect(outputBytes(body)).toBeLessThanOrEqual(MAX_REVIEW_OUTPUT_BYTES);
+    expect(body).toContain("70 open findings");
+    expect(body).not.toContain("Finding context:");
+    expect(body).toContain("Some optional review context was shortened");
+    expect(validateRenderedMarkdown(body)).toEqual([]);
+    const decoded = decodeReviewState(body)!;
+    expect(decoded.findings.map((item) => item.id)).toEqual(
+      findings.map((finding) => finding.id),
+    );
+    expect(decoded.findings.every((item) => item.state === "open")).toBe(true);
+    expect(decoded.findings.map((item) => item.threadId)).toEqual(
+      state.findings.map((item) => item.threadId),
+    );
+    expect(decoded.findings.map((item) => item.thread)).toEqual(
+      state.findings.map((item) => item.thread),
+    );
+    expect(decoded.findings.map((item) => item.url)).toEqual(
+      state.findings.map((item) => item.url),
+    );
+    expect(decoded.paused).toBe(true);
+    expect(decoded.autoRunCount).toBe(7);
+    expect(input).toEqual(original);
+  });
   it("compacts hidden state without visible footers or lost essential metadata", () => {
     const input = oversizedReview();
     const state: ReviewState = {

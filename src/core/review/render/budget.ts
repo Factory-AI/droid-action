@@ -47,8 +47,12 @@ function compactFinding(
     ]
       .filter(Boolean)
       .join(" "),
-    why: truncateReviewText(finding.why, quota),
-    verification: truncateReviewText(finding.verification, quota),
+    // Empty the whole optional evidence block at the final compaction stage.
+    why: contextLimit ? truncateReviewText(finding.why, quota) : "",
+    verification: contextLimit
+      ? truncateReviewText(finding.verification, quota)
+      : "",
+    cwe: contextLimit ? finding.cwe : undefined,
     agent_prompt: truncateReviewText(finding.agent_prompt, quota),
     also_at: finding.also_at.slice(0, contextLimit),
     source_guideline: contextLimit ? finding.source_guideline : undefined,
