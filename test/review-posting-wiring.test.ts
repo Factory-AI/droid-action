@@ -44,7 +44,10 @@ describe("review safety wiring", () => {
       "review_validator_max_turns",
     );
     expect(stepById(action, "post_review").run).toContain(
-      "github-post-review.ts",
+      '"$REVIEW_PUBLISHER_PATH"',
+    );
+    expect(stepById(action, "post_review").env.REVIEW_PUBLISHER_PATH).toBe(
+      "${{ steps.prepare.outputs.review_post_publisher_path }}",
     );
     expect(stepById(action, "post_review").env.REVIEW_VALIDATED_PATH).toContain(
       "review_validated_path",
@@ -75,7 +78,10 @@ describe("review safety wiring", () => {
         "validator_max_turns",
       );
       expect(stepById(action, "post_review").run).toContain(
-        "github-post-review.ts",
+        '"$REVIEW_PUBLISHER_PATH"',
+      );
+      expect(stepById(action, "post_review").env.REVIEW_PUBLISHER_PATH).toBe(
+        "${{ steps.prompt.outputs.review_post_publisher_path }}",
       );
       expect(action.outputs.conclusion.value).toContain("post_review");
     });

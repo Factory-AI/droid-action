@@ -41,13 +41,13 @@ spec:
   inputs:
     automatic_review:
       description: "Run code review automatically on every MR event."
-      default: "true"
+      default: ""
     review_depth:
       description: |
         Review depth preset: `shallow` (fast) or `deep` (thorough). Factory
         keeps each preset on its recommended model, so this is the only
         model setting most projects need.
-      default: "deep"
+      default: ""
     review_model:
       description: |
         Advanced. Leave empty to use the `review_depth` preset (recommended).
@@ -71,19 +71,85 @@ spec:
         input. The security-review skill is built into the Droid CLI; no
         plugin install is required. Only runs when `automatic_review` is
         enabled. Set to "false" to keep code-only review.
-      default: "true"
+      default: ""
     security_block_on_critical:
       description: |
         When the security reviewer reports CRITICAL findings, block merge
         of the MR. Mirrors the GitHub action's `security_block_on_critical`
         input. Defaults to `"true"`.
-      default: "true"
+      default: ""
     security_block_on_high:
       description: |
         When the security reviewer reports HIGH findings, block merge of
         the MR. Mirrors the GitHub action's `security_block_on_high` input.
         Defaults to `"false"`.
-      default: "false"
+      default: ""
+    review_summary:
+      description: "comment, description, or off. Effective default: comment."
+      default: ""
+    review_summary_sections:
+      description: "Comma-separated sections. Default: verdict,findings,changes,details."
+      default: ""
+    review_badges:
+      description: "text, image, or emoji. Effective default: text."
+      default: ""
+    review_reactions:
+      description: "eyes / tada (clean) / confused lifecycle awards. Default: true."
+      default: ""
+    review_check_run:
+      description: "Publish Droid Review commit status (GitLab check-run analog). Default: true."
+      default: ""
+    fail_on_severity:
+      description: "Fail commit status at or above P0, P1, or P2. Empty default disables; off clears base config."
+      default: ""
+    review_incremental:
+      description: "Review changes since the last successful review. Default: true."
+      default: ""
+    review_auto_resolve:
+      description: "Resolve discussions only after explicit fixed validation. Default: true."
+      default: ""
+    review_max_auto_runs:
+      description: "Pause after N automatic reviews. Default: 0 (unlimited)."
+      default: ""
+    show_dropped_findings:
+      description: "List validator-dropped candidates and reasons. Default: false."
+      default: ""
+    include_agent_prompts:
+      description: "Include untrusted-data-safe AI-agent prompt blocks. Default: true."
+      default: ""
+    fix_mode:
+      description: "commit, pr (stacked MR), or off. Effective default: commit."
+      default: ""
+    review_diagram:
+      description: "auto or off. Effective default: auto."
+      default: ""
+    review_severity_threshold:
+      description: "Minimum priority to report: P0, P1, or P2. Default: P2."
+      default: ""
+    review_ignore_paths:
+      description: "Comma-separated ignore globs. Empty inherits base/default generated-lock exclusions; [] clears."
+      default: ""
+    review_auto_triggers:
+      description: "Comma-separated automatic events. Native MR pipelines infer opened or synchronize; empty inherits defaults."
+      default: ""
+    review_drafts:
+      description: "Automatically review draft MRs. Default: false."
+      default: ""
+    review_effort:
+      description: "Include evidence-backed review effort. Default: false."
+      default: ""
+    review_category_chips:
+      description: "Include category labels. Default: false."
+      default: ""
+    review_suggest_reviewers:
+      description: "Suggest reviewers from trusted base CODEOWNERS, never assign. Default: false."
+      default: ""
+    review_pre_merge_checks:
+      description: "Comma-separated title,description,linked_issue checks. Default: none; [] clears."
+      default: ""
+    security_severity_threshold:
+      description: "Minimum security severity: critical,high,medium,low. Effective default: medium."
+      default: ""
     settings:
       description: |
         Droid Exec settings as a JSON string or a path to a JSON file.
@@ -140,8 +206,10 @@ spec:
 droid-review:
   stage: $[[ inputs.stage ]]
   image: oven/bun:1.2.11
+  resource_group: "droid-review-$CI_MERGE_REQUEST_IID"
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$DROID_TRIGGER_NOTE_ID && $CI_MERGE_REQUEST_IID && ($CI_PIPELINE_SOURCE == "trigger" || $CI_PIPELINE_SOURCE == "api" || $CI_PIPELINE_SOURCE == "web")'
   variables:
     # Outside the worktree on purpose: the MR being reviewed is checked out
     # into CI_PROJECT_DIR, so a branch that commits `.droid-state.json` as a
@@ -163,6 +231,29 @@ droid-review:
     ORG_GUIDELINES_SOURCE: "$[[ inputs.org_guidelines_source ]]"
     ORG_GUIDELINES_REF: "$[[ inputs.org_guidelines_ref ]]"
     ORG_GUIDELINES_PATH: "$[[ inputs.org_guidelines_path ]]"
+    REVIEW_UX_V2: "true"
+    REVIEW_SUMMARY: "$[[ inputs.review_summary ]]"
+    REVIEW_SUMMARY_SECTIONS: "$[[ inputs.review_summary_sections ]]"
+    REVIEW_BADGES: "$[[ inputs.review_badges ]]"
+    REVIEW_REACTIONS: "$[[ inputs.review_reactions ]]"
+    REVIEW_CHECK_RUN: "$[[ inputs.review_check_run ]]"
+    FAIL_ON_SEVERITY: "$[[ inputs.fail_on_severity ]]"
+    REVIEW_INCREMENTAL: "$[[ inputs.review_incremental ]]"
+    REVIEW_AUTO_RESOLVE: "$[[ inputs.review_auto_resolve ]]"
+    REVIEW_MAX_AUTO_RUNS: "$[[ inputs.review_max_auto_runs ]]"
+    SHOW_DROPPED_FINDINGS: "$[[ inputs.show_dropped_findings ]]"
+    INCLUDE_AGENT_PROMPTS: "$[[ inputs.include_agent_prompts ]]"
+    FIX_MODE: "$[[ inputs.fix_mode ]]"
+    REVIEW_DIAGRAM: "$[[ inputs.review_diagram ]]"
+    REVIEW_SEVERITY_THRESHOLD: "$[[ inputs.review_severity_threshold ]]"
+    REVIEW_IGNORE_PATHS: "$[[ inputs.review_ignore_paths ]]"
+    REVIEW_AUTO_TRIGGERS: "$[[ inputs.review_auto_triggers ]]"
+    REVIEW_DRAFTS: "$[[ inputs.review_drafts ]]"
+    REVIEW_EFFORT: "$[[ inputs.review_effort ]]"
+    REVIEW_CATEGORY_CHIPS: "$[[ inputs.review_category_chips ]]"
+    REVIEW_SUGGEST_REVIEWERS: "$[[ inputs.review_suggest_reviewers ]]"
+    REVIEW_PRE_MERGE_CHECKS: "$[[ inputs.review_pre_merge_checks ]]"
+    SECURITY_SEVERITY_THRESHOLD: "$[[ inputs.security_severity_threshold ]]"
     DROID_SUCCESS: "true"
   before_script:
     - apt-get update -qq
@@ -191,12 +282,19 @@ droid-review:
     - bash "$DROID_ACTION_DIR/gitlab/install-org-guidelines.sh"
   script:
     - export PATH="$HOME/.local/bin:$PATH"
+    - |
+      set -euo pipefail
+      # Freeze every credentialed adapter and executable before any model runs.
+      # Keep integrity authority in this parent, not model-writable state.
+      . "$DROID_ACTION_DIR/gitlab/freeze-runtime.sh"
+      droid_freeze_runtime
+      droid_install_finalize_trap
     # Every `bun run` passes --config=/dev/null --env-file=/dev/null: the
     # working directory is the MR checkout, and Bun would otherwise load its
     # `bunfig.toml` (including `preload` scripts) and `.env` while
     # GITLAB_TOKEN and FACTORY_API_KEY are in the environment.
     - |
-      if ! bun --config=/dev/null --env-file=/dev/null run "$DROID_ACTION_DIR/src/entrypoints/gitlab-prepare.ts"; then
+      if ! droid_run_trusted gitlab-prepare; then
         export DROID_SUCCESS=false
         echo "gitlab-prepare exited non-zero" > /tmp/droid-error.txt
         exit 1
@@ -238,14 +336,15 @@ droid-review:
       # The pass never needs the GitLab token, so it does not start with it.
       # This is hygiene, not isolation: the pass can still read the token from
       # this shell's /proc/<pid>/environ.
-      if ! env -u GITLAB_TOKEN -u OVERRIDE_GITLAB_TOKEN droid $DROID_ARGS --tag "$SESSION_TAG" 2>&1 | tee "$PASS1_LOG"; then
+      droid_verify_cli
+      if ! env -u GITLAB_TOKEN -u OVERRIDE_GITLAB_TOKEN -u CI_JOB_TOKEN -u CI_REPOSITORY_URL -u BUN_OPTIONS -u NODE_OPTIONS "$DROID_FROZEN_CLI" $DROID_ARGS --tag "$SESSION_TAG" 2>&1 | tee "$PASS1_LOG"; then
         export DROID_SUCCESS=false
         echo "droid exec pass 1 (candidates) failed" > /tmp/droid-error.txt
         exit 1
       fi
     - |
       # ---- Prepare Pass 2 prompt ----
-      if ! bun --config=/dev/null --env-file=/dev/null run "$DROID_ACTION_DIR/src/entrypoints/gitlab-prepare-validator.ts"; then
+      if ! droid_run_trusted gitlab-prepare-validator; then
         export DROID_SUCCESS=false
         echo "gitlab-prepare-validator failed" > /tmp/droid-error.txt
         exit 1
@@ -263,7 +362,8 @@ droid-review:
       if [ -n "$RESOLVED_REASONING_EFFORT" ]; then DROID_ARGS="$DROID_ARGS --reasoning-effort $RESOLVED_REASONING_EFFORT"; fi
       SESSION_TAG="${DROID_SESSION_TAG_VALIDATOR:-code-review}"
       echo "Running Pass 2 (validator): droid $DROID_ARGS --tag '$SESSION_TAG'"
-      if ! env -u GITLAB_TOKEN -u OVERRIDE_GITLAB_TOKEN droid $DROID_ARGS --tag "$SESSION_TAG" 2>&1 | tee "$PASS2_LOG"; then
+      droid_verify_cli
+      if ! env -u GITLAB_TOKEN -u OVERRIDE_GITLAB_TOKEN -u CI_JOB_TOKEN -u CI_REPOSITORY_URL -u BUN_OPTIONS -u NODE_OPTIONS "$DROID_FROZEN_CLI" $DROID_ARGS --tag "$SESSION_TAG" 2>&1 | tee "$PASS2_LOG"; then
         export DROID_SUCCESS=false
         echo "droid exec pass 2 (validator) failed" > /tmp/droid-error.txt
         exit 1
@@ -273,28 +373,14 @@ droid-review:
       # Reads review_validated.json and creates one inline discussion per
       # approved comment. Comments that cannot be anchored are reported in
       # the job log and counted in the tracking note.
-      if ! bun --config=/dev/null --env-file=/dev/null run "$DROID_ACTION_DIR/src/entrypoints/gitlab-post-review.ts"; then
+      if ! droid_run_trusted gitlab-post-review; then
         export DROID_SUCCESS=false
         echo "gitlab-post-review failed to post the review" > /tmp/droid-error.txt
         exit 1
       fi
-  after_script:
-    - export PATH="$HOME/.local/bin:$PATH"
-    # gitlab-update-comment-link reads /tmp/droid-error.txt itself, refusing
-    # symlinks and capping and redacting the text: the passes can rewrite
-    # anything in /tmp, so a shell `cat` here could publish any file the job
-    # can read into the MR.
-    # after_script runs in a fresh shell, so the `export DROID_SUCCESS=false`
-    # above never reaches it. The error file is the signal that survives.
-    - if [ -s /tmp/droid-error.txt ]; then export DROID_SUCCESS=false; fi
-    - export DROID_PASS1_LOG="/tmp/droid-prompts/pass1-output.jsonl"
-    - export DROID_PASS2_LOG="/tmp/droid-prompts/pass2-output.jsonl"
-    # Stage debug artifacts that live outside CI_PROJECT_DIR so GitLab can
-    # capture them, with the job's credentials redacted: the pass logs hold the
-    # output of every command Droid ran. If staging fails, nothing is uploaded,
-    # and the after_script chain carries on.
-    - bun --config=/dev/null --env-file=/dev/null run "$DROID_ACTION_DIR/src/entrypoints/gitlab-collect-debug-artifacts.ts" || rm -rf "$CI_PROJECT_DIR/.droid-debug"
-    - bun --config=/dev/null --env-file=/dev/null run "$DROID_ACTION_DIR/src/entrypoints/gitlab-update-comment-link.ts" || true
+  # Finalization runs in the same parent's EXIT trap, preserving its pinned
+  # digests and original exit status. A fresh after_script has no authority.
+  after_script: []
   artifacts:
     when: always
     paths:

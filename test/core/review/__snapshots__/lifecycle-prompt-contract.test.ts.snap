@@ -1,0 +1,49 @@
+// Bun Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`legacy platform prompt byte contracts Bitbucket Cloud/Data Center suggestions=false security=false truncated=false 1`] = `"33334f2064bda7e39af8938398cc696b83d7e5e57289123c8bacacb0e24dc23c"`;
+
+exports[`legacy platform prompt byte contracts Bitbucket Cloud/Data Center suggestions=false security=false truncated=false 2`] = `"fd7bbd32adb1b388764f93770b9279997d25470a804b3bc7a83029035034c113"`;
+
+exports[`legacy platform prompt byte contracts Bitbucket Cloud/Data Center suggestions=false security=false truncated=true 1`] = `"c998404ab119de7fbb988cb0533f1b80fe542cf31b267dc84609df335532c8ca"`;
+
+exports[`legacy platform prompt byte contracts Bitbucket Cloud/Data Center suggestions=false security=false truncated=true 2`] = `"2f8cff58e904476661f9c8c72d0235852d5be2a55e585674db50528075f1867a"`;
+
+exports[`legacy platform prompt byte contracts Azure DevOps suggestions=false security=false 1`] = `"586aeefbb475d3db713d72273f96d8696b1cc62c1a9f4591ccfce51a7bc021cd"`;
+
+exports[`legacy platform prompt byte contracts Azure DevOps suggestions=false security=false 2`] = `"a48eac24dbe26b60abea8e2519caf9cc4056e4c8f0add8a8153139ae707a253d"`;
+
+exports[`legacy platform prompt byte contracts Bitbucket Cloud/Data Center suggestions=false security=true truncated=false 1`] = `"970af2801b84c6428699ee2190c11850cf272ac764ecf461e4738c46e602e19f"`;
+
+exports[`legacy platform prompt byte contracts Bitbucket Cloud/Data Center suggestions=false security=true truncated=false 2`] = `"fd7bbd32adb1b388764f93770b9279997d25470a804b3bc7a83029035034c113"`;
+
+exports[`legacy platform prompt byte contracts Bitbucket Cloud/Data Center suggestions=false security=true truncated=true 1`] = `"6ee1c9fb7500b8cea05375194a9aa2ac80afb8447dd4011af6e22e8e2cb4484c"`;
+
+exports[`legacy platform prompt byte contracts Bitbucket Cloud/Data Center suggestions=false security=true truncated=true 2`] = `"2f8cff58e904476661f9c8c72d0235852d5be2a55e585674db50528075f1867a"`;
+
+exports[`legacy platform prompt byte contracts Azure DevOps suggestions=false security=true 1`] = `"18fe748766db526e3f545ef442eb5c866faf3402c633b7847c447cd1e56828b8"`;
+
+exports[`legacy platform prompt byte contracts Azure DevOps suggestions=false security=true 2`] = `"a48eac24dbe26b60abea8e2519caf9cc4056e4c8f0add8a8153139ae707a253d"`;
+
+exports[`legacy platform prompt byte contracts Bitbucket Cloud/Data Center suggestions=true security=false truncated=false 1`] = `"8a62ac7b96c237c0dcec517e18c84fd14406044900309e7b4edd37e753a6f2b9"`;
+
+exports[`legacy platform prompt byte contracts Bitbucket Cloud/Data Center suggestions=true security=false truncated=false 2`] = `"e22f4e6564d450afdc866e4340aaffeecf1d36a178aeaea03818059896b2644a"`;
+
+exports[`legacy platform prompt byte contracts Bitbucket Cloud/Data Center suggestions=true security=false truncated=true 1`] = `"8fd8285f4a6a18baf9ffbd36297b3f1b4a2efcdfe3c24e0c899497f72fb513b6"`;
+
+exports[`legacy platform prompt byte contracts Bitbucket Cloud/Data Center suggestions=true security=false truncated=true 2`] = `"6584b03971904bd5fd535687ee0bbd86ea7c7b7c1359aad46946f2fe10159ce5"`;
+
+exports[`legacy platform prompt byte contracts Azure DevOps suggestions=true security=false 1`] = `"f05bd3ffe4cdbf656cebc4ffbec206a07ea69c3bc942d0b48d7146b161a3dc55"`;
+
+exports[`legacy platform prompt byte contracts Azure DevOps suggestions=true security=false 2`] = `"b87ecd7df9279a1d83f2d4912518c22829da0d6ed363304b9d1274b66ba02919"`;
+
+exports[`legacy platform prompt byte contracts Bitbucket Cloud/Data Center suggestions=true security=true truncated=false 1`] = `"db65a1e72d2b807689cce580590394f2b0a0beca0865d91e8d1dd474bd2f8131"`;
+
+exports[`legacy platform prompt byte contracts Bitbucket Cloud/Data Center suggestions=true security=true truncated=false 2`] = `"e22f4e6564d450afdc866e4340aaffeecf1d36a178aeaea03818059896b2644a"`;
+
+exports[`legacy platform prompt byte contracts Bitbucket Cloud/Data Center suggestions=true security=true truncated=true 1`] = `"821f0ae86ad9227ed9342b7e73323b9dc01447bc82025751c723154b41f67526"`;
+
+exports[`legacy platform prompt byte contracts Bitbucket Cloud/Data Center suggestions=true security=true truncated=true 2`] = `"6584b03971904bd5fd535687ee0bbd86ea7c7b7c1359aad46946f2fe10159ce5"`;
+
+exports[`legacy platform prompt byte contracts Azure DevOps suggestions=true security=true 1`] = `"778f4f2dfd93afe517d00114936dbb57a66aa00a83568d5cf4ea6b1c61d4c7da"`;
+
+exports[`legacy platform prompt byte contracts Azure DevOps suggestions=true security=true 2`] = `"b87ecd7df9279a1d83f2d4912518c22829da0d6ed363304b9d1274b66ba02919"`;

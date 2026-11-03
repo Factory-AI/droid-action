@@ -4,6 +4,7 @@ import { checkHumanActor } from "../github/validation/actor";
 import { createInitialComment } from "../github/operations/comments/create-initial";
 import { isEntityContext, type ParsedGitHubContext } from "../github/context";
 import { extractCommandFromContext } from "../github/utils/command-parser";
+import { isManualReviewRequest } from "../github/utils/review-intent";
 import { prepareFillMode } from "./commands/fill";
 import { prepareReviewMode } from "./commands/review";
 import { prepareSecurityReviewMode } from "./commands/security-review";
@@ -15,7 +16,9 @@ import { isAutomationContext } from "../github/context";
 import { prepareStewardMode } from "../steward";
 import { DroidRunType, resolveTagRunType, setDroidRunType } from "../run-type";
 import { DROID_APP_BOT_ID } from "../github/bot-identity";
-const SECURITY_REVIEW_MARKER = "## Security Review Summary";
+import { prepareConversationCommand } from "./commands/conversation";
+import { decodeReviewState, hasSummaryMarker } from "../core/review/markers";
+import { fetchPRBranchData } from "../github/data/pr-fetcher";
 
 export function shouldTriggerTag(context: GitHubContext): boolean {
   if (isAutomationContext(context)) {
@@ -47,6 +50,11 @@ async function hasExistingSecurityReview(
   const { owner, repo } = context.repository;
 
   try {
+    const pr = await fetchPRBranchData({
+      octokits: octokit,
+      repository: context.repository,
+      prNumber: context.entityNumber,
+    });
     const comments = await octokit.rest.issues.listComments({
       owner,
       repo,
@@ -54,12 +62,30 @@ async function hasExistingSecurityReview(
       per_page: 100,
     });
 
+    let viewer: string | undefined;
+    try {
+      viewer = (
+        await octokit.graphql<{ viewer: { login: string } }>(
+          "query DroidSecurityViewer { viewer { login } }",
+        )
+      ).viewer.login;
+    } catch {
+      /* The known Droid App id remains a safe identity fallback. */
+    }
     const hasSecurityReview = comments.data.some((comment) => {
       const isOurBot =
         comment.user?.id === DROID_APP_BOT_ID ||
-        (comment.user?.type === "Bot" &&
-          comment.user?.login.toLowerCase().includes("droid"));
-      return isOurBot && comment.body?.includes(SECURITY_REVIEW_MARKER);
+        (!!viewer &&
+          comment.user?.type === "Bot" &&
+          comment.user.login === viewer);
+      const body = comment.body ?? "";
+      const state = decodeReviewState(body);
+      return (
+        isOurBot &&
+        hasSummaryMarker(body) &&
+        state?.head === pr.headRefOid &&
+        state.securityReviewedHead === pr.headRefOid
+      );
     });
 
     return hasSecurityReview;
@@ -101,7 +127,30 @@ export async function prepareTagExecution({
     );
   }
 
-  const commandContext = extractCommandFromContext(context);
+  let commandContext = extractCommandFromContext(context);
+  const requestedMode =
+    commandContext?.command === "security" ||
+    commandContext?.command === "security-full"
+      ? "security"
+      : "code";
+  const manualReview = isManualReviewRequest(context, requestedMode);
+  if (
+    !manualReview &&
+    commandContext?.location === "body" &&
+    (context.inputs.automaticReview || context.inputs.automaticSecurityReview)
+  ) {
+    commandContext = null;
+  }
+  if (commandContext && manualReview) {
+    context = {
+      ...context,
+      inputs: {
+        ...context.inputs,
+        automaticReview: false,
+        automaticSecurityReview: false,
+      },
+    };
+  }
   const runType = resolveTagRunType({
     automaticReview: context.inputs.automaticReview,
     automaticSecurityReview: context.inputs.automaticSecurityReview,
@@ -109,6 +158,24 @@ export async function prepareTagExecution({
   });
   if (runType) {
     setDroidRunType(runType);
+  }
+  if (
+    commandContext &&
+    [
+      "help",
+      "unknown",
+      "question",
+      "fix",
+      "resolve",
+      "pause",
+      "resume",
+    ].includes(commandContext.command)
+  ) {
+    return prepareConversationCommand({
+      context,
+      octokit,
+      command: commandContext,
+    });
   }
 
   let runAutomaticSecurityReview = context.inputs.automaticSecurityReview;
@@ -123,15 +190,13 @@ export async function prepareTagExecution({
       if (!context.inputs.automaticReview) {
         core.setOutput("run_code_review", "false");
         core.setOutput("run_security_review", "false");
-        return {
-          skipped: true,
-          reason: "security_review_exists",
-          branchInfo: {
-            baseBranch: "",
-            currentBranch: "",
-          },
-          mcpTools: "",
-        };
+        return prepareSecurityReviewMode({
+          context,
+          octokit,
+          githubToken,
+          runType,
+          skipReason: "Security review already exists on this PR.",
+        });
       }
     }
   }
@@ -151,13 +216,15 @@ export async function prepareTagExecution({
       ? "security"
       : "default";
 
-  const commentData = await createInitialComment(
-    octokit.rest,
-    context,
-    commentType,
-    runType,
-  );
-  const commentId = commentData.id;
+  const isReviewRun =
+    runType === null ||
+    runType === DroidRunType.Review ||
+    runType === DroidRunType.Default ||
+    runType === DroidRunType.SecurityReview;
+  const commentData = isReviewRun
+    ? undefined
+    : await createInitialComment(octokit.rest, context, commentType, runType);
+  const commentId = commentData?.id;
 
   // Handle when both automatic review flags are set
   if (
@@ -183,6 +250,8 @@ export async function prepareTagExecution({
       githubToken,
       trackingCommentId: commentId,
       runType,
+      fullReview: commandContext?.fullReview,
+      focus: commandContext?.focus,
     });
   }
 
@@ -195,6 +264,8 @@ export async function prepareTagExecution({
       githubToken,
       trackingCommentId: commentId,
       runType,
+      fullReview: commandContext?.fullReview,
+      focus: commandContext?.focus,
     });
   }
 
@@ -258,6 +329,8 @@ export async function prepareTagExecution({
       githubToken,
       trackingCommentId: commentId,
       runType,
+      fullReview: commandContext?.fullReview,
+      focus: commandContext?.focus,
     });
   }
 

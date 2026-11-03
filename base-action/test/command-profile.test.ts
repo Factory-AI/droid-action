@@ -14,6 +14,7 @@ import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { createCommandProfile } from "../src/command-profile";
 import { buildDroidEnv } from "../src/run-droid";
+import { redactCredentials } from "../src/utils/redact-credentials";
 import { parse } from "shell-quote";
 
 const cleanup: string[] = [];
@@ -124,6 +125,7 @@ describe("file-only command CLI profile isolation", () => {
     expect(profile.args).toContain("--settings");
     expect(profile.args).toContain("--disable-builtin-skills");
     expect(profile.args).not.toContain("Execute");
+    expect(parse(profile.args)).toEqual(Array.from(profile.argv));
     expect(parse(profile.args)).toEqual([
       "--cwd",
       profile.cwd,
@@ -154,6 +156,7 @@ describe("file-only command CLI profile isolation", () => {
       await profile.cleanup();
     }
     expect(await exists(root)).toBe(false);
+    expect(parse(profile.args)).toEqual(Array.from(profile.argv));
     expect(parse(profile.args)).toEqual([
       "--cwd",
       profile.cwd,
@@ -382,13 +385,15 @@ process.exit(${exitCode});
           stderr: "pipe",
         },
       );
-      const [stdout, , exit] = await Promise.all([
+      const [stdout, stderr, exit] = await Promise.all([
         new Response(runner.stdout).text(),
         new Response(runner.stderr).text(),
         runner.exited,
       ]);
       expect(exit).toBe(exitCode);
+      expect(stderr).not.toContain("synthetic");
       expect(stdout).not.toContain("Registering");
+      expect(stdout).not.toContain("synthetic-workflow-token");
       const captured = JSON.parse(await readFile(dump, "utf8"));
       cleanup.push(dirname(captured.cwd));
       expect(captured.cwd).not.toBe(work);
@@ -422,5 +427,10 @@ process.exit(${exitCode});
       {},
     );
     expect(env).toEqual({ PATH: "/bin" });
+    expect(
+      redactCredentials("failed arbitrary-workflow-secret", {
+        WORKFLOW_GITHUB_TOKEN: "arbitrary-workflow-secret",
+      }),
+    ).toBe("failed [REDACTED]");
   });
 });

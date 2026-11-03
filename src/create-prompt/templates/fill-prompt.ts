@@ -40,7 +40,8 @@ Use the gathered information to write the description:
 - For sections you cannot verify, write "[To be filled by author]".
 
 Submission:
-- After drafting the final description, call github_pr___update_pr_description in replace mode with your Markdown body.
+- After drafting the generated content, call github_pr___update_pr_description in generated mode with only that Markdown content, not the author's existing description.
+- The tool replaces only the <!-- droid-fill:start --> / <!-- droid-fill:end --> region and adds provenance. It preserves all author text outside that region. Do not include the markers or provenance yourself.
 - Do not proceed if required commands fail. Instead, note the failure and provide whatever verified context you have.
 `;
 }
