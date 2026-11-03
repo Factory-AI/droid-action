@@ -81,9 +81,9 @@ droid
 
 The guided flow will:
 
-- Detect whether your repository lives on GitHub, GitLab, or Bitbucket.
-- Help you install the Droid GitHub App (or configure GitLab access).
-- Generate the workflow files (`droid.yml` and `droid-review.yml`) with sensible defaults.
+- Detect whether your repository lives on GitHub, GitLab, Bitbucket, or Azure DevOps.
+- Help you install the Droid GitHub App, or set up the CI variables and tokens that GitLab, Bitbucket, and Azure DevOps need.
+- Generate the workflow or pipeline files with sensible defaults.
 - Prompt you for `review_depth`, security review options, and other inputs.
 - Recommend security review for new GitHub setups, while retaining an explicit opt-out.
 - Open a PR/MR containing the new workflow files for you to review and merge.
@@ -142,7 +142,7 @@ pipelines:
             - bash /tmp/droid-action/bitbucket/droid-review.sh
 ```
 
-Workspace-wide rollout, Data Center CI examples, enforcement, and troubleshooting live in [`docs/bitbucket-setup.md`](docs/bitbucket-setup.md).
+Every template is listed in [`bitbucket/README.md`](bitbucket/README.md). Workspace-wide rollout, Data Center CI examples, enforcement, and troubleshooting live in [`docs/bitbucket-setup.md`](docs/bitbucket-setup.md).
 
 ### Azure DevOps
 
