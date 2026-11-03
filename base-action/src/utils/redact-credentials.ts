@@ -76,12 +76,18 @@ const NEXT_CREDENTIAL_FIELD = String.raw`(?:authorization|${ASSIGNMENT_KEY})\s*[
 const EMBEDDED_CREDENTIAL_PREFIX = String.raw`(?:authorization[^\S\r\n]*[:=][^\S\r\n]*(?:(?:bearer|basic)[^\S\r\n]+)?|${ASSIGNMENT_KEY}[^\S\r\n]*[:=][^\S\r\n]*)`;
 const EMBEDDED_QUOTED_VALUE = String.raw`(?:"(?:\\[^\r\n]|[^"\\\r\n])*(?:\\(?=\r?$))?(?:"|(?=\r?$))|'(?:\\[^\r\n]|[^'\\\r\n])*(?:\\(?=\r?$))?(?:'|(?=\r?$)))`;
 const BARE_CREDENTIAL_VALUE = String.raw`(?:\\(?!(?:r\\n|[nrt])(?=${NEXT_CREDENTIAL_FIELD}))[^\s,"';]?|${EMBEDDED_CREDENTIAL_PREFIX}(?:${EMBEDDED_QUOTED_VALUE})?|[^\\\s,"';])+`;
-const JSON_HORIZONTAL_SPACE = String.raw`(?:[^\S\r\n]|\\t)`;
+// Exactly the native horizontal whitespace set, including its JSON spellings.
+const JSON_HORIZONTAL_SPACE = String.raw`(?:[^\S\r\n]|\\[tf]|\\u(?:000[9bc]|0020|00a0|1680|200[0-9a]|202[89f]|205f|3000|feff))`;
+const JSON_LINE_BREAK = String.raw`\\(?:[rn]|u000[ad])`;
+const JSON_SPACE = String.raw`(?:${JSON_HORIZONTAL_SPACE}|[\r\n]|${JSON_LINE_BREAK})`;
 const JSON_QUOTED_DELIMITER = String.raw`\\(?:"|u0022)`;
 const JSON_ESCAPED_BACKSLASH = String.raw`(?:\\{2}|\\u005[cC])`;
-// JSON doubles each original backslash and escapes the quote delimiter.
-// Consume encoded escape pairs before deciding whether a quote closes a value.
-const JSON_QUOTED_VALUE = String.raw`(?:${JSON_ESCAPED_BACKSLASH}{2}|${JSON_ESCAPED_BACKSLASH}${JSON_QUOTED_DELIMITER}|${JSON_ESCAPED_BACKSLASH}|\\(?!u0022)[^"rn\r\n]|[^"\\\r\n])*`;
+const JSON_VALUE_END = String.raw`(?="|${JSON_LINE_BREAK}|[\r\n]|(?![\s\S]))`;
+// These character classes exclude encoded backslashes, quotes and line breaks.
+// Each decoded backslash then consumes exactly one character or a true boundary.
+// Keep the alternatives disjoint, including malformed trailing escapes at EOF.
+const JSON_VALUE_CHARACTER = String.raw`(?:\\(?!u(?:0022|005c|000[ad]))[^"\\rn\r\n]|[^"\\\r\n])`;
+const JSON_QUOTED_VALUE = String.raw`(?:${JSON_ESCAPED_BACKSLASH}(?:${JSON_ESCAPED_BACKSLASH}|${JSON_QUOTED_DELIMITER}|${JSON_VALUE_CHARACTER}|${JSON_VALUE_END})|${JSON_VALUE_CHARACTER})*(?:\\(?=[\r\n]|(?![\s\S])))?`;
 
 const FACTORY_API_KEY_PATTERN = new RegExp(
   `${TOKEN_START}fk-[A-Za-z0-9_-]{20,}`,
@@ -144,7 +150,7 @@ export function redactCredentialPatterns(content: string): string {
     )
     .replace(
       new RegExp(
-        String.raw`((?:\b|${AFTER_JSON_ESCAPE})authorization${JSON_HORIZONTAL_SPACE}*[:=]${JSON_HORIZONTAL_SPACE}*(?:(?:bearer|basic)${JSON_HORIZONTAL_SPACE}+)?)(${JSON_QUOTED_DELIMITER})((?:(?:bearer|basic)${JSON_HORIZONTAL_SPACE}+)?)(?:${JSON_QUOTED_VALUE})(${JSON_QUOTED_DELIMITER}|(?="|\\[rn]|\r?$))|((?:\b|${AFTER_JSON_ESCAPE})authorization[^\S\r\n]*[:=][^\S\r\n]*(?:(?:bearer|basic)[^\S\r\n]+)?)(?:(["'])((?:(?:bearer|basic)[^\S\r\n]+)?)(?:\\[^\r\n]|(?!\6)[^\\\r\n])*(?:\\(?=\r?$))?(\6|(?=\r?$))|(${BARE_CREDENTIAL_VALUE})(["']?))`,
+        String.raw`((?:\b|${AFTER_JSON_ESCAPE})authorization${JSON_HORIZONTAL_SPACE}*[:=]${JSON_HORIZONTAL_SPACE}*(?:(?:bearer|basic)${JSON_HORIZONTAL_SPACE}+)?)(${JSON_QUOTED_DELIMITER})((?:(?:bearer|basic)${JSON_HORIZONTAL_SPACE}+)?)(?:${JSON_QUOTED_VALUE})(${JSON_QUOTED_DELIMITER}|${JSON_VALUE_END})|((?:\b|${AFTER_JSON_ESCAPE})authorization[^\S\r\n]*[:=][^\S\r\n]*(?:(?:bearer|basic)[^\S\r\n]+)?)(?:(["'])((?:(?:bearer|basic)[^\S\r\n]+)?)(?:\\[^\r\n]|(?!\6)[^\\\r\n])*(?:\\(?=\r?$))?(\6|(?=\r?$))|(${BARE_CREDENTIAL_VALUE})(["']?))`,
         "gim",
       ),
       (
@@ -164,7 +170,7 @@ export function redactCredentialPatterns(content: string): string {
     )
     .replace(
       new RegExp(
-        String.raw`((?:\b|${AFTER_JSON_ESCAPE})${ASSIGNMENT_KEY}${JSON_HORIZONTAL_SPACE}*[:=]${JSON_HORIZONTAL_SPACE}*)(${JSON_QUOTED_DELIMITER})(?:${JSON_QUOTED_VALUE})(${JSON_QUOTED_DELIMITER}|(?="|\\[rn]|\r?$))|((?:\b|${AFTER_JSON_ESCAPE})${ASSIGNMENT_KEY}\s*[:=]\s*)(?:(["'])(?:\\[^\r\n]|(?!\5)[^\\\r\n])*(?:\\(?=\r?$))?(\5|(?=\r?$))|(${BARE_CREDENTIAL_VALUE})(["']?))`,
+        String.raw`((?:\b|${AFTER_JSON_ESCAPE})${ASSIGNMENT_KEY}${JSON_SPACE}*[:=]${JSON_SPACE}*)(${JSON_QUOTED_DELIMITER})(?:${JSON_QUOTED_VALUE})(${JSON_QUOTED_DELIMITER}|${JSON_VALUE_END})|((?:\b|${AFTER_JSON_ESCAPE})${ASSIGNMENT_KEY}\s*[:=]\s*)(?:(["'])(?:\\[^\r\n]|(?!\5)[^\\\r\n])*(?:\\(?=\r?$))?(\5|(?=\r?$))|(${BARE_CREDENTIAL_VALUE})(["']?))`,
         "gim",
       ),
       (

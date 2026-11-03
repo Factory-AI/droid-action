@@ -226,6 +226,85 @@ describe("canonical JSON-encoded credential quote preservation", () => {
     }
   }
 
+  for (const space of [
+    "\t",
+    "\v",
+    "\f",
+    " ",
+    "\u00a0",
+    "\u1680",
+    "\u2000",
+    "\u2001",
+    "\u2002",
+    "\u2003",
+    "\u2004",
+    "\u2005",
+    "\u2006",
+    "\u2007",
+    "\u2008",
+    "\u2009",
+    "\u200a",
+    "\u2028",
+    "\u2029",
+    "\u202f",
+    "\u205f",
+    "\u3000",
+    "\ufeff",
+  ]) {
+    const code = space.charCodeAt(0);
+    test(`preserves every JSON spelling of horizontal whitespace U+${code.toString(16)}`, () => {
+      const nativeSpelling = JSON.stringify(space).slice(1, -1);
+      const hex = code.toString(16).padStart(4, "0");
+      const spellings = new Set([
+        nativeSpelling,
+        String.raw`\u${hex}`,
+        String.raw`\u${hex.toUpperCase()}`,
+      ]);
+      for (const [prefix, scheme] of [
+        [`Authorization:${space}`, ""],
+        [`Authorization:${space}Bearer${space}`, ""],
+        [`Authorization:${space}`, `Basic${space}`],
+        [`password${space}=${space}`, ""],
+      ]) {
+        const output = `${prefix}"${scheme}${secret}" tail=SAFE`;
+        const expectedOutput = `${prefix}"${scheme}[REDACTED]" tail=SAFE`;
+        expect(redactCredentialPatterns(output)).toBe(expectedOutput);
+        const record = { output, keep: true, metadata: { space, ...metadata } };
+        const expectedRecord = { ...record, output: expectedOutput };
+        for (const spelling of spellings) {
+          const input = JSON.stringify(record).replaceAll(
+            nativeSpelling,
+            spelling,
+          );
+          const actual = redactSecrets(input, []);
+          expect(JSON.parse(actual)).toEqual(expectedRecord);
+          expect(actual).toBe(
+            JSON.stringify(expectedRecord).replaceAll(nativeSpelling, spelling),
+          );
+          expect(actual).not.toContain("fixture-sensitive-left");
+          expect(actual).not.toContain("fixture-sensitive-right");
+          expect(redactCredentialPatterns(actual)).toBe(actual);
+        }
+      }
+    });
+  }
+
+  for (const prefix of [
+    "prefix password=",
+    "prefix Authorization: Basic ",
+    "prefix Authorization: ",
+  ]) {
+    for (const slashes of [0, 1, 2, 3, 4, 5, 64, 65]) {
+      test(`masks truncated encoded quotes at EOF: ${prefix} backslashes=${slashes}`, () => {
+        const opening = String.raw`\"`;
+        const input = `${prefix}${opening}${"\\".repeat(slashes)}`;
+        const actual = redactCredentialPatterns(input);
+        expect(actual).toBe(`${prefix}${opening}[REDACTED]`);
+        expect(redactCredentialPatterns(actual)).toBe(actual);
+      });
+    }
+  }
+
   test("preserves unrelated identifiers and native authorization line boundaries", () => {
     const safe = {
       output:
