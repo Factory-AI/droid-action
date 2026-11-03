@@ -55,6 +55,7 @@ describe("rendered suggestions preserve their complete publication range", () =>
       start_side: "RIGHT",
     });
     expect(payload.comments[0].body).toContain(`suggestion\n${replacement}\n`);
+    expect(payload.comments[0].body).toContain(agentPrompt);
   });
 
   it.each([
@@ -88,6 +89,7 @@ describe("rendered suggestions preserve their complete publication range", () =>
       start_side: "LEFT",
     });
     expect(payload.comments[0].body).not.toMatch(/(?:`{3,}|~{3,})suggestion/);
+    expect(payload.comments[0].body).toContain(agentPrompt);
   });
 
   it("also rejects an incomplete LEFT range without narrowing it", async () => {
@@ -125,6 +127,6 @@ describe("rendered suggestions preserve their complete publication range", () =>
     });
     const payload = createReview.mock.calls[0]![0];
     expect(payload.comments[0]).not.toHaveProperty("start_line");
-    expect(payload.comments[0].body).toContain("suggestion\nfixed();\n");
+    expect(payload.comments[0].body).toContain("```suggestion\nfixed();\n```");
   });
 });

@@ -419,6 +419,30 @@ describe("review lifecycle production boundaries", () => {
     expect(f.body()).toContain(`run=123 attempt=2 -->`);
     expect(f.body()).toContain("Looks good to merge");
   });
+  for (const mode of ["comment", "description", "off"]) {
+    it(`Fix in Factory publisher binds the owned completed ${mode} review and attempt`, async () => {
+      process.env.REVIEW_SUMMARY = mode;
+      process.env.GITHUB_RUN_ATTEMPT = "2";
+      const f = fixture([]);
+      await f.prepare();
+      await f.post([{ status: "approved", comment: finding() }]);
+      const body = mode === "description" ? f.description() : f.body();
+      if (mode === "off") {
+        expect(body).not.toContain("[Fix in Factory]");
+        return;
+      }
+      const raw = /\[Fix in Factory\]\(([^)]+)\)/.exec(body)?.[1];
+      expect(raw).toBeDefined();
+      const task = new URL(raw!).searchParams.get("prompt")!;
+      expect(task).toContain(
+        `github.com/o/r/pull/7#${mode === "description" ? "droid-review-summary" : "issuecomment-40"}`,
+      );
+      expect(task).toContain(HEAD);
+      expect(task).toContain("Run 123, attempt 2");
+      expect(task).not.toMatch(/:\/\/|\\/);
+      expect(body.match(/\[Fix in Factory\]/g)).toHaveLength(1);
+    });
+  }
   it("QA75 2135 exports an explicit immutable base and reloads it rather than the cache", async () => {
     delete process.env.REVIEW_BASE_SHA;
     const f = fixture([]);
@@ -522,6 +546,19 @@ describe("review lifecycle production boundaries", () => {
     expect(f.calls.some((call) => call.method === "reactionDelete")).toBe(
       false,
     );
+  });
+  it("QA75 4524 renders canonical trusted model keys instead of hostile aliases", async () => {
+    const f = fixture([]);
+    await f.prepare();
+    process.env.REVIEW_MODEL = "trusted-model";
+    process.env.REASONING_EFFORT = "trusted-effort";
+    process.env.REVIEW_EFFECTIVE_MODEL = "hostile-model";
+    process.env.REVIEW_EFFECTIVE_REASONING = "hostile-effort";
+    await f.post([]);
+    expect(f.body()).toContain("trusted-model");
+    expect(f.body()).toContain("trusted-effort");
+    expect(f.body()).not.toContain("hostile-model");
+    expect(f.body()).not.toContain("hostile-effort");
   });
   it("QA75 4564 discovers custom-app stale reviews across pages without changing foreign or unmarked reviews", async () => {
     const f = fixture([]);
@@ -1653,6 +1690,8 @@ describe("review lifecycle production boundaries", () => {
     expect(
       f.calls.find((call) => call.method === "getContent")?.input,
     ).toMatchObject({ path: ".github/CODEOWNERS", ref: BASE });
+    expect(f.body()).toContain("alice");
+    expect(f.body()).toContain("Linked issue");
   });
   it("preserves author text and fenced examples in description mode", async () => {
     const author =

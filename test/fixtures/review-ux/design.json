@@ -1,0 +1,174 @@
+{
+  "version": 1,
+  "meta": {
+    "headSha": "9ea6c830123456789abcdef0123456789abcdef012"
+  },
+  "results": [
+    {
+      "status": "approved",
+      "comment": {
+        "id": "f-cart-quantity-subtotal",
+        "title": "Subtotals omit item quantities",
+        "severity": "P2",
+        "category": "correctness",
+        "security": false,
+        "path": "review_ux_demo/cart.py",
+        "line": 3,
+        "startLine": null,
+        "side": "RIGHT",
+        "also_at": [],
+        "body": "For an item with unit_cents 500 and quantity 3, this returns 500 rather than the documented 1500 cents because it sums only the unit price. Multiply each unit price by its quantity before summing.",
+        "why": "The documented three-unit contract expects 1500 cents, but subtotal_cents sums one unit price per item.",
+        "verification": "The README specifies three units at 500 cents as 1500 cents; the fixture output has subtotal_cents=500, and cart.py never reads quantity.",
+        "suggestion": "    return sum(item[\"unit_cents\"] * item[\"quantity\"] for item in items)",
+        "agent_prompt": "For an item with unit_cents 500 and quantity 3, subtotal_cents returns 500 instead of 1500. Multiply each unit price by its quantity and keep the documented nonnegative-cent behavior.",
+        "outside_diff": false
+      }
+    },
+    {
+      "status": "approved",
+      "comment": {
+        "id": "f-pagination-page-size-boundary",
+        "title": "Pages return one more row than requested",
+        "severity": "P2",
+        "category": "correctness",
+        "security": false,
+        "path": "review_ux_demo/pagination.py",
+        "line": 4,
+        "startLine": null,
+        "side": "RIGHT",
+        "also_at": [],
+        "body": "With rows A, B, C and page size 2, this slice returns all three rows, exceeding the documented maximum and making first_page include C. Stop the slice at start + page_size.",
+        "why": "The slice endpoint adds one to page_size, so every full page can exceed the requested size by one.",
+        "verification": "For the report's rows [A, B, C], index 0, and size 2, the current slice is rows[0:3] and the fixture output includes C.",
+        "suggestion": "    return rows[start : start + page_size]",
+        "agent_prompt": "With page size 2, page() currently returns three rows for the report's first page. Slice through start + page_size so each page contains at most the requested number of rows.",
+        "outside_diff": false
+      }
+    },
+    {
+      "status": "approved",
+      "comment": {
+        "id": "f-authorization-role-condition",
+        "title": "The access check inverts the admin rule",
+        "severity": "P2",
+        "category": "correctness",
+        "security": false,
+        "path": "review_ux_demo/authorization.py",
+        "line": 3,
+        "startLine": null,
+        "side": "RIGHT",
+        "also_at": [],
+        "body": "For a non-owner member this returns true, while for a non-owner admin it returns false, contradicting the documented owner-or-admin rule. Compare the role to admin with equality.",
+        "why": "The non-owner role check uses inequality, granting every non-admin role while denying a non-owner admin.",
+        "verification": "The README requires a non-owner member to be denied and a non-owner admin to be allowed; the current report emits member_can_view=true.",
+        "suggestion": "    return actor_id == owner_id or role == \"admin\"",
+        "agent_prompt": "For the documented non-owner member and admin cases, the predicate currently produces the opposite access results. Grant access to owners or actors whose role equals admin.",
+        "outside_diff": false
+      }
+    },
+    {
+      "status": "approved",
+      "comment": {
+        "id": "f-report-admin-contract-coverage",
+        "title": "The report omits the documented admin case",
+        "severity": "P2",
+        "category": "correctness",
+        "security": false,
+        "path": "review_ux_demo/report.py",
+        "line": 19,
+        "startLine": null,
+        "side": "RIGHT",
+        "also_at": [],
+        "body": "The README says the example report exercises the admin access contract, but the report only calls can_view_export for the non-owner member and emits no admin result. Add a non-owner admin case to the report.",
+        "why": "The example_report does not exercise or report the documented non-owner admin result, so the fixture output does not cover every contract it claims to call.",
+        "verification": "README lines 7-12 list both member and admin cases; report.py calls can_view_export only at lines 16-18 for the member.",
+        "agent_prompt": "The report currently emits only member_can_view. Add a non-owner admin call to can_view_export and include its boolean in the returned mapping.",
+        "outside_diff": false
+      }
+    },
+    {
+      "status": "approved",
+      "comment": {
+        "id": "f-action-sha-duplicate-metadata",
+        "title": "Logged action pin can drift from the executed ref",
+        "severity": "P2",
+        "category": "maintainability",
+        "security": false,
+        "path": ".github/workflows/review-ux-e2e.yml",
+        "line": 105,
+        "startLine": null,
+        "side": "RIGHT",
+        "also_at": [],
+        "body": "The workflow hard-codes this SHA in both the JSON metadata and the uses ref. If a later update changes only the executed ref, the emitted pinnedActionSha will report a different action than the job ran; keep one source of truth or validate the values match.",
+        "why": "The logged SHA duplicates the actual action ref, so updating only one location makes the acceptance metadata inaccurate.",
+        "verification": "Repository search for pinnedActionSha and this SHA finds the metadata at line 105 and the executed uses ref at line 115.",
+        "agent_prompt": "If the action pin is changed only in the uses ref, the emitted pinnedActionSha becomes stale. Remove the duplicate value or add a check that the logged value matches the executed ref.",
+        "outside_diff": false
+      }
+    },
+    {
+      "status": "approved",
+      "comment": {
+        "id": "f-auth-single-fixed-caller",
+        "title": "Authorization helper has one fixed-value caller",
+        "severity": "P2",
+        "category": "maintainability",
+        "security": false,
+        "path": "review_ux_demo/authorization.py",
+        "line": 1,
+        "startLine": null,
+        "side": "RIGHT",
+        "also_at": [],
+        "body": "The only caller is example_report, which passes fixed actor, role, and owner literals. Inlining this single predetermined use in the report removes the one-use abstraction without changing the fixture's behavior.",
+        "why": "The helper has one reader and that reader supplies only one fixed set of values.",
+        "verification": "Repository search for can_view_export finds its definition in authorization.py and one call in report.py at lines 16-18.",
+        "agent_prompt": "Inline the authorization expression in example_report; its only current call uses fixed demo literals.",
+        "outside_diff": false
+      }
+    },
+    {
+      "status": "approved",
+      "comment": {
+        "id": "f-cart-single-fixed-caller",
+        "title": "Subtotal helper has one fixed-value caller",
+        "severity": "P2",
+        "category": "maintainability",
+        "security": false,
+        "path": "review_ux_demo/cart.py",
+        "line": 1,
+        "startLine": null,
+        "side": "RIGHT",
+        "also_at": [],
+        "body": "The only caller is example_report, which passes one fixed item. Inlining this single predetermined use in the report removes the one-use abstraction without changing the fixture's behavior.",
+        "why": "The helper has one reader and that reader supplies only one fixed item.",
+        "verification": "Repository search for subtotal_cents finds its definition in cart.py and one call in report.py at lines 12-14.",
+        "agent_prompt": "Inline the subtotal expression in example_report; its only current call uses one fixed item.",
+        "outside_diff": false
+      }
+    },
+    {
+      "status": "approved",
+      "comment": {
+        "id": "f-pagination-single-fixed-caller",
+        "title": "Pagination helper has one fixed-value caller",
+        "severity": "P2",
+        "category": "maintainability",
+        "security": false,
+        "path": "review_ux_demo/pagination.py",
+        "line": 1,
+        "startLine": null,
+        "side": "RIGHT",
+        "also_at": [],
+        "body": "The only caller is example_report, which passes fixed rows, page index, and page size. Inlining this single predetermined use in the report removes the one-use abstraction without changing the fixture's behavior.",
+        "why": "The helper has one reader and that reader supplies only one fixed set of pagination values.",
+        "verification": "Repository search for page( finds the definition in pagination.py and one call in report.py at line 15.",
+        "agent_prompt": "Inline the pagination expression in example_report; its only current call uses fixed demo rows and pagination values.",
+        "outside_diff": false
+      }
+    }
+  ],
+  "summary": {
+    "body": "The synthetic report violates its documented quantity, pagination, and access contracts, and it omits the documented admin case. The workflow duplicates the action pin in emitted metadata, and each new helper has only one fixed-value caller."
+  }
+}

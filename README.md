@@ -278,7 +278,7 @@ Pull requests from forks are reviewed without checking out their code. The actio
 Unknown top-level commands show help. Mentions inside fenced or inline code do not trigger commands.
 GitLab commands require an [authenticated note-to-pipeline bridge](docs/gitlab-setup.md#commands-and-the-pipeline-bridge); ordinary MR pipelines do not react to new notes.
 
-PR-level `@droid fix` selects open inline Droid finding threads, not summary-only or outside-diff findings without a thread.
+PR-level `@droid fix` selects open inline Droid finding threads, not summary-only or outside-diff findings without a thread. For those findings, use the finding's safe agent prompt to verify and fix it separately.
 
 ### `@droid fill`
 
@@ -290,13 +290,27 @@ PR-level `@droid fix` selects open inline Droid finding threads, not summary-onl
 
 - Mention `@droid review` in a PR comment.
 - Droid inspects the diff, prioritizes potential bugs or high-impact issues, and leaves inline comments directly on the changed lines.
-- One sticky summary comment holds the verdict, linked findings, resolved findings, outside-diff findings, and validator counts.
+- One sticky summary comment holds the verdict, linked findings, resolved findings, outside-diff findings, validator counts, and review details.
 
 ### `@droid fix`
 
 The default `fix_mode: commit` verifies open findings and commits a focused fix when the actor and token can write to the source branch. Protected branches and writable forks use an authorized stacked PR/MR. `fix_mode: pr` always uses a stacked change; `off` disables publishing. Forks without source-repository write permission receive an explicit refusal.
 
 Droid never pushes to a repository's default branch and never force-pushes. The publisher checks the live source head, source-repository permissions, paths, credentials, and concurrent updates after the file-only model step. It reports the commit or stacked-change link, a collapsed diff preview, and actual validation limitations. The next review resolves threads only after the validator confirms the fixes, not merely because code moved.
+
+### Review UX and visible defaults
+
+Review output is rendered by TypeScript from the two-pass validator's structured JSON. The model supplies evidence and prose, not layout, counts, badges, or links.
+
+- A sticky issue comment is the default summary location. Running and failed states preserve the previous review below a clear banner.
+- Findings use native text severity labels by default, optional complete suggestions, a stable hidden finding marker, and a collapsed **Fix with an agent** prompt with an untrusted-data warning. Verification, related locations, rationale and guideline permalinks live in the summary's collapsed **Review details**; security severity and CWE remain visible inline. Image and emoji badges remain explicit opt-ins.
+- Clean reviews explicitly say no issues were found. Droid does not submit an empty review object.
+- Lifecycle reactions are eyes while running, hooray when clean, and confused on failure. Eyes are removed at completion. Droid does not request, read, or learn from thumbs feedback.
+- Re-reviews use stored state to avoid duplicates, honor human-dismissed threads, and resolve only confirmed fixes. Unchanged optional suggestions are suppressed only when explicitly classified as optional, never merely because they are P2.
+- The `Droid Review` check is successful when clean, neutral for nonblocking findings or review errors, and fails only at a configured priority/security threshold. Droid never approves or requests changes.
+- Generated/lock files are excluded by default and listed with reasons. Unknown `review_depth` values warn and use `deep`. The legacy `label_trigger` input is unsupported and has no default trigger.
+
+See [rendered fixture examples](docs/review-ux-preview.md), [all inputs and permissions](docs/setup.md), and [GitLab differences](docs/gitlab-setup.md#platform-differences).
 
 ### `@droid security`
 
