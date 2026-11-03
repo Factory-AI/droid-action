@@ -198,7 +198,7 @@ describe("Fix in Factory completed-review task", () => {
       ),
       generated.replace("](https://app.factory.ai/", "](https://evil.example/"),
       `${generated}\n\n${generated}`,
-      generated.replace(end, ""),
+      generated.replace(`\n${end}`, ""),
     ]) {
       expect(
         renderReviewSummary({
