@@ -292,6 +292,82 @@ describe("collectDebugArtifacts with the GitHub layout", () => {
     ).toEqual(Buffer.concat([prefix, Buffer.from(expected, "utf8"), suffix]));
   });
 
+  it("redacts quoted unknown credentials in JSONL without changing Unicode or binary bytes with UTF8 header whitespace", async () => {
+    const { home, runnerTemp } = createRunner();
+    const secret = "fixture-sensitive-left with spaces fixture-sensitive-right";
+    const codePoints = [
+      0x0009, 0x000b, 0x000c, 0x0020, 0x00a0, 0x1680, 0x2000, 0x2001, 0x2002,
+      0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2028,
+      0x2029, 0x202f, 0x205f, 0x3000, 0xfeff,
+    ];
+    const metadata = {
+      escaped: "é € 🚀",
+      utf8: "é € 🚀",
+      keep: [true, 2, null],
+      prose: String.raw`ordinary \"quoted\" prose and safe\\backslashes`,
+    };
+    const records = codePoints.flatMap((codePoint) => {
+      const space = String.fromCodePoint(codePoint);
+      return [
+        `password${space}=${space}"${secret}" tail=SAFE`,
+        `APP_PRIVATE_KEY${space}:${space}"${secret}" tail=SAFE`,
+        `Authorization:${space}Basic${space}"${secret}" tail=SAFE`,
+        `Authorization:${space}"Bearer${space}${secret}" tail=SAFE`,
+      ].map((output, form) => ({ codePoint, form, output, metadata }));
+    });
+    expect(codePoints).toHaveLength(23);
+    expect(records).toHaveLength(92);
+    const input =
+      records
+        .map((record) =>
+          JSON.stringify(record).replace(
+            '"escaped":"é € 🚀"',
+            String.raw`"escaped":"\u00e9 \u20ac \ud83d\ude80"`,
+          ),
+        )
+        .join("\r\n") + "\r\n";
+    const expected = input.replaceAll(secret, REDACTED);
+    write(
+      path.join(home, ".factory/sessions/-home-runner-work/whitespace.jsonl"),
+      input,
+    );
+    const prefix = Buffer.from([0xff, 0xfe, 0x00, 0x80]);
+    const suffix = Buffer.from([0xc3]);
+    write(
+      path.join(runnerTemp, "droid-prompts", "whitespace.bin"),
+      Buffer.concat([prefix, Buffer.from(input, "utf8"), suffix]),
+    );
+    const outputDir = path.join(runnerTemp, "droid-debug-artifacts");
+
+    await collectDebugArtifacts({
+      sources: githubDebugArtifactSources(home, runnerTemp),
+      outputDir,
+      secrets: [],
+    });
+
+    const actual = readFileSync(
+      path.join(outputDir, "factory/sessions/-home-runner-work/whitespace.jsonl"),
+    );
+    expect(actual).toEqual(Buffer.from(expected, "utf8"));
+    expect(
+      actual
+        .toString("utf8")
+        .trimEnd()
+        .split("\r\n")
+        .map((line) => JSON.parse(line)),
+    ).toEqual(
+      records.map((record) => ({
+        ...record,
+        output: record.output.replace(secret, REDACTED),
+      })),
+    );
+    expect(actual.toString("latin1")).not.toContain("fixture-sensitive-left");
+    expect(actual.toString("latin1")).not.toContain("fixture-sensitive-right");
+    expect(
+      readFileSync(path.join(outputDir, "droid-prompts", "whitespace.bin")),
+    ).toEqual(Buffer.concat([prefix, Buffer.from(expected, "utf8"), suffix]));
+  });
+
   it("replaces a symlink planted at the output directory without writing through it", async () => {
     const { home, runnerTemp } = createRunner();
     const target = path.join(sandbox, "elsewhere");
