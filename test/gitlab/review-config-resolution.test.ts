@@ -49,9 +49,10 @@ describe("resolveReviewConfig (used by gitlab-prepare)", () => {
     });
   });
 
-  it("unknown reviewDepth falls back to shallow preset", () => {
+  it("unknown reviewDepth falls back to the documented deep preset", () => {
     const out = resolveReviewConfig({ reviewDepth: "neutron-star" });
-    expect(out.model).toBe("openai-latest-fast");
+    expect(out.model).toBe("openai-latest-balanced");
+    expect(out.reasoningEffort).toBe("medium");
   });
 });
 

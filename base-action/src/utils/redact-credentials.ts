@@ -17,6 +17,7 @@ export const GITHUB_CREDENTIAL_ENV_NAMES = [
   "OVERRIDE_GITHUB_TOKEN",
   "DEFAULT_WORKFLOW_TOKEN",
   "FACTORY_API_KEY",
+  "APP_PRIVATE_KEY",
   "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
   "ACTIONS_RUNTIME_TOKEN",
 ] as const;
@@ -65,6 +66,33 @@ const GITHUB_TOKEN_LABEL = "[REDACTED_GITHUB_TOKEN]";
 const AFTER_JSON_ESCAPE = String.raw`(?<=\\[nrt])`;
 const TOKEN_START = String.raw`(?:(?<![\w.$-])|${AFTER_JSON_ESCAPE})`;
 const GITHUB_TOKEN_START = String.raw`(?:\b|${AFTER_JSON_ESCAPE})`;
+const ASSIGNMENT_KEY = String.raw`(?:FACTORY_API_KEY|GITHUB_TOKEN|APP_PRIVATE_KEY|api[_-]?key|access[_-]?token|password|secret)`;
+// Split encoded log lines only where the following value is also redacted.
+// Other backslashes, including escaped backslash pairs, stay inside the secret.
+const NEXT_CREDENTIAL_FIELD = String.raw`(?:authorization|${ASSIGNMENT_KEY})\s*[:=]`;
+// A literal (even-backslash) continuation is still one secret. Consume its
+// known field prefix and quoted value too, rather than stranding a token after
+// the prefix's whitespace. These atoms never consume an actual line break.
+const EMBEDDED_CREDENTIAL_PREFIX = String.raw`(?:authorization[^\S\r\n]*[:=][^\S\r\n]*(?:(?:bearer|basic)[^\S\r\n]+)?|${ASSIGNMENT_KEY}[^\S\r\n]*[:=][^\S\r\n]*)`;
+const EMBEDDED_QUOTED_VALUE = String.raw`(?:"(?:\\[^\r\n]|[^"\\\r\n])*(?:\\(?=\r?$))?(?:"|(?=\r?$))|'(?:\\[^\r\n]|[^'\\\r\n])*(?:\\(?=\r?$))?(?:'|(?=\r?$)))`;
+const BARE_CREDENTIAL_VALUE = String.raw`(?:\\(?!(?:r\\n|[nrt])(?=${NEXT_CREDENTIAL_FIELD}))[^\s,"';]?|${EMBEDDED_CREDENTIAL_PREFIX}(?:${EMBEDDED_QUOTED_VALUE})?|[^\\\s,"';])+`;
+// Artifact collection maps UTF-8 bytes through latin1 without reserializing them.
+const UTF8_LATIN1_HORIZONTAL_SPACE = String.raw`(?:\u00c2\u00a0|\u00e1\u009a\u0080|\u00e2\u0080[\u0080-\u008a\u00a8\u00a9\u00af]|\u00e2\u0081\u009f|\u00e3\u0080\u0080|\u00ef\u00bb\u00bf)`;
+// Include native horizontal whitespace and its JSON and collected byte spellings.
+const JSON_HORIZONTAL_SPACE = String.raw`(?:[^\S\r\n]|\\[tf]|\\u(?:000[9bc]|0020|00a0|1680|200[0-9a]|202[89f]|205f|3000|feff)|${UTF8_LATIN1_HORIZONTAL_SPACE})`;
+const JSON_LINE_BREAK = String.raw`\\(?:[rn]|u000[ad])`;
+const JSON_SPACE = String.raw`(?:${JSON_HORIZONTAL_SPACE}|[\r\n]|${JSON_LINE_BREAK})`;
+const JSON_QUOTED_DELIMITER = String.raw`\\(?:"|u0022)`;
+const JSON_ESCAPED_BACKSLASH = String.raw`(?:\\{2}|\\u005[cC])`;
+const JSON_VALUE_END = String.raw`(?="|${JSON_LINE_BREAK}|[\r\n]|(?![\s\S]))`;
+// Only the backslash continuation may peek past a final malformed escape.
+// The value's closing arm still requires that trailing byte to be consumed.
+const JSON_BACKSLASH_END = String.raw`(?:${JSON_VALUE_END}|(?=\\(?:[\r\n]|(?![\s\S]))))`;
+// These character classes exclude encoded backslashes, quotes and line breaks.
+// Each decoded backslash then consumes exactly one character or a true boundary.
+// Keep the alternatives disjoint, including malformed trailing escapes at EOF.
+const JSON_VALUE_CHARACTER = String.raw`(?:\\(?!u(?:0022|005c|000[ad]))[^"\\rn\r\n]|[^"\\\r\n])`;
+const JSON_QUOTED_VALUE = String.raw`(?:${JSON_ESCAPED_BACKSLASH}(?:${JSON_ESCAPED_BACKSLASH}|${JSON_QUOTED_DELIMITER}|${JSON_VALUE_CHARACTER}|${JSON_BACKSLASH_END})|${JSON_VALUE_CHARACTER})*(?:\\(?=[\r\n]|(?![\s\S])))?`;
 
 const FACTORY_API_KEY_PATTERN = new RegExp(
   `${TOKEN_START}fk-[A-Za-z0-9_-]{20,}`,
@@ -120,7 +148,54 @@ export function redactCredentialPatterns(content: string): string {
   );
   content = content.replace(GITLAB_TOKEN_PATTERN, "[REDACTED_GITLAB_TOKEN]");
   content = content.replace(PRIVATE_KEY_PATTERN, "[REDACTED_PRIVATE_KEY]");
-  return content;
+  return content
+    .replace(
+      /\b(?:gh[pousr]_[A-Za-z0-9_]{8,}|github_pat_[A-Za-z0-9_]+|sk-(?:ant-)?[A-Za-z0-9_-]{8,}|fk_[A-Za-z0-9_-]{8,}|AKIA[A-Z0-9]{16})\b/g,
+      REDACTED,
+    )
+    .replace(
+      new RegExp(
+        String.raw`((?:\b|${AFTER_JSON_ESCAPE})authorization${JSON_HORIZONTAL_SPACE}*[:=]${JSON_HORIZONTAL_SPACE}*(?:(?:bearer|basic)${JSON_HORIZONTAL_SPACE}+)?)(${JSON_QUOTED_DELIMITER})((?:(?:bearer|basic)${JSON_HORIZONTAL_SPACE}+)?)(?:${JSON_QUOTED_VALUE})(${JSON_QUOTED_DELIMITER}|${JSON_VALUE_END})|((?:\b|${AFTER_JSON_ESCAPE})authorization[^\S\r\n]*[:=][^\S\r\n]*(?:(?:bearer|basic)[^\S\r\n]+)?)(?:(["'])((?:(?:bearer|basic)[^\S\r\n]+)?)(?:\\[^\r\n]|(?!\6)[^\\\r\n])*(?:\\(?=\r?$))?(\6|(?=\r?$))|(${BARE_CREDENTIAL_VALUE})(["']?))`,
+        "gim",
+      ),
+      (
+        _match,
+        jsonPrefix: string | undefined,
+        jsonOpening: string | undefined,
+        jsonScheme: string | undefined,
+        jsonClosing: string | undefined,
+        prefix: string | undefined,
+        opening: string | undefined,
+        scheme: string | undefined,
+        closing: string | undefined,
+        _value: string | undefined,
+        trailing: string | undefined,
+      ) =>
+        `${jsonPrefix ?? prefix}${jsonOpening ?? opening ?? ""}${jsonScheme ?? scheme ?? ""}${REDACTED}${jsonClosing ?? closing ?? trailing ?? ""}`,
+    )
+    .replace(
+      new RegExp(
+        String.raw`((?:\b|${AFTER_JSON_ESCAPE})${ASSIGNMENT_KEY}${JSON_SPACE}*[:=]${JSON_SPACE}*)(${JSON_QUOTED_DELIMITER})(?:${JSON_QUOTED_VALUE})(${JSON_QUOTED_DELIMITER}|${JSON_VALUE_END})|((?:\b|${AFTER_JSON_ESCAPE})${ASSIGNMENT_KEY}\s*[:=]\s*)(?:(["'])(?:\\[^\r\n]|(?!\5)[^\\\r\n])*(?:\\(?=\r?$))?(\5|(?=\r?$))|(${BARE_CREDENTIAL_VALUE})(["']?))`,
+        "gim",
+      ),
+      (
+        _match,
+        jsonPrefix: string | undefined,
+        jsonOpening: string | undefined,
+        jsonClosing: string | undefined,
+        prefix: string | undefined,
+        opening: string | undefined,
+        closing: string | undefined,
+        _value: string | undefined,
+        trailing: string | undefined,
+      ) =>
+        `${jsonPrefix ?? prefix}${jsonOpening ?? opening ?? ""}${REDACTED}${jsonClosing ?? closing ?? trailing ?? ""}`,
+    )
+    .replace(/(https?:\/\/)[^/\s:@]+:[^/\s@]+@/g, "$1[REDACTED]@")
+    .replace(
+      /([?&](?:token|key|secret|password|signature|credential|access_token|api_key)=)[^&#\s]+/gi,
+      "$1[REDACTED]",
+    );
 }
 
 /** Reads the named variables, longest value first so no secret is left partly redacted by a shorter one it contains. */
