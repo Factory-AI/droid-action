@@ -346,7 +346,10 @@ describe("collectDebugArtifacts with the GitHub layout", () => {
     });
 
     const actual = readFileSync(
-      path.join(outputDir, "factory/sessions/-home-runner-work/whitespace.jsonl"),
+      path.join(
+        outputDir,
+        "factory/sessions/-home-runner-work/whitespace.jsonl",
+      ),
     );
     expect(actual).toEqual(Buffer.from(expected, "utf8"));
     expect(

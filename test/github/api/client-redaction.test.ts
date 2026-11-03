@@ -317,8 +317,7 @@ describe("canonical JSON-encoded credential quote preservation", () => {
     expect(redactCredentialPatterns("Authorization:\nSAFE_NEXT")).toBe(
       "Authorization:\nSAFE_NEXT",
     );
-    const jwt =
-      "eyJhbGciOiJub25lIn0.eyJmaXh0dXJlIjp0cnVlfQ.fixture_signature";
+    const jwt = "eyJhbGciOiJub25lIn0.eyJmaXh0dXJlIjp0cnVlfQ.fixture_signature";
     expect(
       redactCredentialPatterns(`Authorization: Bearer ${jwt}\nSAFE_NEXT`),
     ).toBe("Authorization: Bearer [REDACTED]\nSAFE_NEXT");
