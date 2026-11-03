@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { format } from "prettier";
+import { z } from "zod";
 import {
   ModuleKind,
   ScriptTarget,
@@ -29,6 +30,7 @@ import { generateCandidatesPrompt } from "../../src/core/review/prompts/candidat
 import { generateValidatorPrompt } from "../../src/core/review/prompts/validator";
 import type { ReviewPromptContext } from "../../src/core/review/prompts/types";
 import { enrichReviewSummary } from "../../src/core/review/validated/metadata";
+import { promptOutput } from "../helpers/legacy-review-contract";
 
 const root = join(import.meta.dir, "../..");
 const accepted = "9bc0ab98476f2d07a8931048154ccfc430afef9f";
@@ -47,14 +49,6 @@ const common: Omit<ReviewPromptContext, "terminology"> = {
   includeSuggestions: true,
   securityReviewEnabled: true,
 };
-function example(prompt: string) {
-  const output = prompt.slice(prompt.indexOf("### Output:") + 1);
-  const match = /```json\n([\s\S]*?)\n```/.exec(
-    prompt.includes("### Output:") ? output : prompt,
-  );
-  if (!match) throw new Error("Prompt has no JSON output example");
-  return JSON.parse(match[1]!);
-}
 
 describe("QA75 prompt output behavior", () => {
   for (const includeSuggestions of [false, true]) {
@@ -64,7 +58,10 @@ describe("QA75 prompt output behavior", () => {
         terminology: GITHUB_TERMINOLOGY,
         includeSuggestions,
       });
-      const comment = example(prompt).comments[0];
+      const [comment] = z
+        .array(z.record(z.unknown()))
+        .nonempty()
+        .parse(promptOutput(prompt, "comments").comments);
       expect(comment.title).toBeTruthy();
       expect(comment.severity).toBe("P1");
       expect(comment.body).not.toMatch(/^\[P[012]\]/);
@@ -80,7 +77,9 @@ describe("QA75 prompt output behavior", () => {
       ...common,
       terminology: GITHUB_TERMINOLOGY,
     });
-    const summary = example(prompt).reviewSummary;
+    const summary = z
+      .record(z.unknown())
+      .parse(promptOutput(prompt, "results").reviewSummary);
     for (const field of [
       "filesReviewed",
       "suggestedReviewers",
@@ -91,7 +90,7 @@ describe("QA75 prompt output behavior", () => {
     expect(summary.body).toBeTruthy();
     expect(summary.whatChanged).toBeTruthy();
     expect(summary.changes).toHaveLength(1);
-    expect(summary.risk.level).toBe("Medium");
+    expect(z.record(z.unknown()).parse(summary.risk).level).toBe("Medium");
     expect(summary.filesSkipped).toEqual([]);
     expect(summary.guidelines).toEqual([]);
     expect(prompt).toContain("`diagram`");
