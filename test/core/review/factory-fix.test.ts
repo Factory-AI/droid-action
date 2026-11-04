@@ -5,6 +5,7 @@ import {
   renderReviewStateNote,
   renderReviewSummary,
   renderSecurityReport,
+  renderStepSummary,
   type ReviewRenderInput,
 } from "../../../src/core/review/render";
 import {
@@ -269,70 +270,76 @@ describe("Fix in Factory completed-review task", () => {
     expect(hidden).not.toContain("Fix in Factory");
     expect(body).toContain("Some optional review context was shortened");
   });
-  it("honors disabled agent actions and all 70 persisted finding identities under compaction", () => {
-    const value = input();
-    value.includeAgentPrompts = false;
-    const findings = Array.from({ length: 70 }, (_, index) => {
-      const entry = normalizeFinding({
-        id: `active-${index}`,
-        title: `Verified finding ${index}`,
-        path: `src/file-${index}.ts`,
-        line: index + 1,
-        body: "Required check is missing.",
-        why: "Context-only evidence. ".repeat(30),
-        verification: "Context-only verification. ".repeat(30),
+  for (const includeAgentPrompts of [false, true])
+    it(`honors ${includeAgentPrompts ? "enabled" : "disabled"} agent actions and all 70 persisted finding identities under final compaction`, () => {
+      const value = input();
+      value.includeAgentPrompts = includeAgentPrompts;
+      const findings = Array.from({ length: 70 }, (_, index) => {
+        const entry = normalizeFinding({
+          id: `active-${index}`,
+          title: `Verified finding ${index}`,
+          path: `src/file-${index}.ts`,
+          line: index + 1,
+          body: "Required check is missing.",
+          why: "Context-only evidence. ".repeat(30),
+          verification: "Context-only verification. ".repeat(30),
+        });
+        entry.threadId = index + 1;
+        entry.threadUrl = `https://github.com/o/r/pull/42#discussion_r${index + 1}`;
+        return entry;
       });
-      entry.threadId = index + 1;
-      entry.threadUrl = `https://github.com/o/r/pull/42#discussion_r${index + 1}`;
-      return entry;
+      value.findings = findings;
+      value.reviewState = {
+        head: HEAD,
+        paused: true,
+        autoRunCount: 7,
+        findings: findings.map(
+          (entry, index): ReviewState["findings"][number] => ({
+            id: entry.id,
+            sev: entry.severity,
+            state: "open",
+            threadId: `PRRT_${index + 1}`,
+            thread: index + 1,
+            url: entry.threadUrl,
+            finding: entry,
+          }),
+        ),
+      };
+      const original = structuredClone(value);
+      for (const render of [renderReviewSummary, renderStepSummary]) {
+        const body = render(value);
+        if (includeAgentPrompts) taskFrom(body);
+        else expect(body).not.toContain("[Fix in Factory]");
+        expect(body).not.toContain("<summary>Fix with an agent</summary>");
+        // Finding context survives stages 1/2, so absence proves final compaction.
+        expect(body).not.toContain("Finding context:");
+        expect(outputBytes(body)).toBeLessThanOrEqual(MAX_REVIEW_OUTPUT_BYTES);
+        expect(body).toContain("70 open findings");
+        expect(body).toContain("Some optional review context was shortened");
+        const decoded = decodeReviewState(body)!;
+        expect(decoded.findings.map((entry) => entry.id)).toEqual(
+          findings.map((entry) => entry.id),
+        );
+        expect(
+          decoded.findings.map((entry) => [
+            entry.state,
+            entry.threadId,
+            entry.thread,
+            entry.url,
+          ]),
+        ).toEqual(
+          value.reviewState.findings.map((entry) => [
+            entry.state,
+            entry.threadId,
+            entry.thread,
+            entry.url,
+          ]),
+        );
+        expect(decoded.paused).toBe(true);
+        expect(decoded.autoRunCount).toBe(7);
+        expect(value).toEqual(original);
+      }
     });
-    value.findings = findings;
-    value.reviewState = {
-      head: HEAD,
-      paused: true,
-      autoRunCount: 7,
-      findings: findings.map(
-        (entry, index): ReviewState["findings"][number] => ({
-          id: entry.id,
-          sev: entry.severity,
-          state: "open",
-          threadId: `PRRT_${index + 1}`,
-          thread: index + 1,
-          url: entry.threadUrl,
-          finding: entry,
-        }),
-      ),
-    };
-    const original = structuredClone(value);
-    const body = renderReviewSummary(value);
-    expect(body).not.toContain("[Fix in Factory]");
-    expect(body).not.toContain("<summary>Fix with an agent</summary>");
-    expect(outputBytes(body)).toBeLessThanOrEqual(MAX_REVIEW_OUTPUT_BYTES);
-    expect(body).toContain("70 open findings");
-    expect(body).toContain("Some optional review context was shortened");
-    const decoded = decodeReviewState(body)!;
-    expect(decoded.findings.map((entry) => entry.id)).toEqual(
-      findings.map((entry) => entry.id),
-    );
-    expect(
-      decoded.findings.map((entry) => [
-        entry.state,
-        entry.threadId,
-        entry.thread,
-        entry.url,
-      ]),
-    ).toEqual(
-      value.reviewState.findings.map((entry) => [
-        entry.state,
-        entry.threadId,
-        entry.thread,
-        entry.url,
-      ]),
-    );
-    expect(decoded.paused).toBe(true);
-    expect(decoded.autoRunCount).toBe(7);
-    expect(value).toEqual(original);
-  });
   for (const provenance of [
     undefined,
     {

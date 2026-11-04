@@ -466,7 +466,10 @@ function previousReview(input: ReviewRenderInput): string {
     ? `#### Previous review${input.previousHead ? ` of ${sha(input.previousHead)}` : ""}\n\n${redactSecrets(previous)}`
     : "";
 }
-function reviewSummaryBody(input: ReviewRenderInput): string {
+function reviewSummaryBody(
+  input: ReviewRenderInput,
+  factoryFixEnabled: boolean,
+): string {
   const markers = [
     SUMMARY_MARKER,
     input.reviewState ? encodeReviewState(input.reviewState) : "",
@@ -576,9 +579,7 @@ function reviewSummaryBody(input: ReviewRenderInput): string {
     input.summary?.preMergeChecks?.length
       ? `Pre-merge checks:\n${input.summary.preMergeChecks.map((c) => `- ${c.passed ? "✅" : "⚠️"} ${prose(c.name)}${c.reason ? `: ${prose(c.reason)}` : ""}`).join("\n")}`
       : "",
-    selected(input, "findings") &&
-    input.includeAgentPrompts !== false &&
-    findings.length
+    selected(input, "findings") && factoryFixEnabled && findings.length
       ? factoryFixLink(input)
       : "",
     selected(input, "findings") &&
@@ -669,7 +670,8 @@ function checkRunOutput(input: CheckRunInput): {
 export function renderStepSummary(input: ReviewRenderInput): string {
   return fitReviewOutput(
     input,
-    (compact) => `## Droid Review\n\n${reviewSummaryBody(compact)}`,
+    (compact) =>
+      `## Droid Review\n\n${reviewSummaryBody(compact, input.includeAgentPrompts !== false)}`,
   );
 }
 function securityReportBody(input: ReviewRenderInput): string {
@@ -707,7 +709,9 @@ function securityReportBody(input: ReviewRenderInput): string {
 }
 
 export function renderReviewSummary(input: ReviewRenderInput): string {
-  return fitReviewOutput(input, reviewSummaryBody);
+  return fitReviewOutput(input, (compact) =>
+    reviewSummaryBody(compact, input.includeAgentPrompts !== false),
+  );
 }
 /** Hidden lifecycle state uses the same structured budget without visible prose. */
 export function renderReviewStateNote(state?: ReviewState): string {
