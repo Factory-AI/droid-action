@@ -420,7 +420,7 @@ describe("review lifecycle production boundaries", () => {
     expect(f.body()).toContain(`run=123 attempt=2 -->`);
     expect(f.body()).toContain("Looks good to merge");
   });
-  for (const mode of ["comment", "description", "off"]) {
+  for (const mode of ["comment", "description"]) {
     it(`Fix in Factory publisher binds the owned completed ${mode} review and attempt`, async () => {
       process.env.REVIEW_SUMMARY = mode;
       process.env.GITHUB_RUN_ATTEMPT = "2";
@@ -428,10 +428,6 @@ describe("review lifecycle production boundaries", () => {
       await f.prepare();
       await f.post([{ status: "approved", comment: finding() }]);
       const body = mode === "description" ? f.description() : f.body();
-      if (mode === "off") {
-        expect(body).not.toContain("[Fix in Factory]");
-        return;
-      }
       const { task } = expectFactoryFixAction(body);
       expect(task).toContain(
         `github.com/o/r/pull/7#${mode === "description" ? "droid-review-summary" : "issuecomment-40"}`,

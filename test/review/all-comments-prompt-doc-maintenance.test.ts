@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { format } from "prettier";
 import { z } from "zod";
@@ -159,10 +160,14 @@ describe("QA75 prompt output behavior", () => {
         "utf8",
       ),
     );
-    // Execute the real generator's write expression, not a copied formatter,
+    // Execute the real generator's formatted write expression,
     // without starting another Bun or any model/network process.
-    const raw = new Function("previews", `return ${expression}`)(previews);
-    const formatted = await format(raw, { parser: "markdown" });
+    const formatted = await new Function(
+      "previews",
+      "format",
+      `return (async () => ${expression})()`,
+    )(previews, format);
+    expect(await format(formatted, { parser: "markdown" })).toBe(formatted);
     expect(formatted).toMatch(/^> \[!WARNING\]\n> /m);
     expect(formatted).toMatch(/^> \[!IMPORTANT\]\n> /m);
     expect(formatted).not.toMatch(/^> \[![A-Z]+\] .+/m);
@@ -170,6 +175,36 @@ describe("QA75 prompt output behavior", () => {
       await readFile(join(root, "docs/review-ux-preview.md"), "utf8"),
     ).toBe(formatted);
   });
+  it("preview CLI writes formatted Markdown matching the documented regeneration output", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "review-preview-cli-"));
+    const output = join(directory, "preview.md");
+    try {
+      const child = Bun.spawn({
+        cmd: [process.execPath, join(root, "scripts/preview-review.ts"), output],
+        cwd: root,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [exitCode, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ]);
+      expect(stderr).toBe("");
+      expect(exitCode).toBe(0);
+      expect(stdout).toMatch(
+        /^Rendered and structurally validated \d+ templates: /,
+      );
+      expect(stdout).toContain(`: ${output}`);
+      const generated = await readFile(output, "utf8");
+      expect(generated).toBe(
+        await readFile(join(root, "docs/review-ux-preview.md"), "utf8"),
+      );
+      expect(await format(generated, { parser: "markdown" })).toBe(generated);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 30000);
 });
 
 describe("QA75 legacy FILE byte compatibility, not a new behavior fix", () => {

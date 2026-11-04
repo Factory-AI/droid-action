@@ -161,6 +161,8 @@ This table reflects the root `action.yml`. `""` means inherit for config-enabled
 
 ## Preview and offline validation
 
+`include_agent_prompts: false` disables both the Fix in Factory button and agent-copy prompts. Omitting `findings` from `review_summary_sections` also hides the summary button and copy prompt. Suggested reviewers and pre-merge checks follow their own opt-in settings, independently of the selected summary sections.
+
 The examples are generated from structured fixture JSON, not posted to a live PR:
 
 ```bash
@@ -172,4 +174,4 @@ bun run format:check
 
 [Rendered examples](review-ux-preview.md) include findings, clean, in-progress, failed, skipped and re-review summaries; inline comments; stale review bodies; check summaries; and full-security report indexes. The preview validates balanced details/fences, nonempty sections, badges, count pluralization, and marker roundtrips.
 
-No live PR/MR test is required or performed by this workflow change. API tests mock the provider boundary. Native text badges do not request external images. Explicit image badges and GitLab instance-specific Markdown sanitization still depend on the host.
+No live PR/MR test is required or performed by this workflow change. API tests mock the provider boundary. Native text severity badges do not request external images, but the Fix in Factory button loads a static shields.io image unless disabled with `include_agent_prompts: false` or the findings section. Its `/new?prompt=` link prefills an editable prompt in the browser without sending it; the desktop app can auto-send the same route. Always inspect the prompt before sending. Explicit image badges and GitLab instance-specific Markdown sanitization still depend on the host.

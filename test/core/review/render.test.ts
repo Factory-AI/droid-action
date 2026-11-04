@@ -86,6 +86,38 @@ describe("review render templates", () => {
     expect(retried).toContain("No issues found");
     expect(validateRenderedMarkdown(retried)).toEqual([]);
   });
+  for (const sections of [[], ["verdict", "findings", "details"]])
+    it(`shows independently enabled reviewer suggestions and pre-merge checks (${sections.join(",") || "empty"})`, () => {
+      const body = renderReviewSummary({
+        state: "clean",
+        summary: parseValidatedReview(raw).summary,
+        sections,
+      });
+      expect(body).not.toContain("<summary>What changed</summary>");
+      expect(body).toContain(
+        "Suggested reviewers (not assigned): <code>storage-team</code>.",
+      );
+      expect(body).toContain(
+        "Pre-merge checks:\n- ✅ Linked issue: The description links the tracking issue.",
+      );
+      expect(validateRenderedMarkdown(body)).toEqual([]);
+    });
+  it("renders reviewer suggestions and pre-merge checks outside What changed", () => {
+    const body = renderReviewSummary({
+      state: "clean",
+      summary: parseValidatedReview(raw).summary,
+      sections: ["changes"],
+    });
+    const changed = body.slice(
+      body.indexOf("<summary>What changed</summary>"),
+      body.indexOf("</details>"),
+    );
+    expect(changed).toContain("Adds a Redis-backed cache");
+    expect(changed).not.toContain("Suggested reviewers");
+    expect(changed).not.toContain("Pre-merge checks");
+    expect(body).toContain("Suggested reviewers");
+    expect(body).toContain("Pre-merge checks");
+  });
   it("reports the highest security level and never calls outside-diff findings clean", () => {
     const finding = parseValidatedReview(raw).findings[1]!;
     const body = renderReviewSummary({

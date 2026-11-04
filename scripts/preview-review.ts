@@ -2,6 +2,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { format } from "prettier";
 import {
   renderCheckRun,
   renderInlineComment,
@@ -252,15 +253,18 @@ if (import.meta.main) {
   const previews = buildReviewPreviews(await fs.readFile(source, "utf8"));
   await fs.writeFile(
     output,
-    Object.entries(previews)
-      .map(
-        ([name, body]) =>
-          `# ${name}\n\n${body.replace(
-            /^(> \[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\])$/gm,
-            "<!-- prettier-ignore -->\n$1",
-          )}`,
-      )
-      .join("\n\n---\n\n") + "\n",
+    await format(
+      Object.entries(previews)
+        .map(
+          ([name, body]) =>
+            `# ${name}\n\n${body.replace(
+              /^(> \[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\])$/gm,
+              "<!-- prettier-ignore -->\n$1",
+            )}`,
+        )
+        .join("\n\n---\n\n") + "\n",
+      { parser: "markdown" },
+    ),
   );
   console.log(
     `Rendered and structurally validated ${Object.keys(previews).length} templates: ${output}`,

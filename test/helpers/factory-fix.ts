@@ -15,7 +15,7 @@ export function expectFactoryFixAction(body: string): {
   expect(match[1]).toBe(FACTORY_FIX_BUTTON_IMAGE_URL);
   const url = new URL(match[2]!);
   expect(url.origin).toBe("https://app.factory.ai");
-  expect(url.pathname).toBe("/sessions/new");
+  expect(url.pathname).toBe("/new");
   expect([...url.searchParams.keys()]).toEqual(["prompt"]);
   const task = url.searchParams.get("prompt");
   expect(task).not.toBeNull();
