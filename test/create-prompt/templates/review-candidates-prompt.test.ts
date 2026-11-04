@@ -82,6 +82,24 @@ describe("generateReviewCandidatesPrompt", () => {
     expect(prompt).toContain("reviewSummary");
   });
 
+  it("gives a schema example that parses as JSON", () => {
+    const prompt = generateReviewCandidatesPrompt(createBaseContext());
+
+    const example = /```json\n([\s\S]*?)\n```/.exec(prompt)?.[1];
+    expect(example).toBeDefined();
+    const parsed = JSON.parse(example!);
+    expect(parsed.reviewSummary.body).toContain("\n\n- optional whole-change");
+  });
+  it("lets the summary carry whole-change observations from review guidelines", () => {
+    const context = createBaseContext();
+
+    const prompt = generateReviewCandidatesPrompt(context);
+
+    expect(prompt).toContain("whole-change observations");
+    expect(prompt).toContain("up to three short");
+    expect(prompt).toContain("never in `comments`");
+  });
+
   it("includes critical constraints to not post to GitHub", () => {
     const context = createBaseContext();
 

@@ -116,7 +116,7 @@ Write output to \`${candidatesPath}\` using this exact schema:
     }
   ],
   "reviewSummary": {
-    "body": "1-3 sentence overall assessment"
+    "body": "1-3 sentence overall assessment\\n\\n- optional whole-change observation (at most three bullets)"
   }
 }
 \`\`\`
@@ -140,7 +140,10 @@ ${sideFieldDescription}
   - \`commit_id\`: "${headSha}"
 
 - **reviewSummary**:
-  - \`body\`: 1-3 sentence overall assessment
+  - \`body\`: 1-3 sentence overall assessment. When the repository's review
+    guidelines ask for whole-change observations (change size, what the change
+    does well, a general recommendation), append them as up to three short
+    bullets. These observations belong only here, never in \`comments\`.
 </schema_details>
 </output_spec>
 
