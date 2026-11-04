@@ -93,6 +93,14 @@ describe("generateReviewValidatorPrompt", () => {
     expect(prompt).toContain("updates the tracking comment");
   });
 
+  it("gives a schema example that parses as JSON", () => {
+    const prompt = generateReviewValidatorPrompt(createBaseContext());
+
+    const example = /```json\n([\s\S]*?)\n```/.exec(prompt)?.[1];
+    expect(example).toBeDefined();
+    const parsed = JSON.parse(example!);
+    expect(parsed.reviewSummary.body).toContain("\n\n- optional whole-change");
+  });
   it("carries whole-change observations in the summary without judging them", () => {
     const context = createBaseContext();
     const prompt = generateReviewValidatorPrompt(context);

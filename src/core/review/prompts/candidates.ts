@@ -109,7 +109,7 @@ Write output to \`${candidatesPath}\` using this exact schema:
     }
   ],
   "reviewSummary": {
-    "body": "1-3 sentence overall assessment\n\n- optional whole-change observation (at most three bullets)"
+    "body": "1-3 sentence overall assessment\\n\\n- optional whole-change observation (at most three bullets)"
   }
 }
 \`\`\`
