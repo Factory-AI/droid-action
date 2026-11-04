@@ -32,5 +32,6 @@ export function generateGitlabReviewCandidatesPrompt(
     candidatesPath: ctx.candidatesPath,
     includeSuggestions: ctx.includeSuggestions,
     securityReviewEnabled: ctx.securityReviewEnabled,
+    repoGuidelines: ctx.repoGuidelines,
   });
 }

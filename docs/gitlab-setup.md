@@ -133,6 +133,8 @@ include:
 
 Repository-specific guidelines live in the project itself at
 `.factory/skills/review-guidelines/SKILL.md` (same as the GitHub action).
+The job reads that file from the merge request's target branch and places
+its text in both review prompts, so no skill lookup on the runner is needed.
 To apply one set of guidelines across every project in your org, point
 `org_guidelines_source` at a single markdown file:
 

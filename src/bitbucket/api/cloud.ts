@@ -1,4 +1,8 @@
-import { BitbucketHttp, type BitbucketHttpOptions } from "./http";
+import {
+  BitbucketApiError,
+  BitbucketHttp,
+  type BitbucketHttpOptions,
+} from "./http";
 import type {
   BitbucketBuildStatus,
   BitbucketClient,
@@ -89,6 +93,20 @@ export class BitbucketCloudClient implements BitbucketClient {
       return user?.uuid ?? null;
     } catch {
       return null;
+    }
+  }
+
+  async getFileAtRef(filePath: string, ref: string): Promise<string | null> {
+    const encodedPath = filePath.split("/").map(encodeURIComponent).join("/");
+    try {
+      return await this.http.text(
+        `${this.repoUrl}/src/${encodeURIComponent(ref)}/${encodedPath}`,
+      );
+    } catch (error) {
+      if (error instanceof BitbucketApiError && error.status === 404) {
+        return null;
+      }
+      throw error;
     }
   }
 

@@ -375,3 +375,45 @@ describe("AzureDevopsClient errors", () => {
     expect(error.message).toContain("Service Unavailable");
   });
 });
+
+describe("AzureDevopsClient file reads", () => {
+  it("reads a file on a branch with its content included", async () => {
+    const fake = createFakeAdo();
+    fake.on("GET", "/items", (_req, url) => {
+      expect(url.searchParams.get("path")).toBe(
+        "/.factory/skills/review-guidelines/SKILL.md",
+      );
+      expect(url.searchParams.get("versionDescriptor.versionType")).toBe(
+        "branch",
+      );
+      expect(url.searchParams.get("versionDescriptor.version")).toBe("main");
+      expect(url.searchParams.get("includeContent")).toBe("true");
+      return json({ path: "/x", content: "# Rules\n" });
+    });
+
+    expect(
+      await client(fake).getFileAtBranch(
+        ".factory/skills/review-guidelines/SKILL.md",
+        "main",
+      ),
+    ).toBe("# Rules\n");
+  });
+
+  it("returns null when the file is not on the branch", async () => {
+    const fake = createFakeAdo();
+    fake.on("GET", "/items", () =>
+      json({ message: "TF401174: The item could not be found." }, 404),
+    );
+
+    expect(await client(fake).getFileAtBranch("SKILL.md", "main")).toBeNull();
+  });
+
+  it("rethrows other failures", async () => {
+    const fake = createFakeAdo();
+    fake.on("GET", "/items", () => json({ message: "forbidden" }, 403));
+
+    await expect(
+      client(fake).getFileAtBranch("SKILL.md", "main"),
+    ).rejects.toThrow(AzureDevopsApiError);
+  });
+});

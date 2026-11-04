@@ -33,5 +33,6 @@ export function generateGitlabReviewValidatorPrompt(
     validatedPath: ctx.validatedPath,
     includeSuggestions: ctx.includeSuggestions,
     securityReviewEnabled: ctx.securityReviewEnabled,
+    repoGuidelines: ctx.repoGuidelines,
   });
 }

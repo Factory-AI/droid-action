@@ -105,4 +105,19 @@ export interface ReviewPromptContext {
   securityReviewEnabled: boolean;
   /** Where the change's code is (or is not) available, e.g. for a fork PR that is not checked out */
   sourceNote?: string;
+  /** The repository's own review guidelines, when it has any */
+  repoGuidelines?: RepoReviewGuidelines;
+}
+
+/**
+ * A repository's review guidelines, read from its `review-guidelines`
+ * skill by the pipeline so the prompt can carry them verbatim.
+ */
+export interface RepoReviewGuidelines {
+  /** Human-readable origin, e.g. ".factory/skills/review-guidelines/SKILL.md@main" */
+  source: string;
+  /** Guidelines text with the skill frontmatter removed */
+  body: string;
+  /** On-disk copy of `body`, for guidelines too long to inline */
+  path: string;
 }

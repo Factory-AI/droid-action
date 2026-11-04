@@ -287,6 +287,32 @@ export class AzureDevopsClient {
     return this.request<AdoPullRequest>(this.pullRequestUrl(pullRequestId));
   }
 
+  /** Contents of a repository file on `branch`, or null when it does not exist there. */
+  async getFileAtBranch(
+    filePath: string,
+    branch: string,
+  ): Promise<string | null> {
+    try {
+      const item = await this.request<{ content?: string }>(
+        `${this.repositoryApiUrl()}/items`,
+        {
+          query: {
+            path: `/${filePath}`,
+            "versionDescriptor.versionType": "branch",
+            "versionDescriptor.version": branch,
+            includeContent: "true",
+          },
+        },
+      );
+      return item?.content ?? null;
+    } catch (error) {
+      if (error instanceof AzureDevopsApiError && error.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
   listIterations(pullRequestId: number): Promise<AdoIteration[]> {
     return this.listAll<AdoIteration>(
       `${this.pullRequestUrl(pullRequestId)}/iterations`,

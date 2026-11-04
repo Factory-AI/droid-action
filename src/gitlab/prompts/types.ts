@@ -10,6 +10,8 @@
  * platform-neutral context into `src/core/review/`.
  */
 
+import type { RepoReviewGuidelines } from "../../core/review/prompts/types";
+
 export type GitlabReviewPromptContext = {
   projectPath: string;
   mrIid: number;
@@ -26,4 +28,6 @@ export type GitlabReviewPromptContext = {
 
   includeSuggestions: boolean;
   securityReviewEnabled: boolean;
+  /** The project's own review guidelines, when it has any */
+  repoGuidelines?: RepoReviewGuidelines;
 };

@@ -45,5 +45,6 @@ export function generateReviewCandidatesPrompt(
       context.prBranchData,
       context.eventData.baseBranch ?? "base",
     ),
+    repoGuidelines: context.reviewGuidelines,
   });
 }

@@ -50,7 +50,11 @@ export class GitlabApiError extends Error {
   }
 }
 
-type RequestInitWithJson = Omit<RequestInit, "body"> & { json?: unknown };
+type RequestInitWithJson = Omit<RequestInit, "body"> & {
+  json?: unknown;
+  /** Resolve with the response body as text instead of parsing JSON. */
+  text?: boolean;
+};
 
 export class GitlabClient {
   private readonly baseUrl: string;
@@ -79,11 +83,11 @@ export class GitlabClient {
       );
     }
 
-    const { json, headers: rawHeaders, ...rest } = init;
+    const { json, text: asText, headers: rawHeaders, ...rest } = init;
     const secrets = this.secrets();
     const headers: Record<string, string> = {
       "PRIVATE-TOKEN": this.token,
-      Accept: "application/json",
+      Accept: asText ? "text/plain" : "application/json",
       ...(rawHeaders as Record<string, string> | undefined),
     };
 
@@ -124,6 +128,9 @@ export class GitlabClient {
       return undefined as unknown as T;
     }
 
+    if (asText) {
+      return (await response.text()) as unknown as T;
+    }
     return (await response.json()) as T;
   }
 
@@ -144,6 +151,25 @@ export class GitlabClient {
     return this.request<GitlabMrChanges>(
       `${this.projectPath(projectId)}/merge_requests/${mrIid}/changes`,
     );
+  }
+
+  /** Raw contents of a repository file on `ref`, or null when it does not exist there. */
+  async getRawFile(
+    projectId: string | number,
+    filePath: string,
+    ref: string,
+  ): Promise<string | null> {
+    try {
+      return await this.request<string>(
+        `${this.projectPath(projectId)}/repository/files/${encodeURIComponent(filePath)}/raw?ref=${encodeURIComponent(ref)}`,
+        { text: true },
+      );
+    } catch (error) {
+      if (error instanceof GitlabApiError && error.status === 404) {
+        return null;
+      }
+      throw error;
+    }
   }
 
   listNotes(projectId: string | number, mrIid: number): Promise<GitlabNote[]> {

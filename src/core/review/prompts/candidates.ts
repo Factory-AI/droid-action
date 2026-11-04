@@ -14,6 +14,7 @@
  * additionally enforced at the `droid exec` level via `--enabled-tools`.
  */
 
+import { buildRepoGuidelinesSection } from "./guidelines";
 import type { ReviewPromptContext } from "./types";
 
 export function generateCandidatesPrompt(ctx: ReviewPromptContext): string {
@@ -31,7 +32,13 @@ export function generateCandidatesPrompt(ctx: ReviewPromptContext): string {
     includeSuggestions,
     securityReviewEnabled,
     sourceNote,
+    repoGuidelines,
   } = ctx;
+
+  const guidelinesSection = buildRepoGuidelinesSection(
+    repoGuidelines,
+    "candidates",
+  );
 
   const bodyFieldDescription = includeSuggestions
     ? "  - `body`: Comment text starting with priority tag [P0|P1|P2], then title, then 1 paragraph explanation.\n" +
@@ -71,7 +78,7 @@ After all subagents complete (both code review and security-reviewer), merge the
 Your task: Review ${t.entityNoun} ${t.entityNumberSigil}${entityNumber} in ${repoOrProject} and generate a JSON file with **high-confidence, actionable** review comments that pinpoint genuine issues.
 
 ${skillInstruction}${securitySubagentInstruction}
-
+${guidelinesSection ? `\n${guidelinesSection}\n` : ""}
 <context>
 ${t.repoLabel}: ${repoOrProject}
 ${t.entityNumberLabel}: ${entityNumber}

@@ -9,6 +9,7 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import type { BitbucketTarget } from "./api/client";
+import type { StoredReviewGuidelines } from "../core/review/artifacts/guidelines";
 
 export type BitbucketPrepareState = {
   shouldRunReview: boolean;
@@ -35,6 +36,8 @@ export type BitbucketPrepareState = {
   descriptionPath: string | null;
   candidatesPath: string | null;
   validatedPath: string | null;
+  /** Where Pass 1 stored the repository's review guidelines, if it found any. */
+  reviewGuidelines?: StoredReviewGuidelines | null;
   /** Set when Pass 1 left no usable candidates, so Pass 2 never ran. */
   validatorSkippedReason?: string;
 };

@@ -8,7 +8,10 @@
 
 import { generateCandidatesPrompt } from "../core/review/prompts/candidates";
 import { generateValidatorPrompt } from "../core/review/prompts/validator";
-import type { ReviewTerminology } from "../core/review/prompts/types";
+import type {
+  RepoReviewGuidelines,
+  ReviewTerminology,
+} from "../core/review/prompts/types";
 
 export const AZURE_DEVOPS_TERMINOLOGY: ReviewTerminology = {
   entityNoun: "PR",
@@ -52,6 +55,8 @@ export type AzureDevopsReviewPromptContext = {
   validatedPath: string;
   includeSuggestions: boolean;
   securityReviewEnabled: boolean;
+  /** The repository's own review guidelines, when it has any */
+  repoGuidelines?: RepoReviewGuidelines;
 };
 
 function shared(ctx: AzureDevopsReviewPromptContext) {
@@ -68,6 +73,7 @@ function shared(ctx: AzureDevopsReviewPromptContext) {
     candidatesPath: ctx.candidatesPath,
     includeSuggestions: ctx.includeSuggestions,
     securityReviewEnabled: ctx.securityReviewEnabled,
+    repoGuidelines: ctx.repoGuidelines,
   };
 }
 
