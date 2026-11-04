@@ -69,7 +69,8 @@ export async function prepareReviewGuidelines(opts: {
 
 /**
  * Reload guidelines that Pass 1 stored, for the Pass 2 prompt. Returns
- * undefined when Pass 1 found none or the copy has gone missing.
+ * undefined when Pass 1 found none (no record, or no file where a record
+ * was never kept) or the copy has gone missing.
  */
 export async function loadStoredReviewGuidelines(
   stored: StoredReviewGuidelines | null | undefined,
@@ -81,6 +82,10 @@ export async function loadStoredReviewGuidelines(
     const body = await readFile(stored.path, "utf8");
     return body ? { ...stored, body } : undefined;
   } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      console.log(`No stored review guidelines at ${stored.path}`);
+      return undefined;
+    }
     console.warn(
       `Could not reload review guidelines from ${stored.path}: ${
         error instanceof Error ? error.message : String(error)

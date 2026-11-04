@@ -11,6 +11,7 @@
  */
 
 import type { RepoReviewGuidelines } from "./types";
+import type { ReviewPass } from "../../../utils/review-session-tag";
 
 /** Repository-relative location of the review guidelines skill. */
 export const REVIEW_GUIDELINES_SKILL_PATH =
@@ -34,7 +35,7 @@ export function stripSkillFrontmatter(markdown: string): string {
 
 function guidelinesText(
   guidelines: RepoReviewGuidelines,
-  pass: "candidates" | "validator",
+  pass: ReviewPass,
 ): string {
   if (
     Buffer.byteLength(guidelines.body, "utf8") <= INLINE_GUIDELINES_MAX_BYTES
@@ -63,7 +64,7 @@ ${guidelines.body}
  */
 export function buildRepoGuidelinesSection(
   guidelines: RepoReviewGuidelines | undefined,
-  pass: "candidates" | "validator",
+  pass: ReviewPass,
 ): string | undefined {
   if (!guidelines) {
     return undefined;

@@ -88,7 +88,7 @@ describe("prepareReviewValidatorMode", () => {
     exportSpy.mockRestore();
   });
 
-  it("hands the validator the same repository review guidelines as Pass 1", async () => {
+  it("hands the validator the guidelines Pass 1 stored, without refetching", async () => {
     const fetchSpy = spyOn(prFetcher, "fetchPRBranchData").mockResolvedValue({
       baseRefName: "main",
       headRefName: "feature",
@@ -102,16 +102,13 @@ describe("prepareReviewValidatorMode", () => {
     const exportSpy = spyOn(core, "exportVariable").mockImplementation(
       () => {},
     );
-    const writeFileSpy = spyOn(fsPromises, "writeFile").mockResolvedValue();
-    const mkdirSpy = spyOn(fsPromises, "mkdir").mockResolvedValue(undefined);
+    const readFileSpy = spyOn(fsPromises, "readFile").mockResolvedValue(
+      "# Rules\n- Be terse.",
+    );
     const getContent = spyOn(
       { getContent: async () => ({}) },
       "getContent",
-    ).mockResolvedValue({
-      data: {
-        content: Buffer.from("# Rules\n- Be terse.\n").toString("base64"),
-      },
-    });
+    ).mockResolvedValue({ data: { content: "" } });
 
     await prepareReviewValidatorMode({
       context: createMockContext({ isPR: true, entityNumber: 24 }),
@@ -120,11 +117,12 @@ describe("prepareReviewValidatorMode", () => {
       trackingCommentId: 555,
     });
 
-    expect(getContent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        path: ".factory/skills/review-guidelines/SKILL.md",
-        ref: "main",
-      }),
+    // Pass 2 must judge candidates under the same text Pass 1 saw, so it
+    // reads the stored copy rather than the (mutable) base branch again.
+    expect(getContent).not.toHaveBeenCalled();
+    expect(readFileSpy).toHaveBeenCalledWith(
+      "/tmp/test-runner/droid-prompts/review_guidelines.md",
+      "utf8",
     );
     expect(promptSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -140,7 +138,6 @@ describe("prepareReviewValidatorMode", () => {
     promptSpy.mockRestore();
     setOutputSpy.mockRestore();
     exportSpy.mockRestore();
-    writeFileSpy.mockRestore();
-    mkdirSpy.mockRestore();
+    readFileSpy.mockRestore();
   });
 });
