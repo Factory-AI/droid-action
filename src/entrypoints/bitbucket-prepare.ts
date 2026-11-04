@@ -36,6 +36,7 @@ import {
   isTrackingComment,
 } from "../bitbucket/operations/tracking-comment";
 import { computeReviewArtifacts } from "../bitbucket/data/review-artifacts";
+import { prepareReviewGuidelines } from "../core/review/artifacts/guidelines";
 import {
   generateBitbucketCandidatesPrompt,
   type BitbucketReviewPromptContext,
@@ -428,6 +429,14 @@ export async function run(
     DROID_SESSION_TAG_VALIDATOR: sessionTag("validator"),
   });
 
+  const reviewGuidelines = pr.targetBranch
+    ? await prepareReviewGuidelines({
+        ref: pr.targetBranch,
+        promptsDir: promptsDir(),
+        read: (filePath, ref) => client.getFileAtRef(filePath, ref),
+      })
+    : undefined;
+
   const promptCtx: BitbucketReviewPromptContext = {
     repoFullName: ctx.repoFullName,
     prId: pr.id,
@@ -442,6 +451,7 @@ export async function run(
     includeSuggestions: ctx.inputs.includeSuggestions,
     securityReviewEnabled,
     diffTruncated: artifacts.diffTruncated,
+    repoGuidelines: reviewGuidelines,
   };
   const prompt = generateBitbucketCandidatesPrompt(promptCtx);
   const promptPath = promptFilePath();
@@ -459,6 +469,9 @@ export async function run(
     descriptionPath: artifacts.descriptionPath,
     candidatesPath: promptCtx.candidatesPath,
     validatedPath: promptCtx.validatedPath,
+    reviewGuidelines: reviewGuidelines
+      ? { source: reviewGuidelines.source, path: reviewGuidelines.path }
+      : null,
   };
   await writeState(state);
   return state;

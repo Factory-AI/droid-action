@@ -62,9 +62,19 @@ function pullRequest(over: Record<string, unknown> = {}) {
   };
 }
 
-function fakeAdo(pr = pullRequest()) {
+function fakeAdo(
+  pr = pullRequest(),
+  { guidelines }: { guidelines?: string } = {},
+) {
   const fake = createFakeAdo();
   fake.on("GET", `${PR_PATH}`, () => json(pr));
+  // The review guidelines skill on the target branch, when the test ships one.
+  fake.on("GET", "/items", (_req, url) => {
+    expect(url.searchParams.get("versionDescriptor.version")).toBe("main");
+    return guidelines === undefined
+      ? json({ message: "not found" }, 404)
+      : json({ content: guidelines });
+  });
   fake.on("GET", `${PR_PATH}/threads`, () =>
     json({
       value: [
@@ -271,11 +281,47 @@ describe("azure-devops-prepare", () => {
     expect(shim).toContain('"runId":"4521"');
   });
 
+  it("reads the review guidelines from the target branch into both passes", async () => {
+    git(repo.dir, "checkout", "-q", repo.merge);
+    const fake = fakeAdo(pullRequest(), {
+      guidelines:
+        "---\nname: review-guidelines\n---\n# Web rules\n- Flag swallowed errors.\n",
+    });
+    const env = envFor();
+
+    const state = await prepare(deps(env, fake));
+
+    const stored = path.join(
+      path.dirname(env.DROID_PROMPT_FILE!),
+      "review_guidelines.md",
+    );
+    expect(state.reviewGuidelines).toEqual({
+      source: ".factory/skills/review-guidelines/SKILL.md@main",
+      path: stored,
+    });
+    expect(fs.readFileSync(stored, "utf8")).toBe(
+      "# Web rules\n- Flag swallowed errors.",
+    );
+    const block =
+      '<review-guidelines source=".factory/skills/review-guidelines/SKILL.md@main">\n# Web rules\n- Flag swallowed errors.\n</review-guidelines>';
+    expect(fs.readFileSync(state.promptPath!, "utf8")).toContain(block);
+
+    fs.writeFileSync(
+      state.candidatesPath!,
+      JSON.stringify({ version: 1, comments: [] }),
+    );
+    await prepareValidator(env);
+    const validatorPrompt = fs.readFileSync(state.promptPath!, "utf8");
+    expect(validatorPrompt).toContain("Phase 2 (validator)");
+    expect(validatorPrompt).toContain(block);
+  });
+
   it("reuses an existing tracking thread on re-runs", async () => {
     const env = envFor();
     const existing = createFakeAdo();
     answerConnectionData(existing);
     existing.on("GET", `${PR_PATH}`, () => json(pullRequest()));
+    existing.on("GET", "/items", () => json({ message: "not found" }, 404));
     existing.on("GET", `${PR_PATH}/threads`, () =>
       json({
         value: [

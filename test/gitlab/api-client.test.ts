@@ -202,4 +202,43 @@ describe("GitlabClient", () => {
       });
     }
   });
+
+  it("reads a raw repository file on a ref and returns null when it is absent", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      const headers = init.headers as Record<string, string>;
+      expect(headers.Accept).toBe("text/plain");
+      if (url.includes("ref=main")) {
+        return new Response("# Rules\n", { status: 200 });
+      }
+      return jsonResponse({ message: "404 File Not Found" }, 404);
+    });
+
+    const client = new GitlabClient("glpat-test");
+    expect(
+      await client.getRawFile(
+        42,
+        ".factory/skills/review-guidelines/SKILL.md",
+        "main",
+      ),
+    ).toBe("# Rules\n");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://gitlab.com/api/v4/projects/42/repository/files/.factory%2Fskills%2Freview-guidelines%2FSKILL.md/raw?ref=main",
+    );
+    expect(
+      await client.getRawFile(
+        42,
+        ".factory/skills/review-guidelines/SKILL.md",
+        "release/1.x",
+      ),
+    ).toBeNull();
+  });
+
+  it("rethrows non-404 failures from the raw file endpoint", async () => {
+    mockFetch(() => jsonResponse({ message: "403 Forbidden" }, 403));
+
+    const client = new GitlabClient("glpat-test");
+    await expect(client.getRawFile(42, "SKILL.md", "main")).rejects.toThrow(
+      GitlabApiError,
+    );
+  });
 });

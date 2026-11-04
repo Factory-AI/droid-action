@@ -86,7 +86,7 @@ export async function prepareReviewMode({
     octokit,
     owner: context.repository.owner,
     repo: context.repository.repo,
-    defaultBranch: context.payload.repository?.default_branch,
+    baseRef: prData.baseRefName,
     tempDir,
   });
 

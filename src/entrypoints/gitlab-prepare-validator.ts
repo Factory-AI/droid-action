@@ -20,6 +20,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { generateGitlabReviewValidatorPrompt } from "../gitlab/prompts/validator";
 import type { GitlabReviewPromptContext } from "../gitlab/prompts/types";
+import { loadStoredReviewGuidelines } from "../core/review/artifacts/guidelines";
 import { stateFilePath, type PrepareState } from "./gitlab-prepare";
 
 async function readState(): Promise<PrepareState> {
@@ -109,6 +110,7 @@ async function run(): Promise<void> {
     validatedPath,
     includeSuggestions: state.includeSuggestions,
     securityReviewEnabled: state.securityReviewEnabled,
+    repoGuidelines: await loadStoredReviewGuidelines(state.reviewGuidelines),
   };
 
   const prompt = generateGitlabReviewValidatorPrompt(promptCtx);

@@ -40,6 +40,8 @@ type Fake = {
   identityUnknown?: boolean;
   /** Data Center only: mark the diff as truncated. */
   diffTruncated?: boolean;
+  /** Contents of `.factory/skills/review-guidelines/SKILL.md` on `main`. */
+  guidelines?: string;
   /** Return a Response to override the default for a request. */
   override?: (req: RecordedRequest) => Response | undefined;
 };
@@ -125,6 +127,13 @@ function startCloud(fake: Omit<Fake, "server">): Fake {
       return json({ id: c.id, content: { raw: c.body } });
     }
     if (/\/commit\/[^/]+\/statuses\/build$/.test(p)) return json(req.body, 201);
+    if (
+      p === `${CLOUD_REPO}/src/main/.factory/skills/review-guidelines/SKILL.md`
+    ) {
+      return state.guidelines === undefined
+        ? notFound()
+        : new Response(state.guidelines);
+    }
     return notFound();
   });
   return state;
@@ -213,6 +222,14 @@ function startDataCenter(fake: Omit<Fake, "server">): Fake {
     }
     if (/\/commits\/[^/]+\/builds$/.test(p))
       return new Response(null, { status: 204 });
+    if (
+      p === `${DC_REPO}/raw/.factory/skills/review-guidelines/SKILL.md` &&
+      url.searchParams.get("at") === "refs/heads/main"
+    ) {
+      return state.guidelines === undefined
+        ? notFound()
+        : new Response(state.guidelines);
+    }
     return notFound();
   });
   return state;
@@ -900,9 +917,78 @@ describe("Bitbucket Cloud review steps", () => {
     await prepareValidator();
     await expect(postReview()).rejects.toThrow(/Pass 2 did not write/);
   });
+  it("reads the review guidelines from the target branch into both passes", async () => {
+    const f = useCloud({
+      guidelines:
+        "---\nname: review-guidelines\n---\n# Web rules\n- Flag swallowed errors.\n",
+    });
+
+    const state = await prepare(deps);
+
+    const read = reqs(f, "GET", "/src/main/");
+    expect(read.map((r) => r.path)).toEqual([
+      `${CLOUD_REPO}/src/main/.factory/skills/review-guidelines/SKILL.md`,
+    ]);
+    const stored = path.join(tmp, "review_guidelines.md");
+    expect(state.reviewGuidelines).toEqual({
+      source: ".factory/skills/review-guidelines/SKILL.md@main",
+      path: stored,
+    });
+    expect(await fs.readFile(stored, "utf8")).toBe(
+      "# Web rules\n- Flag swallowed errors.",
+    );
+    const block =
+      '<review-guidelines source=".factory/skills/review-guidelines/SKILL.md@main">\n# Web rules\n- Flag swallowed errors.\n</review-guidelines>';
+    expect(await fs.readFile(state.promptPath!, "utf8")).toContain(block);
+
+    await fs.writeFile(
+      state.candidatesPath!,
+      JSON.stringify({ version: 1, comments: [] }),
+    );
+    await prepareValidator();
+    const validatorPrompt = await fs.readFile(state.promptPath!, "utf8");
+    expect(validatorPrompt).toContain("Phase 2 (validator)");
+    expect(validatorPrompt).toContain(block);
+  });
+
+  it("leaves the guidelines out when the target branch has none", async () => {
+    const f = useCloud();
+
+    const state = await prepare(deps);
+
+    expect(reqs(f, "GET", "/src/main/")).toHaveLength(1);
+    expect(state.reviewGuidelines).toBeNull();
+    expect(await fs.readFile(state.promptPath!, "utf8")).not.toContain(
+      "<review-guidelines",
+    );
+  });
 });
 
 describe("Bitbucket Data Center review steps (Jenkins)", () => {
+  it("reads the review guidelines from the target branch via the raw endpoint", async () => {
+    const f = useDataCenter({ guidelines: "# Billing rules\n- Round VAT.\n" });
+
+    const state = await prepare(deps);
+
+    const read = reqs(f, "GET", "/raw/");
+    expect(read.map((r) => r.path)).toEqual([
+      `${DC_REPO}/raw/.factory/skills/review-guidelines/SKILL.md?at=refs%2Fheads%2Fmain`,
+    ]);
+    expect(state.reviewGuidelines).toEqual({
+      source: ".factory/skills/review-guidelines/SKILL.md@main",
+      path: path.join(tmp, "review_guidelines.md"),
+    });
+    const block =
+      '<review-guidelines source=".factory/skills/review-guidelines/SKILL.md@main">\n# Billing rules\n- Round VAT.\n</review-guidelines>';
+    expect(await fs.readFile(state.promptPath!, "utf8")).toContain(block);
+
+    await fs.writeFile(
+      state.candidatesPath!,
+      JSON.stringify({ version: 1, comments: [] }),
+    );
+    await prepareValidator();
+    expect(await fs.readFile(state.promptPath!, "utf8")).toContain(block);
+  });
   it("runs the full flow from CHANGE_URL with DC anchors and versioned updates", async () => {
     const f = useDataCenter();
     process.env.BUILD_STATUS = "true";

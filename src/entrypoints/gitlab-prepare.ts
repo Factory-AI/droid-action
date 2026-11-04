@@ -36,6 +36,10 @@ import { GitlabClient } from "../gitlab/api/client";
 import { buildTrackingNoteBody } from "../gitlab/operations/tracking-note";
 import { findOwnTrackingNote } from "../gitlab/operations/post-target";
 import { computeReviewArtifacts } from "../gitlab/data/review-artifacts";
+import {
+  prepareReviewGuidelines,
+  type StoredReviewGuidelines,
+} from "../core/review/artifacts/guidelines";
 import { generateGitlabReviewCandidatesPrompt } from "../gitlab/prompts/candidates";
 import type { GitlabReviewPromptContext } from "../gitlab/prompts/types";
 import { resolveReviewConfig } from "../utils/review-depth";
@@ -118,6 +122,8 @@ export type PrepareState = {
   headSha: string | null;
   includeSuggestions: boolean;
   securityReviewEnabled: boolean;
+  /** Where Pass 1 stored the project's review guidelines, if it found any. */
+  reviewGuidelines?: StoredReviewGuidelines | null;
 
   reason?: string;
   /**
@@ -382,12 +388,21 @@ async function run(): Promise<void> {
   const candidatesPath = candidatesFilePath();
   const validatedPath = validatedFilePath();
 
+  const targetBranch = artifacts.mr.target_branch ?? "";
+  const reviewGuidelines = targetBranch
+    ? await prepareReviewGuidelines({
+        ref: targetBranch,
+        promptsDir: promptsDir(),
+        read: (filePath, ref) => client.getRawFile(projectId, filePath, ref),
+      })
+    : undefined;
+
   const promptCtx: GitlabReviewPromptContext = {
     projectPath: context.project.pathWithNamespace,
     mrIid,
     mrTitle: artifacts.mr.title ?? context.mr.title ?? "",
     sourceBranch: artifacts.mr.source_branch ?? "",
-    targetBranch: artifacts.mr.target_branch ?? "",
+    targetBranch,
     headSha:
       artifacts.mr.diff_refs?.head_sha ?? context.mr.sourceBranchSha ?? "",
     diffPath: artifacts.diffPath,
@@ -397,6 +412,7 @@ async function run(): Promise<void> {
     validatedPath,
     includeSuggestions,
     securityReviewEnabled,
+    repoGuidelines: reviewGuidelines,
   };
 
   const prompt = generateGitlabReviewCandidatesPrompt(promptCtx);
@@ -425,6 +441,9 @@ async function run(): Promise<void> {
     headSha: promptCtx.headSha,
     includeSuggestions,
     securityReviewEnabled,
+    reviewGuidelines: reviewGuidelines
+      ? { source: reviewGuidelines.source, path: reviewGuidelines.path }
+      : null,
   });
 }
 

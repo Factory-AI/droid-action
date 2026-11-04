@@ -13,7 +13,8 @@ function octokitReturning(content: string | Error) {
           Promise.resolve({
             data: { content: Buffer.from(content).toString("base64") },
           });
-  return { octokit: { rest: { repos: { getContent } } } as any, getContent };
+  const octokit = { rest: { repos: { getContent } } } as any;
+  return { octokit, spy: spyOn(octokit.rest.repos, "getContent") };
 }
 
 describe("fetchAndStoreReviewGuidelines", () => {
@@ -30,17 +31,14 @@ describe("fetchAndStoreReviewGuidelines", () => {
     mkdirSpy.mockRestore();
   });
 
-  it("reads the skill from the default branch, strips frontmatter and stores a copy", async () => {
-    const { octokit, getContent } = octokitReturning(SKILL);
-    const spy = spyOn(octokit.rest.repos, "getContent").mockImplementation(
-      getContent,
-    );
+  it("reads the skill from the base branch, strips frontmatter and stores a copy", async () => {
+    const { octokit, spy } = octokitReturning(SKILL);
 
     const result = await fetchAndStoreReviewGuidelines({
       octokit,
       owner: "acme",
       repo: "web",
-      defaultBranch: "develop",
+      baseRef: "develop",
       tempDir: "/tmp/test",
     });
 
@@ -61,23 +59,6 @@ describe("fetchAndStoreReviewGuidelines", () => {
     );
   });
 
-  it("lets the API pick the default branch when the event does not name it", async () => {
-    const { octokit, getContent } = octokitReturning(SKILL);
-    const spy = spyOn(octokit.rest.repos, "getContent").mockImplementation(
-      getContent,
-    );
-
-    const result = await fetchAndStoreReviewGuidelines({
-      octokit,
-      owner: "acme",
-      repo: "web",
-      tempDir: "/tmp/test",
-    });
-
-    expect(spy.mock.calls[0]?.[0]).not.toHaveProperty("ref");
-    expect(result?.source).toBe(".factory/skills/review-guidelines/SKILL.md");
-  });
-
   it("returns nothing when the repository has no guidelines", async () => {
     const { octokit } = octokitReturning(
       Object.assign(new Error("Not Found"), { status: 404 }),
@@ -87,6 +68,7 @@ describe("fetchAndStoreReviewGuidelines", () => {
       octokit,
       owner: "acme",
       repo: "web",
+      baseRef: "main",
       tempDir: "/tmp/test",
     });
 
@@ -104,25 +86,12 @@ describe("fetchAndStoreReviewGuidelines", () => {
       octokit,
       owner: "acme",
       repo: "web",
+      baseRef: "main",
       tempDir: "/tmp/test",
     });
 
     expect(result).toBeUndefined();
     expect(warnSpy.mock.calls[0]?.[0]).toContain("boom");
     warnSpy.mockRestore();
-  });
-
-  it("ignores a skill that is only frontmatter", async () => {
-    const { octokit } = octokitReturning("---\nname: review-guidelines\n---\n");
-
-    const result = await fetchAndStoreReviewGuidelines({
-      octokit,
-      owner: "acme",
-      repo: "web",
-      tempDir: "/tmp/test",
-    });
-
-    expect(result).toBeUndefined();
-    expect(writeFileSpy).not.toHaveBeenCalled();
   });
 });

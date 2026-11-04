@@ -808,13 +808,12 @@ describe("prepareReviewMode", () => {
     expect(droidArgsCall?.[1]).toContain("Task");
   });
 
-  it("reads the repository's review guidelines from its default branch into the prompt", async () => {
+  it("reads the repository's review guidelines from the PR base branch into the prompt", async () => {
     const context = createMockContext({
       eventName: "issue_comment",
       isPR: true,
       payload: {
         comment: { id: 109, body: "@droid review" },
-        repository: { default_branch: "develop" },
       } as any,
       entityNumber: 32,
     });
@@ -860,13 +859,13 @@ describe("prepareReviewMode", () => {
     expect(getContent).toHaveBeenCalledWith(
       expect.objectContaining({
         path: ".factory/skills/review-guidelines/SKILL.md",
-        ref: "develop",
+        ref: MOCK_PR_DATA.baseRefName,
       }),
     );
     expect(promptSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         reviewGuidelines: {
-          source: ".factory/skills/review-guidelines/SKILL.md@develop",
+          source: `.factory/skills/review-guidelines/SKILL.md@${MOCK_PR_DATA.baseRefName}`,
           body: "# Rules\n- Never swallow errors.",
           path: "/tmp/test-runner/droid-prompts/review_guidelines.md",
         },

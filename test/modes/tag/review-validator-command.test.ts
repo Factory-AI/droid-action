@@ -114,11 +114,7 @@ describe("prepareReviewValidatorMode", () => {
     });
 
     await prepareReviewValidatorMode({
-      context: createMockContext({
-        isPR: true,
-        entityNumber: 24,
-        payload: { repository: { default_branch: "main" } } as any,
-      }),
+      context: createMockContext({ isPR: true, entityNumber: 24 }),
       octokit: { rest: { repos: { getContent } } } as any,
       githubToken: "token",
       trackingCommentId: 555,

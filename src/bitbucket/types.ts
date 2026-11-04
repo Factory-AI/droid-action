@@ -98,6 +98,8 @@ export interface BitbucketClient {
   getCurrentUserId(): Promise<string | null>;
   getPullRequest(): Promise<BitbucketPullRequest>;
   getDiff(): Promise<BitbucketDiff>;
+  /** Raw contents of a repository file on branch `ref`, or null when it does not exist there. */
+  getFileAtRef(filePath: string, ref: string): Promise<string | null>;
   /** Every non-deleted comment on the pull request, replies included. */
   listComments(): Promise<BitbucketComment[]>;
   createComment(body: string): Promise<BitbucketComment>;
