@@ -178,9 +178,15 @@ describe("QA75 prompt output behavior", () => {
   it("preview CLI writes formatted Markdown matching the documented regeneration output", async () => {
     const directory = await mkdtemp(join(tmpdir(), "review-preview-cli-"));
     const output = join(directory, "preview.md");
+    const startupGuard = process.env.SHALLOW_CI_STARTUP_GUARD;
     try {
       const child = Bun.spawn({
-        cmd: [process.execPath, join(root, "scripts/preview-review.ts"), output],
+        cmd: [
+          process.execPath,
+          ...(startupGuard ? ["--preload", startupGuard] : []),
+          join(root, "scripts/preview-review.ts"),
+          output,
+        ],
         cwd: root,
         stdout: "pipe",
         stderr: "pipe",
