@@ -35,6 +35,7 @@ import {
 import { postReview } from "../../src/entrypoints/gitlab-post-review";
 import { run as postRun } from "../../src/entrypoints/gitlab-post-review";
 import { run as prepareRun } from "../../src/entrypoints/gitlab-prepare";
+import { run as validatorPrepareRun } from "../../src/entrypoints/gitlab-prepare-validator";
 import { run as finishRun } from "../../src/entrypoints/gitlab-update-comment-link";
 import { publishGitlabSecurityReport } from "../../src/gitlab/operations/security-report";
 import * as fs from "node:fs/promises";
@@ -133,6 +134,7 @@ function setup(
     refreshDescription?: string;
     refreshProject?: number;
     refreshNativeId?: number;
+    guidelines?: string;
   } = {},
 ) {
   const trigger = note(20, options.command ?? "@droid help", 5);
@@ -183,6 +185,15 @@ function setup(
       });
     }
     if (url.pathname.includes("/repository/files/")) {
+      if (
+        options.guidelines !== undefined &&
+        decodeURIComponent(url.pathname).endsWith(
+          "/.factory/skills/review-guidelines/SKILL.md/raw",
+        )
+      )
+        return new Response(options.guidelines, {
+          headers: { "Content-Type": "text/plain" },
+        });
       if (
         decodeURIComponent(url.pathname).includes("/.factory/security/reports/")
       )
@@ -964,6 +975,118 @@ describe("GitLab v2 production entrypoints, local API only", () => {
       expect(t.requests.find((r) => r.method === "PUT")?.body.body).toContain(
         "[!NOTE]",
       );
+    });
+  });
+
+  it("retains target-branch guidelines and lifecycle state across both real prepare passes", async () => {
+    const options = {
+      noState: true,
+      guidelines:
+        "---\nname: review-guidelines\n---\n# Target rules\n- Flag swallowed errors.",
+    };
+    const t = setup(options);
+    await environment(async (directory) => {
+      const policy = spyOn(
+        modelPolicy,
+        "applyModelPolicyFallback",
+      ).mockResolvedValue({ model: "gpt-5.4", reasoningEffort: undefined });
+      try {
+        await prepareRun();
+        const statePath = path.join(directory, "state.json");
+        const prepared = JSON.parse(await fs.readFile(statePath, "utf8"));
+        expect(prepared.reviewGuidelines).toEqual({
+          source: ".factory/skills/review-guidelines/SKILL.md@main",
+          path: path.join(directory, "review_guidelines.md"),
+        });
+        expect(prepared.shouldRunReview).toBe(true);
+        expect(prepared.reviewConfig.review_badges).toBe("text");
+        expect(prepared.reviewState.head).toBe("");
+        const promptPath = path.join(directory, "prompt.txt");
+        const candidates = await fs.readFile(promptPath, "utf8");
+        expect(candidates).toContain("# Target rules\n- Flag swallowed errors.");
+        expect(candidates).not.toContain("name: review-guidelines");
+        expect(candidates).toContain("Trusted review settings");
+        const reads = t.requests.filter((request) =>
+          decodeURIComponent(request.path).includes(
+            "/.factory/skills/review-guidelines/SKILL.md/raw",
+          ),
+        );
+        expect(reads).toHaveLength(1);
+        expect(reads[0]!.path).toContain("ref=main");
+        expect(reads[0]!.path).not.toContain(encodeURIComponent("feat/retry"));
+        options.guidelines = "# Changed remote rules\n- Wrong second snapshot.";
+        await fs.writeFile(
+          prepared.candidatesPath,
+          JSON.stringify({ comments: [] }),
+        );
+        await validatorPrepareRun();
+        const validator = await fs.readFile(promptPath, "utf8");
+        expect(validator).toContain("# Target rules\n- Flag swallowed errors.");
+        expect(validator).not.toContain("Wrong second snapshot");
+        expect(validator).toContain("findingResolutions");
+        expect(validator).toContain("exactly one entry per candidate");
+        expect(validator).toContain("Trusted review settings");
+        expect(
+          t.requests.filter((request) =>
+            decodeURIComponent(request.path).includes(
+              "/.factory/skills/review-guidelines/SKILL.md/raw",
+            ),
+          ),
+        ).toHaveLength(1);
+        expect(JSON.parse(await fs.readFile(statePath, "utf8"))).toEqual(
+          prepared,
+        );
+        expect(
+          t.requests
+            .filter((request) => request.path.includes("/statuses/"))
+            .map((request) => request.body.state),
+        ).toEqual(["pending", "running"]);
+      } finally {
+        policy.mockRestore();
+      }
+    });
+  });
+
+  it("compensates a guideline-storage failure within the real preparation lifecycle", async () => {
+    const t = setup({ noState: true, guidelines: "# Target rules" });
+    await environment(async () => {
+      const original = new Error("controlled guideline-storage failure");
+      const write = fs.writeFile;
+      const writes = spyOn(fs, "writeFile").mockImplementation(
+        async (file, data, options) => {
+          if (path.basename(String(file)) === "review_guidelines.md")
+            throw original;
+          return write(file, data, options);
+        },
+      );
+      const policy = spyOn(
+        modelPolicy,
+        "applyModelPolicyFallback",
+      ).mockResolvedValue({ model: "gpt-5.4", reasoningEffort: undefined });
+      try {
+        await expect(prepareRun()).rejects.toBe(original);
+        const updates = t.requests.filter(
+          (request) =>
+            request.method === "PUT" && request.path.endsWith("/notes/1"),
+        );
+        expect(updates).toHaveLength(2);
+        expect(updates[1]!.body.body).toContain("Review preparation failed");
+        expect(
+          t.requests
+            .filter((request) => request.path.includes("/statuses/"))
+            .map((request) => request.body.state),
+        ).toEqual(["pending", "running", "success"]);
+        expect(
+          t.requests.filter(
+            (request) =>
+              request.method === "DELETE" &&
+              request.path.endsWith("/award_emoji/3"),
+          ),
+        ).toHaveLength(1);
+      } finally {
+        writes.mockRestore();
+        policy.mockRestore();
+      }
     });
   });
 

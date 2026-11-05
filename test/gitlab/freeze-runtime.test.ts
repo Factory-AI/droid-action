@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { privateStartupEnvironment } from "../helpers/controlled-runtime";
 
 const helper = path.resolve(import.meta.dir, "../../gitlab/freeze-runtime.sh");
 const entries = [
@@ -54,6 +55,7 @@ async function run(command: string) {
     {
       cwd: directory,
       env: {
+        ...(await privateStartupEnvironment(directory, directory)),
         PATH: `${directory}/bin:/usr/bin:/bin`,
         HOME: directory,
         CI_PROJECT_DIR: directory,

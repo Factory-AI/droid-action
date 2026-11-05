@@ -6,6 +6,7 @@ import { generateGitlabReviewCandidatesPrompt } from "../../src/gitlab/prompts/c
 import { generateGitlabReviewValidatorPrompt } from "../../src/gitlab/prompts/validator";
 import { reviewPromptSettingsFromEnvironment } from "../../src/core/review/prompts/settings";
 import { reviewConfigFromEnvironment } from "../../src/core/review/config";
+import { privateStartupEnvironment } from "../helpers/controlled-runtime";
 
 const settings = {
   REVIEW_SEVERITY_THRESHOLD: "P1",
@@ -94,7 +95,10 @@ describe("GitLab lifecycle prompt protocol", () => {
         [process.execPath, "src/entrypoints/gitlab-prepare-validator.ts"],
         {
           cwd: path.resolve(import.meta.dir, "../.."),
-          env: { DROID_STATE_FILE: statePath },
+          env: {
+            ...(await privateStartupEnvironment(dir)),
+            DROID_STATE_FILE: statePath,
+          },
           stdout: "pipe",
           stderr: "pipe",
         },

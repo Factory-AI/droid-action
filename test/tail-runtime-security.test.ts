@@ -14,6 +14,10 @@ import { tmpdir } from "os";
 import { dirname, join, resolve } from "path";
 import { pathToFileURL } from "url";
 import { parse } from "yaml";
+import {
+  createControlledRuntime,
+  privateStartupEnvironment,
+} from "./helpers/controlled-runtime";
 
 // The override lets the independently authored artifact run before it is copied
 // into the canonical worktree. Normal repository runs use their own root.
@@ -127,7 +131,7 @@ async function child(
 ) {
   const process = Bun.spawn(command, {
     cwd,
-    env,
+    env: { ...(await privateStartupEnvironment(cwd)), ...env },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -180,6 +184,8 @@ afterAll(async () => {
 
 type Fixture = {
   dir: string;
+  runtime: string;
+  runtimeHash: string;
   publisher: string;
   publisherHash: string;
   output: string;
@@ -187,8 +193,14 @@ type Fixture = {
   startup: string;
   sentinel: string;
 };
-async function fixture(bytes?: string): Promise<Fixture> {
+async function fixture(
+  bytes?: string,
+  requireIncomingHome = false,
+): Promise<Fixture> {
   const dir = await temporary("shell-");
+  const controlledRuntime = await createControlledRuntime(dir, dir, {
+    requireIncomingHome,
+  });
   const publisher = join(dir, "publisher.mjs");
   const output = join(dir, "captured.json");
   const sentinel = join(dir, "untrusted-code-ran");
@@ -222,6 +234,8 @@ async function fixture(bytes?: string): Promise<Fixture> {
   await writeFile(publisher, source);
   return {
     dir,
+    runtime: controlledRuntime.path,
+    runtimeHash: controlledRuntime.sha256,
     publisher,
     publisherHash: hash(Buffer.from(source)),
     output,
@@ -270,8 +284,8 @@ async function runTail(
     GITHUB_OUTPUT: join(file.dir, "step-outputs"),
     TRUSTED_TAIL_PATH: file.publisher,
     TRUSTED_TAIL_SHA256: file.publisherHash,
-    TRUSTED_RUNTIME_PATH: runtime,
-    TRUSTED_RUNTIME_SHA256: runtimeHash,
+    TRUSTED_RUNTIME_PATH: file.runtime,
+    TRUSTED_RUNTIME_SHA256: file.runtimeHash,
     ...overrides,
   });
 }
@@ -291,6 +305,7 @@ describe("all privileged executable roles are frozen before model execution", ()
     expect(hash(await readFile(frozen.review_runtime_path!))).toBe(
       frozen.review_runtime_sha256!,
     );
+    expect(frozen.review_runtime_sha256!).toBe(runtimeHash);
     const result = await child(
       [
         runtime,
@@ -311,7 +326,7 @@ describe("all privileged executable roles are frozen before model execution", ()
 for (const tail of tails)
   describe(tail.label, () => {
     it("uses only pre-model bundle/runtime outputs and ignores edited action source and poisoned startup", async () => {
-      const file = await fixture();
+      const file = await fixture(undefined, tail.role === "steward");
       const actionSource = join(file.dir, "mutable-action/src");
       for (const relative of [
         "entrypoints/collect-debug-artifacts.ts",
@@ -372,7 +387,7 @@ for (const tail of tails)
       "symlink-publisher",
       "relative-publisher",
     ])("fails closed for %s without any mutable fallback", async (attack) => {
-      const file = await fixture();
+      const file = await fixture(undefined, tail.role === "steward");
       const overrides: Record<string, string> = {};
       if (attack === "publisher-tamper")
         await writeFile(
@@ -553,8 +568,8 @@ async function runPreparation(
   const bound = {
     review_revoke_publisher_path: file.publisher,
     review_revoke_publisher_sha256: file.publisherHash,
-    review_runtime_path: runtime,
-    review_runtime_sha256: runtimeHash,
+    review_runtime_path: file.runtime,
+    review_runtime_sha256: file.runtimeHash,
   };
   const mocks = new Map<string, string>([
     [
@@ -677,8 +692,8 @@ describe("cleanup survives no-trigger and failed-prompt paths", () => {
       github_token: "synthetic-minted-token",
       review_revoke_publisher_path: file.publisher,
       review_revoke_publisher_sha256: file.publisherHash,
-      review_runtime_path: runtime,
-      review_runtime_sha256: runtimeHash,
+      review_runtime_path: file.runtime,
+      review_runtime_sha256: file.runtimeHash,
       prepare_error: "synthetic configuration failure",
     }))
       expect(prepared.state.outputs[name]).toBe(value);

@@ -14,6 +14,7 @@
  * additionally enforced at the `droid exec` level via `--enabled-tools`.
  */
 
+import { buildRepoGuidelinesSection } from "./guidelines";
 import type { ReviewPromptContext } from "./types";
 
 export function generateCandidatesPrompt(ctx: ReviewPromptContext): string {
@@ -31,6 +32,7 @@ export function generateCandidatesPrompt(ctx: ReviewPromptContext): string {
     includeSuggestions,
     securityReviewEnabled,
     sourceNote,
+    repoGuidelines,
   } = ctx;
 
   const bodyFieldDescription = includeSuggestions
@@ -66,11 +68,19 @@ After all subagents complete (both code review and security-reviewer), merge the
 `
     : "";
 
+  const guidelinesSection = buildRepoGuidelinesSection(
+    repoGuidelines,
+    "candidates",
+  );
+  const summaryBody = repoGuidelines
+    ? "1-3 sentence overall assessment\\n\\n- optional whole-change observation (at most three bullets)"
+    : "1-3 sentence overall assessment";
+
   return `You are a senior staff software engineer and expert code reviewer.
 
 Your task: Review ${t.entityNoun} ${t.entityNumberSigil}${entityNumber} in ${repoOrProject} and generate a JSON file with **high-confidence, actionable** review comments that pinpoint genuine issues.
 
-${skillInstruction}${securitySubagentInstruction}
+${skillInstruction}${securitySubagentInstruction}${guidelinesSection ? `\n\n${guidelinesSection}` : ""}
 
 <context>
 ${t.repoLabel}: ${repoOrProject}
@@ -109,7 +119,7 @@ Write output to \`${candidatesPath}\` using this exact schema:
     }
   ],
   "reviewSummary": {
-    "body": "1-3 sentence overall assessment"
+    "body": "${summaryBody}"
   }
 }
 \`\`\`
@@ -133,7 +143,7 @@ ${sideFieldDescription}
   - \`commit_id\`: "${headSha}"
 
 - **reviewSummary**:
-  - \`body\`: 1-3 sentence overall assessment
+  - \`body\`: 1-3 sentence overall assessment${repoGuidelines ? "; optionally append up to three short bullets of whole-change observations requested by the repository guidelines. Keep these observations in reviewSummary.body, not comments." : ""}
 </schema_details>
 </output_spec>
 

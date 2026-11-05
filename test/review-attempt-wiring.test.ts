@@ -1,10 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { createHash } from "crypto";
 import { readFileSync } from "fs";
-import { mkdtemp, readFile, realpath, rm, writeFile } from "fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { parse } from "yaml";
+import { createControlledRuntime } from "./helpers/controlled-runtime";
 
 type Step = {
   name: string;
@@ -15,8 +16,6 @@ type Step = {
 };
 const hash = (value: Uint8Array) =>
   createHash("sha256").update(value).digest("hex");
-const runtime = await realpath(process.execPath);
-const runtimeHash = hash(await readFile(runtime));
 
 describe("trusted numeric attempt reaches actual native review children", () => {
   for (const file of [
@@ -37,6 +36,7 @@ describe("trusted numeric attempt reaches actual native review children", () => 
           join(tmpdir(), "review-attempt-child-"),
         );
         try {
+          const runtime = await createControlledRuntime(directory);
           const capture = join(directory, "session.json");
           const publisher = join(directory, "publisher.mjs");
           const source = Buffer.from(
@@ -60,8 +60,8 @@ describe("trusted numeric attempt reaches actual native review children", () => 
                 UNTRUSTED_MODEL_VALUE: "must-not-cross",
                 REVIEW_PUBLISHER_PATH: publisher,
                 REVIEW_PUBLISHER_SHA256: hash(source),
-                REVIEW_RUNTIME_PATH: runtime,
-                REVIEW_RUNTIME_SHA256: runtimeHash,
+                REVIEW_RUNTIME_PATH: runtime.path,
+                REVIEW_RUNTIME_SHA256: runtime.sha256,
               },
               stdout: "pipe",
               stderr: "pipe",

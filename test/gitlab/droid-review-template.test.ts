@@ -3,6 +3,7 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 import { parseAllDocuments } from "yaml";
+import { privateStartupEnvironment } from "../helpers/controlled-runtime";
 
 /**
  * Runs every bun step of templates/droid-review.yml with real bun,
@@ -63,6 +64,7 @@ async function runStep(step: string, frozen = false) {
   const proc = Bun.spawn(["bash", "-c", bootstrap + step], {
     cwd: work,
     env: {
+      ...(await privateStartupEnvironment(tmp, path.join(tmp, "home"))),
       PATH: `${path.join(tmp, "bin")}:/usr/local/bin:/usr/bin:/bin`,
       HOME: path.join(tmp, "home"),
       CI_PROJECT_DIR: work,

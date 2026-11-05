@@ -110,9 +110,18 @@ async function fixture(
     preload,
     `require("node:fs").writeFileSync(${JSON.stringify(preloadMarker)}, "inherited preload ran");`,
   );
-  await fs.writeFile(path.join(bin, "droid"), fakeCli(receipt, scenario), {
-    mode: 0o755,
-  });
+  const fakeSource = path.join(directory, "fake-droid.cjs");
+  const quote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
+  await fs.writeFile(fakeSource, fakeCli(receipt, scenario));
+  await fs.writeFile(
+    path.join(bin, "droid"),
+    `#!/bin/sh
+export XDG_STATE_HOME="$HOME/.local/state"
+export XDG_RUNTIME_DIR="$HOME/.runtime"
+exec node ${quote(fakeSource)} "$@"
+`,
+    { mode: 0o755 },
+  );
   Object.assign(process.env, parent);
   process.chdir(cwd);
   try {

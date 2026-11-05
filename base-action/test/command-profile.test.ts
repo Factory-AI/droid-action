@@ -42,6 +42,8 @@ function childStartupEnvironment(home: string) {
     XDG_CONFIG_HOME: join(home, ".config"),
     XDG_CACHE_HOME: join(home, ".cache"),
     XDG_DATA_HOME: join(home, ".local", "share"),
+    XDG_STATE_HOME: join(home, ".local", "state"),
+    XDG_RUNTIME_DIR: join(home, ".runtime"),
     TMPDIR: dirname(home),
     TMP: dirname(home),
     TEMP: dirname(home),
@@ -330,9 +332,11 @@ try {
       const prompt = join(dir, "prompt.txt");
       const dump = join(dir, "startup.json");
       const fake = join(dir, "fake-droid");
+      const fakeSource = join(dir, "fake-droid.mjs");
+      const quote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
       await writeFile(prompt, "Read the absolute context and write an answer.");
       await writeFile(
-        fake,
+        fakeSource,
         `#!${process.execPath}
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
@@ -355,6 +359,14 @@ console.log(JSON.stringify(${JSON.stringify(
               },
         )}));
 process.exit(${exitCode});
+`,
+      );
+      await writeFile(
+        fake,
+        `#!/bin/sh
+export XDG_STATE_HOME="$HOME/.local/state"
+export XDG_RUNTIME_DIR="$HOME/.runtime"
+exec ${quote(process.execPath)} ${quote(fakeSource)} "$@"
 `,
       );
       await chmod(fake, 0o700);

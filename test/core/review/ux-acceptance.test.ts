@@ -1433,14 +1433,25 @@ describe("review UX production boundaries", () => {
     const promptPath = path.join(directory, "command-prompt.txt");
     const capturePath = path.join(directory, "captured.json");
     const fakeDroid = path.join(directory, "fixture-droid");
+    const fakeSource = path.join(directory, "fixture-droid.mjs");
+    const quote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
     await writeFile(promptPath, "Answer using the supplied snapshot only.");
     await writeFile(
-      fakeDroid,
+      fakeSource,
       `#!${process.execPath}
 const settings = await Bun.file(process.cwd() + "/.factory/settings.json").json();
 const mcp = await Bun.file(process.cwd() + "/.factory/mcp.json").json();
 await Bun.write(${JSON.stringify(capturePath)}, JSON.stringify({cwd:process.cwd(),env:process.env,args:process.argv.slice(2),settings,mcp}));
 console.log(JSON.stringify({type:"result",subtype:"success",is_error:false,result:"done"}));
+`,
+      { mode: 0o700 },
+    );
+    await writeFile(
+      fakeDroid,
+      `#!/bin/sh
+export XDG_STATE_HOME="$HOME/.local/state"
+export XDG_RUNTIME_DIR="$HOME/.runtime"
+exec ${quote(process.execPath)} ${quote(fakeSource)} "$@"
 `,
       { mode: 0o700 },
     );

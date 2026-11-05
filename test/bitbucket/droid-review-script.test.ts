@@ -3,6 +3,7 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 import { BITBUCKET_TRACKING_MARKER } from "../../src/bitbucket/operations/tracking-comment";
+import { privateStartupEnvironment } from "../helpers/controlled-runtime";
 import {
   APP_TS_DIFF,
   json,
@@ -130,6 +131,7 @@ afterEach(async () => {
 
 async function runScript(extra: Record<string, string> = {}) {
   const env: Record<string, string> = {
+    ...(await privateStartupEnvironment(tmp, path.join(tmp, "home"))),
     PATH: `${path.join(tmp, "bin")}:${path.dirname(process.execPath)}:/usr/local/bin:/usr/bin:/bin`,
     HOME: path.join(tmp, "home"),
     FAKE_DIR: tmp,

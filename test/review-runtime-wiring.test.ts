@@ -6,6 +6,7 @@ import { join } from "path";
 import { readFileSync } from "fs";
 import { parse } from "yaml";
 import { freezeReviewCli } from "../src/entrypoints/freeze-review-cli";
+import { createControlledRuntime } from "./helpers/controlled-runtime";
 
 const manifest = parse(
   readFileSync(join(import.meta.dir, "../action.yml"), "utf8"),
@@ -33,7 +34,8 @@ describe("frozen review executable workflow boundary", () => {
       const cli = join(directory, "fake-droid");
       await writeFile(cli, "original cli");
       const cliHash = digest(await readFile(cli));
-      const runtime = await freezeReviewCli(process.execPath);
+      const controlledRuntime = await createControlledRuntime(directory);
+      const runtime = await freezeReviewCli(controlledRuntime.path);
       const post = manifest.runs.steps.find(
         (step: { id?: string }) => step.id === "post_review",
       );

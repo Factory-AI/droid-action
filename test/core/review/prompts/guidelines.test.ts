@@ -83,4 +83,22 @@ describe("buildRepoGuidelinesSection", () => {
     expect(section).not.toContain(body);
     expect(section).toContain(guidelines.path);
   });
+
+  it.each(["candidates", "validator"] as const)(
+    "keeps the exact 32 KiB UTF-8 boundary in the %s pass",
+    (pass) => {
+      const exact = "€".repeat(Math.floor(32_768 / 3)) + "xx";
+      expect(Buffer.byteLength(exact, "utf8")).toBe(32_768);
+      expect(
+        buildRepoGuidelinesSection({ ...guidelines, body: exact }, pass),
+      ).toContain(exact);
+      const oversized = exact + "x";
+      const fallback = buildRepoGuidelinesSection(
+        { ...guidelines, body: oversized },
+        pass,
+      );
+      expect(fallback).not.toContain(oversized);
+      expect(fallback).toContain(guidelines.path);
+    },
+  );
 });

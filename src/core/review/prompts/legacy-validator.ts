@@ -4,6 +4,7 @@
  * GitHub/GitLab validator uses the separate validator.ts builder.
  */
 
+import { buildRepoGuidelinesSection } from "./guidelines";
 import type { ReviewPromptContext, ReviewTerminology } from "./types";
 
 function buildFilePostingSection(
@@ -47,6 +48,7 @@ export function generateValidatorPrompt(ctx: ReviewPromptContext): string {
     validatedPath,
     includeSuggestions,
     sourceNote,
+    repoGuidelines,
   } = ctx;
 
   if (!validatedPath) {
@@ -58,12 +60,19 @@ export function generateValidatorPrompt(ctx: ReviewPromptContext): string {
     : "Invoke the 'review' skill to load the review methodology, then execute its **Pass 2: Validation** procedure. Do NOT include code suggestion blocks.";
 
   const postingSection = buildFilePostingSection(t, validatedPath);
+  const guidelinesSection = buildRepoGuidelinesSection(
+    repoGuidelines,
+    "validator",
+  );
+  const summaryBody = repoGuidelines
+    ? "1-3 sentence overall assessment\\n\\n- optional whole-change observation (at most three bullets)"
+    : "1-3 sentence overall assessment";
 
   return `You are validating candidate review comments for ${t.entityNoun} ${t.entityNumberSigil}${entityNumber} in ${repoOrProject}.
 
 IMPORTANT: This is Phase 2 (validator) of a two-pass review pipeline.
 
-${skillInstruction}
+${skillInstruction}${guidelinesSection ? `\n\n${guidelinesSection}` : ""}
 
 ### Context
 
@@ -128,14 +137,14 @@ ${sourceNote ? `\n${sourceNote}\n` : ""}
   ],
   "reviewSummary": {
     "status": "approved",
-    "body": "1-3 sentence overall assessment"
+    "body": "${summaryBody}"
   }
 }
 \`\`\`
 
 Notes:
 * Use \`commit_id\` = \`${headSha}\`.
-* \`results\` MUST have exactly one entry per candidate, in the same order.
+* \`results\` MUST have exactly one entry per candidate, in the same order.${repoGuidelines ? "\n* reviewSummary.body may end with up to three short bullets of whole-change observations requested by the repository guidelines. Carry them through unchanged; they are not candidates and must never be approved, rejected, or moved into results." : ""}
 
 Tooling note:
 * If the tools list includes \`ApplyPatch\` (common for OpenAI models like GPT-5.2), use \`ApplyPatch\` to create/update the file at the exact path.
