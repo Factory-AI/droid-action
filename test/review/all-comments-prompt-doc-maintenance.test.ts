@@ -183,7 +183,13 @@ describe("QA75 prompt output behavior", () => {
       const child = Bun.spawn({
         cmd: [
           process.execPath,
-          ...(startupGuard ? ["--preload", startupGuard] : []),
+          ...(startupGuard
+            ? [
+                "--config=/dev/null",
+                "--env-file=/dev/null",
+                `--preload=${startupGuard}`,
+              ]
+            : []),
           join(root, "scripts/preview-review.ts"),
           output,
         ],
