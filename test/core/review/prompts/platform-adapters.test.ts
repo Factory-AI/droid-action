@@ -141,7 +141,9 @@ describe("platform prompt adapters carry repository review guidelines", () => {
           "approved",
           "rejected",
         ]);
-      const summary = z.object({ body: z.string() }).parse(output.reviewSummary);
+      const summary = z
+        .object({ body: z.string() })
+        .parse(output.reviewSummary);
       expect(summary.body).toContain(
         "\n\n- optional whole-change observation (at most three bullets)",
       );
@@ -159,7 +161,9 @@ describe("platform prompt adapters carry repository review guidelines", () => {
         const keys = Object.keys(
           z.record(z.unknown()).parse(output.reviewSummary),
         );
-        expect(keys).toEqual(pass === "comments" ? ["body"] : ["status", "body"]);
+        expect(keys).toEqual(
+          pass === "comments" ? ["body"] : ["status", "body"],
+        );
       }
     }
   });

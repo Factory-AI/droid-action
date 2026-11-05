@@ -1003,7 +1003,9 @@ describe("GitLab v2 production entrypoints, local API only", () => {
         expect(prepared.reviewState.head).toBe("");
         const promptPath = path.join(directory, "prompt.txt");
         const candidates = await fs.readFile(promptPath, "utf8");
-        expect(candidates).toContain("# Target rules\n- Flag swallowed errors.");
+        expect(candidates).toContain(
+          "# Target rules\n- Flag swallowed errors.",
+        );
         expect(candidates).not.toContain("name: review-guidelines");
         expect(candidates).toContain("Trusted review settings");
         const reads = t.requests.filter((request) =>
