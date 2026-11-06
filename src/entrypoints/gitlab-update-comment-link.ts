@@ -156,6 +156,8 @@ async function run(): Promise<void> {
         ? telemetry.totalDurationMs / 1000
         : undefined,
       jobUrl: jobUrl ?? undefined,
+      // Post-results are a cache, not authority for a new-session task target.
+      factoryFix: undefined,
     };
     const noteId = await resolveOwnTrackingNoteId(
       client,
@@ -163,6 +165,25 @@ async function run(): Promise<void> {
       state.trackingNoteId,
     );
     const reviewedHead = process.env.DROID_REVIEW_HEAD_SHA;
+    if (
+      droidSuccess &&
+      posted?.renderInput &&
+      noteId !== null &&
+      config.review_summary !== "off" &&
+      process.env.DROID_SECURITY_FULL !== "true" &&
+      reviewedHead &&
+      /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(reviewedHead) &&
+      mr.diff_refs.head_sha === reviewedHead &&
+      input.head === reviewedHead
+    )
+      input.factoryFix = {
+        reviewUrl:
+          config.review_summary === "description"
+            ? mr.web_url
+            : `${mr.web_url}#note_${noteId}`,
+        head: reviewedHead,
+        runId: process.env.CI_JOB_ID,
+      };
     const rendered = renderGitlabSummary(input);
     if (config.review_summary === "description")
       await client.updateMrDescription(

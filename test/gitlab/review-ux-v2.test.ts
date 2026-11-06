@@ -9,6 +9,7 @@ import {
   SUMMARY_MARKER,
 } from "../../src/core/review/markers";
 import { normalizeFinding } from "../../src/core/review/validated/finding";
+import { expectFactoryFixAction } from "../helpers/factory-fix";
 import {
   assertGitlabFixRef,
   dispatchGitlabCommand,
@@ -2419,6 +2420,60 @@ describe("GitLab v2 production entrypoints, local API only", () => {
       expect(renderGitlabSummary(result.renderInput)).toContain(
         "4 considered → 1 posted · 3 dropped",
       );
+      expect(result.renderInput.factoryFix).toMatchObject({
+        reviewUrl: `${mr.web_url}#note_1`,
+        head: HEAD,
+      });
+      result.renderInput.factoryFix.reviewUrl =
+        "https://gitlab.com/other/repo/-/merge_requests/99#note_999";
+      await fs.writeFile(
+        path.join(directory, "results.json"),
+        JSON.stringify(result),
+      );
+      process.env.DROID_REVIEW_HEAD_SHA = HEAD;
+      await finishRun();
+      const finalized = t.requests
+        .filter(
+          (request) =>
+            request.method === "PUT" && request.path.endsWith("/notes/1"),
+        )
+        .at(-1)?.body.body;
+      const { task } = expectFactoryFixAction(finalized);
+      expect(task).toContain("gitlab.com/group/repo/-/merge_requests/7#note_1");
+      expect(task).toContain(HEAD);
+      expect(task).not.toContain("/other/repo/");
+      expect(task).not.toMatch(/:\/\/|\\/);
+      delete process.env.DROID_REVIEW_HEAD_SHA;
+      await finishRun();
+      expect(
+        t.requests
+          .filter(
+            (request) =>
+              request.method === "PUT" && request.path.endsWith("/notes/1"),
+          )
+          .at(-1)?.body.body,
+      ).not.toContain("[Fix in Factory]");
+      process.env.DROID_REVIEW_HEAD_SHA = BASE;
+      await finishRun();
+      expect(
+        t.requests
+          .filter(
+            (request) =>
+              request.method === "PUT" && request.path.endsWith("/notes/1"),
+          )
+          .at(-1)?.body.body,
+      ).not.toContain("[Fix in Factory]");
+      process.env.DROID_REVIEW_HEAD_SHA = HEAD;
+      t.notes.splice(0, 1);
+      await finishRun();
+      expect(
+        t.requests
+          .filter(
+            (request) =>
+              request.method === "POST" && request.path.endsWith("/notes"),
+          )
+          .at(-1)?.body.body,
+      ).not.toContain("[Fix in Factory]");
       expect(
         t.requests.filter(
           (r) => r.method === "POST" && r.path.endsWith("/discussions"),

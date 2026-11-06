@@ -672,6 +672,13 @@ export async function run(
     diagram: config.review_diagram,
     sections: config.review_summary_sections,
   };
+  if (lifecycle && renderOptions.summaryUrl)
+    renderOptions.factoryFix = {
+      reviewUrl: renderOptions.summaryUrl,
+      head: lifecycle.head,
+      runId: lifecycle.runId,
+      runAttempt: lifecycle.runAttempt,
+    };
   const newIds = new Set(newFindings.map((finding) => finding.id));
   dropped.push(
     ...parsed.findings

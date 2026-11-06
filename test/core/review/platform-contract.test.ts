@@ -180,6 +180,9 @@ describe("platform-specific review output contracts", () => {
       const entry = z
         .object({ status: z.string(), comment: z.record(z.unknown()) })
         .parse(entries[0]);
+      const summary = z
+        .object({ whatChanged: z.string() })
+        .parse(output.reviewSummary);
       const parsed = parseValidatedReview(
         JSON.stringify({
           ...output,
@@ -218,6 +221,7 @@ describe("platform-specific review output contracts", () => {
       });
       expect(rendered).toContain("An untouched defect remains visible");
       expect(rendered).toContain("P0");
+      expect(rendered).toContain(summary.whatChanged);
     });
 
     it(`${platform.name} still disables suggestions and redacts both prompts`, () => {
