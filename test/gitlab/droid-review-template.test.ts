@@ -3,6 +3,7 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 import { parseAllDocuments } from "yaml";
+import { privateStartupEnvironment } from "../helpers/controlled-runtime";
 
 /**
  * Runs every bun step of templates/droid-review.yml with real bun,
@@ -35,6 +36,9 @@ beforeEach(async () => {
   // npm's Bun 1.2.11 package names its executable bun.exe. Expose that exact
   // running binary as bun, rather than relying on its directory's filename.
   await fs.symlink(process.execPath, path.join(bin, "bun"));
+  await fs.writeFile(path.join(bin, "droid"), "#!/bin/sh\nexit 0\n", {
+    mode: 0o755,
+  });
   await fs.writeFile(
     path.join(work, "bunfig.toml"),
     'preload = ["./evil.ts"]\n',
@@ -53,10 +57,14 @@ afterEach(async () => {
   await fs.rm(tmp, { recursive: true, force: true });
 });
 
-async function runStep(step: string) {
-  const proc = Bun.spawn(["bash", "-c", step], {
+async function runStep(step: string, frozen = false) {
+  const bootstrap = frozen
+    ? '. "$DROID_ACTION_DIR/gitlab/freeze-runtime.sh"; droid_freeze_runtime || exit 1; '
+    : "";
+  const proc = Bun.spawn(["bash", "-c", bootstrap + step], {
     cwd: work,
     env: {
+      ...(await privateStartupEnvironment(tmp, path.join(tmp, "home"))),
       PATH: `${path.join(tmp, "bin")}:/usr/local/bin:/usr/bin:/bin`,
       HOME: path.join(tmp, "home"),
       CI_PROJECT_DIR: work,
@@ -117,14 +125,17 @@ describe("templates/droid-review.yml", () => {
 
   it("never starts bun in the MR checkout", async () => {
     const job = await loadJob();
-    const steps = [...job.script, ...job.after_script].filter((s) =>
-      /\bbun\b.*\brun\b/.test(s),
-    );
-    expect(steps).toHaveLength(5);
+    const steps = job.script.filter((s) => /droid_run_trusted gitlab-/.test(s));
+    expect(steps).toHaveLength(3);
+    expect(job.after_script).toEqual([]);
 
     for (const step of steps) {
-      await runStep(step);
+      await runStep(step, true);
     }
+    // Exercise both actual finalizers from the frozen parent too. Missing
+    // functions/bundles cannot masquerade as isolation: other tests above and
+    // freeze-runtime.test.ts require successful guarded execution.
+    await runStep("droid_install_finalize_trap; exit 0", true);
 
     expect(await exists(path.join(tmp, "pwned"))).toBe(false);
   }, 60_000);

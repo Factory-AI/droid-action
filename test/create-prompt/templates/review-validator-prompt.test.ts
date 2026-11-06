@@ -184,7 +184,10 @@ describe("generateReviewValidatorPrompt", () => {
   it("says nothing about guidelines when the repository has none", () => {
     const prompt = generateReviewValidatorPrompt(createBaseContext());
 
-    expect(prompt).not.toContain("review-guidelines");
+    expect(prompt).not.toContain("<review-guidelines");
+    expect(prompt).not.toContain("Read that file in full before you start");
     expect(prompt).not.toContain("Repository review guidelines");
+    expect(prompt).toContain("`source_guideline` is");
+    expect(prompt).toContain(".factory/skills/review-guidelines/SKILL.md");
   });
 });

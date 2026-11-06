@@ -14,6 +14,7 @@ import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { createCommandProfile } from "../src/command-profile";
 import { buildDroidEnv } from "../src/run-droid";
+import { redactCredentials } from "../src/utils/redact-credentials";
 import { parse } from "shell-quote";
 
 const cleanup: string[] = [];
@@ -41,6 +42,8 @@ function childStartupEnvironment(home: string) {
     XDG_CONFIG_HOME: join(home, ".config"),
     XDG_CACHE_HOME: join(home, ".cache"),
     XDG_DATA_HOME: join(home, ".local", "share"),
+    XDG_STATE_HOME: join(home, ".local", "state"),
+    XDG_RUNTIME_DIR: join(home, ".runtime"),
     TMPDIR: dirname(home),
     TMP: dirname(home),
     TEMP: dirname(home),
@@ -124,6 +127,7 @@ describe("file-only command CLI profile isolation", () => {
     expect(profile.args).toContain("--settings");
     expect(profile.args).toContain("--disable-builtin-skills");
     expect(profile.args).not.toContain("Execute");
+    expect(parse(profile.args)).toEqual(Array.from(profile.argv));
     expect(parse(profile.args)).toEqual([
       "--cwd",
       profile.cwd,
@@ -154,6 +158,7 @@ describe("file-only command CLI profile isolation", () => {
       await profile.cleanup();
     }
     expect(await exists(root)).toBe(false);
+    expect(parse(profile.args)).toEqual(Array.from(profile.argv));
     expect(parse(profile.args)).toEqual([
       "--cwd",
       profile.cwd,
@@ -327,9 +332,11 @@ try {
       const prompt = join(dir, "prompt.txt");
       const dump = join(dir, "startup.json");
       const fake = join(dir, "fake-droid");
+      const fakeSource = join(dir, "fake-droid.mjs");
+      const quote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
       await writeFile(prompt, "Read the absolute context and write an answer.");
       await writeFile(
-        fake,
+        fakeSource,
         `#!${process.execPath}
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
@@ -352,6 +359,14 @@ console.log(JSON.stringify(${JSON.stringify(
               },
         )}));
 process.exit(${exitCode});
+`,
+      );
+      await writeFile(
+        fake,
+        `#!/bin/sh
+export XDG_STATE_HOME="$HOME/.local/state"
+export XDG_RUNTIME_DIR="$HOME/.runtime"
+exec ${quote(process.execPath)} ${quote(fakeSource)} "$@"
 `,
       );
       await chmod(fake, 0o700);
@@ -382,13 +397,15 @@ process.exit(${exitCode});
           stderr: "pipe",
         },
       );
-      const [stdout, , exit] = await Promise.all([
+      const [stdout, stderr, exit] = await Promise.all([
         new Response(runner.stdout).text(),
         new Response(runner.stderr).text(),
         runner.exited,
       ]);
       expect(exit).toBe(exitCode);
+      expect(stderr).not.toContain("synthetic");
       expect(stdout).not.toContain("Registering");
+      expect(stdout).not.toContain("synthetic-workflow-token");
       const captured = JSON.parse(await readFile(dump, "utf8"));
       cleanup.push(dirname(captured.cwd));
       expect(captured.cwd).not.toBe(work);
@@ -422,5 +439,10 @@ process.exit(${exitCode});
       {},
     );
     expect(env).toEqual({ PATH: "/bin" });
+    expect(
+      redactCredentials("failed arbitrary-workflow-secret", {
+        WORKFLOW_GITHUB_TOKEN: "arbitrary-workflow-secret",
+      }),
+    ).toBe("failed [REDACTED]");
   });
 });

@@ -6,6 +6,14 @@ import { z } from "zod";
 import { Octokit } from "@octokit/rest";
 import { GITHUB_API_URL } from "../github/api/config";
 import { withRequestRedaction } from "../github/api/client";
+import { updateGeneratedDescription } from "../core/review/fill";
+import { retryWithBackoff } from "../utils/retry";
+import { redactCredentials } from "../utils/redact-credentials";
+import { replyToPullRequestComment } from "../github/operations/comments/reply";
+export { replyToPullRequestComment };
+import { parseSecurityReport } from "../core/review/security-report";
+import { renderSecurityReport } from "../core/review/render";
+import { GITHUB_SERVER_URL } from "../github/api/config";
 import {
   createGitHubCommentReview,
   type GitHubReviewCommentPayload,
@@ -19,7 +27,7 @@ const PLACEHOLDER_REGEX = /@droid\s+fill(?:\s+description)?/gi;
 const PLACEHOLDER_LINE_REGEX =
   /^[^\S\r\n]*@droid\s+fill(?:\s+description)?[^\S\r\n]*\r?\n?/gim;
 
-export type UpdateMode = "replace" | "merge";
+export type UpdateMode = "replace" | "merge" | "generated" | "security-report";
 
 export interface UpdateDescriptionParams {
   owner: string;
@@ -126,8 +134,106 @@ export async function handleUpdatePRDescription({
   octokit,
 }: UpdateDescriptionParams): Promise<string> {
   let finalBody: string;
+  const securityScan =
+    process.env.DROID_EXEC_RUN_TYPE === "droid-security-scan";
+  if (securityScan && mode !== "security-report")
+    throw new Error(
+      "Security scans may only publish security-report descriptions",
+    );
 
-  if (mode === "merge") {
+  if (
+    mode === "generated" ||
+    process.env.DROID_EXEC_RUN_TYPE === "droid-fill"
+  ) {
+    const existing = await retryWithBackoff(
+      () =>
+        octokit.rest.pulls.get({
+          owner,
+          repo,
+          pull_number: prNumber,
+        }),
+      { initialDelayMs: 1000 },
+    );
+    finalBody = updateGeneratedDescription(
+      existing.data.body ?? "",
+      redactCredentials(body),
+      existing.data.head?.sha ?? "",
+    );
+  } else if (mode === "security-report") {
+    if (!securityScan) {
+      throw new Error(
+        "Security report descriptions are available only during a full security scan",
+      );
+    }
+    const sourceRevision = process.env.SECURITY_REPORT_SOURCE_REVISION ?? "";
+    const branch = process.env.SECURITY_REPORT_BRANCH ?? "";
+    const baseBranch = process.env.SECURITY_REPORT_BASE_BRANCH ?? "";
+    const author = process.env.SECURITY_REPORT_AUTHOR ?? "";
+    const actor = process.env.SECURITY_REPORT_ACTOR ?? "";
+    const triggerNumber = Number(process.env.SECURITY_REPORT_TRIGGER_NUMBER);
+    if (
+      !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(sourceRevision) ||
+      !branch.startsWith("droid/security-report-") ||
+      !baseBranch ||
+      !author ||
+      !actor ||
+      !Number.isSafeInteger(triggerNumber) ||
+      triggerNumber <= 0 ||
+      !Number.isSafeInteger(prNumber) ||
+      prNumber <= 0 ||
+      prNumber === triggerNumber
+    )
+      throw new Error(
+        "Security report requires its trusted scan context and explicit new report PR",
+      );
+    const { review: validated, provenance } = parseSecurityReport(
+      body,
+      sourceRevision,
+    );
+    const existing = await retryWithBackoff(
+      () => octokit.rest.pulls.get({ owner, repo, pull_number: prNumber }),
+      { initialDelayMs: 1000 },
+    );
+    const checkTarget = (data: any) => {
+      if (
+        data.state !== "open" ||
+        data.merged ||
+        data.head?.repo?.full_name?.toLowerCase() !==
+          `${owner}/${repo}`.toLowerCase() ||
+        data.base?.repo?.full_name?.toLowerCase() !==
+          `${owner}/${repo}`.toLowerCase() ||
+        data.head?.ref !== branch ||
+        data.base?.ref !== baseBranch ||
+        data.user?.login?.toLowerCase() !== author.toLowerCase() ||
+        !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(data.head?.sha ?? "")
+      )
+        throw new Error(
+          "Security report target does not match this scan's owned report PR",
+        );
+    };
+    checkTarget(existing.data);
+    finalBody = renderSecurityReport({
+      state: validated.findings.length ? "findings" : "clean",
+      findings: validated.findings,
+      summary: validated.summary,
+      head: existing.data.head?.sha,
+      securityReport: provenance,
+      repositoryUrl: `${GITHUB_SERVER_URL}/${owner}/${repo}`,
+    });
+    const live = await octokit.rest.pulls.get({
+      owner,
+      repo,
+      pull_number: prNumber,
+    });
+    checkTarget(live.data);
+    if (
+      live.data.head.sha !== existing.data.head.sha ||
+      live.data.body !== existing.data.body
+    )
+      throw new Error(
+        "Security report PR changed before publication; refusing a stale update",
+      );
+  } else if (mode === "merge") {
     const existing = await octokit.rest.pulls.get({
       owner,
       repo,
@@ -143,12 +249,20 @@ export async function handleUpdatePRDescription({
     finalBody = "";
   }
 
-  await octokit.rest.pulls.update({
-    owner,
-    repo,
-    pull_number: prNumber,
-    body: finalBody,
-  });
+  await retryWithBackoff(
+    () =>
+      octokit.rest.pulls.update({
+        owner,
+        repo,
+        pull_number: prNumber,
+        body: finalBody,
+      }),
+    {
+      initialDelayMs: 1000,
+      // A failed/unknown scan PATCH cannot safely reuse the prior live snapshot.
+      ...(securityScan ? { maxAttempts: 1 } : {}),
+    },
+  );
 
   return finalBody;
 }
@@ -347,10 +461,12 @@ export async function handleSubmitReview({
 
   const hasBody = Boolean(body?.trim());
   const hasComments = (comments?.length ?? 0) > 0;
-  if (!hasBody && !hasComments) {
+  if (!hasComments) {
     return {
       text:
-        "submit_review was called with no comments and no body, so there is nothing to post. " +
+        (hasBody
+          ? "submit_review requires approved inline comments; a body-only call does not publish a review. "
+          : "submit_review was called with no comments and no body, so there is nothing to post. ") +
         "If there are no approved findings, do not call submit_review; update the tracking comment and finish.",
       isError: true,
     };
@@ -368,6 +484,8 @@ export async function handleSubmitReview({
       runType,
       octokit,
     });
+    if (!Number.isSafeInteger(reviewId) || !reviewId || reviewId < 1)
+      throw new Error("GitHub did not return a published review ID");
   } catch (error) {
     guard.recordFailure();
     throw error;
@@ -477,42 +595,6 @@ export async function minimizeComment({
       classifier,
     },
   );
-}
-
-export async function replyToPullRequestComment({
-  owner,
-  repo,
-  prNumber,
-  commentId,
-  body,
-  type,
-  octokit,
-}: {
-  owner: string;
-  repo: string;
-  prNumber: number;
-  commentId: number;
-  body: string;
-  type: "issue" | "review";
-  octokit: OctokitLike;
-}): Promise<void> {
-  if (type === "review") {
-    await octokit.rest.pulls.createReplyForReviewComment({
-      owner,
-      repo,
-      pull_number: prNumber,
-      comment_id: commentId,
-      body,
-    });
-    return;
-  }
-
-  await octokit.rest.issues.createComment({
-    owner,
-    repo,
-    issue_number: prNumber,
-    body,
-  });
 }
 
 export async function resolveReviewThread({
@@ -654,10 +736,12 @@ export function createGitHubPRServer({
     {
       body: z.string().min(1).describe("The new PR description in markdown"),
       mode: z
-        .enum(["replace", "merge"])
+        .enum(["replace", "merge", "generated", "security-report"])
         .optional()
         .default("replace")
-        .describe("Replace entire description or merge with existing"),
+        .describe(
+          "Replace, merge, or update only the Droid-generated description region",
+        ),
       pr_number: z.number().int().describe("PR number to update"),
     },
     async ({ body, mode, pr_number }) => {

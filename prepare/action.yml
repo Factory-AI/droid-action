@@ -2,6 +2,8 @@ name: "Droid Prepare"
 description: "Initialize Droid review - creates tracking comment and detects review modes"
 
 inputs:
+  # Empty config-enabled inputs mean omitted. Effective defaults are documented
+  # below and resolved as built-in defaults < base .factory/review.yaml < inputs.
   factory_api_key:
     description: "Factory API key"
     required: true
@@ -9,11 +11,111 @@ inputs:
     description: "GitHub token"
     required: false
   automatic_review:
-    description: "Run automatic code review"
+    description: "Run automatic code review without a mention. Effective default false; empty inherits base config."
     required: false
-    default: "false"
+    default: ""
   automatic_security_review:
-    description: "Run automatic security review. Defaults to automatic_review when omitted; set false to opt out."
+    description: "Run automatic security review. Effective default inherits automatic_review; explicit false opts out."
+    required: false
+    default: ""
+  review_depth:
+    description: "Review depth: deep (effective default) or shallow. Empty inherits base-branch config; unknown values warn and use deep."
+    required: false
+    default: ""
+  review_summary:
+    description: "Summary location: comment (effective default), description, or off. Empty inherits base-branch config."
+    required: false
+    default: ""
+  review_summary_sections:
+    description: "Visible sections. Effective default: verdict,findings,changes,details; also diagram,risk,effort. Empty inherits base config; [] disables optional sections."
+    required: false
+    default: ""
+  review_badges:
+    description: "Severity badges: text (effective default), image, or emoji. Empty inherits base config."
+    required: false
+    default: ""
+  review_reactions:
+    description: "Lifecycle reactions: eyes while running, hooray when clean, confused on failure. Effective default true; no thumbs-up/down."
+    required: false
+    default: ""
+  review_check_run:
+    description: "Create the Droid Review check run with the caller token. Effective default true; missing checks write warns once."
+    required: false
+    default: ""
+  fail_on_severity:
+    description: "Fail the check at or above P0, P1, or P2. Effective default empty (no priority gate); off explicitly disables a base-config gate."
+    required: false
+    default: ""
+  review_incremental:
+    description: "Review only new commits after the first run. Effective default true; empty inherits base config."
+    required: false
+    default: ""
+  review_auto_resolve:
+    description: "Resolve verified fixed Droid threads. Effective default true; empty inherits base config."
+    required: false
+    default: ""
+  review_max_auto_runs:
+    description: "Auto-pause after this many automatic reviews. Effective default 0 (unlimited); explicit 0 overrides base config."
+    required: false
+    default: ""
+  show_dropped_findings:
+    description: "List validation-dropped candidates and reasons. Effective default false; empty inherits base config."
+    required: false
+    default: ""
+  include_agent_prompts:
+    description: "Include untrusted-data-safe AI agent prompts. Effective default true; empty inherits base config."
+    required: false
+    default: ""
+  fix_mode:
+    description: "Droid fix publishing mode: commit (effective default), pr, or off. Commit falls back to an authorized stacked PR for protected branches; inaccessible forks are refused."
+    required: false
+    default: ""
+  review_diagram:
+    description: "What changed diagram: auto (effective default) or off. Empty inherits base config."
+    required: false
+    default: ""
+  review_severity_threshold:
+    description: "Minimum reported finding priority: P0, P1, or P2 (effective default). Empty inherits base config."
+    required: false
+    default: ""
+  review_ignore_paths:
+    description: "Comma/newline-separated ignored globs. Effective default generated files, dist/build/coverage and lock files; [] disables ignores. Empty inherits base config."
+    required: false
+    default: ""
+  review_auto_triggers:
+    description: "Automatic PR event actions. Effective default opened,reopened,synchronize,ready_for_review. [] disables automatic event triggers."
+    required: false
+    default: ""
+  review_drafts:
+    description: "Review draft PRs automatically. Effective default false; manual review commands still run."
+    required: false
+    default: ""
+  review_effort:
+    description: "Show an evidence-based effort estimate. Effective default false; empty inherits base config."
+    required: false
+    default: ""
+  review_category_chips:
+    description: "Show finding category chips. Effective default false; empty inherits base config."
+    required: false
+    default: ""
+  review_suggest_reviewers:
+    description: "Suggest CODEOWNERS reviewers, never assign them. Effective default false."
+    required: false
+    default: ""
+  review_pre_merge_checks:
+    description: "Opt-in checks: title,description,linked_issue. Effective default none; [] explicitly clears base checks."
+    required: false
+    default: ""
+  security_severity_threshold:
+    description: "Minimum security severity: critical, high, medium (effective default), or low. Empty inherits base config."
+    required: false
+    default: ""
+  security_block_on_critical:
+    description: "Fail the check run for critical security findings, never request changes. Effective default true."
+    required: false
+    default: ""
+  security_block_on_high:
+    description: "Fail the check run for high security findings, never request changes. Effective default false."
     required: false
     default: ""
 
@@ -43,6 +145,114 @@ outputs:
     description: "Head branch name"
     value: ${{ steps.prepare.outputs.head_branch }}
 
+  review_head_sha:
+    description: "Trusted review head sha captured before model execution"
+    value: ${{ steps.prepare.outputs.review_head_sha }}
+  review_base_sha:
+    description: "Trusted review base sha captured before model execution"
+    value: ${{ steps.prepare.outputs.review_base_sha }}
+  review_comment_id:
+    description: "Trusted review comment id captured before model execution"
+    value: ${{ steps.prepare.outputs.review_comment_id }}
+  review_check_id:
+    description: "Trusted review check id captured before model execution"
+    value: ${{ steps.prepare.outputs.review_check_id }}
+  review_started_at:
+    description: "Trusted review started at captured before model execution"
+    value: ${{ steps.prepare.outputs.review_started_at }}
+  review_reaction_id:
+    description: "Trusted review reaction id captured before model execution"
+    value: ${{ steps.prepare.outputs.review_reaction_id }}
+  review_reaction_target:
+    description: "Trusted review reaction target captured before model execution"
+    value: ${{ steps.prepare.outputs.review_reaction_target }}
+  review_reaction_kind:
+    description: "Trusted review reaction kind captured before model execution"
+    value: ${{ steps.prepare.outputs.review_reaction_kind }}
+  repo_owner:
+    description: "Trusted preparation metadata for downstream review steps"
+    value: ${{ steps.prepare.outputs.repo_owner }}
+  repo_name:
+    description: "Trusted preparation metadata for downstream review steps"
+    value: ${{ steps.prepare.outputs.repo_name }}
+  review_config_json:
+    description: "Trusted preparation metadata for downstream review steps"
+    value: ${{ steps.prepare.outputs.review_config_json }}
+  review_incremental_base_sha:
+    description: "Trusted preparation metadata for downstream review steps"
+    value: ${{ steps.prepare.outputs.review_incremental_base_sha }}
+  review_security_only:
+    description: "Trusted preparation metadata for downstream review steps"
+    value: ${{ steps.prepare.outputs.review_security_only }}
+  review_automatic:
+    description: "Trusted preparation metadata for downstream review steps"
+    value: ${{ steps.prepare.outputs.review_automatic }}
+  review_lifecycle_publisher_path:
+    description: "Trusted preparation metadata for downstream review steps"
+    value: ${{ steps.prepare.outputs.review_lifecycle_publisher_path }}
+  review_lifecycle_publisher_sha256:
+    description: "Trusted preparation metadata for downstream review steps"
+    value: ${{ steps.prepare.outputs.review_lifecycle_publisher_sha256 }}
+  review_post_publisher_path:
+    description: "Trusted preparation metadata for downstream review steps"
+    value: ${{ steps.prepare.outputs.review_post_publisher_path }}
+  review_post_publisher_sha256:
+    description: "Trusted preparation metadata for downstream review steps"
+    value: ${{ steps.prepare.outputs.review_post_publisher_sha256 }}
+  review_tracking_publisher_path:
+    description: "Trusted preparation metadata for downstream review steps"
+    value: ${{ steps.prepare.outputs.review_tracking_publisher_path }}
+  review_tracking_publisher_sha256:
+    description: "Trusted preparation metadata for downstream review steps"
+    value: ${{ steps.prepare.outputs.review_tracking_publisher_sha256 }}
+  review_runtime_path:
+    description: "Trusted preparation metadata for downstream review steps"
+    value: ${{ steps.prepare.outputs.review_runtime_path }}
+  review_runtime_sha256:
+    description: "Trusted preparation metadata for downstream review steps"
+    value: ${{ steps.prepare.outputs.review_runtime_sha256 }}
+  review_skipped:
+    description: "Trusted preparation metadata for downstream review steps"
+    value: ${{ steps.prepare.outputs.review_skipped }}
+  review_validator_publisher_path:
+    description: "Trusted preparation metadata for downstream review steps"
+    value: ${{ steps.prepare.outputs.review_validator_publisher_path }}
+  review_validator_publisher_sha256:
+    description: "Trusted preparation metadata for downstream review steps"
+    value: ${{ steps.prepare.outputs.review_validator_publisher_sha256 }}
+  review_runner_publisher_path:
+    description: "Trusted preparation metadata for downstream review steps"
+    value: ${{ steps.prepare.outputs.review_runner_publisher_path }}
+  review_runner_publisher_sha256:
+    description: "Trusted preparation metadata for downstream review steps"
+    value: ${{ steps.prepare.outputs.review_runner_publisher_sha256 }}
+  review_debug_publisher_path:
+    description: "Debug collector frozen before credentials are minted"
+    value: ${{ steps.prepare.outputs.review_debug_publisher_path }}
+  review_debug_publisher_sha256:
+    description: "Digest of the trusted debug collector"
+    value: ${{ steps.prepare.outputs.review_debug_publisher_sha256 }}
+  review_revoke_publisher_path:
+    description: "Token cleanup frozen before credentials are minted"
+    value: ${{ steps.prepare.outputs.review_revoke_publisher_path }}
+  review_revoke_publisher_sha256:
+    description: "Digest of the trusted token cleanup"
+    value: ${{ steps.prepare.outputs.review_revoke_publisher_sha256 }}
+  review_steward_publisher_path:
+    description: "Steward post-run guard frozen before model execution"
+    value: ${{ steps.prepare.outputs.review_steward_publisher_path }}
+  review_steward_publisher_sha256:
+    description: "Digest of the trusted Steward post-run guard"
+    value: ${{ steps.prepare.outputs.review_steward_publisher_sha256 }}
+  steward_base_sha:
+    description: "Trusted revision for the Steward post-run guard"
+    value: ${{ steps.prepare.outputs.steward_base_sha }}
+  steward_protected_paths:
+    description: "Trusted protected paths for the Steward post-run guard"
+    value: ${{ steps.prepare.outputs.steward_protected_paths }}
+  steward_run_marker:
+    description: "Trusted marker preserved by the Steward post-run guard"
+    value: ${{ steps.prepare.outputs.steward_run_marker }}
 runs:
   using: "composite"
   steps:
@@ -62,10 +272,19 @@ runs:
     # caller's checkout into a process holding the job's credentials.
     - name: Prepare
       id: prepare
-      shell: bash
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
         bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../src/entrypoints/prepare.ts
       env:
+        REVIEW_CONFIG_JSON: ""
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
         AUTOMATIC_REVIEW: ${{ inputs.automatic_review }}
@@ -76,6 +295,33 @@ runs:
         USE_STICKY_COMMENT: "false"
         TRACK_PROGRESS: "false"
 
+        REVIEW_DEPTH: ${{ inputs.review_depth }}
+        REVIEW_SUMMARY: ${{ inputs.review_summary }}
+        REVIEW_SUMMARY_SECTIONS: ${{ inputs.review_summary_sections }}
+        REVIEW_BADGES: ${{ inputs.review_badges }}
+        REVIEW_REACTIONS: ${{ inputs.review_reactions }}
+        REVIEW_CHECK_RUN: ${{ inputs.review_check_run }}
+        FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
+        REVIEW_INCREMENTAL: ${{ inputs.review_incremental }}
+        REVIEW_AUTO_RESOLVE: ${{ inputs.review_auto_resolve }}
+        REVIEW_MAX_AUTO_RUNS: ${{ inputs.review_max_auto_runs }}
+        SHOW_DROPPED_FINDINGS: ${{ inputs.show_dropped_findings }}
+        INCLUDE_AGENT_PROMPTS: ${{ inputs.include_agent_prompts }}
+        FIX_MODE: ${{ inputs.fix_mode }}
+        REVIEW_DIAGRAM: ${{ inputs.review_diagram }}
+        REVIEW_SEVERITY_THRESHOLD: ${{ inputs.review_severity_threshold }}
+        REVIEW_IGNORE_PATHS: ${{ inputs.review_ignore_paths }}
+        REVIEW_AUTO_TRIGGERS: ${{ inputs.review_auto_triggers }}
+        REVIEW_DRAFTS: ${{ inputs.review_drafts }}
+        REVIEW_EFFORT: ${{ inputs.review_effort }}
+        REVIEW_CATEGORY_CHIPS: ${{ inputs.review_category_chips }}
+        REVIEW_SUGGEST_REVIEWERS: ${{ inputs.review_suggest_reviewers }}
+        REVIEW_PRE_MERGE_CHECKS: ${{ inputs.review_pre_merge_checks }}
+        SECURITY_SEVERITY_THRESHOLD: ${{ inputs.security_severity_threshold }}
+        SECURITY_BLOCK_ON_CRITICAL: ${{ inputs.security_block_on_critical }}
+        SECURITY_BLOCK_ON_HIGH: ${{ inputs.security_block_on_high }}
+        WORKFLOW_GITHUB_TOKEN: ${{ github.token }}
+        ALL_INPUTS: ${{ toJson(inputs) }}
     - name: Detect Review Types
       id: detect
       shell: bash
@@ -89,11 +335,12 @@ runs:
         # Default to input flags if prepare didn't set outputs
         if [ -z "$RUN_CODE" ]; then
           RUN_CODE="${{ inputs.automatic_review }}"
+          if [ -z "$RUN_CODE" ]; then RUN_CODE="false"; fi
         fi
         if [ -z "$RUN_SEC" ]; then
           RUN_SEC="${{ inputs.automatic_security_review }}"
           if [ -z "$RUN_SEC" ]; then
-            RUN_SEC="${{ inputs.automatic_review }}"
+            RUN_SEC="$RUN_CODE"
           fi
         fi
 

@@ -144,9 +144,7 @@ describe("updateCommentBody", () => {
       };
 
       const result = updateCommentBody(input);
-      expect(result).toContain(
-        "**Droid finished @trigger-user's task in 1m 14s**",
-      );
+      expect(result).toContain("**Droid finished in 1m 14s**");
       expect(result).not.toContain("Droid is working");
     });
 
@@ -213,9 +211,9 @@ describe("updateCommentBody", () => {
       const result = updateCommentBody(input);
       expect(result).toContain("**Droid encountered an error after 45s**");
       expect(result).toContain("[View job]");
-      expect(result).toContain("```\nFailed to fetch issue data\n```");
+      expect(result).toContain("~~~text\nFailed to fetch issue data\n~~~");
       // Ensure error details come after the header/links
-      const errorIndex = result.indexOf("```");
+      const errorIndex = result.indexOf("~~~");
       const headerIndex = result.indexOf("**Droid encountered an error");
       expect(errorIndex).toBeGreaterThan(headerIndex);
     });
@@ -228,7 +226,7 @@ describe("updateCommentBody", () => {
       };
 
       const result = updateCommentBody(input);
-      expect(result).toContain("**Droid finished @testuser's task**");
+      expect(result).toContain("**Droid finished**");
     });
   });
 
@@ -240,7 +238,7 @@ describe("updateCommentBody", () => {
       };
 
       const result = updateCommentBody(input);
-      expect(result).toContain(`—— [View job](${baseInput.jobUrl})`);
+      expect(result).toContain(`· [View job](${baseInput.jobUrl})`);
     });
 
     it("always includes job link in header, even if present in body", () => {
@@ -252,7 +250,7 @@ describe("updateCommentBody", () => {
 
       const result = updateCommentBody(input);
       // Check it's in the header with the new format
-      expect(result).toContain(`—— [View job](${baseInput.jobUrl})`);
+      expect(result).toContain(`· [View job](${baseInput.jobUrl})`);
       // The old link in body is removed
       expect(result).not.toContain("View job run");
     });
@@ -267,7 +265,7 @@ describe("updateCommentBody", () => {
 
       const result = updateCommentBody(input);
       expect(result).toContain(
-        "• [`droid/issue-123-20240101-1200`](https://github.com/owner/repo/tree/droid/issue-123-20240101-1200)",
+        "· [`droid/issue-123-20240101-1200`](https://github.com/owner/repo/tree/droid/issue-123-20240101-1200)",
       );
     });
 
@@ -280,7 +278,7 @@ describe("updateCommentBody", () => {
 
       const result = updateCommentBody(input);
       expect(result).toContain(
-        "• [`branch-name`](https://github.com/owner/repo/tree/branch-name)",
+        "· [`branch-name`](https://github.com/owner/repo/tree/branch-name)",
       );
     });
 
@@ -294,7 +292,7 @@ describe("updateCommentBody", () => {
 
       const result = updateCommentBody(input);
       expect(result).toContain(
-        "• [`new-branch-name`](https://github.com/owner/repo/tree/new-branch-name)",
+        "· [`new-branch-name`](https://github.com/owner/repo/tree/new-branch-name)",
       );
       expect(result).not.toContain("View branch");
     });
@@ -309,7 +307,7 @@ describe("updateCommentBody", () => {
 
       const result = updateCommentBody(input);
       expect(result).toContain(
-        "• [Create PR ➔](https://github.com/owner/repo/pr-url)",
+        "· [Create PR ➔](https://github.com/owner/repo/pr-url)",
       );
     });
 
@@ -322,7 +320,7 @@ describe("updateCommentBody", () => {
 
       const result = updateCommentBody(input);
       expect(result).toContain(
-        "• [Create PR ➔](https://github.com/owner/repo/pr-url)",
+        "· [Create PR ➔](https://github.com/owner/repo/pr-url)",
       );
       // Original Create a PR link is removed from body
       expect(result).not.toContain("[Create a PR]");
@@ -340,7 +338,7 @@ describe("updateCommentBody", () => {
       const result = updateCommentBody(input);
       // Prefers the link found in content over the provided one
       expect(result).toContain(
-        "• [Create PR ➔](https://github.com/owner/repo/pr-url-from-body)",
+        "· [Create PR ➔](https://github.com/owner/repo/pr-url-from-body)",
       );
     });
 
@@ -353,7 +351,7 @@ describe("updateCommentBody", () => {
       };
 
       const result = updateCommentBody(input);
-      expect(result).toContain(`• [Create PR ➔](${complexUrl})`);
+      expect(result).toContain(`· [Create PR ➔](${complexUrl})`);
       // Original link should be removed from body
       expect(result).not.toContain("[Create a PR]");
     });
@@ -367,7 +365,7 @@ describe("updateCommentBody", () => {
       };
 
       const result = updateCommentBody(input);
-      expect(result).toContain(`• [Create PR ➔](${complexUrl})`);
+      expect(result).toContain(`· [Create PR ➔](${complexUrl})`);
       // Original link should be removed from body completely
       expect(result).not.toContain("[Create a PR]");
       // Body content shouldn't have stray closing parens
@@ -388,7 +386,7 @@ describe("updateCommentBody", () => {
       };
 
       const result = updateCommentBody(input);
-      expect(result).toContain(`• [Create PR ➔](${expectedEncodedUrl})`);
+      expect(result).toContain(`· [Create PR ➔](${expectedEncodedUrl})`);
       // Original link should be removed from body completely
       expect(result).not.toContain("[Create a PR]");
       // Body content should be preserved
@@ -405,7 +403,7 @@ describe("updateCommentBody", () => {
       };
 
       const result = updateCommentBody(input);
-      expect(result).toContain(`• [Create PR ➔](${fallbackPrUrl})`);
+      expect(result).toContain(`· [Create PR ➔](${fallbackPrUrl})`);
       // Original link with invalid URL should still be in body since encoding failed
       expect(result).toContain("[Create a PR](not-a-valid-url-at-all)");
       expect(result).toContain("This PR was created.");
@@ -425,7 +423,7 @@ describe("updateCommentBody", () => {
       };
 
       const result = updateCommentBody(input);
-      expect(result).toContain("**Droid finished @testuser's task in 31s**");
+      expect(result).toContain("**Droid finished in 31s**");
     });
 
     it("formats duration in minutes and seconds in header", () => {
@@ -438,7 +436,7 @@ describe("updateCommentBody", () => {
       };
 
       const result = updateCommentBody(input);
-      expect(result).toContain("**Droid finished @testuser's task in 1m 15s**");
+      expect(result).toContain("**Droid finished in 1m 15s**");
     });
 
     it("includes duration in error header", () => {
@@ -464,7 +462,7 @@ describe("updateCommentBody", () => {
       };
 
       const result = updateCommentBody(input);
-      expect(result).toContain("**Droid finished @testuser's task**");
+      expect(result).toContain("**Droid finished**");
       expect(result).not.toContain(" in ");
     });
   });
@@ -488,14 +486,12 @@ describe("updateCommentBody", () => {
       const result = updateCommentBody(input);
 
       // Check the header structure
+      expect(result).toContain("**Droid finished in 1m 5s**");
+      expect(result).toContain("· [View job]");
       expect(result).toContain(
-        "**Droid finished @trigger-user's task in 1m 5s**",
+        "· [`droid-branch-123`](https://github.com/owner/repo/tree/droid-branch-123)",
       );
-      expect(result).toContain("—— [View job]");
-      expect(result).toContain(
-        "• [`droid-branch-123`](https://github.com/owner/repo/tree/droid-branch-123)",
-      );
-      expect(result).toContain("• [Create PR ➔]");
+      expect(result).toContain("· [Create PR ➔]");
 
       // Check order - header comes before separator with blank line
       const headerIndex = result.indexOf("**Droid finished");
@@ -527,12 +523,12 @@ describe("updateCommentBody", () => {
 
       // PR link should be moved to header
       expect(result).toContain(
-        "• [Create PR ➔](https://github.com/owner/repo/pr-url-in-content)",
+        "· [Create PR ➔](https://github.com/owner/repo/pr-url-in-content)",
       );
       // Original link should be removed from body
       expect(result).not.toContain("[Create a PR]");
       // Username should come from argument, not extraction
-      expect(result).toContain("**Droid finished @john-doe's task**");
+      expect(result).toContain("**Droid finished**");
       // Content should be preserved
       expect(result).toContain("I've made changes.");
     });
@@ -551,9 +547,9 @@ describe("updateCommentBody", () => {
 
       // Should include the PR link in the formatted style
       expect(result).toContain(
-        "• [Create PR ➔](https://github.com/owner/repo/compare/main...droid/pr-456-20240101-1200)",
+        "· [Create PR ➔](https://github.com/owner/repo/compare/main...droid/pr-456-20240101-1200)",
       );
-      expect(result).toContain("**Droid finished @jane-doe's task**");
+      expect(result).toContain("**Droid finished**");
     });
 
     it("includes both branch link and PR link for new branches", () => {
@@ -571,10 +567,10 @@ describe("updateCommentBody", () => {
 
       // Should include both links in formatted style
       expect(result).toContain(
-        "• [`droid/issue-123-20240101-1200`](https://github.com/owner/repo/tree/droid/issue-123-20240101-1200)",
+        "· [`droid/issue-123-20240101-1200`](https://github.com/owner/repo/tree/droid/issue-123-20240101-1200)",
       );
       expect(result).toContain(
-        "• [Create PR ➔](https://github.com/owner/repo/compare/main...droid/issue-123-20240101-1200)",
+        "· [Create PR ➔](https://github.com/owner/repo/compare/main...droid/issue-123-20240101-1200)",
       );
     });
 
@@ -592,7 +588,7 @@ describe("updateCommentBody", () => {
 
       const result = updateCommentBody(input);
 
-      expect(result).toContain("Droid finished @droid's task in 1m 30s");
+      expect(result).toContain("Droid finished in 1m 30s");
       expect(result).toContain(
         "[View job](https://github.com/owner/repo/actions/runs/123)",
       );
@@ -602,7 +598,7 @@ describe("updateCommentBody", () => {
   });
 
   describe("security review badge", () => {
-    const SHIELD_URL_FRAGMENT = "security%20review-ran";
+    const SHIELD_URL_FRAGMENT = "Security review: no findings";
 
     it("prepends the security badge when securityReviewRan is true", () => {
       const input: CommentUpdateInput = {
@@ -614,9 +610,7 @@ describe("updateCommentBody", () => {
 
       const result = updateCommentBody(input);
       expect(result).toContain(SHIELD_URL_FRAGMENT);
-      expect(result).toContain(
-        "![Security Review](https://img.shields.io/badge/security%20review-ran-blue)",
-      );
+      expect(result).toContain("🔒 Security review: no findings.");
     });
 
     it("does not add the badge when securityReviewRan is false", () => {

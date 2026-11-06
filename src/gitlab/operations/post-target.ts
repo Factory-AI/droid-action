@@ -11,6 +11,7 @@
 import type { GitlabClient } from "../api/client";
 import type { GitlabNote } from "../types";
 import { DROID_TRACKING_MARKER } from "./tracking-note";
+import { hasSummaryMarker } from "../../core/review/markers";
 
 export type PostTarget = {
   projectId: string;
@@ -84,7 +85,8 @@ export function isOwnTrackingNote(
     note &&
       note.author?.id === userId &&
       typeof note.body === "string" &&
-      note.body.includes(DROID_TRACKING_MARKER),
+      (hasSummaryMarker(note.body) ||
+        note.body.includes(DROID_TRACKING_MARKER)),
   );
 }
 
