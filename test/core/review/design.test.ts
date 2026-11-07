@@ -181,9 +181,10 @@ describe("native Markdown review design", () => {
           expect(summary).toContain("What changed remains available.");
           expect(summary).toContain("<summary>Fix with an agent</summary>");
           expect(summary).toContain(encodeReviewState(state));
-          expect(decodeReviewState(summary)?.findings[0]?.finding).toEqual(
-            finding,
-          );
+          expect(decodeReviewState(summary)?.findings[0]?.finding).toEqual({
+            ...finding,
+            state: "open",
+          });
           expect(summary).not.toContain("Why this was flagged");
           expect(validateRenderedMarkdown(summary)).toEqual([]);
         }

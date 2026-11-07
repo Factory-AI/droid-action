@@ -181,12 +181,12 @@ describe("review render templates", () => {
       repositoryUrl: "https://gitlab.example.com/group/project",
       head: "9ea6c830123456789abcdef0123456789abcdef012",
     });
-    expect(body).toContain(
+    expect(body).not.toContain(
       "/-/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/budgetTracker.ts#L451-465",
     );
     expect(body).not.toContain("#L451-L465");
-    expect(body).toContain("Guideline:");
-    expect(body).toContain(
+    expect(body).not.toContain("Guideline:");
+    expect(body).not.toContain(
       "/-/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-18",
     );
     expect(body).toContain(
