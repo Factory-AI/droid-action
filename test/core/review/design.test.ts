@@ -228,7 +228,9 @@ describe("native Markdown review design", () => {
       securitySeverity: "high",
       cwe: "CWE-79",
     });
-    expect(body).toContain("`Security`");
+    expect(body).toContain(
+      '<sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub>',
+    );
     expect(body).toContain("<sub>Security: High · CWE: CWE-79</sub>");
     expect(body).not.toContain("Why this was flagged");
   });
