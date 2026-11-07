@@ -48,15 +48,20 @@ const platforms: Array<"github" | "gitlab"> = ["github", "gitlab"];
 const visible = (body: string) => body.replace(/<!--[\s\S]*?-->/g, "");
 
 describe("native Markdown review design", () => {
-  it("defaults to native code pills without removing explicit image/emoji opt-ins", () => {
-    expect(resolveReviewUxConfig().review_badges).toBe("text");
+  it("defaults to colored badges without removing explicit text/emoji modes", () => {
+    expect(resolveReviewUxConfig().review_badges).toBe("image");
     for (const label of ["P0", "P1", "P2", "Security"] as const) {
-      expect(renderBadge(label)).toBe(`\`${label}\``);
+      const color = { P0: "red", P1: "orange", P2: "yellow", Security: "blue" }[
+        label
+      ];
+      expect(renderBadge(label)).toBe(
+        `<sub><img alt="${label}" src="https://img.shields.io/badge/${label}-${color}" height="18" align="top"></sub>`,
+      );
       expect(renderBadge(label, "text")).toBe(`\`${label}\``);
       expect(renderBadge(label, "image")).toContain(`alt="${label}"`);
       expect(renderBadge(label, "emoji")).toContain(label);
     }
-    for (const mode of ["image", "emoji"] as const) {
+    for (const mode of ["image", "emoji", "text"] as const) {
       expect(
         resolveReviewUxConfig({
           fileConfig: { review_badges: mode },
@@ -64,12 +69,24 @@ describe("native Markdown review design", () => {
         }).review_badges,
       ).toBe(mode);
       expect(
-        renderReviewSummary({
-          state: "findings",
-          findings,
-          badges: mode,
-        }),
-      ).toContain(mode === "image" ? 'alt="P2"' : "🟡 P2");
+        resolveReviewUxConfig({
+          fileConfig: { review_badges: "image" },
+          inputs: { review_badges: mode },
+        }).review_badges,
+      ).toBe(mode);
+      const body = renderReviewSummary({
+        state: "findings",
+        findings,
+        badges: mode,
+      });
+      expect(body).toContain(
+        mode === "image"
+          ? 'alt="P2"'
+          : mode === "emoji"
+            ? "🟡 P2"
+            : "**8 open findings**",
+      );
+      if (mode !== "image") expect(body).not.toContain("<img");
     }
   });
 
@@ -114,7 +131,9 @@ describe("native Markdown review design", () => {
 
     it(`keeps the actual inline text, suggestion and safe copy payload (${platform})`, () => {
       const body = renderInlineComment(pagination, { platform, head });
-      expect(body).toStartWith(`\`P2\` **${pagination.title}**`);
+      expect(body).toStartWith(
+        `<sub><img alt="P2" src="https://img.shields.io/badge/P2-yellow" height="18" align="top"></sub> **${pagination.title}**`,
+      );
       expect(body).toContain(escapeMarkdown(pagination.body));
       expect(body).toContain(fenced(pagination.suggestion!, "suggestion"));
       expect(body).toContain(
@@ -127,7 +146,7 @@ describe("native Markdown review design", () => {
       expect(visible(body)).not.toContain("Why this was flagged");
       expect(visible(body)).not.toContain("Finding f-");
       expect(visible(body)).not.toContain("Reply");
-      expect(body).not.toContain("<img");
+      expect(body.match(/<img alt="P2"/g)).toHaveLength(1);
       expect(decodeFindingMarker(body)).toEqual({
         id: pagination.id,
         sev: "P2",
@@ -164,7 +183,7 @@ describe("native Markdown review design", () => {
       expect(body).not.toContain("| **Open**");
       expect(body).not.toContain("`P0: 0`");
       expect(body).not.toContain("`Security: 0`");
-      expect(body).not.toContain("<img");
+      expect(body.match(/<img alt="P2"/g)).toHaveLength(8);
       expect(body.match(/@droid fix/g)).toHaveLength(1);
       expect(body).not.toContain("@droid help");
       expect(body).not.toContain("Why this was flagged");

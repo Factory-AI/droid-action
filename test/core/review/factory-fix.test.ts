@@ -1,4 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
   MAX_REVIEW_OUTPUT_BYTES,
   outputBytes,
@@ -47,6 +49,19 @@ function input(platform: "github" | "gitlab" = "github"): ReviewRenderInput {
   };
 }
 describe("Fix in Factory completed-review task", () => {
+  it("loads the exact supplied artwork as a static image, never inline SVG", () => {
+    const artwork = readFileSync(
+      new URL("../../../assets/fix-in-factory.svg", import.meta.url),
+    );
+    expect(artwork.byteLength).toBe(11356);
+    expect(createHash("sha256").update(artwork).digest("hex")).toBe(
+      "0facf364f4dd0976bd4e9fc560e847d8b116767bea21ebbf5c1714383ca768df",
+    );
+    const body = renderReviewSummary(input());
+    expect(body).toContain(BUTTON_LABEL);
+    expect(body).not.toContain("<svg");
+    expect(body).not.toContain("data:image");
+  });
   for (const platform of ["github", "gitlab"] as const) {
     it(`${platform}: prefills one pinned-reference prompt for all active findings`, () => {
       const value = input(platform);
@@ -130,6 +145,20 @@ describe("Fix in Factory completed-review task", () => {
           previousHead: HEAD,
         }),
       ).not.toContain("[Fix in Factory]");
+  });
+  it("removes both canonical SVG and legacy Shields actions from transient context", () => {
+    const completed = renderReviewSummary(input());
+    for (const image of [
+      FACTORY_FIX_BUTTON_IMAGE_URL,
+      "https://img.shields.io/badge/Fix%20in%20Factory-ee6018?style=for-the-badge",
+    ]) {
+      const previousBody = completed.replace(FACTORY_FIX_BUTTON_IMAGE_URL, image);
+      for (const state of ["in_progress", "failed", "skipped"] as const) {
+        const body = renderReviewSummary({ ...input(), state, previousBody });
+        expect(body).not.toContain("[Fix in Factory]");
+        expect(body).not.toContain(image);
+      }
+    }
   });
   it("keeps exactly one image action across repeated completed renders", () => {
     let previousBody = "";

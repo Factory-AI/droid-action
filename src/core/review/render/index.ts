@@ -49,6 +49,8 @@ import { fitInlineOutput, fitReviewOutput, truncateReviewText } from "./budget";
 const FACTORY_FIX_START = "<!-- droid-factory-fix:start -->";
 const FACTORY_FIX_END = "<!-- droid-factory-fix:end -->";
 const FACTORY_FIX_LABEL =
+  "![Fix in Factory](https://raw.githubusercontent.com/Factory-AI/droid-action/10fe8bc0f2decf0fba156ddb4235e5f89b79e7e4/assets/fix-in-factory.svg)";
+const LEGACY_FACTORY_FIX_LABEL =
   "![Fix in Factory](https://img.shields.io/badge/Fix%20in%20Factory-ee6018?style=for-the-badge)";
 
 export function severityCounts(findings: ReviewFinding[]): SeverityCounts {
@@ -64,7 +66,7 @@ export function severityCounts(findings: ReviewFinding[]): SeverityCounts {
 }
 export function renderBadge(
   label: "P0" | "P1" | "P2" | "Security",
-  mode: BadgeMode = "text",
+  mode: BadgeMode = "image",
 ): string {
   if (mode === "text") return `\`${label}\``;
   if (mode === "emoji")
@@ -444,10 +446,12 @@ function previousReview(input: ReviewRenderInput): string {
           action.end - FACTORY_FIX_END.length,
         )
       : "";
-    const prefix = `\n[${FACTORY_FIX_LABEL}](`;
+    const prefix = [FACTORY_FIX_LABEL, LEGACY_FACTORY_FIX_LABEL]
+      .map((label) => `\n[${label}](`)
+      .find((value) => contents.startsWith(value));
     if (
       action &&
-      contents.startsWith(prefix) &&
+      prefix &&
       /^https:\/\/app\.factory\.ai\/new\?prompt=[^)\r\n]*\)\n$/.test(
         contents.slice(prefix.length),
       )
@@ -511,7 +515,7 @@ function reviewSummaryBody(
   const resolved = input.resolved ?? [];
   const security = findings.filter((f) => f.security);
   const compactRows =
-    (input.badges === undefined || input.badges === "text") &&
+    input.badges === "text" &&
     new Set(findings.map((f) => f.severity)).size <= 1 &&
     findings.every((f) => f.isNew !== false && !f.security);
   const highestSecurity = ["critical", "high", "medium", "low"].find((level) =>
