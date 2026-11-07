@@ -57,7 +57,10 @@ function expectBottomAction(body: string): number {
   );
   expect(action).not.toBeNull();
   expect(
-    body.slice(action!.end).replace(/<!--[\s\S]*?-->/g, "").trim(),
+    body
+      .slice(action!.end)
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .trim(),
   ).toBe("");
   return action!.start;
 }
@@ -137,9 +140,7 @@ describe("Fix in Factory completed-review task", () => {
             body: "Outside-diff evidence remains visible.",
           },
         ];
-        value.resolved = [
-          { ...finding, id: "resolved", state: "resolved" },
-        ];
+        value.resolved = [{ ...finding, id: "resolved", state: "resolved" }];
         value.summary = {
           whatChanged: "Rendered change context.",
           suggestedReviewers: ["reviewer-team"],
@@ -155,9 +156,7 @@ describe("Fix in Factory completed-review task", () => {
           expect(preceding.match(/<details>/g)?.length ?? 0).toBe(
             preceding.match(/<\/details>/g)?.length ?? 0,
           );
-          expect(body).not.toContain(
-            "<summary><strong>Outside the diff",
-          );
+          expect(body).not.toContain("<summary><strong>Outside the diff");
           const visible = body.slice(
             outside,
             body.indexOf("<details>", outside),
@@ -239,7 +238,9 @@ describe("Fix in Factory completed-review task", () => {
       for (const render of [renderReviewSummary, renderStepSummary]) {
         const body = render(value);
         expect(body).not.toContain("[Fix in Factory]");
-        expect(body.match(/Some optional review context was shortened/g)).toHaveLength(1);
+        expect(
+          body.match(/Some optional review context was shortened/g),
+        ).toHaveLength(1);
         expect(outputBytes(body)).toBeLessThanOrEqual(MAX_REVIEW_OUTPUT_BYTES);
       }
     });
@@ -416,13 +417,14 @@ describe("Fix in Factory completed-review task", () => {
     expect(hidden).not.toContain("Fix in Factory");
     expect(body).toContain("Some optional review context was shortened");
     expect(body).toContain("Context-only evidence. ".repeat(40));
-    expect(body.indexOf("Some optional review context was shortened")).toBeLessThan(
-      expectBottomAction(body),
-    );
+    expect(
+      body.indexOf("Some optional review context was shortened"),
+    ).toBeLessThan(expectBottomAction(body));
   });
   it("keeps the CTA last when stage-two compaction reduces additional locations", () => {
     const value = input();
-    const locationPath = (index: number) => `src/${"x".repeat(220)}/${index}.ts`;
+    const locationPath = (index: number) =>
+      `src/${"x".repeat(220)}/${index}.ts`;
     value.findings = Array.from({ length: 20 }, (_, index) => ({
       ...finding,
       id: `stage-two-${index}`,
@@ -443,9 +445,9 @@ describe("Fix in Factory completed-review task", () => {
       expect(body).toContain(locationPath(0));
       expect(body).not.toContain(locationPath(1));
       expect(body).toContain("Some optional review context was shortened");
-      expect(body.indexOf("Some optional review context was shortened")).toBeLessThan(
-        expectBottomAction(body),
-      );
+      expect(
+        body.indexOf("Some optional review context was shortened"),
+      ).toBeLessThan(expectBottomAction(body));
       expect(outputBytes(body)).toBeLessThanOrEqual(MAX_REVIEW_OUTPUT_BYTES);
       expect(value).toEqual(original);
     }
@@ -489,9 +491,9 @@ describe("Fix in Factory completed-review task", () => {
       for (const render of [renderReviewSummary, renderStepSummary]) {
         const body = render(value);
         if (includeAgentPrompts)
-          expect(body.indexOf("Some optional review context was shortened")).toBeLessThan(
-            expectBottomAction(body),
-          );
+          expect(
+            body.indexOf("Some optional review context was shortened"),
+          ).toBeLessThan(expectBottomAction(body));
         else expect(body).not.toContain("[Fix in Factory]");
         expect(body).not.toContain("<summary>Fix with an agent</summary>");
         // Finding context survives stages 1/2, so absence proves final compaction.

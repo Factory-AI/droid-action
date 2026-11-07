@@ -44,7 +44,12 @@ export {
   outputBytes,
   truncateReviewText,
 } from "./budget";
-import { fitInlineOutput, fitReviewOutput, NOTICE, truncateReviewText } from "./budget";
+import {
+  fitInlineOutput,
+  fitReviewOutput,
+  NOTICE,
+  truncateReviewText,
+} from "./budget";
 
 const FACTORY_FIX_START = "<!-- droid-factory-fix:start -->";
 const FACTORY_FIX_END = "<!-- droid-factory-fix:end -->";
