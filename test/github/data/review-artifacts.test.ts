@@ -7,6 +7,7 @@ import {
 } from "../../../src/github/data/review-artifacts";
 import * as childProcess from "child_process";
 import * as fsPromises from "fs/promises";
+import { Octokit } from "@octokit/rest";
 
 describe("review-artifacts", () => {
   let execSyncSpy: ReturnType<typeof spyOn>;
@@ -125,26 +126,68 @@ describe("review-artifacts", () => {
   });
 
   describe("fetchAndStoreComments", () => {
+    // A real Octokit whose HTTP layer serves `per_page` sized pages with
+    // GitHub-style Link headers, so the paginator is exercised end to end.
+    function pagedOctokit(
+      totals: Record<string, number>,
+      failPage?: { path: string; page: number },
+    ) {
+      const requested: string[] = [];
+      const fetch = async (input: string | URL | Request) => {
+        const url = new URL(
+          typeof input === "string" || input instanceof URL ? input : input.url,
+        );
+        requested.push(`${url.pathname}?${url.searchParams}`);
+        const path = url.pathname;
+        const page = Number(url.searchParams.get("page") ?? "1");
+        const perPage = Number(url.searchParams.get("per_page") ?? "30");
+        if (failPage && failPage.path === path && failPage.page === page) {
+          return new Response(JSON.stringify({ message: "boom" }), {
+            status: 500,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        const total = totals[path] ?? 0;
+        const first = (page - 1) * perPage;
+        const items = Array.from(
+          { length: Math.max(0, Math.min(perPage, total - first)) },
+          (_, i) => ({ id: first + i + 1, body: `${path} #${first + i + 1}` }),
+        );
+        const headers: Record<string, string> = {
+          "content-type": "application/json",
+        };
+        if (first + perPage < total) {
+          const next = new URL(url);
+          next.searchParams.set("page", String(page + 1));
+          headers.link = `<${next}>; rel="next"`;
+        }
+        return new Response(JSON.stringify(items), { status: 200, headers });
+      };
+      const rest = new Octokit({
+        baseUrl: "https://api.github.test",
+        request: { fetch, retries: 0 },
+      });
+      return { octokit: { rest } as any, requested };
+    }
+
+    const ISSUE_PATH = "/repos/owner/repo/issues/42/comments";
+    const REVIEW_PATH = "/repos/owner/repo/pulls/42/comments";
+
+    function writtenComments() {
+      const writeCall = writeFileSpy.mock.calls.find(
+        (c: unknown[]) =>
+          typeof c[0] === "string" &&
+          (c[0] as string).includes("existing_comments.json"),
+      );
+      expect(writeCall).toBeDefined();
+      return JSON.parse(writeCall![1] as string);
+    }
+
     it("fetches issue and review comments and writes JSON", async () => {
-      const mockOctokit = {
-        rest: {
-          issues: {
-            listComments: () =>
-              Promise.resolve({
-                data: [{ id: 1, body: "issue comment" }],
-              }),
-          },
-          pulls: {
-            listReviewComments: () =>
-              Promise.resolve({
-                data: [{ id: 2, body: "review comment" }],
-              }),
-          },
-        },
-      } as any;
+      const { octokit } = pagedOctokit({ [ISSUE_PATH]: 1, [REVIEW_PATH]: 1 });
 
       const result = await fetchAndStoreComments(
-        mockOctokit,
+        octokit,
         "owner",
         "repo",
         42,
@@ -152,15 +195,63 @@ describe("review-artifacts", () => {
       );
 
       expect(result).toBe("/tmp/test/droid-prompts/existing_comments.json");
+      const written = writtenComments();
+      expect(written.issueComments).toHaveLength(1);
+      expect(written.reviewComments).toHaveLength(1);
+    });
+
+    it("follows pagination past the first 100 comments on both endpoints", async () => {
+      const { octokit, requested } = pagedOctokit({
+        [ISSUE_PATH]: 205,
+        [REVIEW_PATH]: 103,
+      });
+
+      await fetchAndStoreComments(octokit, "owner", "repo", 42, "/tmp/test");
+
+      const written = writtenComments();
+      expect(written.issueComments).toHaveLength(205);
+      expect(written.reviewComments).toHaveLength(103);
+      // Order is preserved and the last comment (e.g. a late author reply)
+      // is present.
+      expect(written.issueComments.map((c: any) => c.id)).toEqual(
+        Array.from({ length: 205 }, (_, i) => i + 1),
+      );
+      expect(written.reviewComments.at(-1).id).toBe(103);
+      expect(requested.filter((r) => r.startsWith(ISSUE_PATH))).toHaveLength(3);
+      expect(requested.filter((r) => r.startsWith(REVIEW_PATH))).toHaveLength(
+        2,
+      );
+    });
+
+    it("does not request a second page for exactly 100 comments", async () => {
+      const { octokit, requested } = pagedOctokit({
+        [ISSUE_PATH]: 100,
+        [REVIEW_PATH]: 0,
+      });
+
+      await fetchAndStoreComments(octokit, "owner", "repo", 42, "/tmp/test");
+
+      const written = writtenComments();
+      expect(written.issueComments).toHaveLength(100);
+      expect(written.reviewComments).toHaveLength(0);
+      expect(requested.filter((r) => r.startsWith(ISSUE_PATH))).toHaveLength(1);
+    });
+
+    it("rejects instead of writing a partial history when a later page fails", async () => {
+      const { octokit } = pagedOctokit(
+        { [ISSUE_PATH]: 150, [REVIEW_PATH]: 1 },
+        { path: ISSUE_PATH, page: 2 },
+      );
+
+      await expect(
+        fetchAndStoreComments(octokit, "owner", "repo", 42, "/tmp/test"),
+      ).rejects.toThrow();
       const writeCall = writeFileSpy.mock.calls.find(
         (c: unknown[]) =>
           typeof c[0] === "string" &&
           (c[0] as string).includes("existing_comments.json"),
       );
-      expect(writeCall).toBeDefined();
-      const written = JSON.parse(writeCall![1] as string);
-      expect(written.issueComments).toHaveLength(1);
-      expect(written.reviewComments).toHaveLength(1);
+      expect(writeCall).toBeUndefined();
     });
   });
 
@@ -207,6 +298,8 @@ describe("review-artifacts", () => {
 
       const mockOctokit = {
         rest: {
+          paginate: async (method: any, params: any) =>
+            (await method(params)).data,
           issues: {
             listComments: () => Promise.resolve({ data: [] }),
           },

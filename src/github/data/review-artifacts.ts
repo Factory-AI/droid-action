@@ -165,14 +165,18 @@ export async function fetchAndStoreComments(
   const promptsDir = `${tempDir}/droid-prompts`;
   await mkdir(promptsDir, { recursive: true });
 
+  // Follow every page: a PR with more than 100 comments on either endpoint
+  // would otherwise lose its later replies and earlier findings, and the
+  // review would repeat them. A failed page rejects instead of writing a
+  // silently partial history.
   const [issueComments, reviewComments] = await Promise.all([
-    octokit.rest.issues.listComments({
+    octokit.rest.paginate(octokit.rest.issues.listComments, {
       owner,
       repo,
       issue_number: prNumber,
       per_page: 100,
     }),
-    octokit.rest.pulls.listReviewComments({
+    octokit.rest.paginate(octokit.rest.pulls.listReviewComments, {
       owner,
       repo,
       pull_number: prNumber,
@@ -207,8 +211,8 @@ export async function fetchAndStoreComments(
   }
 
   const comments = {
-    issueComments: issueComments.data,
-    reviewComments: reviewComments.data,
+    issueComments,
+    reviewComments,
   };
 
   const commentsPath = `${promptsDir}/existing_comments.json`;
@@ -217,7 +221,7 @@ export async function fetchAndStoreComments(
     redactCredentials(JSON.stringify(comments, null, 2)),
   );
   console.log(
-    `Stored existing comments (${issueComments.data.length} issue, ${reviewComments.data.length} review) at ${commentsPath}`,
+    `Stored existing comments (${issueComments.length} issue, ${reviewComments.length} review) at ${commentsPath}`,
   );
   return commentsPath;
 }
