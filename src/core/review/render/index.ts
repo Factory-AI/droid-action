@@ -22,7 +22,6 @@ import {
   relativeTime,
   shortSha,
   stripSummaryMarkers,
-  tablePath,
 } from "./helpers";
 import type {
   BadgeMode,
@@ -242,60 +241,6 @@ function transparency(
 ): string {
   const dropped = input.droppedCount ?? input.dropped?.length ?? 0;
   return `Candidates: ${input.candidatesConsidered ?? findings.length + dropped + (input.skippedCount ?? 0)} considered → ${input.postedCount ?? findings.length} posted · ${dropped} dropped by validation${input.skippedCount ? ` · ${input.skippedCount} skipped` : ""}.`;
-}
-function reviewDetails(
-  input: ReviewRenderInput,
-  findings: ReviewFinding[],
-): string {
-  const summary = input.summary;
-  const context = findings
-    .map((finding) => {
-      const evidence = [
-        finding.why ? prose(finding.why) : "",
-        finding.verification ? `Verified: ${prose(finding.verification)}` : "",
-        finding.cwe ? `CWE: ${prose(finding.cwe)}` : "",
-        finding.also_at.length
-          ? `Also at: ${finding.also_at.map((loc) => reference(loc, input)).join(", ")}`
-          : "",
-        finding.source_guideline
-          ? `Guideline: ${reference(finding.source_guideline, input)}`
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n\n");
-      return evidence
-        ? `**${title(finding)}** · ${findingReference(finding, input)}\n\n${evidence}`
-        : "";
-    })
-    .filter(Boolean);
-  const rows = [
-    input.base
-      ? `Commit range: ${sha(input.base)}..${sha(input.head)}${input.commitCount !== undefined ? ` (${pluralize(input.commitCount, "commit")})` : ""}`
-      : `Commit: ${sha(input.head)}`,
-    [
-      input.depth ? `Depth: ${prose(input.depth)}` : "",
-      input.model ? prose(input.model) : "",
-      input.reasoning ? `reasoning ${prose(input.reasoning)}` : "",
-    ]
-      .filter(Boolean)
-      .join(" · "),
-    summary?.filesReviewed !== undefined || summary?.filesSkipped?.length
-      ? `Files: ${summary?.filesReviewed ?? 0} reviewed · ${summary?.filesSkippedCount ?? summary?.filesSkipped?.length ?? 0} skipped${summary?.filesSkipped?.length ? ` (${summary.filesSkipped.map((f) => `${tablePath(f.path)}: ${prose(f.reason)}`).join(", ")})` : ""}`
-      : "",
-    transparency(input, findings),
-    summary?.guidelines?.length
-      ? `Guidelines: ${summary.guidelines.map((g) => reference(g, input)).join(", ")}`
-      : "",
-    summary?.security?.enabled
-      ? `Security review: ran${summary.security.threshold ? ` (severity threshold: ${prose(summary.security.threshold)})` : ""}${summary.security.blockOnCritical !== undefined ? ` · block critical: ${summary.security.blockOnCritical}` : ""}${summary.security.blockOnHigh !== undefined ? ` · block high: ${summary.security.blockOnHigh}` : ""}`
-      : "",
-    input.showDroppedFindings && input.dropped?.length
-      ? `\nDropped candidates:\n${input.dropped.map((f) => `- ${f.title ? prose(f.title) : `Candidate ${f.index + 1}`}${f.path ? ` · ${inlineCode(f.path)}` : ""}: ${prose(f.reason)}`).join("\n")}`
-      : "",
-    context.length ? `Finding context:\n\n${context.join("\n\n")}` : "",
-    footer(input),
-  ].filter(Boolean);
-  return details("Review details", rows.join("\n\n"));
 }
 /** Restrict diagrams to passive graph syntax; no HTML, links, init directives, or click handlers. */
 export function safeDiagram(value: string): string | null {
@@ -602,9 +547,7 @@ function reviewSummaryBody(
     input.unchangedSuggestions
       ? `${pluralize(input.unchangedSuggestions, "optional suggestion")} on unchanged code ${input.unchangedSuggestions === 1 ? "was" : "were"} not posted.`
       : "",
-    selected(input, "details")
-      ? reviewDetails(input, findings)
-      : transparency(input, findings),
+    !selected(input, "details") ? transparency(input, findings) : "",
     !selected(input, "details") ? footer(input) : "",
     findings.length
       ? "<sub>Reply to a finding with a question, or comment `@droid fix` to apply valid fixes.</sub>"

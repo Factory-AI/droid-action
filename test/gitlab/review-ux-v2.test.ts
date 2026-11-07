@@ -2419,7 +2419,7 @@ describe("GitLab v2 production entrypoints, local API only", () => {
         expect.stringContaining("priority threshold P1"),
         expect.stringContaining("security threshold high"),
       ]);
-      expect(renderGitlabSummary(result.renderInput)).toContain(
+      expect(renderGitlabSummary(result.renderInput)).not.toContain(
         "4 considered → 1 posted · 3 dropped",
       );
       expect(result.renderInput.factoryFix).toMatchObject({

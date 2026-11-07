@@ -42,7 +42,7 @@ describe("review render templates", () => {
     expect(body).not.toContain("What changed");
     expect(body).not.toContain("Fix with an agent");
     expect(body).not.toContain("None");
-    expect(body).toContain("0 considered");
+    expect(body).not.toContain("0 considered");
     expect(body).toContain("🟢 Looks good to merge");
   });
   it("supports diagram/effort-only sections and fully disables diagram output", () => {
@@ -82,7 +82,7 @@ describe("review render templates", () => {
     });
     expect(retried.match(/Droid is reviewing/g)).toHaveLength(1);
     expect(retried.match(/#### Previous review/g)).toHaveLength(1);
-    expect(retried.match(/Reviewed by/g)).toHaveLength(1);
+    expect(retried).not.toContain("Reviewed by");
     expect(retried).toContain("No issues found");
     expect(validateRenderedMarkdown(retried)).toEqual([]);
   });

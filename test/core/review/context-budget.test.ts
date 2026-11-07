@@ -77,7 +77,7 @@ describe("optional finding context under real renderer budgets", () => {
       expect(
         decodeReviewState(body)?.findings.map((finding) => finding.id),
       ).toEqual(input.findings!.map((finding) => finding.id));
-      expect(body).toContain("30 considered → 30 posted");
+      expect(body).not.toContain("30 considered → 30 posted");
       expect(JSON.stringify(input)).toBe(before);
     },
   );

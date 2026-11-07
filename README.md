@@ -290,7 +290,7 @@ PR-level `@droid fix` selects open inline Droid finding threads, not summary-onl
 
 - Mention `@droid review` in a PR comment.
 - Droid inspects the diff, prioritizes potential bugs or high-impact issues, and leaves inline comments directly on the changed lines.
-- One sticky summary comment holds the verdict, linked findings, resolved findings, outside-diff findings, validator counts, and review details.
+- One sticky summary comment holds the verdict, linked findings, resolved findings, and outside-diff findings, without a Review details dropdown.
 
 ### `@droid fix`
 
@@ -303,7 +303,7 @@ Droid never pushes to a repository's default branch and never force-pushes. The 
 Review output is rendered by TypeScript from the two-pass validator's structured JSON. The model supplies evidence and prose, not layout, counts, badges, or links.
 
 - A sticky issue comment is the default summary location. Running and failed states preserve the previous review below a clear banner.
-- Findings use colored image severity labels by default, optional complete suggestions, a stable hidden finding marker, and a collapsed **Fix with an agent** prompt with an untrusted-data warning. Verification, related locations, rationale and guideline permalinks live in the summary's collapsed **Review details**; security severity and CWE remain visible inline. Use `text` or `emoji` badges when remote images are blocked.
+- Findings use colored image severity labels by default, optional complete suggestions, a stable hidden finding marker, and a collapsed **Fix with an agent** prompt with an untrusted-data warning. Review details are not displayed; hidden review state retains finding metadata, and security severity and CWE remain visible inline. Use `text` or `emoji` badges when remote images are blocked.
 - Completed summaries with active findings include a **Fix in Factory** button. Browser clicks open `/new?prompt=` with editable text that is not sent until you choose Send; the desktop app can auto-send this route. Review the text before sending, especially in author-editable PR/MR descriptions. The button loads the static [Factory SVG artwork](assets/fix-in-factory.svg) from an immutable repository commit independently of severity badges; it is not embedded as inline SVG. Set `include_agent_prompts: false` or omit `findings` from `review_summary_sections` to hide the button and summary agent-copy prompt.
 - Clean reviews explicitly say no issues were found. Droid does not submit an empty review object.
 - Lifecycle reactions are eyes while running, hooray when clean, and confused on failure. Eyes are removed at completion. Droid does not request, read, or learn from thumbs feedback.

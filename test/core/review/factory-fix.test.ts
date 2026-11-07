@@ -177,8 +177,6 @@ describe("Fix in Factory completed-review task", () => {
             "Pre-merge checks:",
             "<summary>Fix with an agent</summary>",
             "1 optional suggestion on unchanged code was not posted.",
-            "Candidates:",
-            "Reviewed by",
             "Reply to a finding with a question",
           ]) {
             expect(body).toContain(content);
@@ -186,7 +184,14 @@ describe("Fix in Factory completed-review task", () => {
           }
           expect(action).toBeGreaterThan(body.lastIndexOf("</details>"));
           expect(body).toContain("Security review: 1 finding (High)");
-          if (!sections) expect(body).toContain("CWE: CWE-79");
+          expect(body).not.toContain("<summary>Review details</summary>");
+          expect(body).not.toContain("CWE: CWE-79");
+          for (const content of ["Candidates:", "Reviewed by"]) {
+            if (sections) {
+              expect(body).toContain(content);
+              expect(body.indexOf(content)).toBeLessThan(action);
+            } else expect(body).not.toContain(content);
+          }
         }
       }
     });
@@ -397,7 +402,8 @@ describe("Fix in Factory completed-review task", () => {
     value.findings = [
       {
         ...finding,
-        body: "large optional prose ".repeat(20000),
+        outside_diff: true,
+        body: `${"x".repeat(600)}Stage-one retained visible evidence.${"x".repeat(400000)}`,
         why: "Context-only evidence. ".repeat(100),
       },
     ];
@@ -408,20 +414,26 @@ describe("Fix in Factory completed-review task", () => {
         { id: finding.id, sev: "P1", state: "open", threadId: "NODE" },
       ],
     };
+    const original = structuredClone(value);
     const hidden = renderReviewStateNote(value.reviewState);
-    const body = renderReviewSummary(value);
-    expect(outputBytes(body)).toBeLessThanOrEqual(MAX_REVIEW_OUTPUT_BYTES);
-    expect(body.match(/\[Fix in Factory\]/g)).toHaveLength(1);
-    expect(body).toContain(encodeReviewState(value.reviewState));
-    expect(renderReviewStateNote(value.reviewState)).toBe(hidden);
-    expect(hidden).not.toContain("Fix in Factory");
-    expect(body).toContain("Some optional review context was shortened");
-    expect(body).toContain("Context-only evidence. ".repeat(40));
-    expect(
-      body.indexOf("Some optional review context was shortened"),
-    ).toBeLessThan(expectBottomAction(body));
+    for (const render of [renderReviewSummary, renderStepSummary]) {
+      const body = render(value);
+      expect(outputBytes(body)).toBeLessThanOrEqual(MAX_REVIEW_OUTPUT_BYTES);
+      expect(body.match(/\[Fix in Factory\]/g)).toHaveLength(1);
+      expect(body).toContain(encodeReviewState(value.reviewState));
+      expect(renderReviewStateNote(value.reviewState)).toBe(hidden);
+      expect(hidden).not.toContain("Fix in Factory");
+      expect(body).toContain("Some optional review context was shortened");
+      expect(body).toContain("### Outside the diff (1)");
+      expect(body).toContain("Stage-one retained visible evidence.");
+      expect(body).not.toContain("Context-only evidence.");
+      expect(
+        body.indexOf("Some optional review context was shortened"),
+      ).toBeLessThan(expectBottomAction(body));
+      expect(value).toEqual(original);
+    }
   });
-  it("keeps the CTA last when stage-two compaction reduces additional locations", () => {
+  it("keeps the CTA last when stage-two compaction omits review details", () => {
     const value = input();
     const locationPath = (index: number) =>
       `src/${"x".repeat(220)}/${index}.ts`;
@@ -437,13 +449,26 @@ describe("Fix in Factory completed-review task", () => {
         url: `https://github.com/o/r/blob/${HEAD}/${locationPath(offset)}#L${offset + 1}`,
       })),
     }));
+    value.summary = {
+      preMergeChecks: Array.from({ length: 20 }, (_, index) => ({
+        name:
+          index < 10
+            ? `Stage-two retained check ${index}`
+            : `Stage-one overflow check ${index} ${"x".repeat(7000)}`,
+        passed: true,
+      })),
+    };
     const original = structuredClone(value);
     for (const render of [renderReviewSummary, renderStepSummary]) {
       const body = render(value);
-      expect(body).toContain("Finding context:");
-      expect(body).toContain("Also at:");
-      expect(body).toContain(locationPath(0));
+      expect(body).not.toContain("Review details");
+      expect(body).not.toContain("Finding context:");
+      expect(body).not.toContain("Also at:");
+      expect(body).not.toContain(locationPath(0));
       expect(body).not.toContain(locationPath(1));
+      expect(body).toContain("Stage-two retained check 9");
+      expect(body).not.toContain("Stage-one overflow check 10");
+      expect(body).toContain("<summary>Fix with an agent</summary>");
       expect(body).toContain("Some optional review context was shortened");
       expect(
         body.indexOf("Some optional review context was shortened"),
@@ -471,6 +496,15 @@ describe("Fix in Factory completed-review task", () => {
         return entry;
       });
       value.findings = findings;
+      value.summary = {
+        preMergeChecks: Array.from({ length: 11 }, (_, index) => ({
+          name:
+            index < 3
+              ? `Retained final-stage check ${index}`
+              : `Earlier-stage overflow check ${index} ${"x".repeat(10000)}`,
+          passed: true,
+        })),
+      };
       value.reviewState = {
         head: HEAD,
         paused: true,
@@ -496,8 +530,10 @@ describe("Fix in Factory completed-review task", () => {
           ).toBeLessThan(expectBottomAction(body));
         else expect(body).not.toContain("[Fix in Factory]");
         expect(body).not.toContain("<summary>Fix with an agent</summary>");
-        // Finding context survives stages 1/2, so absence proves final compaction.
         expect(body).not.toContain("Finding context:");
+        expect(body).not.toContain("Review details");
+        expect(body).toContain("Retained final-stage check 2");
+        expect(body).not.toContain("Earlier-stage overflow check 3");
         expect(outputBytes(body)).toBeLessThanOrEqual(MAX_REVIEW_OUTPUT_BYTES);
         expect(body).toContain("70 open findings");
         expect(body).toContain("Some optional review context was shortened");
