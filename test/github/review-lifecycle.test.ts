@@ -542,7 +542,7 @@ describe("review lifecycle production boundaries", () => {
       false,
     );
   });
-  it("QA75 4524 renders canonical trusted model keys instead of hostile aliases", async () => {
+  it("QA75 4524 preserves canonical trusted model keys without rendering model details", async () => {
     const f = fixture([]);
     await f.prepare();
     process.env.REVIEW_MODEL = "trusted-model";
@@ -550,8 +550,13 @@ describe("review lifecycle production boundaries", () => {
     process.env.REVIEW_EFFECTIVE_MODEL = "hostile-model";
     process.env.REVIEW_EFFECTIVE_REASONING = "hostile-effort";
     await f.post([]);
-    expect(f.body()).toContain("trusted-model");
-    expect(f.body()).toContain("trusted-effort");
+    expect((await readReviewLifecycle())?.renderInput).toMatchObject({
+      model: "trusted-model",
+      reasoning: "trusted-effort",
+    });
+    expect(f.body()).not.toContain("Review details");
+    expect(f.body()).not.toContain("trusted-model");
+    expect(f.body()).not.toContain("trusted-effort");
     expect(f.body()).not.toContain("hostile-model");
     expect(f.body()).not.toContain("hostile-effort");
   });

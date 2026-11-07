@@ -145,6 +145,7 @@ describe("native Markdown review design", () => {
             dropped: [
               {
                 index: 0,
+                path: "details-only-dropped.ts",
                 title: "Details-only dropped candidate",
                 reason: "Details-only dropped reason",
               },
@@ -169,6 +170,7 @@ describe("native Markdown review design", () => {
             "Finding context:",
             "Reviewed by",
             "details-only",
+            "details-only-dropped.ts",
             "Details-only",
             finding.why,
             finding.verification,
