@@ -428,8 +428,10 @@ describe("GitLab review UX v2", () => {
     const posted = t.requests.find(
       (r) => r.method === "POST" && r.path.endsWith("/discussions"),
     );
-    expect(posted?.body.body).toContain("`P1`");
-    expect(posted?.body.body).not.toContain("<img");
+    expect(posted?.body.body).toContain('alt="P1"');
+    expect(posted?.body.body).toContain(
+      "https://img.shields.io/badge/P1-orange",
+    );
     expect(posted?.body.body).not.toContain("Why this was flagged");
     expect(decodeFindingMarker(posted?.body.body)).toMatchObject({
       id: finding.id,
@@ -959,7 +961,7 @@ describe("GitLab v2 production entrypoints, local API only", () => {
         await fs.readFile(path.join(directory, "state.json"), "utf8"),
       );
       expect(prepared.shouldRunReview).toBe(true);
-      expect(prepared.reviewConfig.review_badges).toBe("text");
+      expect(prepared.reviewConfig.review_badges).toBe("image");
       expect(
         await fs.readFile(path.join(directory, "resolved-env.sh"), "utf8"),
       ).toContain(
@@ -1000,7 +1002,7 @@ describe("GitLab v2 production entrypoints, local API only", () => {
           path: path.join(directory, "review_guidelines.md"),
         });
         expect(prepared.shouldRunReview).toBe(true);
-        expect(prepared.reviewConfig.review_badges).toBe("text");
+        expect(prepared.reviewConfig.review_badges).toBe("image");
         expect(prepared.reviewState.head).toBe("");
         const promptPath = path.join(directory, "prompt.txt");
         const candidates = await fs.readFile(promptPath, "utf8");
@@ -2417,7 +2419,7 @@ describe("GitLab v2 production entrypoints, local API only", () => {
         expect.stringContaining("priority threshold P1"),
         expect.stringContaining("security threshold high"),
       ]);
-      expect(renderGitlabSummary(result.renderInput)).toContain(
+      expect(renderGitlabSummary(result.renderInput)).not.toContain(
         "4 considered → 1 posted · 3 dropped",
       );
       expect(result.renderInput.factoryFix).toMatchObject({

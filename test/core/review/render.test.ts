@@ -42,7 +42,7 @@ describe("review render templates", () => {
     expect(body).not.toContain("What changed");
     expect(body).not.toContain("Fix with an agent");
     expect(body).not.toContain("None");
-    expect(body).toContain("0 considered");
+    expect(body).not.toContain("0 considered");
     expect(body).toContain("🟢 Looks good to merge");
   });
   it("supports diagram/effort-only sections and fully disables diagram output", () => {
@@ -82,7 +82,7 @@ describe("review render templates", () => {
     });
     expect(retried.match(/Droid is reviewing/g)).toHaveLength(1);
     expect(retried.match(/#### Previous review/g)).toHaveLength(1);
-    expect(retried.match(/Reviewed by/g)).toHaveLength(1);
+    expect(retried).not.toContain("Reviewed by");
     expect(retried).toContain("No issues found");
     expect(validateRenderedMarkdown(retried)).toEqual([]);
   });
@@ -181,12 +181,12 @@ describe("review render templates", () => {
       repositoryUrl: "https://gitlab.example.com/group/project",
       head: "9ea6c830123456789abcdef0123456789abcdef012",
     });
-    expect(body).toContain(
+    expect(body).not.toContain(
       "/-/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/budgetTracker.ts#L451-465",
     );
     expect(body).not.toContain("#L451-L465");
-    expect(body).toContain("Guideline:");
-    expect(body).toContain(
+    expect(body).not.toContain("Guideline:");
+    expect(body).not.toContain(
       "/-/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-18",
     );
     expect(body).toContain(
