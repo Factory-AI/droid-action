@@ -22,6 +22,7 @@ import {
   relativeTime,
   shortSha,
   stripSummaryMarkers,
+  tablePath,
 } from "./helpers";
 import type {
   BadgeMode,
