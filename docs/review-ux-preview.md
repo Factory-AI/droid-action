@@ -63,49 +63,6 @@ Check the legacy webhook key lookup, bind verification to the current tenant, an
 
 </details>
 
-<details>
-<summary>Review details</summary>
-
-Commit range: `1a2b3c4`..`9ea6c83`
-
-Depth: deep · configured-model
-
-Files: 12 reviewed · 1 skipped (<code>dist/​index.js</code>: generated)
-
-Candidates: 3 considered → 2 posted · 1 dropped by validation.
-
-Guidelines: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-Security review: ran (severity threshold: medium)
-
-Dropped candidates:
-
-- Retries can run without a bound · <code>src/net/retry.ts</code>: The caller already enforces a maximum attempt count.
-
-Finding context:
-
-**Redis clients never reconnect after a disconnect** · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40)
-
-The reconnect callback returns null and no replacement client is created.
-
-Verified: Traced CacheStore.get to client.get and confirmed the error path has no reconnect.
-
-Also at: [<code>src/storage/budgetTracker.ts:451-465</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/budgetTracker.ts#L451-L465)
-
-Guideline: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-**Legacy webhooks accept signatures from a different tenant** · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88)
-
-The lookup ignores the authenticated tenant.
-
-Verified: Send a tenant A signature to a tenant B webhook and confirm rejection after the fix.
-
-CWE: CWE-347
-
-<sub>Reviewed by [Droid](https://factory.ai/) for commit `9ea6c83` in 2m 14s · [View job](https://github.com/example/repo/actions/runs/123/job/456)</sub>
-
-</details>
-
 <sub>Reply to a finding with a question, or comment `@droid fix` to apply valid fixes.</sub>
 
 ---
@@ -176,49 +133,6 @@ Check the legacy webhook key lookup, bind verification to the current tenant, an
 
 </details>
 
-<details>
-<summary>Review details</summary>
-
-Commit range: `1a2b3c4`..`0123456`
-
-Depth: deep · configured-model
-
-Files: 12 reviewed · 1 skipped (<code>dist/​index.js</code>: generated)
-
-Candidates: 3 considered → 2 posted · 1 dropped by validation.
-
-Guidelines: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/0123456789012345678901234567890123456789/AGENTS.md#L12-L18)
-
-Security review: ran (severity threshold: medium)
-
-Dropped candidates:
-
-- Retries can run without a bound · <code>src/net/retry.ts</code>: The caller already enforces a maximum attempt count.
-
-Finding context:
-
-**Redis clients never reconnect after a disconnect** · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/0123456789012345678901234567890123456789/src/storage/cacheStore.ts#L27-L40)
-
-The reconnect callback returns null and no replacement client is created.
-
-Verified: Traced CacheStore.get to client.get and confirmed the error path has no reconnect.
-
-Also at: [<code>src/storage/budgetTracker.ts:451-465</code>](https://github.com/example/repo/blob/0123456789012345678901234567890123456789/src/storage/budgetTracker.ts#L451-L465)
-
-Guideline: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/0123456789012345678901234567890123456789/AGENTS.md#L12-L18)
-
-**Legacy webhooks accept signatures from a different tenant** · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/0123456789012345678901234567890123456789/src/api/legacy/hooks.ts#L88)
-
-The lookup ignores the authenticated tenant.
-
-Verified: Send a tenant A signature to a tenant B webhook and confirm rejection after the fix.
-
-CWE: CWE-347
-
-<sub>Reviewed by [Droid](https://factory.ai/) for commit `0123456` in 2m 14s · [View job](https://github.com/example/repo/actions/runs/123/job/456)</sub>
-
-</details>
-
 <sub>Reply to a finding with a question, or comment `@droid fix` to apply valid fixes.</sub>
 
 <!-- droid-factory-fix:start -->
@@ -266,31 +180,6 @@ Suggested reviewers (not assigned): <code>storage-team</code>.
 Pre-merge checks:
 
 - ✅ Linked issue: The description links the tracking issue.
-
-<details>
-<summary>Review details</summary>
-
-Commit range: `1a2b3c4`..`9ea6c83`
-
-Depth: deep · configured-model
-
-Files: 12 reviewed · 1 skipped (<code>dist/​index.js</code>: generated)
-
-Candidates: 3 considered → 0 posted · 3 dropped by validation.
-
-Guidelines: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-Security review: ran (severity threshold: medium)
-
-Dropped candidates:
-
-- Retries can run without a bound · <code>src/net/retry.ts</code>: The caller already enforces a maximum attempt count.
-- Redis clients never reconnect after a disconnect · <code>src/storage/cacheStore.ts</code>: Validation confirmed an existing guard prevents this candidate.
-- Legacy webhooks accept signatures from a different tenant · <code>src/api/legacy/hooks.ts</code>: Validation confirmed an existing guard prevents this candidate.
-
-<sub>Reviewed by [Droid](https://factory.ai/) for commit `9ea6c83` in 2m 14s · [View job](https://github.com/example/repo/actions/runs/123/job/456)</sub>
-
-</details>
 
 ---
 
@@ -362,49 +251,6 @@ Verify the reconnect behavior, restore capped retry backoff, and add a disconnec
 2. src/api/legacy/hooks.ts:88 (P1) Legacy webhooks accept signatures from a different tenant
 Check the legacy webhook key lookup, bind verification to the current tenant, and cover cross-tenant rejection.
 ```
-
-</details>
-
-<details>
-<summary>Review details</summary>
-
-Commit range: `1a2b3c4`..`9ea6c83`
-
-Depth: deep · configured-model
-
-Files: 12 reviewed · 1 skipped (<code>dist/​index.js</code>: generated)
-
-Candidates: 3 considered → 2 posted · 1 dropped by validation.
-
-Guidelines: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-Security review: ran (severity threshold: medium)
-
-Dropped candidates:
-
-- Retries can run without a bound · <code>src/net/retry.ts</code>: The caller already enforces a maximum attempt count.
-
-Finding context:
-
-**Redis clients never reconnect after a disconnect** · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40)
-
-The reconnect callback returns null and no replacement client is created.
-
-Verified: Traced CacheStore.get to client.get and confirmed the error path has no reconnect.
-
-Also at: [<code>src/storage/budgetTracker.ts:451-465</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/budgetTracker.ts#L451-L465)
-
-Guideline: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-**Legacy webhooks accept signatures from a different tenant** · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88)
-
-The lookup ignores the authenticated tenant.
-
-Verified: Send a tenant A signature to a tenant B webhook and confirm rejection after the fix.
-
-CWE: CWE-347
-
-<sub>Reviewed by [Droid](https://factory.ai/) for commit `9ea6c83` in 2m 14s · [View job](https://github.com/example/repo/actions/runs/123/job/456)</sub>
 
 </details>
 
@@ -526,49 +372,6 @@ Check the legacy webhook key lookup, bind verification to the current tenant, an
 
 2 optional suggestions on unchanged code were not posted.
 
-<details>
-<summary>Review details</summary>
-
-Commit range: `1a2b3c4`..`9ea6c83`
-
-Depth: deep · configured-model
-
-Files: 12 reviewed · 1 skipped (<code>dist/​index.js</code>: generated)
-
-Candidates: 3 considered → 2 posted · 1 dropped by validation.
-
-Guidelines: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-Security review: ran (severity threshold: medium)
-
-Dropped candidates:
-
-- Retries can run without a bound · <code>src/net/retry.ts</code>: The caller already enforces a maximum attempt count.
-
-Finding context:
-
-**Redis clients never reconnect after a disconnect** · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40)
-
-The reconnect callback returns null and no replacement client is created.
-
-Verified: Traced CacheStore.get to client.get and confirmed the error path has no reconnect.
-
-Also at: [<code>src/storage/budgetTracker.ts:451-465</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/budgetTracker.ts#L451-L465)
-
-Guideline: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-**Legacy webhooks accept signatures from a different tenant** · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88)
-
-The lookup ignores the authenticated tenant.
-
-Verified: Send a tenant A signature to a tenant B webhook and confirm rejection after the fix.
-
-CWE: CWE-347
-
-<sub>Reviewed by [Droid](https://factory.ai/) for commit `9ea6c83` in 2m 14s · [View job](https://github.com/example/repo/actions/runs/123/job/456)</sub>
-
-</details>
-
 <sub>Reply to a finding with a question, or comment `@droid fix` to apply valid fixes.</sub>
 
 ---
@@ -639,49 +442,6 @@ Verify the reconnect behavior, restore capped retry backoff, and add a disconnec
 2. src/api/legacy/hooks.ts:88 (P1) Legacy webhooks accept signatures from a different tenant
 Check the legacy webhook key lookup, bind verification to the current tenant, and cover cross-tenant rejection.
 ```
-
-</details>
-
-<details>
-<summary>Review details</summary>
-
-Commit range: `1a2b3c4`..`9ea6c83`
-
-Depth: deep · configured-model
-
-Files: 12 reviewed · 1 skipped (<code>dist/​index.js</code>: generated)
-
-Candidates: 3 considered → 2 posted · 1 dropped by validation.
-
-Guidelines: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-Security review: ran (severity threshold: medium)
-
-Dropped candidates:
-
-- Retries can run without a bound · <code>src/net/retry.ts</code>: The caller already enforces a maximum attempt count.
-
-Finding context:
-
-**Redis clients never reconnect after a disconnect** · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40)
-
-The reconnect callback returns null and no replacement client is created.
-
-Verified: Traced CacheStore.get to client.get and confirmed the error path has no reconnect.
-
-Also at: [<code>src/storage/budgetTracker.ts:451-465</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/budgetTracker.ts#L451-L465)
-
-Guideline: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-**Legacy webhooks accept signatures from a different tenant** · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88)
-
-The lookup ignores the authenticated tenant.
-
-Verified: Send a tenant A signature to a tenant B webhook and confirm rejection after the fix.
-
-CWE: CWE-347
-
-<sub>Reviewed by [Droid](https://factory.ai/) for commit `9ea6c83` in 2m 14s · [View job](https://github.com/example/repo/actions/runs/123/job/456)</sub>
 
 </details>
 
@@ -894,49 +654,6 @@ Check the legacy webhook key lookup, bind verification to the current tenant, an
 
 </details>
 
-<details>
-<summary>Review details</summary>
-
-Commit range: `1a2b3c4`..`9ea6c83`
-
-Depth: deep · configured-model
-
-Files: 12 reviewed · 1 skipped (<code>dist/​index.js</code>: generated)
-
-Candidates: 3 considered → 2 posted · 1 dropped by validation.
-
-Guidelines: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-Security review: ran (severity threshold: medium)
-
-Dropped candidates:
-
-- Retries can run without a bound · <code>src/net/retry.ts</code>: The caller already enforces a maximum attempt count.
-
-Finding context:
-
-**Redis clients never reconnect after a disconnect** · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40)
-
-The reconnect callback returns null and no replacement client is created.
-
-Verified: Traced CacheStore.get to client.get and confirmed the error path has no reconnect.
-
-Also at: [<code>src/storage/budgetTracker.ts:451-465</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/budgetTracker.ts#L451-L465)
-
-Guideline: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-**Legacy webhooks accept signatures from a different tenant** · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88)
-
-The lookup ignores the authenticated tenant.
-
-Verified: Send a tenant A signature to a tenant B webhook and confirm rejection after the fix.
-
-CWE: CWE-347
-
-<sub>Reviewed by [Droid](https://factory.ai/) for commit `9ea6c83` in 2m 14s · [View job](https://github.com/example/repo/actions/runs/123/job/456)</sub>
-
-</details>
-
 <sub>Reply to a finding with a question, or comment `@droid fix` to apply valid fixes.</sub>
 
 ---
@@ -1038,49 +755,6 @@ Check the legacy webhook key lookup, bind verification to the current tenant, an
 
 </details>
 
-<details>
-<summary>Review details</summary>
-
-Commit range: `1a2b3c4`..`9ea6c83`
-
-Depth: deep · configured-model
-
-Files: 12 reviewed · 1 skipped (<code>dist/​index.js</code>: generated)
-
-Candidates: 3 considered → 2 posted · 1 dropped by validation.
-
-Guidelines: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-Security review: ran (severity threshold: medium)
-
-Dropped candidates:
-
-- Retries can run without a bound · <code>src/net/retry.ts</code>: The caller already enforces a maximum attempt count.
-
-Finding context:
-
-**Redis clients never reconnect after a disconnect** · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40)
-
-The reconnect callback returns null and no replacement client is created.
-
-Verified: Traced CacheStore.get to client.get and confirmed the error path has no reconnect.
-
-Also at: [<code>src/storage/budgetTracker.ts:451-465</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/budgetTracker.ts#L451-L465)
-
-Guideline: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-**Legacy webhooks accept signatures from a different tenant** · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88)
-
-The lookup ignores the authenticated tenant.
-
-Verified: Send a tenant A signature to a tenant B webhook and confirm rejection after the fix.
-
-CWE: CWE-347
-
-<sub>Reviewed by [Droid](https://factory.ai/) for commit `9ea6c83` in 2m 14s · [View job](https://github.com/example/repo/actions/runs/123/job/456)</sub>
-
-</details>
-
 <sub>Reply to a finding with a question, or comment `@droid fix` to apply valid fixes.</sub>
 
 ---
@@ -1150,49 +824,6 @@ Check the legacy webhook key lookup, bind verification to the current tenant, an
 
 </details>
 
-<details>
-<summary>Review details</summary>
-
-Commit range: `1a2b3c4`..`9ea6c83`
-
-Depth: deep · configured-model
-
-Files: 12 reviewed · 1 skipped (<code>dist/​index.js</code>: generated)
-
-Candidates: 3 considered → 2 posted · 1 dropped by validation.
-
-Guidelines: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-Security review: ran (severity threshold: medium)
-
-Dropped candidates:
-
-- Retries can run without a bound · <code>src/net/retry.ts</code>: The caller already enforces a maximum attempt count.
-
-Finding context:
-
-**Redis clients never reconnect after a disconnect** · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40)
-
-The reconnect callback returns null and no replacement client is created.
-
-Verified: Traced CacheStore.get to client.get and confirmed the error path has no reconnect.
-
-Also at: [<code>src/storage/budgetTracker.ts:451-465</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/budgetTracker.ts#L451-L465)
-
-Guideline: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-**Legacy webhooks accept signatures from a different tenant** · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88)
-
-The lookup ignores the authenticated tenant.
-
-Verified: Send a tenant A signature to a tenant B webhook and confirm rejection after the fix.
-
-CWE: CWE-347
-
-<sub>Reviewed by [Droid](https://factory.ai/) for commit `9ea6c83` in 2m 14s · [View job](https://github.com/example/repo/actions/runs/123/job/456)</sub>
-
-</details>
-
 <sub>Reply to a finding with a question, or comment `@droid fix` to apply valid fixes.</sub>
 
 ---
@@ -1246,49 +877,6 @@ Suggested reviewers (not assigned): <code>storage-team</code>.
 Pre-merge checks:
 
 - ✅ Linked issue: The description links the tracking issue.
-
-<details>
-<summary>Review details</summary>
-
-Commit range: `1a2b3c4`..`9ea6c83`
-
-Depth: deep · configured-model
-
-Files: 12 reviewed · 1 skipped (<code>dist/​index.js</code>: generated)
-
-Candidates: 3 considered → 2 posted · 1 dropped by validation.
-
-Guidelines: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-Security review: ran (severity threshold: medium)
-
-Dropped candidates:
-
-- Retries can run without a bound · <code>src/net/retry.ts</code>: The caller already enforces a maximum attempt count.
-
-Finding context:
-
-**Redis clients never reconnect after a disconnect** · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40)
-
-The reconnect callback returns null and no replacement client is created.
-
-Verified: Traced CacheStore.get to client.get and confirmed the error path has no reconnect.
-
-Also at: [<code>src/storage/budgetTracker.ts:451-465</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/budgetTracker.ts#L451-L465)
-
-Guideline: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-**Legacy webhooks accept signatures from a different tenant** · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88)
-
-The lookup ignores the authenticated tenant.
-
-Verified: Send a tenant A signature to a tenant B webhook and confirm rejection after the fix.
-
-CWE: CWE-347
-
-<sub>Reviewed by [Droid](https://factory.ai/) for commit `9ea6c83` in 2m 14s · [View job](https://github.com/example/repo/actions/runs/123/job/456)</sub>
-
-</details>
 
 <sub>Reply to a finding with a question, or comment `@droid fix` to apply valid fixes.</sub>
 
@@ -1350,49 +938,6 @@ Verify the reconnect behavior, restore capped retry backoff, and add a disconnec
 2. src/api/legacy/hooks.ts:88 (P1) Legacy webhooks accept signatures from a different tenant
 Check the legacy webhook key lookup, bind verification to the current tenant, and cover cross-tenant rejection.
 ```
-
-</details>
-
-<details>
-<summary>Review details</summary>
-
-Commit range: `1a2b3c4`..`9ea6c83`
-
-Depth: deep · configured-model
-
-Files: 12 reviewed · 1 skipped (<code>dist/​index.js</code>: generated)
-
-Candidates: 3 considered → 2 posted · 1 dropped by validation.
-
-Guidelines: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-Security review: ran (severity threshold: medium)
-
-Dropped candidates:
-
-- Retries can run without a bound · <code>src/net/retry.ts</code>: The caller already enforces a maximum attempt count.
-
-Finding context:
-
-**Redis clients never reconnect after a disconnect** · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40)
-
-The reconnect callback returns null and no replacement client is created.
-
-Verified: Traced CacheStore.get to client.get and confirmed the error path has no reconnect.
-
-Also at: [<code>src/storage/budgetTracker.ts:451-465</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/budgetTracker.ts#L451-L465)
-
-Guideline: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-**Legacy webhooks accept signatures from a different tenant** · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88)
-
-The lookup ignores the authenticated tenant.
-
-Verified: Send a tenant A signature to a tenant B webhook and confirm rejection after the fix.
-
-CWE: CWE-347
-
-<sub>Reviewed by [Droid](https://factory.ai/) for commit `9ea6c83` in 2m 14s · [View job](https://github.com/example/repo/actions/runs/123/job/456)</sub>
 
 </details>
 
@@ -1466,49 +1011,6 @@ Check the legacy webhook key lookup, bind verification to the current tenant, an
 
 </details>
 
-<details>
-<summary>Review details</summary>
-
-Commit range: `1a2b3c4`..`9ea6c83`
-
-Depth: deep · configured-model
-
-Files: 12 reviewed · 1 skipped (<code>dist/​index.js</code>: generated)
-
-Candidates: 3 considered → 2 posted · 1 dropped by validation.
-
-Guidelines: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-Security review: ran (severity threshold: medium)
-
-Dropped candidates:
-
-- Retries can run without a bound · <code>src/net/retry.ts</code>: The caller already enforces a maximum attempt count.
-
-Finding context:
-
-**Redis clients never reconnect after a disconnect** · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40)
-
-The reconnect callback returns null and no replacement client is created.
-
-Verified: Traced CacheStore.get to client.get and confirmed the error path has no reconnect.
-
-Also at: [<code>src/storage/budgetTracker.ts:451-465</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/budgetTracker.ts#L451-L465)
-
-Guideline: [<code>AGENTS.md:12-18</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-L18)
-
-**Legacy webhooks accept signatures from a different tenant** · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88)
-
-The lookup ignores the authenticated tenant.
-
-Verified: Send a tenant A signature to a tenant B webhook and confirm rejection after the fix.
-
-CWE: CWE-347
-
-<sub>Reviewed by [Droid](https://factory.ai/) for commit `9ea6c83` in 2m 14s · [View job](https://github.com/example/repo/actions/runs/123/job/456)</sub>
-
-</details>
-
 <sub>Reply to a finding with a question, or comment `@droid fix` to apply valid fixes.</sub>
 
 ---
@@ -1575,49 +1077,6 @@ Verify the reconnect behavior, restore capped retry backoff, and add a disconnec
 2. src/api/legacy/hooks.ts:88 (P1) Legacy webhooks accept signatures from a different tenant
 Check the legacy webhook key lookup, bind verification to the current tenant, and cover cross-tenant rejection.
 ```
-
-</details>
-
-<details>
-<summary>Review details</summary>
-
-Commit range: `1a2b3c4`..`9ea6c83`
-
-Depth: deep · configured-model
-
-Files: 12 reviewed · 1 skipped (<code>dist/​index.js</code>: generated)
-
-Candidates: 3 considered → 2 posted · 1 dropped by validation.
-
-Guidelines: [<code>AGENTS.md:12-18</code>](https://gitlab.example.com/group/project/-/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-18)
-
-Security review: ran (severity threshold: medium)
-
-Dropped candidates:
-
-- Retries can run without a bound · <code>src/net/retry.ts</code>: The caller already enforces a maximum attempt count.
-
-Finding context:
-
-**Redis clients never reconnect after a disconnect** · [<code>src/storage/cacheStore.ts:27-40</code>](https://gitlab.example.com/group/project/-/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-40)
-
-The reconnect callback returns null and no replacement client is created.
-
-Verified: Traced CacheStore.get to client.get and confirmed the error path has no reconnect.
-
-Also at: [<code>src/storage/budgetTracker.ts:451-465</code>](https://gitlab.example.com/group/project/-/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/budgetTracker.ts#L451-465)
-
-Guideline: [<code>AGENTS.md:12-18</code>](https://gitlab.example.com/group/project/-/blob/9ea6c830123456789abcdef0123456789abcdef012/AGENTS.md#L12-18)
-
-**Legacy webhooks accept signatures from a different tenant** · [<code>src/api/legacy/hooks.ts:88</code>](https://gitlab.example.com/group/project/-/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88)
-
-The lookup ignores the authenticated tenant.
-
-Verified: Send a tenant A signature to a tenant B webhook and confirm rejection after the fix.
-
-CWE: CWE-347
-
-<sub>Reviewed by [Droid](https://factory.ai/) for commit `9ea6c83` in 2m 14s · [View job](https://gitlab.example.com/group/project/-/jobs/456)</sub>
 
 </details>
 
