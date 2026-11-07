@@ -152,7 +152,10 @@ describe("Fix in Factory completed-review task", () => {
       FACTORY_FIX_BUTTON_IMAGE_URL,
       "https://img.shields.io/badge/Fix%20in%20Factory-ee6018?style=for-the-badge",
     ]) {
-      const previousBody = completed.replace(FACTORY_FIX_BUTTON_IMAGE_URL, image);
+      const previousBody = completed.replace(
+        FACTORY_FIX_BUTTON_IMAGE_URL,
+        image,
+      );
       for (const state of ["in_progress", "failed", "skipped"] as const) {
         const body = renderReviewSummary({ ...input(), state, previousBody });
         expect(body).not.toContain("[Fix in Factory]");

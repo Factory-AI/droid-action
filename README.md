@@ -441,7 +441,7 @@ These are **effective defaults**. Config-enabled action inputs use an empty-stri
 | --------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------ |
 | `review_summary`            | `comment`                                      | `comment`, `description`, or `off`. Description mode owns only its marked block.     |
 | `review_summary_sections`   | `verdict,findings,changes,details`             | Visible sections; also accepts `diagram`, `risk`, `effort`.                          |
-| `review_badges`             | `image`                                        | Colored severity labels; use `text` or `emoji` when remote images are blocked.        |
+| `review_badges`             | `image`                                        | Colored severity labels; use `text` or `emoji` when remote images are blocked.       |
 | `review_reactions`          | `true`                                         | Running/clean/failure lifecycle reactions, never feedback reactions.                 |
 | `review_check_run`          | `true`                                         | GitHub check run; GitLab commit status.                                              |
 | `fail_on_severity`          | `""`                                           | Fail only when an open finding meets `P0`, `P1`, or `P2` or a higher priority.       |
