@@ -4,7 +4,7 @@ import type { RenderOptions, ReviewRenderInput } from "./types";
 /** Conservative UTF-8 budgets, below GitHub's 65,536-character limit. */
 export const MAX_REVIEW_OUTPUT_BYTES = 60 * 1024;
 export const MAX_INLINE_OUTPUT_BYTES = 30 * 1024;
-const NOTICE =
+export const NOTICE =
   "> [!NOTE]\n> Some optional review context was shortened to fit the output limit. Finding identities, counts, locations, and thread state are preserved.";
 const SUGGESTION_NOTICE =
   "The suggested replacement was omitted because it exceeds the output limit. No partial suggestion was posted; verify and apply the complete fix in the source.";

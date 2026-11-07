@@ -44,7 +44,7 @@ export {
   outputBytes,
   truncateReviewText,
 } from "./budget";
-import { fitInlineOutput, fitReviewOutput, truncateReviewText } from "./budget";
+import { fitInlineOutput, fitReviewOutput, NOTICE, truncateReviewText } from "./budget";
 
 const FACTORY_FIX_START = "<!-- droid-factory-fix:start -->";
 const FACTORY_FIX_END = "<!-- droid-factory-fix:end -->";
@@ -473,6 +473,7 @@ function previousReview(input: ReviewRenderInput): string {
 function reviewSummaryBody(
   input: ReviewRenderInput,
   factoryFixEnabled: boolean,
+  compactionNotice = "",
 ): string {
   const markers = [
     SUMMARY_MARKER,
@@ -485,6 +486,7 @@ function reviewSummaryBody(
       markers,
       `> [!NOTE]\n> Droid is reviewing ${sha(input.head)}${input.depth ? ` (${prose(input.depth)})` : ""}. This usually takes 2–5 minutes.${input.startedAt && relativeTime(input.startedAt) ? ` Running since ${relativeTime(input.startedAt)}.` : ""}${input.jobUrl ? ` ${link("View job", input.jobUrl)}` : ""}`,
       previousReview(input),
+      compactionNotice,
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -495,6 +497,7 @@ function reviewSummaryBody(
       `> [!WARNING]\n> **Droid couldn't finish this review.** ${error.message}\n>\n> ${error.retry}${input.jobUrl ? ` ${link("View job", input.jobUrl)}` : ""}`,
       input.error ? details("Error details", fenced(input.error)) : "",
       previousReview(input),
+      compactionNotice,
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -504,6 +507,7 @@ function reviewSummaryBody(
       markers,
       `> [!IMPORTANT]\n> **Review skipped:** ${prose(input.skipReason ?? "No review was needed.")}\n>\n> Comment \`@droid review --full\` to request a full review.${input.jobUrl ? ` ${link("View job", input.jobUrl)}` : ""}`,
       previousReview(input),
+      compactionNotice,
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -567,10 +571,7 @@ function reviewSummaryBody(
         )
       : "",
     selected(input, "findings") && outside.length
-      ? details(
-          `<strong>Outside the diff (${outside.length})</strong>`,
-          `These findings cannot be anchored to a changed line.\n\n${outside.map((f) => `${findingRow(f, input)}\n\n  ${prose(f.body)}`).join("\n\n")}`,
-        )
+      ? `### Outside the diff (${outside.length})\n\nThese findings cannot be anchored to a changed line.\n\n${outside.map((f) => `${findingRow(f, input)}\n\n  ${prose(f.body)}`).join("\n\n")}`
       : "",
     selected(input, "changes") ||
     selected(input, "diagram") ||
@@ -582,9 +583,6 @@ function reviewSummaryBody(
       : "",
     input.summary?.preMergeChecks?.length
       ? `Pre-merge checks:\n${input.summary.preMergeChecks.map((c) => `- ${c.passed ? "✅" : "⚠️"} ${prose(c.name)}${c.reason ? `: ${prose(c.reason)}` : ""}`).join("\n")}`
-      : "",
-    selected(input, "findings") && factoryFixEnabled && findings.length
-      ? factoryFixLink(input)
       : "",
     selected(input, "findings") &&
     input.includeAgentPrompts !== false &&
@@ -605,6 +603,10 @@ function reviewSummaryBody(
     !selected(input, "details") ? footer(input) : "",
     findings.length
       ? "<sub>Reply to a finding with a question, or comment `@droid fix` to apply valid fixes.</sub>"
+      : "",
+    compactionNotice,
+    selected(input, "findings") && factoryFixEnabled && findings.length
+      ? factoryFixLink(input)
       : "",
   ]
     .filter(Boolean)
@@ -675,7 +677,12 @@ export function renderStepSummary(input: ReviewRenderInput): string {
   return fitReviewOutput(
     input,
     (compact) =>
-      `## Droid Review\n\n${reviewSummaryBody(compact, input.includeAgentPrompts !== false)}`,
+      `## Droid Review\n\n${reviewSummaryBody(
+        compact,
+        input.includeAgentPrompts !== false,
+        compact === input ? "" : NOTICE,
+      )}`,
+    "",
   );
 }
 function securityReportBody(input: ReviewRenderInput): string {
@@ -713,8 +720,15 @@ function securityReportBody(input: ReviewRenderInput): string {
 }
 
 export function renderReviewSummary(input: ReviewRenderInput): string {
-  return fitReviewOutput(input, (compact) =>
-    reviewSummaryBody(compact, input.includeAgentPrompts !== false),
+  return fitReviewOutput(
+    input,
+    (compact) =>
+      reviewSummaryBody(
+        compact,
+        input.includeAgentPrompts !== false,
+        compact === input ? "" : NOTICE,
+      ),
+    "",
   );
 }
 /** Hidden lifecycle state uses the same structured budget without visible prose. */
