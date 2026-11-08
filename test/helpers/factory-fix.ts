@@ -1,7 +1,7 @@
 import { expect } from "bun:test";
 
 export const FACTORY_FIX_BUTTON_IMAGE_URL =
-  "https://img.shields.io/badge/Fix%20in%20Factory-ee6018?style=for-the-badge";
+  "https://raw.githubusercontent.com/Factory-AI/droid-action/10fe8bc0f2decf0fba156ddb4235e5f89b79e7e4/assets/fix-in-factory.svg";
 
 export function expectFactoryFixAction(body: string): {
   url: URL;

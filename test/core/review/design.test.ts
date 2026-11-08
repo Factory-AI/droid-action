@@ -5,6 +5,7 @@ import {
   decodeReviewMarker,
   decodeReviewState,
   decodeSeverityMarker,
+  encodeReviewState,
   type ReviewState,
 } from "../../../src/core/review/markers";
 import { resolveReviewUxConfig } from "../../../src/core/review/config";
@@ -18,6 +19,7 @@ import {
   renderInlineComment,
   renderReviewBody,
   renderReviewSummary,
+  renderStepSummary,
   validateRenderedMarkdown,
   type RenderOptions,
 } from "../../../src/core/review/render";
@@ -48,15 +50,20 @@ const platforms: Array<"github" | "gitlab"> = ["github", "gitlab"];
 const visible = (body: string) => body.replace(/<!--[\s\S]*?-->/g, "");
 
 describe("native Markdown review design", () => {
-  it("defaults to native code pills without removing explicit image/emoji opt-ins", () => {
-    expect(resolveReviewUxConfig().review_badges).toBe("text");
+  it("defaults to colored badges without removing explicit text/emoji modes", () => {
+    expect(resolveReviewUxConfig().review_badges).toBe("image");
     for (const label of ["P0", "P1", "P2", "Security"] as const) {
-      expect(renderBadge(label)).toBe(`\`${label}\``);
+      const color = { P0: "red", P1: "orange", P2: "yellow", Security: "blue" }[
+        label
+      ];
+      expect(renderBadge(label)).toBe(
+        `<sub><img alt="${label}" src="https://img.shields.io/badge/${label}-${color}" height="18" align="top"></sub>`,
+      );
       expect(renderBadge(label, "text")).toBe(`\`${label}\``);
       expect(renderBadge(label, "image")).toContain(`alt="${label}"`);
       expect(renderBadge(label, "emoji")).toContain(label);
     }
-    for (const mode of ["image", "emoji"] as const) {
+    for (const mode of ["image", "emoji", "text"] as const) {
       expect(
         resolveReviewUxConfig({
           fileConfig: { review_badges: mode },
@@ -64,17 +71,29 @@ describe("native Markdown review design", () => {
         }).review_badges,
       ).toBe(mode);
       expect(
-        renderReviewSummary({
-          state: "findings",
-          findings,
-          badges: mode,
-        }),
-      ).toContain(mode === "image" ? 'alt="P2"' : "🟡 P2");
+        resolveReviewUxConfig({
+          fileConfig: { review_badges: "image" },
+          inputs: { review_badges: mode },
+        }).review_badges,
+      ).toBe(mode);
+      const body = renderReviewSummary({
+        state: "findings",
+        findings,
+        badges: mode,
+      });
+      expect(body).toContain(
+        mode === "image"
+          ? 'alt="P2"'
+          : mode === "emoji"
+            ? "🟡 P2"
+            : "**8 open findings**",
+      );
+      if (mode !== "image") expect(body).not.toContain("<img");
     }
   });
 
   for (const platform of platforms) {
-    it(`keeps readable evidence and references in existing collapsed review details (${platform})`, () => {
+    it(`omits Review details and preserves hidden evidence (${platform})`, () => {
       const finding = {
         ...pagination,
         why: "The boundary adds an extra element.",
@@ -92,29 +111,94 @@ describe("native Markdown review design", () => {
       expect(inline).not.toContain(finding.why);
       expect(inline).not.toContain(finding.verification);
       expect(inline).toContain("CWE: CWE-193");
-      const summary = renderReviewSummary({
-        ...options,
-        state: "findings",
-        findings: [finding],
-      });
-      const detail = summary.match(
-        /<details>\n<summary>Review details<\/summary>([\s\S]*?)<\/details>/,
-      )?.[1];
-      expect(detail).toContain(finding.why);
-      expect(detail).toContain(`Verified: ${finding.verification}`);
-      expect(detail).toContain("CWE: CWE-193");
-      expect(detail).toContain("src/related.ts:7-9");
-      expect(detail).toContain("AGENTS.md:1-3");
-      expect(detail).toContain(
-        `${platform === "gitlab" ? "/-/blob/" : "/blob/"}${head}/src/related.ts#L7-${platform === "gitlab" ? "" : "L"}9`,
-      );
-      expect(summary).not.toContain("Why this was flagged");
-      expect(validateRenderedMarkdown(summary)).toEqual([]);
+      const state: ReviewState = {
+        head,
+        findings: [
+          {
+            id: finding.id,
+            sev: finding.severity,
+            state: "open",
+            finding,
+          },
+        ],
+      };
+      const original = structuredClone(state);
+      for (const sections of [
+        undefined,
+        ["verdict", "findings", "changes", "details"],
+      ]) {
+        for (const render of [renderReviewSummary, renderStepSummary]) {
+          const summary = render({
+            ...options,
+            state: "findings",
+            base: "b".repeat(40),
+            depth: "deep",
+            model: "details-only-model",
+            reasoning: "details-only-reasoning",
+            findings: [finding],
+            reviewState: state,
+            sections,
+            candidatesConsidered: 7,
+            postedCount: 1,
+            droppedCount: 6,
+            showDroppedFindings: true,
+            dropped: [
+              {
+                index: 0,
+                path: "details-only-dropped.ts",
+                title: "Details-only dropped candidate",
+                reason: "Details-only dropped reason",
+              },
+            ],
+            summary: {
+              whatChanged: "What changed remains available.",
+              filesReviewed: 13,
+              filesSkipped: [
+                { path: "details-only-file.ts", reason: "Details-only skip" },
+              ],
+              guidelines: [{ path: "RULES.md", line: 5 }],
+            },
+          });
+          for (const removed of [
+            "Review details",
+            "Commit range:",
+            "Depth:",
+            "Files:",
+            "Candidates:",
+            "Guidelines:",
+            "Dropped candidates:",
+            "Finding context:",
+            "Reviewed by",
+            "details-only",
+            "details-only-dropped.ts",
+            "Details-only",
+            finding.why,
+            finding.verification,
+            "CWE: CWE-193",
+            "src/related.ts:7-9",
+            "AGENTS.md:1-3",
+          ])
+            expect(visible(summary)).not.toContain(removed);
+          expect(summary).toContain("<summary>What changed</summary>");
+          expect(summary).toContain("What changed remains available.");
+          expect(summary).toContain("<summary>Fix with an agent</summary>");
+          expect(summary).toContain(encodeReviewState(state));
+          expect(decodeReviewState(summary)?.findings[0]?.finding).toEqual({
+            ...finding,
+            state: "open",
+          });
+          expect(summary).not.toContain("Why this was flagged");
+          expect(validateRenderedMarkdown(summary)).toEqual([]);
+        }
+      }
+      expect(state).toEqual(original);
     });
 
     it(`keeps the actual inline text, suggestion and safe copy payload (${platform})`, () => {
       const body = renderInlineComment(pagination, { platform, head });
-      expect(body).toStartWith(`\`P2\` **${pagination.title}**`);
+      expect(body).toStartWith(
+        `<sub><img alt="P2" src="https://img.shields.io/badge/P2-yellow" height="18" align="top"></sub> **${pagination.title}**`,
+      );
       expect(body).toContain(escapeMarkdown(pagination.body));
       expect(body).toContain(fenced(pagination.suggestion!, "suggestion"));
       expect(body).toContain(
@@ -127,7 +211,7 @@ describe("native Markdown review design", () => {
       expect(visible(body)).not.toContain("Why this was flagged");
       expect(visible(body)).not.toContain("Finding f-");
       expect(visible(body)).not.toContain("Reply");
-      expect(body).not.toContain("<img");
+      expect(body.match(/<img alt="P2"/g)).toHaveLength(1);
       expect(decodeFindingMarker(body)).toEqual({
         id: pagination.id,
         sev: "P2",
@@ -164,7 +248,7 @@ describe("native Markdown review design", () => {
       expect(body).not.toContain("| **Open**");
       expect(body).not.toContain("`P0: 0`");
       expect(body).not.toContain("`Security: 0`");
-      expect(body).not.toContain("<img");
+      expect(body.match(/<img alt="P2"/g)).toHaveLength(8);
       expect(body.match(/@droid fix/g)).toHaveLength(1);
       expect(body).not.toContain("@droid help");
       expect(body).not.toContain("Why this was flagged");
@@ -209,7 +293,9 @@ describe("native Markdown review design", () => {
       securitySeverity: "high",
       cwe: "CWE-79",
     });
-    expect(body).toContain("`Security`");
+    expect(body).toContain(
+      '<sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub>',
+    );
     expect(body).toContain("<sub>Security: High · CWE: CWE-79</sub>");
     expect(body).not.toContain("Why this was flagged");
   });

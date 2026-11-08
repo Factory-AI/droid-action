@@ -180,12 +180,14 @@ describe("github-pr-server helpers", () => {
         {
           path: "file.ts",
           position: 3,
-          body: expect.stringContaining("`P2`"),
+          body: expect.stringContaining('alt="P2"'),
         },
       ],
     });
     expect(decodeReviewMarker(payload.body)).toEqual({ head: "unknown" });
-    expect(payload.comments[0].body).not.toContain("<img");
+    expect(payload.comments[0].body).toContain(
+      "https://img.shields.io/badge/P2-yellow",
+    );
     expect(payload.comments[0].body).toContain("**issue**\n\nissue");
     expect(decodeFindingMarker(payload.comments[0].body)).toEqual({
       id: expect.stringMatching(/^f-[a-f0-9]{12}$/),
@@ -221,11 +223,16 @@ describe("github-pr-server helpers", () => {
       {
         path: "file.ts",
         position: 3,
-        body: expect.stringContaining("`P1`"),
+        body: expect.stringContaining('alt="P1"'),
       },
     ]);
-    expect(payload.comments[0].body).toContain("`Security`");
-    expect(payload.comments[0].body).not.toContain("<img");
+    expect(payload.comments[0].body).toContain('alt="Security"');
+    expect(payload.comments[0].body).toContain(
+      "https://img.shields.io/badge/P1-orange",
+    );
+    expect(payload.comments[0].body).toContain(
+      "https://img.shields.io/badge/Security-blue",
+    );
     expect(payload.comments[0].body).toContain("**issue**\n\nissue");
     expect(payload.comments[0].body).toEndWith(
       "<!-- factory-pr-inline-comment: run-type=droid-security-review -->",

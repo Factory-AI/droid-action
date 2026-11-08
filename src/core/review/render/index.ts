@@ -44,11 +44,18 @@ export {
   outputBytes,
   truncateReviewText,
 } from "./budget";
-import { fitInlineOutput, fitReviewOutput, truncateReviewText } from "./budget";
+import {
+  fitInlineOutput,
+  fitReviewOutput,
+  NOTICE,
+  truncateReviewText,
+} from "./budget";
 
 const FACTORY_FIX_START = "<!-- droid-factory-fix:start -->";
 const FACTORY_FIX_END = "<!-- droid-factory-fix:end -->";
 const FACTORY_FIX_LABEL =
+  "![Fix in Factory](https://raw.githubusercontent.com/Factory-AI/droid-action/10fe8bc0f2decf0fba156ddb4235e5f89b79e7e4/assets/fix-in-factory.svg)";
+const LEGACY_FACTORY_FIX_LABEL =
   "![Fix in Factory](https://img.shields.io/badge/Fix%20in%20Factory-ee6018?style=for-the-badge)";
 
 export function severityCounts(findings: ReviewFinding[]): SeverityCounts {
@@ -64,7 +71,7 @@ export function severityCounts(findings: ReviewFinding[]): SeverityCounts {
 }
 export function renderBadge(
   label: "P0" | "P1" | "P2" | "Security",
-  mode: BadgeMode = "text",
+  mode: BadgeMode = "image",
 ): string {
   if (mode === "text") return `\`${label}\``;
   if (mode === "emoji")
@@ -236,60 +243,6 @@ function transparency(
   const dropped = input.droppedCount ?? input.dropped?.length ?? 0;
   return `Candidates: ${input.candidatesConsidered ?? findings.length + dropped + (input.skippedCount ?? 0)} considered → ${input.postedCount ?? findings.length} posted · ${dropped} dropped by validation${input.skippedCount ? ` · ${input.skippedCount} skipped` : ""}.`;
 }
-function reviewDetails(
-  input: ReviewRenderInput,
-  findings: ReviewFinding[],
-): string {
-  const summary = input.summary;
-  const context = findings
-    .map((finding) => {
-      const evidence = [
-        finding.why ? prose(finding.why) : "",
-        finding.verification ? `Verified: ${prose(finding.verification)}` : "",
-        finding.cwe ? `CWE: ${prose(finding.cwe)}` : "",
-        finding.also_at.length
-          ? `Also at: ${finding.also_at.map((loc) => reference(loc, input)).join(", ")}`
-          : "",
-        finding.source_guideline
-          ? `Guideline: ${reference(finding.source_guideline, input)}`
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n\n");
-      return evidence
-        ? `**${title(finding)}** · ${findingReference(finding, input)}\n\n${evidence}`
-        : "";
-    })
-    .filter(Boolean);
-  const rows = [
-    input.base
-      ? `Commit range: ${sha(input.base)}..${sha(input.head)}${input.commitCount !== undefined ? ` (${pluralize(input.commitCount, "commit")})` : ""}`
-      : `Commit: ${sha(input.head)}`,
-    [
-      input.depth ? `Depth: ${prose(input.depth)}` : "",
-      input.model ? prose(input.model) : "",
-      input.reasoning ? `reasoning ${prose(input.reasoning)}` : "",
-    ]
-      .filter(Boolean)
-      .join(" · "),
-    summary?.filesReviewed !== undefined || summary?.filesSkipped?.length
-      ? `Files: ${summary?.filesReviewed ?? 0} reviewed · ${summary?.filesSkippedCount ?? summary?.filesSkipped?.length ?? 0} skipped${summary?.filesSkipped?.length ? ` (${summary.filesSkipped.map((f) => `${tablePath(f.path)}: ${prose(f.reason)}`).join(", ")})` : ""}`
-      : "",
-    transparency(input, findings),
-    summary?.guidelines?.length
-      ? `Guidelines: ${summary.guidelines.map((g) => reference(g, input)).join(", ")}`
-      : "",
-    summary?.security?.enabled
-      ? `Security review: ran${summary.security.threshold ? ` (severity threshold: ${prose(summary.security.threshold)})` : ""}${summary.security.blockOnCritical !== undefined ? ` · block critical: ${summary.security.blockOnCritical}` : ""}${summary.security.blockOnHigh !== undefined ? ` · block high: ${summary.security.blockOnHigh}` : ""}`
-      : "",
-    input.showDroppedFindings && input.dropped?.length
-      ? `\nDropped candidates:\n${input.dropped.map((f) => `- ${f.title ? prose(f.title) : `Candidate ${f.index + 1}`}${f.path ? ` · ${inlineCode(f.path)}` : ""}: ${prose(f.reason)}`).join("\n")}`
-      : "",
-    context.length ? `Finding context:\n\n${context.join("\n\n")}` : "",
-    footer(input),
-  ].filter(Boolean);
-  return details("Review details", rows.join("\n\n"));
-}
 /** Restrict diagrams to passive graph syntax; no HTML, links, init directives, or click handlers. */
 export function safeDiagram(value: string): string | null {
   if (
@@ -444,10 +397,12 @@ function previousReview(input: ReviewRenderInput): string {
           action.end - FACTORY_FIX_END.length,
         )
       : "";
-    const prefix = `\n[${FACTORY_FIX_LABEL}](`;
+    const prefix = [FACTORY_FIX_LABEL, LEGACY_FACTORY_FIX_LABEL]
+      .map((label) => `\n[${label}](`)
+      .find((value) => contents.startsWith(value));
     if (
       action &&
-      contents.startsWith(prefix) &&
+      prefix &&
       /^https:\/\/app\.factory\.ai\/new\?prompt=[^)\r\n]*\)\n$/.test(
         contents.slice(prefix.length),
       )
@@ -469,6 +424,7 @@ function previousReview(input: ReviewRenderInput): string {
 function reviewSummaryBody(
   input: ReviewRenderInput,
   factoryFixEnabled: boolean,
+  compactionNotice = "",
 ): string {
   const markers = [
     SUMMARY_MARKER,
@@ -481,6 +437,7 @@ function reviewSummaryBody(
       markers,
       `> [!NOTE]\n> Droid is reviewing ${sha(input.head)}${input.depth ? ` (${prose(input.depth)})` : ""}. This usually takes 2–5 minutes.${input.startedAt && relativeTime(input.startedAt) ? ` Running since ${relativeTime(input.startedAt)}.` : ""}${input.jobUrl ? ` ${link("View job", input.jobUrl)}` : ""}`,
       previousReview(input),
+      compactionNotice,
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -491,6 +448,7 @@ function reviewSummaryBody(
       `> [!WARNING]\n> **Droid couldn't finish this review.** ${error.message}\n>\n> ${error.retry}${input.jobUrl ? ` ${link("View job", input.jobUrl)}` : ""}`,
       input.error ? details("Error details", fenced(input.error)) : "",
       previousReview(input),
+      compactionNotice,
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -500,6 +458,7 @@ function reviewSummaryBody(
       markers,
       `> [!IMPORTANT]\n> **Review skipped:** ${prose(input.skipReason ?? "No review was needed.")}\n>\n> Comment \`@droid review --full\` to request a full review.${input.jobUrl ? ` ${link("View job", input.jobUrl)}` : ""}`,
       previousReview(input),
+      compactionNotice,
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -511,7 +470,7 @@ function reviewSummaryBody(
   const resolved = input.resolved ?? [];
   const security = findings.filter((f) => f.security);
   const compactRows =
-    (input.badges === undefined || input.badges === "text") &&
+    input.badges === "text" &&
     new Set(findings.map((f) => f.severity)).size <= 1 &&
     findings.every((f) => f.isNew !== false && !f.security);
   const highestSecurity = ["critical", "high", "medium", "low"].find((level) =>
@@ -563,10 +522,7 @@ function reviewSummaryBody(
         )
       : "",
     selected(input, "findings") && outside.length
-      ? details(
-          `<strong>Outside the diff (${outside.length})</strong>`,
-          `These findings cannot be anchored to a changed line.\n\n${outside.map((f) => `${findingRow(f, input)}\n\n  ${prose(f.body)}`).join("\n\n")}`,
-        )
+      ? `### Outside the diff (${outside.length})\n\nThese findings cannot be anchored to a changed line.\n\n${outside.map((f) => `${findingRow(f, input)}\n\n  ${prose(f.body)}`).join("\n\n")}`
       : "",
     selected(input, "changes") ||
     selected(input, "diagram") ||
@@ -578,9 +534,6 @@ function reviewSummaryBody(
       : "",
     input.summary?.preMergeChecks?.length
       ? `Pre-merge checks:\n${input.summary.preMergeChecks.map((c) => `- ${c.passed ? "✅" : "⚠️"} ${prose(c.name)}${c.reason ? `: ${prose(c.reason)}` : ""}`).join("\n")}`
-      : "",
-    selected(input, "findings") && factoryFixEnabled && findings.length
-      ? factoryFixLink(input)
       : "",
     selected(input, "findings") &&
     input.includeAgentPrompts !== false &&
@@ -595,12 +548,14 @@ function reviewSummaryBody(
     input.unchangedSuggestions
       ? `${pluralize(input.unchangedSuggestions, "optional suggestion")} on unchanged code ${input.unchangedSuggestions === 1 ? "was" : "were"} not posted.`
       : "",
-    selected(input, "details")
-      ? reviewDetails(input, findings)
-      : transparency(input, findings),
+    !selected(input, "details") ? transparency(input, findings) : "",
     !selected(input, "details") ? footer(input) : "",
     findings.length
       ? "<sub>Reply to a finding with a question, or comment `@droid fix` to apply valid fixes.</sub>"
+      : "",
+    compactionNotice,
+    selected(input, "findings") && factoryFixEnabled && findings.length
+      ? factoryFixLink(input)
       : "",
   ]
     .filter(Boolean)
@@ -671,7 +626,12 @@ export function renderStepSummary(input: ReviewRenderInput): string {
   return fitReviewOutput(
     input,
     (compact) =>
-      `## Droid Review\n\n${reviewSummaryBody(compact, input.includeAgentPrompts !== false)}`,
+      `## Droid Review\n\n${reviewSummaryBody(
+        compact,
+        input.includeAgentPrompts !== false,
+        compact === input ? "" : NOTICE,
+      )}`,
+    "",
   );
 }
 function securityReportBody(input: ReviewRenderInput): string {
@@ -709,8 +669,15 @@ function securityReportBody(input: ReviewRenderInput): string {
 }
 
 export function renderReviewSummary(input: ReviewRenderInput): string {
-  return fitReviewOutput(input, (compact) =>
-    reviewSummaryBody(compact, input.includeAgentPrompts !== false),
+  return fitReviewOutput(
+    input,
+    (compact) =>
+      reviewSummaryBody(
+        compact,
+        input.includeAgentPrompts !== false,
+        compact === input ? "" : NOTICE,
+      ),
+    "",
   );
 }
 /** Hidden lifecycle state uses the same structured budget without visible prose. */

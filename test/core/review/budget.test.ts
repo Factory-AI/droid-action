@@ -318,7 +318,7 @@ describe("automatic renderer output budgets", () => {
     expect(state?.paused).toBe(true);
     expect(state?.autoRunCount).toBe(7);
     expect(summary).toContain("#discussion_r123");
-    expect(summary).toContain("3 considered → 1 posted · 2 dropped");
+    expect(summary).not.toContain("3 considered → 1 posted · 2 dropped");
     expect(summary).toContain("Some optional review context was shortened");
   });
   it("never publishes a truncated suggestion, including multibyte/code-fence content", () => {

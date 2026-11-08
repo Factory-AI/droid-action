@@ -290,7 +290,7 @@ PR-level `@droid fix` selects open inline Droid finding threads, not summary-onl
 
 - Mention `@droid review` in a PR comment.
 - Droid inspects the diff, prioritizes potential bugs or high-impact issues, and leaves inline comments directly on the changed lines.
-- One sticky summary comment holds the verdict, linked findings, resolved findings, outside-diff findings, validator counts, and review details.
+- One sticky summary comment holds the verdict, linked findings, resolved findings, and outside-diff findings, without a Review details dropdown.
 
 ### `@droid fix`
 
@@ -303,8 +303,8 @@ Droid never pushes to a repository's default branch and never force-pushes. The 
 Review output is rendered by TypeScript from the two-pass validator's structured JSON. The model supplies evidence and prose, not layout, counts, badges, or links.
 
 - A sticky issue comment is the default summary location. Running and failed states preserve the previous review below a clear banner.
-- Findings use native text severity labels by default, optional complete suggestions, a stable hidden finding marker, and a collapsed **Fix with an agent** prompt with an untrusted-data warning. Verification, related locations, rationale and guideline permalinks live in the summary's collapsed **Review details**; security severity and CWE remain visible inline. Image and emoji badges remain explicit opt-ins.
-- Completed summaries with active findings include an orange **Fix in Factory** button. Browser clicks open `/new?prompt=` with editable text that is not sent until you choose Send; the desktop app can auto-send this route. Review the text before sending, especially in author-editable PR/MR descriptions. The button loads a static shields.io image independently of severity badges. Set `include_agent_prompts: false` or omit `findings` from `review_summary_sections` to hide the button and summary agent-copy prompt.
+- Findings use colored image severity labels by default, optional complete suggestions, a stable hidden finding marker, and a collapsed **Fix with an agent** prompt with an untrusted-data warning. Review details are not displayed; hidden review state retains finding metadata, and security severity and CWE remain visible inline. Use `text` or `emoji` badges when remote images are blocked.
+- Completed summaries with active findings include a **Fix in Factory** button. Browser clicks open `/new?prompt=` with editable text that is not sent until you choose Send; the desktop app can auto-send this route. Review the text before sending, especially in author-editable PR/MR descriptions. The button loads the static [Factory SVG artwork](assets/fix-in-factory.svg) from an immutable repository commit independently of severity badges; it is not embedded as inline SVG. Set `include_agent_prompts: false` or omit `findings` from `review_summary_sections` to hide the button and summary agent-copy prompt.
 - Clean reviews explicitly say no issues were found. Droid does not submit an empty review object.
 - Lifecycle reactions are eyes while running, hooray when clean, and confused on failure. Eyes are removed at completion. Droid does not request, read, or learn from thumbs feedback.
 - Re-reviews use stored state to avoid duplicates, honor human-dismissed threads, and resolve only confirmed fixes. Unchanged optional suggestions are suppressed only when explicitly classified as optional, never merely because they are P2.
@@ -441,7 +441,7 @@ These are **effective defaults**. Config-enabled action inputs use an empty-stri
 | --------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------ |
 | `review_summary`            | `comment`                                      | `comment`, `description`, or `off`. Description mode owns only its marked block.     |
 | `review_summary_sections`   | `verdict,findings,changes,details`             | Visible sections; also accepts `diagram`, `risk`, `effort`.                          |
-| `review_badges`             | `text`                                         | Native code-formatted severity labels; `image` and `emoji` remain explicit opt-ins.  |
+| `review_badges`             | `image`                                        | Colored severity labels; use `text` or `emoji` when remote images are blocked.       |
 | `review_reactions`          | `true`                                         | Running/clean/failure lifecycle reactions, never feedback reactions.                 |
 | `review_check_run`          | `true`                                         | GitHub check run; GitLab commit status.                                              |
 | `fail_on_severity`          | `""`                                           | Fail only when an open finding meets `P0`, `P1`, or `P2` or a higher priority.       |
@@ -468,7 +468,7 @@ Precedence is built-in defaults, then `.factory/review.yaml` fetched at an immut
 ```yaml
 # .factory/review.yaml, merged to the base branch
 review_depth: deep
-review_badges: text
+review_badges: image
 review_summary: comment
 review_summary_sections: [verdict, findings, changes, details, risk]
 review_incremental: true
