@@ -7,7 +7,7 @@ export async function setupDroidSettings(
   homeDir?: string,
 ) {
   const home = homeDir ?? homedir();
-  const settingsDir = `${home}/.factory/droid`;
+  const settingsDir = `${home}/.factory`;
   const settingsPath = `${settingsDir}/settings.json`;
   console.log(`Setting up Droid settings at: ${settingsPath}`);
 
@@ -17,7 +17,7 @@ export async function setupDroidSettings(
 
   let settings: Record<string, unknown> = {};
   try {
-    const existingSettings = await $`cat ${settingsPath}`.quiet().text();
+    const existingSettings = await readFile(settingsPath, "utf-8");
     if (existingSettings.trim()) {
       settings = JSON.parse(existingSettings);
       // Only the keys: settings can hold credentials (`env`, MCP headers), and
@@ -29,6 +29,11 @@ export async function setupDroidSettings(
       console.log(`Settings file exists but is empty`);
     }
   } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw new Error(
+        `Failed to read or parse existing Droid settings at ${settingsPath}`,
+      );
+    }
     console.log(`No existing settings file found, creating new one`);
   }
 

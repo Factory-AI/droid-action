@@ -153,7 +153,7 @@ spec:
     settings:
       description: |
         Droid Exec settings as a JSON string or a path to a JSON file.
-        Merged into ~/.factory/droid/settings.json on the runner before
+        Merged into ~/.factory/settings.json on the runner before
         `droid exec` runs. Mirrors the GitHub action's `settings` input.
       default: ""
     org_guidelines_source:
