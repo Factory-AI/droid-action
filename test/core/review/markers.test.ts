@@ -189,6 +189,8 @@ describe("versioned review markers", () => {
       sev: "P1",
       cat: "security",
       head: "abcdef0",
+      title: "Rotate the <legacy> key",
+      security: true,
     } as const;
     expect(decodeFindingMarker(encodeFindingMarker(finding))).toEqual(finding);
     expect(

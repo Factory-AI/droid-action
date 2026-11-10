@@ -84,9 +84,12 @@ export function renderBadge(
 function badges(f: ReviewFinding, options: RenderOptions): string {
   return `${renderBadge(f.severity, options.badges)}${f.security ? ` ${renderBadge("Security", options.badges)}` : ""}`;
 }
-function title(f: ReviewFinding): string {
+function plainTitle(f: ReviewFinding): string {
   const value = f.title.replace(/\s+/g, " ").replace(/\.+$/, "").trim();
-  return prose(value.length > 70 ? `${value.slice(0, 69)}…` : value);
+  return value.length > 70 ? `${value.slice(0, 69)}…` : value;
+}
+function title(f: ReviewFinding): string {
+  return prose(plainTitle(f));
 }
 function sha(value: string | undefined): string {
   return `\`${shortSha((value ?? "unknown").replace(/[^a-zA-Z0-9_-]/g, ""))}\``;
@@ -316,6 +319,8 @@ function inlineCommentBody(
       sev: finding.severity,
       cat: redactSecrets(finding.category),
       ...(options.head ? { head: options.head } : {}),
+      title: plainTitle(finding),
+      ...(finding.security ? { security: true } : {}),
     }),
   ]
     .filter(Boolean)
