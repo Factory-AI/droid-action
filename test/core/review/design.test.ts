@@ -217,6 +217,7 @@ describe("native Markdown review design", () => {
         sev: "P2",
         cat: pagination.category,
         head,
+        title: pagination.title,
       });
       expect(validateRenderedMarkdown(body)).toEqual([]);
     });
@@ -284,6 +285,25 @@ describe("native Markdown review design", () => {
     expect(decodeFindingMarker(body)?.id).toBe(authorization.id);
     expect(authorization.category).toBe("maintainability");
     expect(authorization.security).toBe(false);
+  });
+
+  it("names severity, plain title and security in the hidden marker for every badge mode", () => {
+    const finding = {
+      ...pagination,
+      title: "Don't trust `page_size` <1>.",
+      security: true,
+    };
+    for (const badges of ["image", "emoji", "text"] as const)
+      expect(
+        decodeFindingMarker(renderInlineComment(finding, { badges, head })),
+      ).toEqual({
+        id: pagination.id,
+        sev: "P2",
+        cat: pagination.category,
+        head,
+        title: "Don't trust `page_size` <1>",
+        security: true,
+      });
   });
 
   it("keeps security severity and CWE visible without a Why block", () => {

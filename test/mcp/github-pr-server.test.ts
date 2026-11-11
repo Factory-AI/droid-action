@@ -193,6 +193,7 @@ describe("github-pr-server helpers", () => {
       id: expect.stringMatching(/^f-[a-f0-9]{12}$/),
       sev: "P2",
       cat: "correctness",
+      title: "issue",
     });
     expect(reviewId).toBe(9001);
   });
@@ -241,6 +242,8 @@ describe("github-pr-server helpers", () => {
       id: expect.stringMatching(/^f-[a-f0-9]{12}$/),
       sev: "P1",
       cat: "security",
+      title: "issue",
+      security: true,
     });
   });
 

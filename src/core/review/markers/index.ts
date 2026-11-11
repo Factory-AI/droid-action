@@ -36,6 +36,12 @@ export type FindingMarker = {
   sev: ReviewSeverity;
   cat?: string;
   head?: string;
+  /**
+   * The displayed title as plain text. With `sev` and `security`, it lets
+   * other tools read a finding without parsing the visible layout.
+   */
+  title?: string;
+  security?: boolean;
 };
 export type ReviewMarker = { head: string; stale?: boolean };
 export type SeverityCounts = {
@@ -384,6 +390,8 @@ export function decodeFindingMarker(body: string): FindingMarker | null {
     sev: value.sev as ReviewSeverity,
     ...(typeof value.cat === "string" ? { cat: value.cat } : {}),
     ...(typeof value.head === "string" ? { head: value.head } : {}),
+    ...(typeof value.title === "string" ? { title: value.title } : {}),
+    ...(value.security === true ? { security: true } : {}),
   };
 }
 export function encodeReviewMarker(marker: ReviewMarker): string {

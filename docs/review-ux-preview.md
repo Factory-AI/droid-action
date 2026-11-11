@@ -1106,7 +1106,7 @@ Verify the reconnect behavior, restore capped retry backoff, and add a disconnec
 
 </details>
 
-<!-- droid-finding:v1 {"id":"f-reconnect","sev":"P1","cat":"correctness","head":"9ea6c830123456789abcdef0123456789abcdef012"} -->
+<!-- droid-finding:v1 {"id":"f-reconnect","sev":"P1","cat":"correctness","head":"9ea6c830123456789abcdef0123456789abcdef012","title":"Redis clients never reconnect after a disconnect"} -->
 
 ---
 
@@ -1132,7 +1132,7 @@ Verify the reconnect behavior, restore capped retry backoff, and add a disconnec
 
 </details>
 
-<!-- droid-finding:v1 {"id":"f-reconnect","sev":"P1","cat":"correctness","head":"9ea6c830123456789abcdef0123456789abcdef012"} -->
+<!-- droid-finding:v1 {"id":"f-reconnect","sev":"P1","cat":"correctness","head":"9ea6c830123456789abcdef0123456789abcdef012","title":"Redis clients never reconnect after a disconnect"} -->
 
 ---
 
@@ -1158,7 +1158,7 @@ Verify the reconnect behavior, restore capped retry backoff, and add a disconnec
 
 </details>
 
-<!-- droid-finding:v1 {"id":"f-reconnect","sev":"P1","cat":"correctness","head":"9ea6c830123456789abcdef0123456789abcdef012"} -->
+<!-- droid-finding:v1 {"id":"f-reconnect","sev":"P1","cat":"correctness","head":"9ea6c830123456789abcdef0123456789abcdef012","title":"Redis clients never reconnect after a disconnect"} -->
 
 ---
 
@@ -1182,7 +1182,7 @@ Check the legacy webhook key lookup, bind verification to the current tenant, an
 
 </details>
 
-<!-- droid-finding:v1 {"id":"f-signature","sev":"P1","cat":"security","head":"9ea6c830123456789abcdef0123456789abcdef012"} -->
+<!-- droid-finding:v1 {"id":"f-signature","sev":"P1","cat":"security","head":"9ea6c830123456789abcdef0123456789abcdef012","title":"Legacy webhooks accept signatures from a different tenant","security":true} -->
 
 ---
 
@@ -1206,7 +1206,7 @@ Check the legacy webhook key lookup, bind verification to the current tenant, an
 
 </details>
 
-<!-- droid-finding:v1 {"id":"f-signature","sev":"P1","cat":"security","head":"9ea6c830123456789abcdef0123456789abcdef012"} -->
+<!-- droid-finding:v1 {"id":"f-signature","sev":"P1","cat":"security","head":"9ea6c830123456789abcdef0123456789abcdef012","title":"Legacy webhooks accept signatures from a different tenant","security":true} -->
 
 ---
 
@@ -1230,4 +1230,4 @@ Check the legacy webhook key lookup, bind verification to the current tenant, an
 
 </details>
 
-<!-- droid-finding:v1 {"id":"f-signature","sev":"P1","cat":"security","head":"9ea6c830123456789abcdef0123456789abcdef012"} -->
+<!-- droid-finding:v1 {"id":"f-signature","sev":"P1","cat":"security","head":"9ea6c830123456789abcdef0123456789abcdef012","title":"Legacy webhooks accept signatures from a different tenant","security":true} -->
