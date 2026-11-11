@@ -189,7 +189,7 @@ Pre-merge checks:
 
 <!-- prettier-ignore -->
 > [!NOTE]
-> Droid is reviewing `9ea6c83` (deep). This usually takes 2–5 minutes. Running since <relative-time datetime="2026-10-28T12:00:00.000Z">2026-10-28T12:00:00.000Z</relative-time>. [View job](https://github.com/example/repo/actions/runs/123/job/456)
+> Droid is reviewing `9ea6c83` (deep). Running since <relative-time datetime="2026-10-28T12:00:00.000Z">2026-10-28T12:00:00.000Z</relative-time>. [View job](https://github.com/example/repo/actions/runs/123/job/456)
 
 #### Previous review of `7f3e2a1`
 

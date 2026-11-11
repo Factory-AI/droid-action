@@ -440,7 +440,7 @@ function reviewSummaryBody(
   if (input.state === "in_progress")
     return [
       markers,
-      `> [!NOTE]\n> Droid is reviewing ${sha(input.head)}${input.depth ? ` (${prose(input.depth)})` : ""}. This usually takes 2–5 minutes.${input.startedAt && relativeTime(input.startedAt) ? ` Running since ${relativeTime(input.startedAt)}.` : ""}${input.jobUrl ? ` ${link("View job", input.jobUrl)}` : ""}`,
+      `> [!NOTE]\n> Droid is reviewing ${sha(input.head)}${input.depth ? ` (${prose(input.depth)})` : ""}.${input.startedAt && relativeTime(input.startedAt) ? ` Running since ${relativeTime(input.startedAt)}.` : ""}${input.jobUrl ? ` ${link("View job", input.jobUrl)}` : ""}`,
       previousReview(input),
       compactionNotice,
     ]
