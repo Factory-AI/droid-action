@@ -85,6 +85,26 @@ describe("review render templates", () => {
     expect(retried).not.toContain("Reviewed by");
     expect(retried).toContain("No issues found");
     expect(validateRenderedMarkdown(retried)).toEqual([]);
+    expect(retried).not.toContain("This usually takes");
+    const startedAt = "2026-11-11T12:00:00.000Z";
+    const jobUrl = "https://github.com/example/repo/actions/runs/123/job/456";
+    const platforms: Array<"github" | "gitlab"> = ["github", "gitlab"];
+    for (const platform of platforms) {
+      const body = renderReviewSummary({
+        state: "in_progress",
+        platform,
+        head: "abcdef1",
+        depth: "deep",
+        startedAt,
+        jobUrl,
+      });
+      expect(body).toContain("> Droid is reviewing `abcdef1` (deep).");
+      expect(body).not.toContain("This usually takes");
+      expect(body).toContain(
+        `Running since <relative-time datetime="${startedAt}">${startedAt}</relative-time>.`,
+      );
+      expect(body).toContain(`[View job](${jobUrl})`);
+    }
   });
   for (const sections of [[], ["verdict", "findings", "details"]])
     it(`shows independently enabled reviewer suggestions and pre-merge checks (${sections.join(",") || "empty"})`, () => {
