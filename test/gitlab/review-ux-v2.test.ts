@@ -2519,7 +2519,19 @@ describe("GitLab v2 production entrypoints, local API only", () => {
           (r) => r.method === "POST" && r.path.endsWith("/discussions"),
         ),
       ).toBe(true);
-      expect(body).toContain(`/-/blob/${BASE}/src/before.ts#L10`);
+      for (const entry of result.renderInput.findings)
+        if (entry.threadUrl)
+          expect(body).toContain(`[${entry.title}](${entry.threadUrl})`);
+      const sourceBody = renderGitlabSummary({
+        ...result.renderInput,
+        findings: result.renderInput.findings.map((entry: typeof finding) => ({
+          ...entry,
+          threadUrl: undefined,
+          threadId: undefined,
+        })),
+      });
+      expect(sourceBody).toContain(`/-/blob/${BASE}/src/before.ts#L10`);
+      expect(sourceBody).not.toContain(`/-/blob/${HEAD}/src/before.ts`);
       expect(body).not.toContain(`/-/blob/${HEAD}/src/before.ts`);
     });
   });
@@ -2819,7 +2831,19 @@ describe("GitLab v2 production entrypoints, local API only", () => {
         await fs.readFile(path.join(directory, "results.json"), "utf8"),
       );
       const body = renderGitlabSummary(result.renderInput);
-      expect(body).toContain(`/-/blob/${BASE}/src/before.ts#L10`);
+      for (const entry of result.renderInput.findings)
+        if (entry.threadUrl)
+          expect(body).toContain(`[${entry.title}](${entry.threadUrl})`);
+      const sourceBody = renderGitlabSummary({
+        ...result.renderInput,
+        findings: result.renderInput.findings.map((entry: typeof finding) => ({
+          ...entry,
+          threadUrl: undefined,
+          threadId: undefined,
+        })),
+      });
+      expect(sourceBody).toContain(`/-/blob/${BASE}/src/before.ts#L10`);
+      expect(sourceBody).not.toContain(`/-/blob/${FIX}/src/before.ts`);
       expect(body).not.toContain(`/-/blob/${FIX}/src/before.ts`);
     });
   });
