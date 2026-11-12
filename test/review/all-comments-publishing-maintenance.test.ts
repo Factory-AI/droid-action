@@ -12,7 +12,9 @@ import {
   inlineCode,
   redactSecrets,
   renderReviewSummary,
+  renderSecurityReport,
   safeDiagram,
+  type ReviewRenderInput,
 } from "../../src/core/review/render";
 import { redactCredentials } from "../../src/utils/redact-credentials";
 import {
@@ -256,21 +258,28 @@ describe("QA75 publishing maintenance behavior", () => {
   });
   it("4998 escapes only link-label Markdown while preserving URL encoding and inline code", () => {
     const path = "src/é[link](target)\\name|part.ts";
-    const body = renderReviewSummary({
+    const value: ReviewRenderInput = {
       state: "findings",
       head: HEAD,
       repositoryUrl: "https://github.com/o/r",
-      findings: [{ ...finding(), path }],
+      findings: [{ ...finding(), path, security: true }],
       includeAgentPrompts: false,
+    };
+    const sourceUrl = `https://github.com/o/r/blob/${HEAD}/src/%C3%A9%5Blink%5D%28target%29%5Cname%7Cpart.ts#L3`;
+    const locationLabel =
+      "<code>src/é\\[link\\]\\(target\\)\\\\name&#124;part.ts:3</code>";
+    const body = renderReviewSummary(value);
+    expect(body).toContain(`[Canonical issue](${sourceUrl})`);
+    expect(body).not.toContain(locationLabel);
+    const report = renderSecurityReport({
+      ...value,
+      securityReport: {
+        sourceRevision: HEAD,
+        sourceRevisionTrusted: true,
+        outcomes: [],
+      },
     });
-    expect(body).toContain(
-      "<code>src/é\\[link\\]\\(target\\)\\\\name&#124;part.ts:3</code>",
-    );
-    expect(body).toContain(
-      "src/%C3%A9%5Blink%5D(target)%5Cname%7Cpart.ts"
-        .replaceAll("(", "%28")
-        .replaceAll(")", "%29"),
-    );
+    expect(report).toContain(`[${locationLabel}](${sourceUrl})`);
     expect(inlineCode("[literal](text)")).toBe("<code>[literal](text)</code>");
   });
   for (const directive of [

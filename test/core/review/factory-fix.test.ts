@@ -124,6 +124,11 @@ describe("Fix in Factory completed-review task", () => {
       for (const sections of [undefined, ["findings"]]) {
         const value = input(platform);
         value.sections = sections;
+        value.repositoryUrl =
+          platform === "github"
+            ? "https://github.com/o/r"
+            : "https://gitlab.example/group/repo";
+        const sourceUrl = `${value.repositoryUrl}/${platform === "gitlab" ? "-/blob" : "blob"}/${HEAD}/src/outside.ts#L8`;
         value.findings = [
           finding,
           { ...finding, id: "earlier", isNew: false },
@@ -163,12 +168,12 @@ describe("Fix in Factory completed-review task", () => {
           );
           for (const content of [
             "These findings cannot be anchored to a changed line.",
-            "Outside security finding",
-            "src/outside.ts:8",
+            `[Outside security finding](${sourceUrl})`,
             "Outside-diff evidence remains visible.",
             'alt="Security"',
           ])
             expect(visible).toContain(content);
+          expect(visible).not.toContain("src/outside.ts:8");
           for (const content of [
             "Still open from earlier reviews",
             "1 resolved since last review",
