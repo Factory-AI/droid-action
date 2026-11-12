@@ -11,6 +11,7 @@ import {
   relativeTime,
   renderInlineComment,
   renderReviewSummary,
+  renderStepSummary,
   safeDiagram,
   safeUrl,
   shortSha,
@@ -243,6 +244,10 @@ describe("review render templates", () => {
       const body = renderReviewSummary(input);
       const expected = `${platform === "gitlab" ? "/-/blob/" : "/blob/"}${input.base}/src/deleted.ts#L8-${platform === "gitlab" ? "" : "L"}10`;
       expect(body).toContain(expected);
+      expect(body).toContain(
+        `[${finding.title}](${input.repositoryUrl}${expected})`,
+      );
+      expect(body).not.toContain("<code>src/deleted.ts:8-10</code>");
       expect(body).not.toContain(`${input.head}/src/deleted.ts`);
       expect(body).not.toContain("src/new.ts:8-20");
       expect(renderInlineComment(finding, input)).toContain(
@@ -250,7 +255,65 @@ describe("review render templates", () => {
       );
       const withoutBase = renderReviewSummary({ ...input, base: undefined });
       expect(withoutBase).toContain("src/deleted.ts:8-10");
+      expect(withoutBase).toContain(finding.title);
       expect(withoutBase).not.toContain(`/blob/${input.head}/src/deleted.ts`);
+    });
+    it(`keeps summary rows concise without losing links or badges (${platform})`, () => {
+      const finding = {
+        ...normalizeFinding({
+          title: "Keep tenant isolation",
+          severity: "P1",
+          security: true,
+          category: "security",
+          path: "src/private.ts",
+          startLine: 8,
+          line: 10,
+          body: "A tenant boundary is missing.",
+        }),
+        isNew: true,
+      };
+      const original = structuredClone(finding);
+      const input = {
+        state: "findings" as const,
+        platform,
+        findings: [finding],
+        repositoryUrl: "https://example.com/group/repo",
+        head: "a".repeat(40),
+        includeAgentPrompts: false,
+        includeCategories: true,
+      };
+      const source = `${input.repositoryUrl}/${platform === "gitlab" ? "-/blob" : "blob"}/${input.head}/src/private.ts#L8-${platform === "gitlab" ? "" : "L"}10`;
+      const thread = `${input.repositoryUrl}/${platform === "gitlab" ? "-/merge_requests" : "pull"}/42#${platform === "gitlab" ? "note_" : "discussion_r"}123`;
+      for (const render of [renderReviewSummary, renderStepSummary]) {
+        const body = render(input);
+        expect(body).toContain(`[${finding.title}](${source}) · New`);
+        expect(body).toContain('alt="P1"');
+        expect(body).toContain('alt="Security"');
+        expect(body).toContain(" · <code>security</code>");
+        expect(body).not.toContain("<code>src/private.ts:8-10</code>");
+        expect(
+          render({ ...input, findings: [{ ...finding, threadUrl: thread }] }),
+        ).toContain(`[${finding.title}](${thread}) · New`);
+        expect(
+          render({
+            ...input,
+            findings: [{ ...finding, threadUrl: "javascript:alert(1)" }],
+          }),
+        ).toContain(`[${finding.title}](${source}) · New`);
+        expect(
+          render({ ...input, findings: [{ ...finding, threadId: 123 }] }),
+        ).toContain(
+          `[${finding.title}](#${platform === "gitlab" ? "note_" : "discussion_r"}123)`,
+        );
+        const outside = render({
+          ...input,
+          findings: [{ ...finding, outside_diff: true }],
+        });
+        expect(outside).toContain("### Outside the diff (1)");
+        expect(outside).toContain(`[${finding.title}](${source}) · New`);
+        expect(outside).not.toContain("<code>src/private.ts:8-10</code>");
+      }
+      expect(finding).toEqual(original);
     });
   }
 });

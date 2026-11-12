@@ -13,13 +13,13 @@ Two issues affect recovery and tenant isolation.
 
 **2 open findings** · \`P1: 2\` · \`Security: 1\`
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40) · New
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · New
 
 ### Outside the diff (1)
 
 These findings cannot be anchored to a changed line.
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> <sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub> Legacy webhooks accept signatures from a different tenant · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88) · New
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> <sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub> [Legacy webhooks accept signatures from a different tenant](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88) · New
 
   The legacy route verifies the global key rather than the tenant key, allowing a signed payload to cross tenant boundaries.
 
@@ -80,13 +80,13 @@ Two issues affect recovery and tenant isolation.
 
 **2 open findings** · \`P1: 2\` · \`Security: 1\`
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/0123456789012345678901234567890123456789/src/storage/cacheStore.ts#L27-L40) · New
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · New
 
 ### Outside the diff (1)
 
 These findings cannot be anchored to a changed line.
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> <sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub> Legacy webhooks accept signatures from a different tenant · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/0123456789012345678901234567890123456789/src/api/legacy/hooks.ts#L88) · New
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> <sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub> [Legacy webhooks accept signatures from a different tenant](https://github.com/example/repo/blob/0123456789012345678901234567890123456789/src/api/legacy/hooks.ts#L88) · New
 
   The legacy route verifies the global key rather than the tenant key, allowing a signed payload to cross tenant boundaries.
 
@@ -192,13 +192,13 @@ Two issues affect recovery and tenant isolation.
 
 **2 open findings** · \`P1: 2\` · \`Security: 1\`
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40) · New
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · New
 
 ### Outside the diff (1)
 
 These findings cannot be anchored to a changed line.
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> <sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub> Legacy webhooks accept signatures from a different tenant · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88) · New
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> <sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub> [Legacy webhooks accept signatures from a different tenant](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88) · New
 
   The legacy route verifies the global key rather than the tenant key, allowing a signed payload to cross tenant boundaries.
 
@@ -285,12 +285,12 @@ Two issues affect recovery and tenant isolation.
 
 **2 open findings** · \`P1: 2\` · \`Security: 1\`
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40)
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178)
 
 <details>
 <summary>Still open from earlier reviews</summary>
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40)
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178)
 
 </details>
 
@@ -305,7 +305,7 @@ Two issues affect recovery and tenant isolation.
 
 These findings cannot be anchored to a changed line.
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> <sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub> Legacy webhooks accept signatures from a different tenant · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88)
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> <sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub> [Legacy webhooks accept signatures from a different tenant](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88)
 
   The legacy route verifies the global key rather than the tenant key, allowing a signed payload to cross tenant boundaries.
 
@@ -370,13 +370,13 @@ Two issues affect recovery and tenant isolation.
 
 **2 open findings** · \`P1: 2\` · \`Security: 1\`
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40) · New
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · New
 
 ### Outside the diff (1)
 
 These findings cannot be anchored to a changed line.
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> <sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub> Legacy webhooks accept signatures from a different tenant · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88) · New
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> <sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub> [Legacy webhooks accept signatures from a different tenant](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88) · New
 
   The legacy route verifies the global key rather than the tenant key, allowing a signed payload to cross tenant boundaries.
 
@@ -560,13 +560,13 @@ Two issues affect recovery and tenant isolation.
 
 **2 open findings** · \`P1: 2\` · \`Security: 1\`
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40) · New
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · New
 
 ### Outside the diff (1)
 
 These findings cannot be anchored to a changed line.
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> <sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub> Legacy webhooks accept signatures from a different tenant · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88) · New
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> <sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub> [Legacy webhooks accept signatures from a different tenant](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88) · New
 
   The legacy route verifies the global key rather than the tenant key, allowing a signed payload to cross tenant boundaries.
 
@@ -656,13 +656,13 @@ Two issues affect recovery and tenant isolation.
 
 **2 open findings** · \`P1: 2\` · \`Security: 1\`
 
-- 🟠 P1 [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40) · New
+- 🟠 P1 [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · New
 
 ### Outside the diff (1)
 
 These findings cannot be anchored to a changed line.
 
-- 🟠 P1 🔒 Security Legacy webhooks accept signatures from a different tenant · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88) · New
+- 🟠 P1 🔒 Security [Legacy webhooks accept signatures from a different tenant](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88) · New
 
   The legacy route verifies the global key rather than the tenant key, allowing a signed payload to cross tenant boundaries.
 
@@ -722,13 +722,13 @@ Two issues affect recovery and tenant isolation.
 
 **2 open findings** · \`P1: 2\` · \`Security: 1\`
 
-- \`P1\` [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40) · New
+- \`P1\` [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · New
 
 ### Outside the diff (1)
 
 These findings cannot be anchored to a changed line.
 
-- \`P1\` \`Security\` Legacy webhooks accept signatures from a different tenant · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88) · New
+- \`P1\` \`Security\` [Legacy webhooks accept signatures from a different tenant](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88) · New
 
   The legacy route verifies the global key rather than the tenant key, allowing a signed payload to cross tenant boundaries.
 
@@ -788,13 +788,13 @@ Two issues affect recovery and tenant isolation.
 
 **2 open findings** · \`P1: 2\` · \`Security: 1\`
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40) · New
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · New
 
 ### Outside the diff (1)
 
 These findings cannot be anchored to a changed line.
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> <sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub> Legacy webhooks accept signatures from a different tenant · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88) · New
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> <sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub> [Legacy webhooks accept signatures from a different tenant](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88) · New
 
   The legacy route verifies the global key rather than the tenant key, allowing a signed payload to cross tenant boundaries.
 
@@ -839,13 +839,13 @@ Two issues affect recovery and tenant isolation.
 
 **2 open findings** · \`P1: 2\` · \`Security: 1\`
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40) · New
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · New
 
 ### Outside the diff (1)
 
 These findings cannot be anchored to a changed line.
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> <sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub> Legacy webhooks accept signatures from a different tenant · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88) · New
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> <sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub> [Legacy webhooks accept signatures from a different tenant](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88) · New
 
   The legacy route verifies the global key rather than the tenant key, allowing a signed payload to cross tenant boundaries.
 
@@ -900,13 +900,13 @@ Two issues affect recovery and tenant isolation.
 
 **2 open findings** · \`P1: 2\` · \`Security: 1\`
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · [<code>src/storage/cacheStore.ts:27-40</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-L40) · New
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://github.com/example/repo/pull/42#discussion_r4405524178) · New
 
 ### Outside the diff (1)
 
 These findings cannot be anchored to a changed line.
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> <sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub> Legacy webhooks accept signatures from a different tenant · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88) · New
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> <sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub> [Legacy webhooks accept signatures from a different tenant](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88) · New
 
   The legacy route verifies the global key rather than the tenant key, allowing a signed payload to cross tenant boundaries.
 
@@ -966,13 +966,13 @@ Two issues affect recovery and tenant isolation.
 
 **2 open findings** · \`P1: 2\` · \`Security: 1\`
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://gitlab.example.com/group/project/-/merge_requests/42#note_456) · [<code>src/storage/cacheStore.ts:27-40</code>](https://gitlab.example.com/group/project/-/blob/9ea6c830123456789abcdef0123456789abcdef012/src/storage/cacheStore.ts#L27-40) · New
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> [Redis clients never reconnect after a disconnect](https://gitlab.example.com/group/project/-/merge_requests/42#note_456) · New
 
 ### Outside the diff (1)
 
 These findings cannot be anchored to a changed line.
 
-- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> <sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub> Legacy webhooks accept signatures from a different tenant · [<code>src/api/legacy/hooks.ts:88</code>](https://gitlab.example.com/group/project/-/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88) · New
+- <sub><img alt="P1" src="https://img.shields.io/badge/P1-orange" height="18" align="top"></sub> <sub><img alt="Security" src="https://img.shields.io/badge/Security-blue" height="18" align="top"></sub> [Legacy webhooks accept signatures from a different tenant](https://gitlab.example.com/group/project/-/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88) · New
 
   The legacy route verifies the global key rather than the tenant key, allowing a signed payload to cross tenant boundaries.
 

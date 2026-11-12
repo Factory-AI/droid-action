@@ -20,6 +20,7 @@ import {
   prose,
   redactSecrets,
   relativeTime,
+  safeUrl,
   shortSha,
   stripSummaryMarkers,
   tablePath,
@@ -141,11 +142,14 @@ function findingRow(
   compact = false,
 ): string {
   const target =
-    f.threadUrl ??
+    safeUrl(f.threadUrl) ??
     (typeof f.threadId === "number"
       ? `#${options.platform === "gitlab" ? "note_" : "discussion_r"}${f.threadId}`
-      : undefined);
-  return `- ${compact ? "" : `${badges(f, options)} `}${link(title(f), target)} · ${findingReference(f, options)}${!compact && f.isNew ? " · New" : ""}${options.includeCategories && f.category ? ` · ${inlineCode(f.category)}` : ""}`;
+      : locationUrl(
+          findingLocation(f),
+          f.side === "LEFT" ? { ...options, head: options.base } : options,
+        ));
+  return `- ${compact ? "" : `${badges(f, options)} `}${link(title(f), target)}${!compact && f.isNew ? " · New" : ""}${options.includeCategories && f.category ? ` · ${inlineCode(f.category)}` : ""}`;
 }
 export function renderCountsTable(findings: ReviewFinding[]): string {
   if (!findings.length) return "";
