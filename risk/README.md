@@ -121,7 +121,9 @@ tests), so the action limits what it is given:
   `XDG_CONFIG_HOME`, the Factory API key, and a GitHub token for `gh`.
 - That GitHub token is minted for this run with read access to contents,
   pull requests, issues, checks and statuses, and is revoked when the run
-  ends. Neither the workflow token nor any token input reaches the session.
+  ends. Neither the workflow token nor any token input reaches the session,
+  and a `GITHUB_TOKEN` or `GH_TOKEN` set in the job's environment is not
+  read.
 - The OIDC request credentials are removed from the step before the session
   starts.
 - The two steps that run after the judge (revoking the token and reporting

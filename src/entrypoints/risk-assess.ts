@@ -61,16 +61,15 @@ type AssessInputs = {
   judgeApiBaseUrl?: string;
 };
 
-function githubToken(env: NodeJS.ProcessEnv): string | undefined {
-  return env.GH_TOKEN?.trim() || env.GITHUB_TOKEN?.trim() || undefined;
-}
-
 async function actionInputs(env: NodeJS.ProcessEnv): Promise<AssessInputs> {
   return {
     plan: await readRiskPlan(riskPlanPath(env)),
     repoDir: requiredEnv("GITHUB_WORKSPACE", env),
     resultPath: riskResultPath(env),
-    githubToken: githubToken(env),
+    // Only the token the action passes in. The judge is handed whatever is
+    // read here, and a `GITHUB_TOKEN` in the job's environment is the
+    // caller's, which may write.
+    githubToken: env.GH_TOKEN?.trim() || undefined,
     droidBinary: env.DROID_BIN?.trim() || undefined,
     judgeApiBaseUrl: env.RISK_JUDGE_API_BASE_URL?.trim() || undefined,
   };
@@ -101,7 +100,7 @@ async function offlineInputs(
   if (!judgePath || !repo || !repoDir || !pr || !/^[1-9][0-9]*$/.test(pr)) {
     throw new RiskError("usage", OFFLINE_USAGE);
   }
-  const token = githubToken(env);
+  const token = env.GH_TOKEN?.trim() || env.GITHUB_TOKEN?.trim();
   if (!token) {
     throw new RiskError(
       "github_token_missing",

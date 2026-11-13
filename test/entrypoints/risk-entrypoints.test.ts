@@ -314,6 +314,25 @@ describe("risk action entrypoints", () => {
       expect((await stat(resultPath)).mode % 0o1000).toBe(0o600);
     });
 
+    it("does not read GitHub with a GITHUB_TOKEN the job happens to hold", async () => {
+      await mkdir(join(dir, "pr-risk"));
+      await writeFile(planPath, JSON.stringify(planFor()));
+
+      await assess(
+        [],
+        jobEnv({
+          GITHUB_WORKSPACE: dir,
+          DROID_BIN: join(dir, "no-such-droid"),
+          GH_TOKEN: "",
+          GITHUB_TOKEN: "workflow-token",
+        }),
+      );
+
+      expect(JSON.parse(await readFile(resultPath, "utf8"))).toMatchObject({
+        result: { status: "failed", reason: "github_token_missing" },
+      });
+    });
+
     it("rejects an offline run that does not say what to judge", async () => {
       await expect(
         assess(["--repo", "acme/app"], jobEnv()),
