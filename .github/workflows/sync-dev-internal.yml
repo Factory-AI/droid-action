@@ -27,9 +27,16 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          if ! gh api "repos/$GH_REPO/branches/dev-internal" --silent 2> /dev/null; then
-            echo "::notice::dev-internal does not exist; nothing to sync."
-            exit 0
+          # Only a 404 means the branch is gone. Any other failed lookup
+          # (5xx, rate limit, network) fails the job: skipping there would
+          # leave dev-internal behind dev with a green run.
+          if ! lookup=$(gh api "repos/$GH_REPO/branches/dev-internal" --jq '.name' 2>&1); then
+            if grep -q 'HTTP 404' <<< "$lookup"; then
+              echo "::notice::dev-internal does not exist; nothing to sync."
+              exit 0
+            fi
+            echo "::error::Could not look up dev-internal: ${lookup//$'\n'/ }"
+            exit 1
           fi
           # 201 is a new merge commit and 204 means dev-internal already
           # contains dev; gh exits non-zero for anything else.
