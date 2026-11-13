@@ -1,0 +1,19 @@
+.github/workflows/sync-dev-internal.yml
+  s_d57ffe6f0c2565::t_c3a0fe122fd34a 30-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a7c7ccdd344abf183bf227c48df6130d331d2268",
+  "prompts": {},
+  "sessions": {
+    "s_d57ffe6f0c2565": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "10b7e9f7-d375-417e-a6e9-afa38921bbc9",
+        "model": "unknown"
+      },
+      "human_author": "Mark Attar <mark.attar@factory.ai>"
+    }
+  }
+}
