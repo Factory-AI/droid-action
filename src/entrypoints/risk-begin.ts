@@ -25,6 +25,7 @@ import {
 } from "../core/risk/plan";
 import {
   RISK_DEFAULT_API_BASE_URL,
+  RISK_UNKNOWN_ACTION,
   RISK_WORKFLOW_NOT_TRUSTED,
   type RiskPlan,
 } from "../core/risk/types";
@@ -79,11 +80,17 @@ export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
 
   core.setOutput("action", response.action);
   if (response.action === "skip") {
-    core.notice(
-      response.reason === RISK_WORKFLOW_NOT_TRUSTED
-        ? `Factory does not accept PR risk requests from this workflow run (${RISK_WORKFLOW_NOT_TRUSTED}); nothing was assessed.`
-        : `PR risk assessment skipped for #${target.pr} (${response.reason}).`,
-    );
+    if (response.reason === RISK_UNKNOWN_ACTION) {
+      core.warning(
+        `Factory asked for something this version of the risk action does not know, so nothing was assessed for #${target.pr}. Update the action.`,
+      );
+    } else {
+      core.notice(
+        response.reason === RISK_WORKFLOW_NOT_TRUSTED
+          ? `Factory does not accept PR risk requests from this workflow run (${RISK_WORKFLOW_NOT_TRUSTED}); nothing was assessed.`
+          : `PR risk assessment skipped for #${target.pr} (${response.reason}).`,
+      );
+    }
     return;
   }
 

@@ -35,7 +35,7 @@ outputs:
     description: "What Factory asked this run to do: skip, hold or judge."
     value: ${{ steps.begin.outputs.action }}
   outcome:
-    description: "Set after a judge run: approve, doNotApprove, unavailable, stale_head, or failed when the result could not be reported."
+    description: "Set after a judge run: approve, doNotApprove, unavailable, stale_head, unknown when Factory answered in a way this version does not know, or failed when the result could not be reported."
     value: ${{ steps.settle.outputs.outcome }}
   head_sha:
     description: "The head commit Factory named for a hold or a judge run."

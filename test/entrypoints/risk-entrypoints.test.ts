@@ -201,6 +201,17 @@ describe("risk action entrypoints", () => {
       expect(await exists(resultPath)).toBe(false);
     });
 
+    it("judges nothing when Factory asks for something this version does not know", async () => {
+      serve({ action: "an_action_added_later", ...assignment });
+
+      await begin(
+        jobEnv({ GITHUB_EVENT_PATH: await eventFile(pullRequestEvent) }),
+      );
+
+      expect(outputs).toEqual({ action: "skip" });
+      expect(await exists(planPath)).toBe(false);
+      expect(failed).toEqual([]);
+    });
     it("reports the head of a hold without planning a judge run", async () => {
       serve({
         action: "hold",
@@ -391,6 +402,15 @@ describe("risk action entrypoints", () => {
       await settle(jobEnv());
 
       expect(outputs).toEqual({ outcome: "stale_head" });
+      expect(failed).toEqual([]);
+    });
+    it("claims no outcome when Factory answers with a status this version does not know", async () => {
+      serve({ status: "a_status_added_later", outcome: "approve" });
+      await writeFile(resultPath, JSON.stringify(judged));
+
+      await settle(jobEnv());
+
+      expect(outputs).toEqual({ outcome: "unknown" });
       expect(failed).toEqual([]);
     });
   });

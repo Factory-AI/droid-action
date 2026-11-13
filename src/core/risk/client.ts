@@ -6,6 +6,7 @@ import {
   RISK_OIDC_AUDIENCE,
   RISK_OIDC_HEADER,
   RISK_SETTLE_PATH,
+  RISK_UNKNOWN_ACTION,
   RISK_WORKFLOW_NOT_TRUSTED,
   RiskBeginResponseSchema,
   RiskError,
@@ -164,6 +165,21 @@ function parseAnswer<T>(
 }
 
 /**
+ * Whether Factory answered with a variant added after this version. Such an
+ * answer is not a malformed one: the caller reads it as the answer that does
+ * nothing, where a known variant with a bad field still fails.
+ */
+function namesUnknownVariant(
+  schema: { discriminator: string; optionsMap: Map<z.Primitive, unknown> },
+  body: unknown,
+): boolean {
+  const fields = z.record(z.unknown()).safeParse(body);
+  if (!fields.success) return false;
+  const tag = fields.data[schema.discriminator];
+  return typeof tag === "string" && !schema.optionsMap.has(tag);
+}
+
+/**
  * Asks Factory what to do with this pull request. A run Factory does not
  * trust to ask is a skip, not a failure: the same workflow file runs on
  * branches where that is expected.
@@ -191,6 +207,9 @@ export async function beginRisk(
     }
     throw error;
   }
+  if (namesUnknownVariant(RiskBeginResponseSchema, body)) {
+    return { action: "skip", reason: RISK_UNKNOWN_ACTION };
+  }
   return parseAnswer(RiskBeginResponseSchema, body, "begin");
 }
 
@@ -199,9 +218,15 @@ export async function settleRisk(
   request: RiskSettleRequest,
   options: RiskClientOptions,
 ): Promise<RiskSettleResponse> {
-  return parseAnswer(
-    RiskSettleResponseSchema,
-    await post(RISK_SETTLE_PATH, "settle", request, SETTLE_TIMEOUT_MS, options),
+  const body = await post(
+    RISK_SETTLE_PATH,
     "settle",
+    request,
+    SETTLE_TIMEOUT_MS,
+    options,
   );
+  if (namesUnknownVariant(RiskSettleResponseSchema, body)) {
+    return { status: "unknown" };
+  }
+  return parseAnswer(RiskSettleResponseSchema, body, "settle");
 }

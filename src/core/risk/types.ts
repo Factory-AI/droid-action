@@ -7,6 +7,7 @@ export const RISK_SETTLE_PATH = "/api/internal/pr-risk/settle";
 export const RISK_OIDC_AUDIENCE = "factory-pr-risk";
 export const RISK_OIDC_HEADER = "x-github-oidc-token";
 export const RISK_WORKFLOW_NOT_TRUSTED = "workflow_not_trusted";
+export const RISK_UNKNOWN_ACTION = "unknown_action";
 export const RISK_JUDGE_SKILL_NAME = "pr-risk-judge";
 export const RISK_SNAPSHOT_PLACEHOLDER = "{{PR_SNAPSHOT_JSON}}";
 export const RISK_SESSION_TAG = "riskAssessment";
@@ -106,13 +107,14 @@ const RiskJudgeAssignmentSchema = z.object({
 });
 
 // Reasons stay open strings and unknown keys are dropped, so Factory can add
-// either without breaking a pinned action.
+// either without breaking a pinned action. An action added later is read as
+// a skip, and a settle status added later as unknown, by the client.
 export const RiskBeginResponseSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("skip"), reason: z.string() }),
   z.object({
     action: z.literal("hold"),
     reason: z.string(),
-    headSha: CommitShaSchema,
+    headSha: z.string(),
   }),
   RiskJudgeAssignmentSchema.extend({ action: z.literal("judge") }),
 ]);
@@ -190,7 +192,9 @@ export const RiskSettleResponseSchema = z.discriminatedUnion("status", [
       .optional(),
   }),
 ]);
-export type RiskSettleResponse = z.infer<typeof RiskSettleResponseSchema>;
+export type RiskSettleResponse =
+  | z.infer<typeof RiskSettleResponseSchema>
+  | { status: "unknown" };
 
 export type PullRequestRiskFileStatus =
   | "added"

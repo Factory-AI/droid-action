@@ -170,6 +170,16 @@ describe("beginRisk", () => {
     });
   });
 
+  it("reads an action added after this version as a skip", async () => {
+    const { fetch } = stubFetch([
+      json(200, { action: "an_action_added_later", headSha: plan.headSha }),
+    ]);
+
+    expect(await beginRisk(beginRequest, clientOptions(fetch))).toEqual({
+      action: "skip",
+      reason: "unknown_action",
+    });
+  });
   it("names what it could not understand by path and code, never by value", async () => {
     const { fetch } = stubFetch([
       json(200, { ...judgeAnswer, headSha: "SERVED-VALUE" }),
@@ -281,6 +291,15 @@ describe("settleRisk", () => {
     });
   });
 
+  it("reads a status added after this version as unknown rather than as a failure", async () => {
+    const { fetch } = stubFetch([
+      json(200, { status: "a_status_added_later", outcome: "approve" }),
+    ]);
+
+    expect(await settleRisk(settleRequest, clientOptions(fetch))).toEqual({
+      status: "unknown",
+    });
+  });
   it("gives up after three attempts when no answer arrives, without quoting the transport error", async () => {
     const down = new TypeError("fetch failed for https://factory.example");
     const { calls, fetch } = stubFetch([down, down, down]);
