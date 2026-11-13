@@ -271,10 +271,10 @@ runs:
           GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" \
           "$TRUSTED_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$TRUSTED_TAIL_PATH"
       env:
-        TRUSTED_TAIL_PATH: ${{ steps.begin.outputs.settle_path }}
-        TRUSTED_TAIL_SHA256: ${{ steps.begin.outputs.settle_sha256 }}
-        TRUSTED_RUNTIME_PATH: ${{ steps.begin.outputs.runtime_path }}
-        TRUSTED_RUNTIME_SHA256: ${{ steps.begin.outputs.runtime_sha256 }}
+        TRUSTED_TAIL_PATH: ${{ steps.begin.outputs.review_settle_publisher_path }}
+        TRUSTED_TAIL_SHA256: ${{ steps.begin.outputs.review_settle_publisher_sha256 }}
+        TRUSTED_RUNTIME_PATH: ${{ steps.begin.outputs.review_runtime_path }}
+        TRUSTED_RUNTIME_SHA256: ${{ steps.begin.outputs.review_runtime_sha256 }}
         LD_AUDIT: ""
         LD_LIBRARY_PATH: ""
         LD_PRELOAD: ""

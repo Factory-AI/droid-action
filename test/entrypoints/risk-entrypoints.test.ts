@@ -155,12 +155,12 @@ describe("risk action entrypoints", () => {
       expect(outputs).toEqual({
         action: "judge",
         head_sha: plan.headSha,
-        settle_path: expect.stringMatching(/\/settle\.mjs$/),
-        settle_sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
-        runtime_path: expect.any(String),
-        runtime_sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+        review_settle_publisher_path: expect.stringMatching(/\/settle\.mjs$/),
+        review_settle_publisher_sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+        review_runtime_path: expect.any(String),
+        review_runtime_sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
       });
-      const settlePath = String(outputs.settle_path);
+      const settlePath = String(outputs.review_settle_publisher_path);
       frozen.push(dirname(settlePath));
       // Outside the checkout, so nothing the judge does to the action's files
       // reaches the copy the settle step runs.

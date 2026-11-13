@@ -14,7 +14,6 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parse } from "yaml";
-import { freezeRiskSettle } from "../src/core/risk/freeze";
 import { judge, planFor, validVerdict } from "./core/risk/fixtures";
 
 type Step = {
@@ -84,17 +83,9 @@ describe("risk action tail steps", () => {
       await chmod(path, 0o700);
     }
 
-    const settle = await freezeRiskSettle();
-    frozenDirs.push(dirname(settle.settlePath));
-    settleBindings = {
-      TRUSTED_TAIL_PATH: settle.settlePath,
-      TRUSTED_TAIL_SHA256: settle.settleSha256,
-      TRUSTED_RUNTIME_PATH: settle.runtimePath,
-      TRUSTED_RUNTIME_SHA256: settle.runtimeSha256,
-    };
-
-    // The token step freezes the revoke script through the helper the other
-    // actions share. It runs in its own process, as it does in the action.
+    // The begin step freezes the settle script and the token step the revoke
+    // script, both through the helper the other actions share. It runs in
+    // its own process, as it does in the action.
     const helper = pathToFileURL(
       join(root, "src", "prepare", "review-runtime.ts"),
     ).href;
@@ -104,24 +95,26 @@ describe("risk action tail steps", () => {
         "--config=/dev/null",
         "--env-file=/dev/null",
         "--eval",
-        `const { freezeReviewRuntime } = await import(${JSON.stringify(helper)}); console.log("__FROZEN__" + JSON.stringify(await freezeReviewRuntime(["revoke"])));`,
+        `const { freezeReviewRuntime } = await import(${JSON.stringify(helper)}); console.log("__FROZEN__" + JSON.stringify(await freezeReviewRuntime(["settle", "revoke"])));`,
       ],
       { cwd: dir, env: { PATH: "/usr/bin:/bin" }, stdout: "pipe" },
     );
     const frozenLine = (await new Response(freeze.stdout).text())
       .split("\n")
       .find((line) => line.startsWith("__FROZEN__"));
-    if (!frozenLine) throw new Error("The revoke script could not be frozen");
-    const revoke: Record<string, string | undefined> = JSON.parse(
+    if (!frozenLine) throw new Error("The tail scripts could not be frozen");
+    const frozen: Record<string, string | undefined> = JSON.parse(
       frozenLine.slice("__FROZEN__".length),
     );
-    frozenDirs.push(dirname(revoke.review_revoke_publisher_path ?? ""));
-    revokeBindings = {
-      TRUSTED_TAIL_PATH: revoke.review_revoke_publisher_path ?? "",
-      TRUSTED_TAIL_SHA256: revoke.review_revoke_publisher_sha256 ?? "",
-      TRUSTED_RUNTIME_PATH: revoke.review_runtime_path ?? "",
-      TRUSTED_RUNTIME_SHA256: revoke.review_runtime_sha256 ?? "",
-    };
+    frozenDirs.push(dirname(frozen.review_settle_publisher_path ?? ""));
+    const bindingsFor = (kind: "settle" | "revoke"): Bindings => ({
+      TRUSTED_TAIL_PATH: frozen[`review_${kind}_publisher_path`] ?? "",
+      TRUSTED_TAIL_SHA256: frozen[`review_${kind}_publisher_sha256`] ?? "",
+      TRUSTED_RUNTIME_PATH: frozen.review_runtime_path ?? "",
+      TRUSTED_RUNTIME_SHA256: frozen.review_runtime_sha256 ?? "",
+    });
+    settleBindings = bindingsFor("settle");
+    revokeBindings = bindingsFor("revoke");
 
     server = Bun.serve({
       hostname: "127.0.0.1",

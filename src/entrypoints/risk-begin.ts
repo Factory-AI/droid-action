@@ -10,7 +10,6 @@
 import * as core from "@actions/core";
 import { rm } from "node:fs/promises";
 import { beginRisk, getRiskOidcToken } from "../core/risk/client";
-import { freezeRiskSettle } from "../core/risk/freeze";
 import {
   buildRiskRun,
   describeFailure,
@@ -29,6 +28,7 @@ import {
   RISK_WORKFLOW_NOT_TRUSTED,
   type RiskPlan,
 } from "../core/risk/types";
+import { freezeReviewRuntime } from "../prepare/review-runtime";
 
 export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
   const repo = requiredEnv("GITHUB_REPOSITORY", env);
@@ -104,11 +104,7 @@ export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
 
   // Frozen before the plan exists: a run whose settle step could not be
   // pinned never starts a judge.
-  const frozen = await freezeRiskSettle();
-  core.setOutput("settle_path", frozen.settlePath);
-  core.setOutput("settle_sha256", frozen.settleSha256);
-  core.setOutput("runtime_path", frozen.runtimePath);
-  core.setOutput("runtime_sha256", frozen.runtimeSha256);
+  await freezeReviewRuntime(["settle"]);
 
   const { action: _action, ...assignment } = response;
   const plan: RiskPlan = { repo, pr: target.pr, run: riskRun, ...assignment };

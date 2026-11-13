@@ -44,6 +44,8 @@ describe("trusted review publisher artifacts", () => {
       const outputs: Record<string, string> = JSON.parse(
         line!.slice("__OUTPUTS__".length),
       );
+      // The risk action's settle step is frozen only when asked for by name.
+      expect(outputs.review_settle_publisher_path).toBeUndefined();
       const directory = dirname(outputs.review_lifecycle_publisher_path!);
       try {
         for (const kind of [

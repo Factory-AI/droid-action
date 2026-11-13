@@ -124,10 +124,13 @@ describe("risk action wiring", () => {
         "${{ steps.token.outputs.review_runtime_sha256 }}",
     });
     expect(step("settle").env).toMatchObject({
-      TRUSTED_TAIL_PATH: "${{ steps.begin.outputs.settle_path }}",
-      TRUSTED_TAIL_SHA256: "${{ steps.begin.outputs.settle_sha256 }}",
-      TRUSTED_RUNTIME_PATH: "${{ steps.begin.outputs.runtime_path }}",
-      TRUSTED_RUNTIME_SHA256: "${{ steps.begin.outputs.runtime_sha256 }}",
+      TRUSTED_TAIL_PATH:
+        "${{ steps.begin.outputs.review_settle_publisher_path }}",
+      TRUSTED_TAIL_SHA256:
+        "${{ steps.begin.outputs.review_settle_publisher_sha256 }}",
+      TRUSTED_RUNTIME_PATH: "${{ steps.begin.outputs.review_runtime_path }}",
+      TRUSTED_RUNTIME_SHA256:
+        "${{ steps.begin.outputs.review_runtime_sha256 }}",
     });
   });
 
