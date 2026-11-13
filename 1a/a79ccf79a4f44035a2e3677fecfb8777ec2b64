@@ -1,0 +1,19 @@
+test/entrypoints/risk-entrypoints.test.ts
+  s_a1522e7de1652e::t_c4cedbcbafcd1e 328-330,332-335,342
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1aa79ccf79a4f44035a2e3677fecfb8777ec2b64",
+  "prompts": {},
+  "sessions": {
+    "s_a1522e7de1652e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "0c6403ca-2018-4611-b3c9-ab3bf1e8092c",
+        "model": "unknown"
+      },
+      "human_author": "Mark Attar <mark.attar@factory.ai>"
+    }
+  }
+}
