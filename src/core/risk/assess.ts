@@ -142,7 +142,6 @@ export async function assessPullRequest(
     return {
       status: "failed",
       reason,
-      judgeSha256: plan.judge.sha256,
       ...(attempts.length > 0 ? { attempts } : {}),
       durationMs: Date.now() - startedAt,
     };

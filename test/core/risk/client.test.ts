@@ -81,11 +81,7 @@ const settleRequest: RiskSettleRequest = {
   pr: 123,
   headSha: plan.headSha,
   run: plan.run,
-  result: {
-    status: "failed",
-    reason: "judge_timeout",
-    judgeSha256: judge.sha256,
-  },
+  result: { status: "failed", reason: "judge_timeout" },
 };
 
 afterEach(() => {

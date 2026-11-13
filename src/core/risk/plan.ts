@@ -215,10 +215,7 @@ export function buildSettleRequest(
         ? { droidCliVersion: file.droidCliVersion }
         : {}),
     },
-    result:
-      file.result.status === "failed" && !file.result.judgeSha256
-        ? { ...file.result, judgeSha256: plan.judge.sha256 }
-        : file.result,
+    result: file.result,
   };
   if (
     Buffer.byteLength(JSON.stringify(request)) <= RISK_SETTLE_MAX_BODY_BYTES
@@ -227,10 +224,6 @@ export function buildSettleRequest(
   }
   return {
     ...request,
-    result: {
-      status: "failed",
-      reason: "result_too_large",
-      judgeSha256: plan.judge.sha256,
-    },
+    result: { status: "failed", reason: "result_too_large" },
   };
 }

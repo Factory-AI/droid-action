@@ -110,7 +110,6 @@ describe("assessPullRequest", () => {
     expect(result).toMatchObject({
       status: "failed",
       reason: "invalid_pr_risk_verdict",
-      judgeSha256: judge.sha256,
       attempts: [
         { valid: false, invalidReason: "no_json" },
         { valid: false, invalidReason: "no_json" },
@@ -136,12 +135,11 @@ describe("assessPullRequest", () => {
       },
     });
 
-    expect(result).toMatchObject({
+    expect(result).toEqual({
       status: "failed",
       reason: "evidence_git_failed",
-      judgeSha256: judge.sha256,
+      durationMs: expect.any(Number),
     });
-    expect(result).not.toHaveProperty("attempts");
     expect(asked).toBe(false);
   });
 
@@ -156,7 +154,6 @@ describe("assessPullRequest", () => {
     ).toEqual({
       status: "failed",
       reason: "github_token_missing",
-      judgeSha256: judge.sha256,
       durationMs: expect.any(Number),
     });
   });

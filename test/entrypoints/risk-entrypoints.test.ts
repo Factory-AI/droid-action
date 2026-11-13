@@ -306,7 +306,6 @@ describe("risk action entrypoints", () => {
         result: {
           status: "failed",
           reason: "github_token_missing",
-          judgeSha256: judge.sha256,
           durationMs: expect.any(Number),
         },
       });
@@ -398,13 +397,12 @@ describe("risk action entrypoints", () => {
 
       await settle(jobEnv());
 
-      expect(received[0]?.body).toMatchObject({
+      expect(received[0]?.body).toEqual({
+        repo: "acme/app",
+        pr: 123,
         headSha: plan.headSha,
-        result: {
-          status: "failed",
-          reason: "runner_died",
-          judgeSha256: judge.sha256,
-        },
+        run: plan.run,
+        result: { status: "failed", reason: "runner_died" },
       });
       expect(outputs).toEqual({ outcome: "unavailable" });
       expect(failed).toEqual([

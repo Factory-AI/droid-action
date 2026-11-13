@@ -277,16 +277,12 @@ describe("buildSettleRequest", () => {
     });
   });
 
-  it("names the judge on a failure that was recorded without one", () => {
+  it("reports a failure as it was recorded, without naming the judge", () => {
     expect(
       buildSettleRequest(plan, {
         result: { status: "failed", reason: "runner_died" },
       }).result,
-    ).toEqual({
-      status: "failed",
-      reason: "runner_died",
-      judgeSha256: judge.sha256,
-    });
+    ).toEqual({ status: "failed", reason: "runner_died" });
   });
 
   it("settles a result too large to send as a failure instead of dropping it", () => {
@@ -306,7 +302,6 @@ describe("buildSettleRequest", () => {
     expect(request.result).toEqual({
       status: "failed",
       reason: "result_too_large",
-      judgeSha256: judge.sha256,
     });
     expect(request.headSha).toBe(plan.headSha);
   });

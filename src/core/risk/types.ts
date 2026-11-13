@@ -155,7 +155,6 @@ export const RiskSettleResultSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("failed"),
     reason: z.string().regex(FAILURE_REASON),
-    judgeSha256: Sha256Schema.optional(),
     attempts: z.array(RiskJudgeAttemptSchema).optional(),
     durationMs: z.number().int().nonnegative().optional(),
   }),
