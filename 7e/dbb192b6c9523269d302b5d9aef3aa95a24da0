@@ -1,0 +1,33 @@
+risk/README.md
+  s_d57ffe6f0c2565::t_96504c8c6b5e60 90-94,99-101
+risk/action.yml
+  s_d57ffe6f0c2565::t_12b1af71969503 38
+src/core/risk/client.ts
+  s_d57ffe6f0c2565::t_a9243251121cb6 9,167-181,210-212,221-222,224-226,228-231
+src/core/risk/types.ts
+  s_d57ffe6f0c2565::t_6ae1f9f8eaf92e 10,110-111,117,195-197
+src/entrypoints/risk-begin.ts
+  s_d57ffe6f0c2565::t_fc19001b0c1d07 28,83-93
+src/entrypoints/risk-settle.ts
+  s_d57ffe6f0c2565::t_3bc31caab628ea 43-50
+test/core/risk/client.test.ts
+  s_d57ffe6f0c2565::t_c83d96761445fe 173-182,294-302
+test/entrypoints/risk-entrypoints.test.ts
+  s_d57ffe6f0c2565::t_e91be9837e5b2a 204-214,407-415
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7edbb192b6c9523269d302b5d9aef3aa95a24da0",
+  "prompts": {},
+  "sessions": {
+    "s_d57ffe6f0c2565": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "10b7e9f7-d375-417e-a6e9-afa38921bbc9",
+        "model": "unknown"
+      },
+      "human_author": "Mark Attar <mark.attar@factory.ai>"
+    }
+  }
+}
