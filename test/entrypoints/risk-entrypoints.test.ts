@@ -325,14 +325,21 @@ describe("risk action entrypoints", () => {
     });
 
     it("does not read GitHub with a GITHUB_TOKEN the job happens to hold", async () => {
+      // A real run whose read-only token could not be minted: the action
+      // passes an empty GH_TOKEN, and the job exports its own token.
+      const plan = planFor();
       await mkdir(join(dir, "pr-risk"));
-      await writeFile(planPath, JSON.stringify(planFor()));
+      await writeFile(
+        planPath,
+        JSON.stringify({ ...plan, run: { ...plan.run, dryRun: false } }),
+      );
 
       await assess(
         [],
         jobEnv({
           GITHUB_WORKSPACE: dir,
           DROID_BIN: join(dir, "no-such-droid"),
+          RISK_DRY_RUN: "false",
           GH_TOKEN: "",
           GITHUB_TOKEN: "workflow-token",
         }),
