@@ -1,0 +1,73 @@
+risk/README.md
+  s_d57ffe6f0c2565::t_509e99f6663c3a 1-175
+risk/action.yml
+  s_d57ffe6f0c2565::t_d1622e9432fc5b 1-289
+src/core/risk/assess.ts
+  s_d57ffe6f0c2565::t_e7b8aa419dc48d 1-169
+src/core/risk/client.ts
+  s_d57ffe6f0c2565::t_cba1f05856464b 1-207
+src/core/risk/evidence.ts
+  s_d57ffe6f0c2565::t_c7de9bbcb82d1c 1-319
+src/core/risk/freeze.ts
+  s_d57ffe6f0c2565::t_83b1de2591cced 1-55
+src/core/risk/github.ts
+  s_d57ffe6f0c2565::t_a56fe43f8e6ec4 1-154
+src/core/risk/judge.ts
+  s_d57ffe6f0c2565::t_4f93f8feb09cc5 1-298
+src/core/risk/plan.ts
+  s_d57ffe6f0c2565::t_b3ad5e242bcfa7 1-236
+src/core/risk/snapshot.ts
+  s_d57ffe6f0c2565::t_ab90b89ddcd543 1-116
+src/core/risk/types.ts
+  s_d57ffe6f0c2565::t_59c4d2fd273f23 1-262
+src/core/risk/verdict.ts
+  s_d57ffe6f0c2565::t_d5e7f7eaf53801 1-162
+src/entrypoints/risk-assess.ts
+  s_d57ffe6f0c2565::t_e0b4c095cded17 1-196
+src/entrypoints/risk-begin.ts
+  s_d57ffe6f0c2565::t_f64ccdc9a6249a 1-119
+src/entrypoints/risk-settle.ts
+  s_d57ffe6f0c2565::t_5b7876996749db 1-73
+src/github/token-permissions.ts
+  s_d57ffe6f0c2565::t_2178626f2bf172 9-11,15,19
+test/core/risk/assess.test.ts
+  s_d57ffe6f0c2565::t_fb5914a9a23d7f 1-193
+test/core/risk/client.test.ts
+  s_d57ffe6f0c2565::t_8fa0a1c8444d29 1-320
+test/core/risk/evidence.test.ts
+  s_d57ffe6f0c2565::t_d599cfe4e5faf9 1-426
+test/core/risk/fixtures.ts
+  s_d57ffe6f0c2565::t_32de4c3872f671 1-145
+test/core/risk/judge.test.ts
+  s_d57ffe6f0c2565::t_66cf285862d07e 1-394
+test/core/risk/plan.test.ts
+  s_d57ffe6f0c2565::t_79ffa8385e48ab 1-314
+test/core/risk/snapshot.test.ts
+  s_d57ffe6f0c2565::t_ae1262f1c2dc7d 1-124
+test/credential-exposure-wiring.test.ts
+  s_d57ffe6f0c2565::t_e8abeafcd8e4d8 22
+test/entrypoints/risk-entrypoints.test.ts
+  s_d57ffe6f0c2565::t_1f98d0ecfaafdb 1-397
+test/github/token-permissions.test.ts
+  s_d57ffe6f0c2565::t_3b9623fe882afb 139-152
+test/risk-action-wiring.test.ts
+  s_d57ffe6f0c2565::t_5b534e47121a1a 1-166
+test/risk-tail-runtime.test.ts
+  s_d57ffe6f0c2565::t_26ca1ea60071a0 1-345
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eedf2a7cfb02b08d031d7fb21ea79f2f1f16e84b",
+  "prompts": {},
+  "sessions": {
+    "s_d57ffe6f0c2565": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "10b7e9f7-d375-417e-a6e9-afa38921bbc9",
+        "model": "unknown"
+      },
+      "human_author": "Mark Attar <mark.attar@factory.ai>"
+    }
+  }
+}
