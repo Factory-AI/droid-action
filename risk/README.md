@@ -87,15 +87,17 @@ request of a `workflow_run` event, or from `pr_number`.
 
 ## Outputs
 
-| Output     | Description                                                                                                                                  |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `action`   | What Factory asked this run to do: `skip`, `hold` or `judge`.                                                                                |
-| `outcome`  | Set after a judge run: `approve`, `doNotApprove`, `unavailable`, `stale_head`, `unknown`, or `failed` when the result could not be reported. |
-| `head_sha` | The head commit Factory named for a `hold` or a `judge` run.                                                                                 |
+| Output     | Description                                                                                                                                             |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `action`   | What Factory asked this run to do: `skip`, `hold` or `judge`.                                                                                           |
+| `outcome`  | Set after a judge run: `approve`, `doNotApprove`, `unavailable`, `stale_head`, `skipped`, `unknown`, or `failed` when the result could not be reported. |
+| `head_sha` | The head commit Factory named for a `hold` or a `judge` run.                                                                                            |
 
 The step fails when the outcome is `unavailable` or the result could not be
 reported. `stale_head` means the pull request moved on while it was being
 judged; nothing is published and the run for the newer head owns the result.
+`skipped` means Factory took the report and published nothing; the step
+passes and the job log gives Factory's reason.
 `unknown` means Factory answered with a status added after this version of
 the action; the step passes with a warning, and an action Factory asks for
 that this version does not know is likewise a `skip` with a warning.

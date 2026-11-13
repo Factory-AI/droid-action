@@ -287,6 +287,21 @@ describe("settleRisk", () => {
     });
   });
 
+  it("reads a report Factory took without publishing as skipped, whatever the reason", async () => {
+    const { fetch } = stubFetch([
+      json(200, {
+        status: "skipped",
+        reason: "a_reason_added_later",
+        addedLater: { anything: true },
+      }),
+    ]);
+
+    expect(await settleRisk(settleRequest, clientOptions(fetch))).toEqual({
+      status: "skipped",
+      reason: "a_reason_added_later",
+    });
+  });
+
   it("reads a status added after this version as unknown rather than as a failure", async () => {
     const { fetch } = stubFetch([
       json(200, { status: "a_status_added_later", outcome: "approve" }),

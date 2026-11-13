@@ -178,6 +178,7 @@ export type RiskSettleRequest = {
 
 export const RiskSettleResponseSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("stale_head"), headSha: z.string() }),
+  z.object({ status: z.literal("skipped"), reason: z.string() }),
   z.object({
     status: z.literal("published"),
     outcome: z.string(),

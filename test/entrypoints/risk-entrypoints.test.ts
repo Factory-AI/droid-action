@@ -419,6 +419,19 @@ describe("risk action entrypoints", () => {
       expect(outputs).toEqual({ outcome: "stale_head" });
       expect(failed).toEqual([]);
     });
+    it("passes with a notice when Factory takes the report and publishes nothing", async () => {
+      const notice = spyOn(core, "notice").mockImplementation(() => {});
+      serve({ status: "skipped", reason: "not_enabled" });
+
+      await settle(jobEnv());
+
+      expect(outputs).toEqual({ outcome: "skipped" });
+      expect(failed).toEqual([]);
+      expect(notice).toHaveBeenCalledWith(
+        `Factory published nothing for ${plan.headSha} (not_enabled).`,
+      );
+    });
+
     it("claims no outcome when Factory answers with a status this version does not know", async () => {
       serve({ status: "a_status_added_later", outcome: "approve" });
       await writeFile(resultPath, JSON.stringify(judged));

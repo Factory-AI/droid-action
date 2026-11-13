@@ -40,6 +40,14 @@ export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
     return;
   }
 
+  if (response.status === "skipped") {
+    core.notice(
+      `Factory published nothing for ${plan.headSha} (${response.reason}).`,
+    );
+    core.setOutput("outcome", "skipped");
+    return;
+  }
+
   if (response.status === "unknown") {
     core.warning(
       `Factory answered in a way this version of the risk action does not know, so this run cannot say what came of ${plan.headSha}. Update the action.`,
