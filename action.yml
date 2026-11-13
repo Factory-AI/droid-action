@@ -271,6 +271,28 @@ inputs:
     required: false
     default: ""
 
+  # Risk assessment: a second phase of the same job, after the review.
+  risk_assessment:
+    description: "Run Factory risk assessment after the review phase. The Factory backend decides whether a pull request head is assessed and settles the outcome; the action runs the judge it is handed. Effective default false."
+    required: false
+    default: "false"
+  risk_pr_number:
+    description: "Pull request to assess on workflow_dispatch. Ignored on pull_request events, which name their own."
+    required: false
+    default: ""
+  risk_dry_run:
+    description: "Publish the risk comment only and leave the approval review untouched. Effective default false."
+    required: false
+    default: "false"
+  risk_factory_api_key:
+    description: "Factory API key for the risk phase. Empty uses factory_api_key."
+    required: false
+    default: ""
+  risk_api_base_url:
+    description: "Factory API host for the risk phase, such as a preview backend. Empty uses https://api.factory.ai."
+    required: false
+    default: ""
+
 outputs:
   github_token:
     description: "The GitHub token used by the action. A Factory Droid App token the action minted is revoked when the action finishes, so later steps that need a token should pass their own github_token."
@@ -1593,6 +1615,251 @@ runs:
         DROID_VALIDATOR_ERROR_MESSAGE: ${{ steps.droid_validator.outputs.error_message || '' }}
         DROID_POST_ERROR_MESSAGE: ${{ steps.post_review.outputs.error_message || '' }}
         PREPARE_ERROR: ${{ steps.prepare.outputs.prepare_error || '' }}
+
+    # Risk assessment: a second phase of the same job, off unless
+    # risk_assessment is true. The Factory backend decides whether this head
+    # is assessed and settles the outcome; these steps ask, run the judge they
+    # are handed, and send its raw answer back. Each step runs code frozen
+    # before the first model started, and none stops the job by itself: the
+    # last step fails it when the plan could not be asked for, or when an
+    # assessment was attempted and nothing was published.
+    - name: Risk assessment plan
+      id: risk_plan
+      if: ${{ !cancelled() && inputs.risk_assessment == 'true' }}
+      continue-on-error: true
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
+      run: |
+        set -euo pipefail
+        for path in "${TRUSTED_TAIL_PATH:-}" "${TRUSTED_RUNTIME_PATH:-}"; do
+          case "$path" in /*) ;; *) echo "::warning::Trusted risk assessment runtime is unavailable; refusing a mutable fallback"; exit 1 ;; esac
+          if [ ! -f "$path" ] || [ -L "$path" ]; then
+            echo "::warning::Refusing a missing or symlinked risk assessment executable"
+            exit 1
+          fi
+        done
+        if [[ ! "${TRUSTED_TAIL_SHA256:-}" =~ ^[a-f0-9]{64}$ ]] || [[ ! "${TRUSTED_RUNTIME_SHA256:-}" =~ ^[a-f0-9]{64}$ ]]; then
+          echo "::warning::Missing trusted risk assessment executable digest"
+          exit 1
+        fi
+        if [ -x /usr/bin/sha256sum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/sha256sum --)
+        elif [ -x /usr/bin/shasum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/shasum -a256 --)
+        else
+          echo "No trusted SHA-256 verifier is available; refusing execution"
+          exit 1
+        fi
+        publisher_hash=$("${digest_command[@]}" "$TRUSTED_TAIL_PATH")
+        runtime_hash=$("${digest_command[@]}" "$TRUSTED_RUNTIME_PATH")
+        if [ "${publisher_hash%% *}" != "$TRUSTED_TAIL_SHA256" ] || [ "${runtime_hash%% *}" != "$TRUSTED_RUNTIME_SHA256" ]; then
+          echo "::warning::Risk assessment executable or runtime changed; refusing to execute"
+          exit 1
+        fi
+        /usr/bin/env -i \
+          PATH=/usr/bin:/bin \
+          GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" RUNNER_TEMP="${RUNNER_TEMP:-}" \
+          GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" \
+          RISK_EVENT_ACTION="${RISK_EVENT_ACTION:-}" RISK_EVENT_PR_NUMBER="${RISK_EVENT_PR_NUMBER:-}" RISK_EVENT_HEAD_SHA="${RISK_EVENT_HEAD_SHA:-}" RISK_EVENT_HEAD_REPO="${RISK_EVENT_HEAD_REPO:-}" \
+          RISK_PR_NUMBER="${RISK_PR_NUMBER:-}" RISK_DRY_RUN="${RISK_DRY_RUN:-}" \
+          FACTORY_API_KEY="${FACTORY_API_KEY:-}" FACTORY_API_BASE_URL="${FACTORY_API_BASE_URL:-}" \
+          "$TRUSTED_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$TRUSTED_TAIL_PATH"
+      env:
+        TRUSTED_TAIL_PATH: ${{ steps.prepare.outputs.review_risk_plan_publisher_path }}
+        TRUSTED_TAIL_SHA256: ${{ steps.prepare.outputs.review_risk_plan_publisher_sha256 }}
+        TRUSTED_RUNTIME_PATH: ${{ steps.prepare.outputs.review_runtime_path }}
+        TRUSTED_RUNTIME_SHA256: ${{ steps.prepare.outputs.review_runtime_sha256 }}
+        RUNNER_TEMP: ${{ runner.temp }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+        # Read from the event the runner holds, not from the event file on
+        # disk, which a review session could have rewritten.
+        RISK_EVENT_ACTION: ${{ github.event.action }}
+        RISK_EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        RISK_EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        RISK_EVENT_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        RISK_PR_NUMBER: ${{ inputs.risk_pr_number }}
+        RISK_DRY_RUN: ${{ inputs.risk_dry_run }}
+        FACTORY_API_KEY: ${{ inputs.risk_factory_api_key || inputs.factory_api_key }}
+        FACTORY_API_BASE_URL: ${{ inputs.risk_api_base_url }}
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
+
+    # Only when no review session ran in this job, so nothing has had the
+    # chance to tamper with the install; otherwise the judge runs the
+    # executable the review phase froze.
+    - name: Install Droid CLI for risk assessment
+      if: ${{ !cancelled() && steps.risk_plan.outputs.action == 'judge' && steps.review_cli.outputs.review_cli_path == '' && inputs.path_to_droid_executable == '' }}
+      continue-on-error: true
+      shell: bash
+      run: |
+        curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        "$HOME/.local/bin/droid" --version
+
+    # Revokes the review phase's token, mints a read-only one for the judge,
+    # and runs the judge against evidence built for the planned head.
+    - name: Risk assessment judge
+      id: risk_assess
+      if: ${{ !cancelled() && steps.risk_plan.outputs.action == 'judge' }}
+      continue-on-error: true
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
+      run: |
+        set -euo pipefail
+        for path in "${TRUSTED_TAIL_PATH:-}" "${TRUSTED_RUNTIME_PATH:-}"; do
+          case "$path" in /*) ;; *) echo "::warning::Trusted risk assessment runtime is unavailable; refusing a mutable fallback"; exit 1 ;; esac
+          if [ ! -f "$path" ] || [ -L "$path" ]; then
+            echo "::warning::Refusing a missing or symlinked risk assessment executable"
+            exit 1
+          fi
+        done
+        if [[ ! "${TRUSTED_TAIL_SHA256:-}" =~ ^[a-f0-9]{64}$ ]] || [[ ! "${TRUSTED_RUNTIME_SHA256:-}" =~ ^[a-f0-9]{64}$ ]]; then
+          echo "::warning::Missing trusted risk assessment executable digest"
+          exit 1
+        fi
+        if [ -x /usr/bin/sha256sum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/sha256sum --)
+        elif [ -x /usr/bin/shasum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/shasum -a256 --)
+        else
+          echo "No trusted SHA-256 verifier is available; refusing execution"
+          exit 1
+        fi
+        publisher_hash=$("${digest_command[@]}" "$TRUSTED_TAIL_PATH")
+        runtime_hash=$("${digest_command[@]}" "$TRUSTED_RUNTIME_PATH")
+        if [ "${publisher_hash%% *}" != "$TRUSTED_TAIL_SHA256" ] || [ "${runtime_hash%% *}" != "$TRUSTED_RUNTIME_SHA256" ]; then
+          echo "::warning::Risk assessment executable or runtime changed; refusing to execute"
+          exit 1
+        fi
+        /usr/bin/env -i \
+          PATH=/usr/bin:/bin \
+          RUNNER_HOME="${REVIEW_HOME:-${HOME:-}}" RISK_JUDGE_PATH="${REVIEW_PATH:-${PATH:-}}" \
+          GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" GITHUB_WORKSPACE="${GITHUB_WORKSPACE:-}" \
+          GITHUB_API_URL="${GITHUB_API_URL:-}" GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-}" \
+          ACTIONS_ID_TOKEN_REQUEST_URL="${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ACTIONS_ID_TOKEN_REQUEST_TOKEN="${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" \
+          RISK_PLAN_PATH="${RISK_PLAN_PATH:-}" RISK_PLAN_SHA256="${RISK_PLAN_SHA256:-}" RISK_PLAN_PR_NUMBER="${RISK_PLAN_PR_NUMBER:-}" \
+          RISK_CLI_PATH="${RISK_CLI_PATH:-}" RISK_CLI_SHA256="${RISK_CLI_SHA256:-}" INPUT_PATH_TO_DROID_EXECUTABLE="${INPUT_PATH_TO_DROID_EXECUTABLE:-}" \
+          REVIEW_GITHUB_TOKEN="${REVIEW_GITHUB_TOKEN:-}" OVERRIDE_GITHUB_TOKEN="${OVERRIDE_GITHUB_TOKEN:-}" \
+          FACTORY_API_KEY="${FACTORY_API_KEY:-}" FACTORY_API_BASE_URL="${FACTORY_API_BASE_URL:-}" \
+          "$TRUSTED_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$TRUSTED_TAIL_PATH"
+      env:
+        TRUSTED_TAIL_PATH: ${{ steps.prepare.outputs.review_risk_assess_publisher_path }}
+        TRUSTED_TAIL_SHA256: ${{ steps.prepare.outputs.review_risk_assess_publisher_sha256 }}
+        TRUSTED_RUNTIME_PATH: ${{ steps.prepare.outputs.review_runtime_path }}
+        TRUSTED_RUNTIME_SHA256: ${{ steps.prepare.outputs.review_runtime_sha256 }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_WORKSPACE: ${{ github.workspace }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
+        RISK_PLAN_PATH: ${{ steps.risk_plan.outputs.plan_path }}
+        RISK_PLAN_SHA256: ${{ steps.risk_plan.outputs.plan_sha256 }}
+        RISK_PLAN_PR_NUMBER: ${{ steps.risk_plan.outputs.pr_number }}
+        RISK_CLI_PATH: ${{ steps.review_cli.outputs.review_cli_path }}
+        RISK_CLI_SHA256: ${{ steps.review_cli.outputs.review_cli_sha256 }}
+        REVIEW_PATH: ${{ steps.review_cli.outputs.review_path }}
+        REVIEW_HOME: ${{ steps.review_cli.outputs.review_home }}
+        INPUT_PATH_TO_DROID_EXECUTABLE: ${{ inputs.path_to_droid_executable }}
+        REVIEW_GITHUB_TOKEN: ${{ steps.prepare.outputs.github_token }}
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+        FACTORY_API_KEY: ${{ inputs.risk_factory_api_key || inputs.factory_api_key }}
+        FACTORY_API_BASE_URL: ${{ inputs.risk_api_base_url }}
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
+
+    # Runs whenever a head was planned for judging, with or without an
+    # answer: a head whose judge failed is published as unavailable.
+    - name: Publish risk assessment
+      id: risk_publish
+      if: ${{ !cancelled() && steps.risk_plan.outputs.action == 'judge' && steps.risk_assess.outputs.status != 'stale_head' }}
+      continue-on-error: true
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
+      run: |
+        set -euo pipefail
+        for path in "${TRUSTED_TAIL_PATH:-}" "${TRUSTED_RUNTIME_PATH:-}"; do
+          case "$path" in /*) ;; *) echo "::warning::Trusted risk assessment runtime is unavailable; refusing a mutable fallback"; exit 1 ;; esac
+          if [ ! -f "$path" ] || [ -L "$path" ]; then
+            echo "::warning::Refusing a missing or symlinked risk assessment executable"
+            exit 1
+          fi
+        done
+        if [[ ! "${TRUSTED_TAIL_SHA256:-}" =~ ^[a-f0-9]{64}$ ]] || [[ ! "${TRUSTED_RUNTIME_SHA256:-}" =~ ^[a-f0-9]{64}$ ]]; then
+          echo "::warning::Missing trusted risk assessment executable digest"
+          exit 1
+        fi
+        if [ -x /usr/bin/sha256sum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/sha256sum --)
+        elif [ -x /usr/bin/shasum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/shasum -a256 --)
+        else
+          echo "No trusted SHA-256 verifier is available; refusing execution"
+          exit 1
+        fi
+        publisher_hash=$("${digest_command[@]}" "$TRUSTED_TAIL_PATH")
+        runtime_hash=$("${digest_command[@]}" "$TRUSTED_RUNTIME_PATH")
+        if [ "${publisher_hash%% *}" != "$TRUSTED_TAIL_SHA256" ] || [ "${runtime_hash%% *}" != "$TRUSTED_RUNTIME_SHA256" ]; then
+          echo "::warning::Risk assessment executable or runtime changed; refusing to execute"
+          exit 1
+        fi
+        /usr/bin/env -i \
+          PATH=/usr/bin:/bin \
+          GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" \
+          RISK_PLAN_PR_NUMBER="${RISK_PLAN_PR_NUMBER:-}" RISK_PLAN_HEAD_SHA="${RISK_PLAN_HEAD_SHA:-}" RISK_DRY_RUN="${RISK_DRY_RUN:-}" \
+          RISK_ASSESS_STATUS="${RISK_ASSESS_STATUS:-}" RISK_ASSESSMENT_PATH="${RISK_ASSESSMENT_PATH:-}" RISK_ASSESSMENT_SHA256="${RISK_ASSESSMENT_SHA256:-}" \
+          FACTORY_API_KEY="${FACTORY_API_KEY:-}" FACTORY_API_BASE_URL="${FACTORY_API_BASE_URL:-}" \
+          "$TRUSTED_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$TRUSTED_TAIL_PATH"
+      env:
+        TRUSTED_TAIL_PATH: ${{ steps.prepare.outputs.review_risk_publish_publisher_path }}
+        TRUSTED_TAIL_SHA256: ${{ steps.prepare.outputs.review_risk_publish_publisher_sha256 }}
+        TRUSTED_RUNTIME_PATH: ${{ steps.prepare.outputs.review_runtime_path }}
+        TRUSTED_RUNTIME_SHA256: ${{ steps.prepare.outputs.review_runtime_sha256 }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+        RISK_PLAN_PR_NUMBER: ${{ steps.risk_plan.outputs.pr_number }}
+        RISK_PLAN_HEAD_SHA: ${{ steps.risk_plan.outputs.head_sha }}
+        RISK_DRY_RUN: ${{ inputs.risk_dry_run }}
+        RISK_ASSESS_STATUS: ${{ steps.risk_assess.outputs.status }}
+        RISK_ASSESSMENT_PATH: ${{ steps.risk_assess.outputs.assessment_path }}
+        RISK_ASSESSMENT_SHA256: ${{ steps.risk_assess.outputs.assessment_sha256 }}
+        FACTORY_API_KEY: ${{ inputs.risk_factory_api_key || inputs.factory_api_key }}
+        FACTORY_API_BASE_URL: ${{ inputs.risk_api_base_url }}
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
+
+    # A plan that could not be asked for leaves the head unassessed and any
+    # approval of an older head standing, so it fails the job too.
+    - name: Require a published risk assessment
+      if: ${{ !cancelled() && (steps.risk_plan.outcome == 'failure' || (steps.risk_plan.outputs.action == 'judge' && steps.risk_assess.outputs.status != 'stale_head' && steps.risk_publish.outputs.status == '')) }}
+      shell: bash
+      run: |
+        if [ "$RISK_PLAN_OUTCOME" = "failure" ]; then
+          echo "::error::Risk assessment could not be planned for this head."
+        else
+          echo "::error::A risk assessment was attempted for this head, but nothing was published."
+        fi
+        exit 1
+      env:
+        RISK_PLAN_OUTCOME: ${{ steps.risk_plan.outcome }}
 
     # Workflow artifacts are public on public repositories, so only a redacted
     # copy of selected files is ever staged, and only when asked for.

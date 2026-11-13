@@ -13,6 +13,9 @@ const AppTokenPermissionsSchema = z
     contents: PermissionLevelSchema.optional(),
     issues: PermissionLevelSchema.optional(),
     pull_requests: PermissionLevelSchema.optional(),
+    // Read is the only level the endpoint grants for CI results.
+    checks: z.literal("read").optional(),
+    statuses: z.literal("read").optional(),
   })
   .strict();
 

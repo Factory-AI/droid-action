@@ -14,6 +14,9 @@ const entrypoints = {
   debug: "../entrypoints/collect-debug-artifacts.ts",
   revoke: "../entrypoints/revoke-github-token.ts",
   steward: "../steward/postrun.ts",
+  risk_plan: "../entrypoints/risk-plan.ts",
+  risk_assess: "../entrypoints/risk-assess.ts",
+  risk_publish: "../entrypoints/risk-publish.ts",
 };
 const sha256 = (value: Uint8Array) =>
   createHash("sha256").update(value).digest("hex");
