@@ -289,7 +289,7 @@ describe("risk action entrypoints", () => {
       });
     });
 
-    it("leaves a failed result naming the head when it has no token to read GitHub with", async () => {
+    it("leaves a failed result, and nothing else, when it has no token to read GitHub with", async () => {
       const plan = planFor();
       await mkdir(join(dir, "pr-risk"));
       await writeFile(planPath, JSON.stringify(plan));
@@ -303,7 +303,6 @@ describe("risk action entrypoints", () => {
       );
 
       expect(JSON.parse(await readFile(resultPath, "utf8"))).toEqual({
-        headSha: plan.headSha,
         result: {
           status: "failed",
           reason: "github_token_missing",
@@ -344,7 +343,6 @@ describe("risk action entrypoints", () => {
   describe("risk-settle", () => {
     const plan = planFor();
     const judged = {
-      headSha: plan.headSha,
       droidCliVersion: "1.2.3",
       result: {
         status: "judged",

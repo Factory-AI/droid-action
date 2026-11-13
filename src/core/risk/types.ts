@@ -164,7 +164,6 @@ export type RiskSettleResult = z.infer<typeof RiskSettleResultSchema>;
 
 /** What the assess step leaves for the settle step. */
 export const RiskResultFileSchema = z.object({
-  headSha: z.string().optional(),
   droidCliVersion: z.string().min(1).optional(),
   result: RiskSettleResultSchema,
 });

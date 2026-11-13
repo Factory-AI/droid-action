@@ -169,7 +169,6 @@ export async function run(
   });
   const droidCliVersion = await readDroidCliVersion(inputs.droidBinary, env);
   await writePrivateJson(inputs.resultPath, {
-    headSha: inputs.plan.headSha,
     ...(droidCliVersion ? { droidCliVersion } : {}),
     result,
   } satisfies RiskResultFile);

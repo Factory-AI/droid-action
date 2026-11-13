@@ -232,7 +232,6 @@ describe("plan and result files", () => {
   it("round-trips a judged result", async () => {
     const path = join(dir, "result.json");
     const result: RiskResultFile = {
-      headSha: HEAD,
       droidCliVersion: "1.2.3",
       result: {
         status: "judged",

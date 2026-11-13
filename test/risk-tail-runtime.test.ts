@@ -181,7 +181,6 @@ describe("risk action tail steps", () => {
     await writeFile(
       resultPath,
       JSON.stringify({
-        headSha: plan.headSha,
         result: {
           status: "judged",
           baseSha: plan.baseSha,
