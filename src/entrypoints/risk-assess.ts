@@ -22,7 +22,6 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { assessPullRequest, readDroidCliVersion } from "../core/risk/assess";
-import { getPullRequestSummary } from "../core/risk/github";
 import {
   describeFailure,
   readRiskPlan,
@@ -39,6 +38,8 @@ import {
   type RiskPlan,
   type RiskResultFile,
 } from "../core/risk/types";
+import { createOctokit } from "../github/api/client";
+import { fetchPullRequestRiskSummary } from "../github/data/pr-risk";
 
 const OFFLINE_USAGE =
   "Usage: risk-assess.ts --judge <file> --repo <owner/name> --pr <number> --repo-dir <checkout> [--out <dir>] [--droid-binary <path>]";
@@ -97,7 +98,17 @@ async function offlineInputs(
   }
   const { judge: judgePath, repo, pr } = values;
   const repoDir = values["repo-dir"];
-  if (!judgePath || !repo || !repoDir || !pr || !/^[1-9][0-9]*$/.test(pr)) {
+  const [owner, name, ...rest] = repo?.split("/") ?? [];
+  if (
+    !judgePath ||
+    !repo ||
+    !owner ||
+    !name ||
+    rest.length > 0 ||
+    !repoDir ||
+    !pr ||
+    !/^[1-9][0-9]*$/.test(pr)
+  ) {
     throw new RiskError("usage", OFFLINE_USAGE);
   }
   const token = env.GH_TOKEN?.trim() || env.GITHUB_TOKEN?.trim();
@@ -124,7 +135,11 @@ async function offlineInputs(
       repo,
       pr: prNumber,
       run: { runner: RISK_RUNNER, trigger: "local", dryRun: true },
-      ...(await getPullRequestSummary({ repo, pr: prNumber, token })),
+      ...(await fetchPullRequestRiskSummary({
+        octokits: createOctokit(token),
+        repository: { owner, repo: name },
+        prNumber,
+      })),
       priorDeclines: [],
       judge: {
         ...judge,

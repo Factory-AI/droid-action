@@ -335,6 +335,12 @@ describe("risk action entrypoints", () => {
       await expect(
         assess(["--repo", "acme/app"], jobEnv()),
       ).rejects.toMatchObject({ reason: "usage" });
+      await expect(
+        assess(
+          ["--judge", "judge.json", "--repo", "acme", "--pr", "1"],
+          jobEnv(),
+        ),
+      ).rejects.toMatchObject({ reason: "usage" });
       expect(await exists(resultPath)).toBe(false);
     });
   });
