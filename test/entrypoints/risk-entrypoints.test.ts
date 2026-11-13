@@ -1,5 +1,7 @@
 import {
+  afterAll,
   afterEach,
+  beforeAll,
   beforeEach,
   describe,
   expect,
@@ -13,16 +15,26 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 import { run as assess } from "../../src/entrypoints/risk-assess";
 import { run as begin } from "../../src/entrypoints/risk-begin";
 import { run as settle } from "../../src/entrypoints/risk-settle";
-import { judge, planFor, validVerdict } from "../core/risk/fixtures";
+import * as pullRequestRisk from "../../src/github/data/pr-risk";
+import {
+  commit,
+  createOriginAndCheckout,
+  execSummary,
+  git,
+  judge,
+  planFor,
+  validVerdict,
+} from "../core/risk/fixtures";
 
 type Received = { path: string; headers: Headers; body: unknown };
 
@@ -329,6 +341,110 @@ describe("risk action entrypoints", () => {
       expect(JSON.parse(await readFile(resultPath, "utf8"))).toMatchObject({
         result: { status: "failed", reason: "github_token_missing" },
       });
+    });
+
+    describe("offline", () => {
+      let work = "";
+      let checkoutDir = "";
+      let judgePath = "";
+      let droidPath = "";
+      let baseSha = "";
+      let headSha = "";
+
+      beforeAll(async () => {
+        work = await realpath(
+          await mkdtemp(join(tmpdir(), "pr-risk-offline-test-")),
+        );
+        checkoutDir = await createOriginAndCheckout(work);
+        await writeFile(join(checkoutDir, "app.ts"), "export const old = 1;\n");
+        baseSha = await commit(checkoutDir, "base");
+        await writeFile(
+          join(checkoutDir, "app.ts"),
+          "export const next = 1;\n",
+        );
+        headSha = await commit(checkoutDir, "head");
+        await git(
+          checkoutDir,
+          "push",
+          "-q",
+          "origin",
+          `${baseSha}:refs/heads/dev`,
+          `${headSha}:refs/pull/123/head`,
+        );
+        judgePath = join(work, "judge.json");
+        await writeFile(
+          judgePath,
+          JSON.stringify({ ...judge, timeoutSeconds: 30 }),
+        );
+        // A stand-in for the Droid CLI: it knows its version and gives one
+        // valid answer.
+        await mkdir(join(work, "bin"));
+        droidPath = join(work, "bin", "droid-stub");
+        await writeFile(
+          droidPath,
+          `#!/bin/sh\nif [ "$1" = "--version" ]; then echo 9.9.9; exit 0; fi\ncat <<'JSON'\n${execSummary(validVerdict)}\nJSON\n`,
+          { mode: 0o755 },
+        );
+      });
+
+      afterAll(async () => {
+        await rm(work, { recursive: true, force: true });
+      });
+
+      async function judgeOffline(
+        droidBinary: string,
+        path = process.env.PATH,
+      ): Promise<unknown> {
+        spyOn(pullRequestRisk, "fetchPullRequestRiskSummary").mockResolvedValue(
+          { headSha, baseSha, pullRequest: planFor().pullRequest },
+        );
+        const out = join(dir, "out");
+        const options = {
+          judge: judgePath,
+          repo: "acme/app",
+          pr: "123",
+          "repo-dir": checkoutDir,
+          out,
+          "droid-binary": droidBinary,
+        };
+        await assess(
+          Object.entries(options).flatMap(([name, value]) => [
+            `--${name}`,
+            value,
+          ]),
+          {
+            PATH: path,
+            HOME: process.env.HOME,
+            GH_TOKEN: "read-token",
+            FACTORY_API_KEY: "factory-key",
+          },
+        );
+        return JSON.parse(
+          await readFile(join(out, "pr-risk-result.json"), "utf8"),
+        );
+      }
+
+      const judged = {
+        droidCliVersion: "9.9.9",
+        result: { status: "judged" },
+      };
+
+      it("finds a judge binary given relative to where the command was run, though the judge runs elsewhere", async () => {
+        const relativePath = relative(process.cwd(), droidPath);
+        expect(isAbsolute(relativePath)).toBe(false);
+
+        expect(await judgeOffline(relativePath)).toMatchObject(judged);
+      }, 30_000);
+
+      it("runs an absolute judge binary as given, and leaves a bare name to PATH", async () => {
+        expect(await judgeOffline(droidPath)).toMatchObject(judged);
+        expect(
+          await judgeOffline(
+            "droid-stub",
+            `${join(work, "bin")}:${process.env.PATH}`,
+          ),
+        ).toMatchObject(judged);
+      }, 30_000);
     });
 
     it("rejects an offline run that does not say what to judge", async () => {

@@ -98,6 +98,7 @@ async function offlineInputs(
   }
   const { judge: judgePath, repo, pr } = values;
   const repoDir = values["repo-dir"];
+  const droidBinary = values["droid-binary"];
   const [owner, name, ...rest] = repo?.split("/") ?? [];
   if (
     !judgePath ||
@@ -149,7 +150,11 @@ async function offlineInputs(
     repoDir: resolve(repoDir),
     resultPath: join(resolve(values.out ?? "."), OFFLINE_RESULT_FILE),
     githubToken: token,
-    droidBinary: values["droid-binary"],
+    // The judge runs from its evidence workspace, so a path is pinned to the
+    // directory this command was run in. A bare name is left for PATH.
+    droidBinary: droidBinary?.includes("/")
+      ? resolve(droidBinary)
+      : droidBinary,
     judgeApiBaseUrl: env.FACTORY_API_BASE_URL?.trim() || undefined,
   };
 }

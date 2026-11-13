@@ -181,4 +181,5 @@ settings file), `scores` (each score's name with its `[min, max]` range), and
 optionally `group` and `timeoutSeconds`. The result is written to
 `<out>/pr-risk-result.json`, and the command exits non-zero when no verdict
 was produced. `--droid-binary` selects a Droid CLI other than the one on
-`PATH`, and `FACTORY_API_BASE_URL` points the judge session at another host.
+`PATH`; a relative path is taken from the directory the command is run in.
+`FACTORY_API_BASE_URL` points the judge session at another host.
