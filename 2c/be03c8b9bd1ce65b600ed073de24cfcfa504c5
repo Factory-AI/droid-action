@@ -1,0 +1,25 @@
+src/entrypoints/risk-assess.ts
+  s_a1522e7de1652e::t_d6aebada985fdf 41-42,101-111,138-142
+src/github/data/pr-risk.ts
+  s_a1522e7de1652e::t_8d9bb189ee4c99 2,4,17-58,60
+test/entrypoints/risk-entrypoints.test.ts
+  s_a1522e7de1652e::t_b5b36fbb3860aa 338-343
+test/github/data/pr-risk.test.ts
+  s_a1522e7de1652e::t_d5d4ef36b6cfd3 1-116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2cbe03c8b9bd1ce65b600ed073de24cfcfa504c5",
+  "prompts": {},
+  "sessions": {
+    "s_a1522e7de1652e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "0c6403ca-2018-4611-b3c9-ab3bf1e8092c",
+        "model": "unknown"
+      },
+      "human_author": "Mark Attar <mark.attar@factory.ai>"
+    }
+  }
+}
