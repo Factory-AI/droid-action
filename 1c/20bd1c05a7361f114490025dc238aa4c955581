@@ -1,0 +1,29 @@
+src/core/risk/types.ts
+  s_a1522e7de1652e::t_51870602f2aa44 181
+risk/README.md
+  s_a1522e7de1652e::t_21343b77434a59 90-94,99-100
+risk/action.yml
+  s_a1522e7de1652e::t_08e9551a2e42c0 38
+test/entrypoints/risk-entrypoints.test.ts
+  s_a1522e7de1652e::t_d108761f05fe82 422-434
+src/entrypoints/risk-settle.ts
+  s_a1522e7de1652e::t_78b3d915a47e8a 43-50
+test/core/risk/client.test.ts
+  s_a1522e7de1652e::t_b36e2fa8e3b495 290-304
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1c20bd1c05a7361f114490025dc238aa4c955581",
+  "prompts": {},
+  "sessions": {
+    "s_a1522e7de1652e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "0c6403ca-2018-4611-b3c9-ab3bf1e8092c",
+        "model": "unknown"
+      },
+      "human_author": "Mark Attar <mark.attar@factory.ai>"
+    }
+  }
+}
