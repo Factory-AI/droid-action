@@ -8,6 +8,7 @@ import {
   readFile,
   readdir,
   readlink,
+  rename,
   rm,
   stat,
   symlink,
@@ -21,15 +22,8 @@ import {
   gitEnvironment,
   removePrRiskEvidenceWorkspace,
 } from "../../../src/core/risk/evidence";
-import { buildPrRiskSnapshot } from "../../../src/core/risk/snapshot";
 import type { PrRiskEvidenceWorkspace } from "../../../src/core/risk/types";
-import {
-  commit,
-  createOriginAndCheckout,
-  file,
-  git,
-  pullRequest,
-} from "./fixtures";
+import { commit, createOriginAndCheckout, git, pullRequest } from "./fixtures";
 
 const execFileAsync = promisify(execFile);
 
@@ -83,41 +77,21 @@ describe("createPrRiskEvidenceWorkspace", () => {
         localAttributes,
       );
 
-      const snapshot = buildPrRiskSnapshot(
-        {
-          ...pullRequest,
-          baseSha,
-          headSha,
-          changedFiles: 8,
-          additions: 10,
-          deletions: 1,
-        },
-        [
-          file("app.ts", 1, 1),
-          ...[
-            "related.ts",
-            ".gitattributes",
-            "version.txt",
-            "nested/.gitattributes",
-            "nested/version.txt",
-            "run.sh",
-            "related-link",
-          ].map((filename) => ({
-            ...file(filename, 1, 0),
-            status: "added" as const,
-          })),
-        ],
-      );
-      workspace = await createPrRiskEvidenceWorkspace(snapshot, {
-        repoDir: checkoutDir,
-        githubToken: "test-token",
-      });
+      ({ evidence: workspace } = await createPrRiskEvidenceWorkspace(
+        { ...pullRequest, baseSha, headSha },
+        { repoDir: checkoutDir, githubToken: "test-token" },
+      ));
 
       const diff = await readFile(workspace.diffPath, "utf8");
       const inventory = await readFile(workspace.inventoryPath, "utf8");
       expect(diff.length).toBeGreaterThan(92_421);
       expect(diff).toContain("export const changed");
       expect(inventory).toContain('"filename": "related.ts"');
+      expect(JSON.parse(inventory).totals).toEqual({
+        files: 8,
+        additions: 10,
+        deletions: 1,
+      });
       expect(
         await readFile(join(workspace.headTreeDir, "app.ts"), "utf8"),
       ).toBe(changedSource);
@@ -205,12 +179,10 @@ describe("createPrRiskEvidenceWorkspace", () => {
         `${headSha}:refs/pull/123/head`,
       );
 
-      workspace = await createPrRiskEvidenceWorkspace(
-        buildPrRiskSnapshot({ ...pullRequest, baseSha, headSha }, [
-          file(".factory/pr-risk/guidelines.md", 1, 3),
-        ]),
+      ({ evidence: workspace } = await createPrRiskEvidenceWorkspace(
+        { ...pullRequest, baseSha, headSha },
         { repoDir: checkoutDir, githubToken: "test-token" },
-      );
+      ));
 
       expect(workspace.guidelinesPath).not.toBeNull();
       expect(await readdir(join(workspace.rootDir, "evidence"))).toContain(
@@ -263,22 +235,151 @@ describe("createPrRiskEvidenceWorkspace", () => {
         await git(shallowDir, "rev-parse", "--is-shallow-repository"),
       ).toBe("true");
 
-      workspace = await createPrRiskEvidenceWorkspace(
-        buildPrRiskSnapshot({ ...pullRequest, baseSha, headSha }, [
-          { ...file("feature.ts", 1, 0), status: "added" },
-        ]),
+      ({ evidence: workspace } = await createPrRiskEvidenceWorkspace(
+        { ...pullRequest, baseSha, headSha },
         { repoDir: shallowDir, githubToken: "test-token" },
-      );
+      ));
 
       const diff = await readFile(workspace.diffPath, "utf8");
       expect(diff).toContain("feature.ts");
       expect(diff).not.toContain("base-only.ts");
+      // The inventory is taken from the same fork point as the diff.
+      expect(
+        JSON.parse(await readFile(workspace.inventoryPath, "utf8")),
+      ).toEqual({
+        totals: { files: 1, additions: 1, deletions: 0 },
+        files: [
+          {
+            filename: "feature.ts",
+            status: "added",
+            additions: 1,
+            deletions: 0,
+            kind: "runtime",
+          },
+        ],
+      });
     } finally {
       if (workspace) await removePrRiskEvidenceWorkspace(workspace);
       await rm(repoDir, { recursive: true, force: true });
     }
   });
 
+  it("lists what the diff changes, with what happened to each file and its line counts", async () => {
+    const repoDir = await mkdtemp(join(tmpdir(), "pr-risk-evidence-repo-"));
+    let workspace: PrRiskEvidenceWorkspace | undefined;
+    try {
+      const checkoutDir = await createOriginAndCheckout(repoDir);
+      const at = (path: string) => join(checkoutDir, path);
+      await writeFile(at("kept.ts"), "export const kept = 1;\n");
+      await writeFile(at("gone.ts"), "export const gone = 1;\n");
+      await writeFile(at("old-name.ts"), "one\ntwo\nthree\nfour\nfive\n");
+      await writeFile(at("logo.bin"), Buffer.from([0, 1, 2, 3, 0, 255]));
+      await writeFile(at("mode.txt"), "plain\n");
+      const baseSha = await commit(checkoutDir, "base");
+      await writeFile(
+        at("kept.ts"),
+        "export const kept = 2;\nexport const more = 3;\n",
+      );
+      await rm(at("gone.ts"));
+      await rename(at("old-name.ts"), at("new-name.ts"));
+      await writeFile(at("new-name.ts"), "one\ntwo\nthree\nfour\nfive\nsix\n");
+      await writeFile(at("logo.bin"), Buffer.from([0, 1, 2, 3, 0, 255, 0, 8]));
+      await rm(at("mode.txt"));
+      await symlink("kept.ts", at("mode.txt"));
+      await mkdir(at("docs"));
+      await writeFile(at("docs/with space.md"), "# Notes\n");
+      await writeFile(at("tab\there.ts"), "export {};\n");
+      const headSha = await commit(checkoutDir, "head");
+      await git(
+        checkoutDir,
+        "push",
+        "-q",
+        "origin",
+        `${baseSha}:refs/heads/dev`,
+        `${headSha}:refs/pull/123/head`,
+      );
+
+      const created = await createPrRiskEvidenceWorkspace(
+        { ...pullRequest, baseSha, headSha },
+        { repoDir: checkoutDir, githubToken: "test-token" },
+      );
+      workspace = created.evidence;
+
+      const row = (
+        filename: string,
+        status: string,
+        additions: number,
+        deletions: number,
+        kind = "runtime",
+      ) => ({ filename, status, additions, deletions, kind });
+      expect(
+        JSON.parse(await readFile(workspace.inventoryPath, "utf8")),
+      ).toEqual({
+        totals: { files: 7, additions: 6, deletions: 3 },
+        files: [
+          row("docs/with space.md", "added", 1, 0, "docs"),
+          row("gone.ts", "removed", 0, 1),
+          row("kept.ts", "modified", 2, 1),
+          // A binary file has no lines to count.
+          row("logo.bin", "modified", 0, 0),
+          // A file that became a symlink.
+          row("mode.txt", "changed", 1, 1, "docs"),
+          {
+            ...row("new-name.ts", "renamed", 1, 0),
+            previousFilename: "old-name.ts",
+          },
+          row("tab\there.ts", "added", 1, 0),
+        ],
+      });
+      expect(created.snapshot.pullRequest).toMatchObject({
+        changedFiles: 7,
+        additions: 6,
+        deletions: 3,
+      });
+      expect(created.snapshot.summary.unlistedFiles).toBe(0);
+    } finally {
+      if (workspace) await removePrRiskEvidenceWorkspace(workspace);
+      await rm(repoDir, { recursive: true, force: true });
+    }
+  });
+
+  it("names as many changed files as GitHub would list and counts the rest", async () => {
+    const repoDir = await mkdtemp(join(tmpdir(), "pr-risk-evidence-repo-"));
+    let workspace: PrRiskEvidenceWorkspace | undefined;
+    try {
+      const checkoutDir = await createOriginAndCheckout(repoDir);
+      await writeFile(join(checkoutDir, "app.ts"), "export const old = 1;\n");
+      const baseSha = await commit(checkoutDir, "base");
+      await mkdir(join(checkoutDir, "many"));
+      for (let index = 0; index < 3001; index++) {
+        await writeFile(join(checkoutDir, "many", `${index}.ts`), "//\n");
+      }
+      const headSha = await commit(checkoutDir, "head");
+      await git(
+        checkoutDir,
+        "push",
+        "-q",
+        "origin",
+        `${baseSha}:refs/heads/dev`,
+        `${headSha}:refs/pull/123/head`,
+      );
+
+      const created = await createPrRiskEvidenceWorkspace(
+        { ...pullRequest, baseSha, headSha },
+        { repoDir: checkoutDir, githubToken: "test-token" },
+      );
+      workspace = created.evidence;
+
+      expect(created.snapshot.files).toHaveLength(3000);
+      expect(created.snapshot.summary.unlistedFiles).toBe(1);
+      expect(
+        JSON.parse(await readFile(workspace.inventoryPath, "utf8")).totals,
+      ).toEqual({ files: 3001, additions: 3001, deletions: 0 });
+    } finally {
+      if (workspace) await removePrRiskEvidenceWorkspace(workspace);
+      await rm(repoDir, { recursive: true, force: true });
+    }
+  }, 30_000);
   it("deletes nothing when git refuses to remove the worktree", async () => {
     const repoDir = await mkdtemp(join(tmpdir(), "pr-risk-evidence-repo-"));
     let workspace: PrRiskEvidenceWorkspace | undefined;
@@ -296,12 +397,10 @@ describe("createPrRiskEvidenceWorkspace", () => {
         `${baseSha}:refs/heads/dev`,
         `${headSha}:refs/pull/123/head`,
       );
-      workspace = await createPrRiskEvidenceWorkspace(
-        buildPrRiskSnapshot({ ...pullRequest, baseSha, headSha }, [
-          file("app.ts", 1, 1),
-        ]),
+      ({ evidence: workspace } = await createPrRiskEvidenceWorkspace(
+        { ...pullRequest, baseSha, headSha },
         { repoDir: checkoutDir, githubToken: "test-token" },
-      );
+      ));
       // A lock is the one refusal `remove --force` cannot be talked out of,
       // standing in for a tree that changes while git empties it.
       await git(checkoutDir, "worktree", "lock", workspace.headTreeDir);
@@ -347,9 +446,7 @@ describe("createPrRiskEvidenceWorkspace", () => {
 
       await expect(
         createPrRiskEvidenceWorkspace(
-          buildPrRiskSnapshot({ ...pullRequest, baseSha, headSha }, [
-            file("app.ts", 1, 1),
-          ]),
+          { ...pullRequest, baseSha, headSha },
           { repoDir: checkoutDir, githubToken: "test-token" },
         ),
       ).rejects.toMatchObject({ reason: "pr_risk_default_branch_unresolved" });

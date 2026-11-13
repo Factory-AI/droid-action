@@ -36,7 +36,7 @@ describe("buildPrRiskSnapshot", () => {
     expect(snapshot.summary.unlistedFiles).toBe(0);
   });
 
-  it("counts Markdown that changes agent behavior as runtime, and reports files GitHub did not list", () => {
+  it("counts Markdown that changes agent behavior as runtime, and reports the files it was not given by name", () => {
     const snapshot = buildPrRiskSnapshot({ ...pullRequest, changedFiles: 5 }, [
       file(".factory/skills/review/SKILL.md"),
       file("AGENTS.md"),

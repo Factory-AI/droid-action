@@ -21,7 +21,9 @@ and are never printed to the job log.
    job's checkout, and runs one `droid exec` session over a temporary
    workspace that holds the diff, the changed-file list, the head checked out
    as a detached worktree, and the default branch's
-   `.factory/pr-risk/guidelines.md` when the repository has one.
+   `.factory/pr-risk/guidelines.md` when the repository has one. The
+   changed-file list and its counts are computed from the same two commits
+   as the diff; it names at most 3,000 files and counts the rest.
 3. **Settle.** The action reports the judged head and the judge's answer to
    Factory. A run that produced no answer is reported too, with a short
    reason, so the head is marked unavailable instead of keeping a stale
@@ -148,10 +150,10 @@ workflow token instead of a minted one.
 
 The assess step always leaves a result, and the settle step always reports
 it unless the run was cancelled. A failed result carries one short reason,
-for example `github_token_missing`, `pr_metadata_unavailable`,
-`evidence_git_failed`, `judge_timeout`, `judge_exec_failed`,
-`invalid_pr_risk_verdict`, `runner_died` or `unexpected`. The job log names
-the reason; it never contains the judge's instructions or its answer.
+for example `github_token_missing`, `evidence_git_failed`, `judge_timeout`,
+`judge_exec_failed`, `invalid_pr_risk_verdict`, `runner_died` or
+`unexpected`. The job log names the reason; it never contains the judge's
+instructions or its answer.
 
 ## Running a judge offline
 

@@ -4,18 +4,15 @@ import {
   createPrRiskEvidenceWorkspace,
   removePrRiskEvidenceWorkspace,
 } from "./evidence";
-import { listPullRequestFiles } from "./github";
 import {
   buildJudgeEnvironment,
   runPrRiskJudge,
   type RunPrRiskJudgeOptions,
 } from "./judge";
 import { describeFailure } from "./plan";
-import { buildPrRiskSnapshot } from "./snapshot";
 import {
   RiskError,
   failureReason,
-  type PullRequestRiskFile,
   type RiskJudgeAttempt,
   type RiskPlan,
   type RiskSettleResult,
@@ -27,17 +24,12 @@ export type AssessPullRequestOptions = {
   plan: RiskPlan;
   /** A checkout of the repository; the exact base and head are fetched into it. */
   repoDir: string;
-  /** Read-only token for the file list, the fetch, and the judge's `gh`. */
+  /** Read-only token for the fetch and the judge's `gh`. */
   githubToken: string | undefined;
   /** Overrides the API host of the judge session only. */
   judgeApiBaseUrl?: string;
   droidBinary?: string;
   env?: NodeJS.ProcessEnv;
-  listFiles?: (input: {
-    repo: string;
-    pr: number;
-    token: string;
-  }) => Promise<PullRequestRiskFile[]>;
   executeDroid?: RunPrRiskJudgeOptions["executeDroid"];
 };
 
@@ -61,29 +53,20 @@ export async function assessPullRequest(
         "No GitHub token is available to read the pull request",
       );
     }
-    const files = await (options.listFiles ?? listPullRequestFiles)({
-      repo: plan.repo,
-      pr: plan.pr,
-      token,
-    });
-    const snapshot = buildPrRiskSnapshot(
+    const { snapshot, evidence } = await createPrRiskEvidenceWorkspace(
       {
         repo: plan.repo,
         prNumber: plan.pr,
         title: plan.pullRequest.title,
         baseSha: plan.baseSha,
         headSha: plan.headSha,
-        additions: plan.pullRequest.additions,
-        deletions: plan.pullRequest.deletions,
-        changedFiles: plan.pullRequest.changedFiles,
       },
-      files,
-      plan.priorDeclines,
+      {
+        repoDir: options.repoDir,
+        githubToken: token,
+        priorDeclines: plan.priorDeclines,
+      },
     );
-    const evidence = await createPrRiskEvidenceWorkspace(snapshot, {
-      repoDir: options.repoDir,
-      githubToken: token,
-    });
     try {
       let attemptStartedAt = Date.now();
       const verdict = await runPrRiskJudge(snapshot, {
@@ -118,7 +101,7 @@ export async function assessPullRequest(
         baseSha: plan.baseSha,
         judgeSha256: plan.judge.sha256,
         snapshotHash: evidence.snapshotHash,
-        listedFiles: files.length,
+        listedFiles: snapshot.files.length,
         attempts: [first, ...rest],
         durationMs: Date.now() - startedAt,
         verdict: { ...verdict },

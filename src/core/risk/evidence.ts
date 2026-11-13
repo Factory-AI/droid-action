@@ -6,17 +6,37 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { GITHUB_SERVER_URL } from "../../github/api/config";
+import { buildPrRiskSnapshot } from "./snapshot";
 import {
   RISK_JUDGE_SKILL_NAME,
   RiskError,
   type PrRiskEvidenceWorkspace,
+  type PullRequestRiskFile,
+  type PullRequestRiskFileStatus,
   type PullRequestRiskSnapshot,
+  type PullRequestRiskTarget,
+  type RiskPriorDecline,
 } from "./types";
 
 const execFileAsync = promisify(execFile);
 const GIT_TIMEOUT_MS = 120_000;
 const MAX_GIT_OUTPUT_BYTES = 16 * 1024 * 1024;
 const GUIDELINES_REPO_PATH = ".factory/pr-risk/guidelines.md";
+// The diff and the changed-file list are both taken with these, so the two
+// describe one comparison.
+const DIFF_OPTIONS = ["--no-ext-diff", "--no-textconv", "--find-renames"];
+// The judge is shown this many changed files by name, which is as many as
+// GitHub lists for a pull request; the rest are only counted.
+const MAX_LISTED_FILES = 3000;
+// What `git diff --name-status` calls each change. Anything else, such as a
+// file that became a symlink, is reported as changed.
+const FILE_STATUSES: Record<string, PullRequestRiskFileStatus> = {
+  A: "added",
+  D: "removed",
+  M: "modified",
+  R: "renamed",
+  C: "copied",
+};
 // Retries cover files that appear while a directory is being emptied.
 const REMOVE_WORKSPACE_OPTIONS = {
   recursive: true,
@@ -142,19 +162,91 @@ async function readGuidelines(
 }
 
 /**
+ * Lists every file that differs between two commits, with its line counts.
+ * A binary file counts no lines.
+ */
+async function listChangedFiles(
+  from: string,
+  to: string,
+  repo: GitRepo,
+): Promise<PullRequestRiskFile[]> {
+  const records = async (format: string) =>
+    (
+      await git(
+        ["--no-pager", "diff", ...DIFF_OPTIONS, format, "-z", from, to],
+        repo,
+      )
+    ).split("\0");
+
+  // One record per file, `<added>\t<deleted>\t<path>`. A rename leaves the
+  // path empty and gives the old and the new one as the next two records.
+  const lines = new Map<string, { additions: number; deletions: number }>();
+  const counts = await records("--numstat");
+  for (let index = 0; index < counts.length; index++) {
+    const count = /^(\d+|-)\t(\d+|-)\t([\s\S]*)$/.exec(counts[index] ?? "");
+    if (!count) continue;
+    let path = count[3];
+    if (!path) {
+      index += 2;
+      path = counts[index];
+    }
+    if (path === undefined) continue;
+    lines.set(path, {
+      additions: Number(count[1]) || 0,
+      deletions: Number(count[2]) || 0,
+    });
+  }
+
+  // A status, then its path; a rename or a copy has the old path first.
+  const files: PullRequestRiskFile[] = [];
+  const statuses = await records("--name-status");
+  for (let index = 0; index < statuses.length; index++) {
+    const letter = statuses[index]?.[0];
+    if (!letter) continue;
+    const previousFilename =
+      letter === "R" || letter === "C" ? statuses[++index] : undefined;
+    const filename = statuses[++index];
+    const counted = filename === undefined ? undefined : lines.get(filename);
+    if (filename === undefined || !counted) {
+      throw new RiskError(
+        "pr_risk_inventory_unreadable",
+        "PR risk could not list the changed files",
+      );
+    }
+    files.push({
+      filename,
+      ...(previousFilename ? { previousFilename } : {}),
+      status: FILE_STATUSES[letter] ?? "changed",
+      ...counted,
+    });
+  }
+  return files;
+}
+
+/**
  * Creates the evidence workspace a judge reads: the merge-base diff written
  * straight to disk, the changed-file inventory, the default branch's PR risk
  * guidelines when it has them, and the exact head checked out as a detached
- * worktree. The worktree's `.git` is a pointer file into the repository, so
- * git commands run inside it (history, blame) resolve against the caller's
- * checkout. The base revision is used only to compute the diff and is not
- * named to the model.
+ * worktree. The inventory and the snapshot's counts are read from the same
+ * two commits as the diff, so nothing GitHub says about the pull request
+ * while the run is under way can make them describe another comparison. The
+ * worktree's `.git` is a pointer file into the repository, so git commands
+ * run inside it (history, blame) resolve against the caller's checkout. The
+ * base revision is used only to compute the diff and is not named to the
+ * model.
  */
 export async function createPrRiskEvidenceWorkspace(
-  snapshot: PullRequestRiskSnapshot,
-  options: { repoDir: string; githubToken: string },
-): Promise<PrRiskEvidenceWorkspace> {
-  const { baseSha, headSha, prNumber } = snapshot.pullRequest;
+  pullRequest: PullRequestRiskTarget,
+  options: {
+    repoDir: string;
+    githubToken: string;
+    priorDeclines?: readonly RiskPriorDecline[];
+  },
+): Promise<{
+  snapshot: PullRequestRiskSnapshot;
+  evidence: PrRiskEvidenceWorkspace;
+}> {
+  const { baseSha, headSha, prNumber } = pullRequest;
   const repo = { cwd: options.repoDir, githubToken: options.githubToken };
   const guidelinesSha = await resolveDefaultBranchTip(repo);
   // actions/checkout clones one commit deep by default, and a merge base
@@ -197,6 +289,19 @@ export async function createPrRiskEvidenceWorkspace(
   }
   const mergeBase = await git(["merge-base", baseSha, headSha], repo);
   const guidelines = await readGuidelines(guidelinesSha, repo);
+  const changed = await listChangedFiles(mergeBase, headSha, repo);
+  const linesChanged = (kind: "additions" | "deletions") =>
+    changed.reduce((total, file) => total + file[kind], 0);
+  const snapshot = buildPrRiskSnapshot(
+    {
+      ...pullRequest,
+      additions: linesChanged("additions"),
+      deletions: linesChanged("deletions"),
+      changedFiles: changed.length,
+    },
+    changed.slice(0, MAX_LISTED_FILES),
+    options.priorDeclines,
+  );
 
   // Paths handed to the judge (cwd, skill, settings) are canonical so the
   // CLI's own realpath comparisons match them.
@@ -213,9 +318,7 @@ export async function createPrRiskEvidenceWorkspace(
       [
         "--no-pager",
         "diff",
-        "--no-ext-diff",
-        "--no-textconv",
-        "--find-renames",
+        ...DIFF_OPTIONS,
         `--output=${diffPath}`,
         mergeBase,
         headSha,
@@ -254,12 +357,15 @@ export async function createPrRiskEvidenceWorkspace(
     // guidelines are unchanged.
     if (guidelines !== null) hash.update("\0").update(guidelines);
     return {
-      rootDir,
-      headTreeDir,
-      diffPath,
-      inventoryPath,
-      guidelinesPath,
-      snapshotHash: hash.digest("hex"),
+      snapshot,
+      evidence: {
+        rootDir,
+        headTreeDir,
+        diffPath,
+        inventoryPath,
+        guidelinesPath,
+        snapshotHash: hash.digest("hex"),
+      },
     };
   } catch (error) {
     await rm(rootDir, { recursive: true, force: true });

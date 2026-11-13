@@ -8,7 +8,6 @@ import {
   commit,
   createOriginAndCheckout,
   execSummary,
-  file,
   git,
   judge,
   planFor,
@@ -42,7 +41,6 @@ describe("assessPullRequest", () => {
     await rm(repoDir, { recursive: true, force: true });
   });
 
-  const listFiles = async () => [file("app.ts", 1, 1)];
   const env = { PATH: process.env.PATH, FACTORY_API_KEY: "factory-key" };
 
   it("judges the planned head against the fetched evidence and removes the workspace", async () => {
@@ -53,14 +51,6 @@ describe("assessPullRequest", () => {
       repoDir: checkoutDir,
       githubToken: "read-token",
       env,
-      listFiles: async (input) => {
-        expect(input).toEqual({
-          repo: "acme/app",
-          pr: 123,
-          token: "read-token",
-        });
-        return listFiles();
-      },
       executeDroid: async ({ cwd }) => {
         seen.cwd = cwd;
         seen.diff = await readFile(join(cwd, "evidence", "pr.diff"), "utf8");
@@ -92,6 +82,56 @@ describe("assessPullRequest", () => {
     ).not.toContain(seen.cwd ?? "unset");
   });
 
+  it("lists and counts what the planned commits change, whatever the pull request reported when the run began", async () => {
+    const seen: { inventory?: unknown; skill?: string } = {};
+
+    const result = await assessPullRequest({
+      // Counts GitHub gave for another comparison, as it does once a pull
+      // request is pointed at a different base branch.
+      plan: planFor({
+        baseSha,
+        headSha,
+        pullRequest: {
+          title: "Rotate sessions safely",
+          additions: 900,
+          deletions: 400,
+          changedFiles: 40,
+        },
+      }),
+      repoDir: checkoutDir,
+      githubToken: "read-token",
+      env,
+      executeDroid: async ({ cwd }) => {
+        seen.inventory = JSON.parse(
+          await readFile(join(cwd, "evidence", "changed-files.json"), "utf8"),
+        );
+        seen.skill = await readFile(
+          join(cwd, ".factory", "skills", "pr-risk-judge", "SKILL.md"),
+          "utf8",
+        );
+        return execSummary(validVerdict);
+      },
+    });
+
+    expect(result).toMatchObject({ status: "judged", listedFiles: 1 });
+    expect(seen.inventory).toEqual({
+      totals: { files: 1, additions: 1, deletions: 1 },
+      files: [
+        {
+          filename: "app.ts",
+          status: "modified",
+          additions: 1,
+          deletions: 1,
+          kind: "runtime",
+        },
+      ],
+    });
+    expect(seen.skill).toContain(
+      '"additions": 1,\n    "deletions": 1,\n    "changedFiles": 1\n',
+    );
+    expect(seen.skill).toContain('"unlistedFiles": 0,');
+  });
+
   it("reports a judge that never produced a valid answer, with every attempt, and still removes the workspace", async () => {
     let cwd = "unset";
 
@@ -100,7 +140,6 @@ describe("assessPullRequest", () => {
       repoDir: checkoutDir,
       githubToken: "read-token",
       env,
-      listFiles,
       executeDroid: async (input) => {
         cwd = input.cwd;
         return execSummary("I decline.");
@@ -128,7 +167,6 @@ describe("assessPullRequest", () => {
       repoDir: checkoutDir,
       githubToken: "read-token",
       env,
-      listFiles,
       executeDroid: async () => {
         asked = true;
         return execSummary(validVerdict);
@@ -160,25 +198,25 @@ describe("assessPullRequest", () => {
 
   it("keeps a labelled failure's reason and files anything else as unexpected", async () => {
     const labelled = await assessPullRequest({
-      plan: planFor(),
+      plan: planFor({ baseSha, headSha }),
       repoDir: checkoutDir,
       githubToken: "read-token",
       env,
-      listFiles: async () => {
-        throw new RiskError("pr_metadata_unavailable", "GitHub answered 502");
+      executeDroid: async () => {
+        throw new RiskError("judge_timeout", "PR risk judge timed out");
       },
     });
     expect(labelled).toMatchObject({
       status: "failed",
-      reason: "pr_metadata_unavailable",
+      reason: "judge_timeout",
     });
 
     const unlabelled = await assessPullRequest({
-      plan: planFor(),
+      plan: planFor({ baseSha, headSha }),
       repoDir: checkoutDir,
       githubToken: "read-token",
       env,
-      listFiles: async () => {
+      executeDroid: async () => {
         throw new Error("boom");
       },
     });

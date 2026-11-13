@@ -1,37 +1,9 @@
 import { z } from "zod";
 import { GITHUB_API_URL } from "../../github/api/config";
 import { retryWithBackoff } from "../../utils/retry";
-import {
-  RiskError,
-  type PullRequestRiskFile,
-  type PullRequestRiskFileStatus,
-  type RiskFetch,
-} from "./types";
+import { RiskError, type RiskFetch } from "./types";
 
-const PAGE_SIZE = 100;
-// GitHub lists at most 3,000 files for a pull request.
-const MAX_PAGES = 30;
 const REQUEST_TIMEOUT_MS = 30_000;
-
-const FILE_STATUSES: readonly PullRequestRiskFileStatus[] = [
-  "added",
-  "removed",
-  "modified",
-  "renamed",
-  "copied",
-  "changed",
-  "unchanged",
-];
-
-const FilesPageSchema = z.array(
-  z.object({
-    filename: z.string(),
-    previous_filename: z.string().optional(),
-    status: z.string(),
-    additions: z.number().int().nonnegative(),
-    deletions: z.number().int().nonnegative(),
-  }),
-);
 
 const PullRequestSchema = z.object({
   title: z.string(),
@@ -101,39 +73,6 @@ async function githubGet(
         (error.status === undefined || error.status >= 500),
     },
   );
-}
-
-/**
- * Lists the pull request's changed files. A pull request with more files than
- * GitHub lists yields a short inventory, which the snapshot reports as
- * unlisted files.
- */
-export async function listPullRequestFiles(
-  options: GitHubReadOptions,
-): Promise<PullRequestRiskFile[]> {
-  const files: PullRequestRiskFile[] = [];
-  for (let page = 1; page <= MAX_PAGES; page++) {
-    const rows = FilesPageSchema.parse(
-      await githubGet(
-        `/repos/${options.repo}/pulls/${options.pr}/files?per_page=${PAGE_SIZE}&page=${page}`,
-        options,
-      ),
-    );
-    for (const row of rows) {
-      const status = FILE_STATUSES.find((known) => known === row.status);
-      files.push({
-        filename: row.filename,
-        ...(row.previous_filename
-          ? { previousFilename: row.previous_filename }
-          : {}),
-        status: status ?? "changed",
-        additions: row.additions,
-        deletions: row.deletions,
-      });
-    }
-    if (rows.length < PAGE_SIZE) break;
-  }
-  return files;
 }
 
 /** Reads the pull request facts Factory otherwise supplies, for offline runs. */

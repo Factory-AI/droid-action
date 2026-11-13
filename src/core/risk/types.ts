@@ -201,8 +201,7 @@ export type PullRequestRiskFileStatus =
   | "modified"
   | "renamed"
   | "copied"
-  | "changed"
-  | "unchanged";
+  | "changed";
 
 export type PullRequestRiskFileKind =
   | "runtime"
@@ -210,19 +209,26 @@ export type PullRequestRiskFileKind =
   | "docs"
   | "generated_or_lock";
 
-/** Pull request metadata a snapshot is built from. */
-export type PullRequestRiskInput = {
+/** The pull request a judge run is about. */
+export type PullRequestRiskTarget = {
   repo: string;
   prNumber: number;
   title: string;
   baseSha: string;
   headSha: string;
+};
+
+/**
+ * Pull request metadata a snapshot is built from. The counts cover every
+ * file that differs between the merge base and the head.
+ */
+export type PullRequestRiskInput = PullRequestRiskTarget & {
   additions: number;
   deletions: number;
   changedFiles: number;
 };
 
-/** One changed-file entry from GitHub's pull request files API. */
+/** One file that differs between the merge base and the head. */
 export type PullRequestRiskFile = {
   filename: string;
   previousFilename?: string;
