@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type {
@@ -142,4 +143,56 @@ export async function createOriginAndCheckout(
   const checkoutDir = join(repoDir, "checkout");
   await git(repoDir, "clone", "-q", "origin.git", checkoutDir);
   return checkoutDir;
+}
+
+/**
+ * An origin whose pull request 123 was force-pushed from one head to
+ * another, and a clone of the default branch that has fetched neither. Only
+ * `app.ts` differs between the heads, and the diff between them ends in a
+ * blank context line.
+ */
+export async function createRepushedPullRequest(
+  repoDir: string,
+  cloneArgs: readonly string[] = [],
+): Promise<{
+  authorDir: string;
+  checkoutDir: string;
+  scoredHeadSha: string;
+  headSha: string;
+}> {
+  const authorDir = await createOriginAndCheckout(repoDir);
+  const app = join(authorDir, "app.ts");
+  await writeFile(app, "const a = 1;\nconst b = 1;\n\n");
+  const baseSha = await commit(authorDir, "base");
+  await git(authorDir, "push", "-q", "origin", `${baseSha}:refs/heads/dev`);
+  await writeFile(app, "const a = 1;\nconst b = 2;\n\n");
+  const scoredHeadSha = await commit(authorDir, "scored");
+  await git(
+    authorDir,
+    "push",
+    "-q",
+    "origin",
+    `${scoredHeadSha}:refs/pull/123/head`,
+  );
+  await git(authorDir, "reset", "-q", "--hard", baseSha);
+  await writeFile(app, "const a = 1;\nconst b = 3;\n\n");
+  const headSha = await commit(authorDir, "head");
+  await git(
+    authorDir,
+    "push",
+    "-q",
+    "--force",
+    "origin",
+    `${headSha}:refs/pull/123/head`,
+  );
+  const checkoutDir = join(repoDir, "runner");
+  await git(
+    repoDir,
+    "clone",
+    "-q",
+    ...cloneArgs,
+    `file://${join(repoDir, "origin.git")}`,
+    checkoutDir,
+  );
+  return { authorDir, checkoutDir, scoredHeadSha, headSha };
 }

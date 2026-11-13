@@ -15,7 +15,9 @@ and are never printed to the job log.
 
 1. **Begin.** The action tells Factory which pull request and run this is.
    Factory answers `skip`, `hold` or `judge`. For `skip` and `hold` the
-   action stops there and succeeds.
+   action stops there and succeeds. When Factory approved an earlier head
+   of the pull request, it may first ask what changed since (see
+   [Keeping a verdict across a push](#keeping-a-verdict-across-a-push)).
 2. **Judge.** For `judge`, the action installs the Droid CLI, mints a
    read-only GitHub token, fetches the exact base and head commits into the
    job's checkout, and runs one `droid exec` session over a temporary
@@ -89,7 +91,7 @@ request of a `workflow_run` event, or from `pr_number`.
 
 | Output     | Description                                                                                                                                  |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `action`   | What Factory asked this run to do: `skip`, `hold` or `judge`.                                                                                |
+| `action`   | What Factory asked this run to do: `skip`, `hold` or `judge`. A verdict Factory kept across a push is a `skip`.                              |
 | `outcome`  | Set after a judge run: `approve`, `doNotApprove`, `unavailable`, `stale_head`, `unknown`, or `failed` when the result could not be reported. |
 | `head_sha` | The head commit Factory named for a `hold` or a `judge` run.                                                                                 |
 
@@ -99,6 +101,23 @@ judged; nothing is published and the run for the newer head owns the result.
 `unknown` means Factory answered with a status added after this version of
 the action; the step passes with a warning, and an action Factory asks for
 that this version does not know is likewise a `skip` with a warning.
+
+## Keeping a verdict across a push
+
+A push withdraws Factory's approval, because the approval covers one head.
+When Factory approved an earlier head and this run's review passed, Factory
+can answer the begin request with an offer to keep that verdict instead of
+`judge`. The action then fetches the approved head and the live head into
+the job's checkout, sends Factory `git diff` between the two, and asks
+again. Factory decides in that second request: it either keeps its approval
+on the live head, which the action reports as a `skip` with a notice, or
+answers `judge` and the run goes on as usual.
+
+The action only reports the diff. Whether a verdict may be kept, and what
+counts as a change that needs no new assessment, is Factory's to decide.
+When the checkout cannot produce the diff, or the diff is too large to
+send, the action asks again without it and the pull request is assessed in
+full. The fetch uses the workflow token, in the begin step only.
 
 ## Requirements
 

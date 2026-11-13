@@ -76,6 +76,15 @@ describe("risk action wiring", () => {
     }
   });
 
+  it("gives the begin step only the workflow's own token to fetch with", () => {
+    const env = step("begin").env ?? {};
+    expect(env.GH_TOKEN).toBe("${{ github.token }}");
+    expect(env.GITHUB_TOKEN).toBeUndefined();
+    for (const value of Object.values(env)) {
+      expect(value).not.toContain("secrets.");
+    }
+  });
+
   it("reports a failed judge run, and leaves a cancelled one to the run that replaced it", () => {
     for (const id of ["assess", "settle"]) {
       expect(step(id).if).toBe(

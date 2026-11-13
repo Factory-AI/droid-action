@@ -2,15 +2,18 @@
 
 /**
  * First step of the risk action: asks Factory what to do with this run's
- * pull request. When the answer is to judge it, the settle step is frozen
- * and what Factory served is written to an owner-only plan file for the
- * assess and settle steps. Nothing from that answer is printed.
+ * pull request. When Factory offers to keep the verdict it approved an
+ * earlier head on, the step answers with what changed since that head and
+ * asks again. When the answer is to judge the pull request, the settle step
+ * is frozen and what Factory served is written to an owner-only plan file
+ * for the assess and settle steps. Nothing from that answer is printed.
  */
 
 import * as core from "@actions/core";
 import { rm } from "node:fs/promises";
 import { beginRisk, getRiskOidcToken } from "../core/risk/client";
 import { freezeRiskSettle } from "../core/risk/freeze";
+import { answerKeepOffer } from "../core/risk/keep";
 import {
   buildRiskRun,
   describeFailure,
@@ -26,7 +29,10 @@ import {
 import {
   RISK_DEFAULT_API_BASE_URL,
   RISK_UNKNOWN_ACTION,
+  RISK_VERDICT_KEPT,
   RISK_WORKFLOW_NOT_TRUSTED,
+  RiskError,
+  type RiskBeginRequest,
   type RiskPlan,
 } from "../core/risk/types";
 
@@ -61,28 +67,54 @@ export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
   }
 
   const riskRun = buildRiskRun(dryRun, env);
-  const response = await beginRisk(
-    {
-      repo,
-      pr: target.pr,
-      ...(target.eventHeadSha ? { eventHeadSha: target.eventHeadSha } : {}),
-      ...(target.eventDraft ? { eventDraft: true } : {}),
-      manual,
-      ...(reviewOutcome ? { reviewOutcome } : {}),
-      run: riskRun,
-    },
-    {
-      baseUrl: env.RISK_API_BASE_URL?.trim() || RISK_DEFAULT_API_BASE_URL,
-      apiKey,
-      getOidcToken: () => getRiskOidcToken(dryRun, env),
-    },
-  );
+  const request: RiskBeginRequest = {
+    repo,
+    pr: target.pr,
+    ...(target.eventHeadSha ? { eventHeadSha: target.eventHeadSha } : {}),
+    ...(target.eventDraft ? { eventDraft: true } : {}),
+    manual,
+    ...(reviewOutcome ? { reviewOutcome } : {}),
+    run: riskRun,
+  };
+  const client = {
+    baseUrl: env.RISK_API_BASE_URL?.trim() || RISK_DEFAULT_API_BASE_URL,
+    apiKey,
+    getOidcToken: () => getRiskOidcToken(dryRun, env),
+  };
+
+  // `keep` says this version can answer an offer to keep a verdict. Factory
+  // makes one only to a run that says so.
+  let response = await beginRisk({ ...request, keep: {} }, client);
+  if (response.action === "keep") {
+    console.log(
+      `Factory approved #${target.pr} at ${response.scoredHeadSha}; reporting what changed since.`,
+    );
+    response = await beginRisk(
+      await answerKeepOffer(request, response, {
+        repoDir: env.GITHUB_WORKSPACE?.trim() || undefined,
+        githubToken: env.GH_TOKEN?.trim() || undefined,
+      }),
+      client,
+    );
+    // Factory decides an answered offer in that same call, so a second
+    // offer is an answer this version cannot act on.
+    if (response.action === "keep") {
+      throw new RiskError(
+        "keep_offer_repeated",
+        "Factory offered to keep the verdict again instead of deciding",
+      );
+    }
+  }
 
   core.setOutput("action", response.action);
   if (response.action === "skip") {
     if (response.reason === RISK_UNKNOWN_ACTION) {
       core.warning(
         `Factory asked for something this version of the risk action does not know, so nothing was assessed for #${target.pr}. Update the action.`,
+      );
+    } else if (response.reason === RISK_VERDICT_KEPT) {
+      core.notice(
+        `Factory kept its approval of #${target.pr}: what changed since the head it approved needs no new assessment.`,
       );
     } else {
       core.notice(
