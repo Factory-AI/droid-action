@@ -1,0 +1,39 @@
+risk/README.md
+  s_a1522e7de1652e::t_c3fa8fd04c6966 18-20,94,105-121
+risk/action.yml
+  s_a1522e7de1652e::t_706e4db35f3419 35,76-78
+src/core/risk/evidence.ts
+  s_a1522e7de1652e::t_77660e981088e5 67-71,73-77,85,89,101-104
+src/core/risk/keep.ts
+  s_a1522e7de1652e::t_0ec5068c039755 1-93
+src/core/risk/types.ts
+  s_a1522e7de1652e::t_d06a1bb71ca709 11,15,70-77,119-130,141
+src/entrypoints/risk-begin.ts
+  s_a1522e7de1652e::t_2ea861122ec0b2 5-9,16,32,34-35,70-107,115-118
+test/core/risk/client.test.ts
+  s_a1522e7de1652e::t_634a5160653323 183-214
+test/core/risk/fixtures.ts
+  s_a1522e7de1652e::t_4238b654c3cb0d 2,147-198
+test/core/risk/keep.test.ts
+  s_a1522e7de1652e::t_c04cea9aa0f273 1-136
+test/entrypoints/risk-entrypoints.test.ts
+  s_a1522e7de1652e::t_b4fe32737ebbf6 25-30,34-38,49-51,76-77,163,260,293-382
+test/risk-action-wiring.test.ts
+  s_a1522e7de1652e::t_c9031a2b32560e 79-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5f13d6a5e1d346945004eb011d3860947c096556",
+  "prompts": {},
+  "sessions": {
+    "s_a1522e7de1652e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "0c6403ca-2018-4611-b3c9-ab3bf1e8092c",
+        "model": "unknown"
+      },
+      "human_author": "Mark Attar <mark.attar@factory.ai>"
+    }
+  }
+}
