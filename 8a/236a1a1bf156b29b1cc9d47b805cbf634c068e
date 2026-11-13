@@ -1,0 +1,47 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "8a236a1a1bf156b29b1cc9d47b805cbf634c068e",
+  "prompts": {
+    "e59b6789caf4a509": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "2ecb0b06-8ef1-48af-b512-4ec6701ddd1d",
+        "model": "claude-fable-5.1"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "e83ae5b0447d1242": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "60be7b8a-aeb2-4065-b76a-71b05403a381",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    },
+    "fc999ed2425dd9ad": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "0f691cd9-43df-4679-afed-5d34ded96ec2",
+        "model": "claude-fable-5.1"
+      },
+      "human_author": "Nizar Alrifai",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}
