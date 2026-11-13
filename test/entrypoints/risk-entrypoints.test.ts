@@ -445,6 +445,20 @@ describe("risk action entrypoints", () => {
           ),
         ).toMatchObject(judged);
       }, 30_000);
+      it("leaves the git configuration of the clone it judges as it found it", async () => {
+        const key = "http.https://github.com/.extraheader";
+        const header = "AUTHORIZATION: basic bWluZQ==";
+        await git(checkoutDir, "config", key, header);
+        try {
+          expect(await judgeOffline(droidPath)).toMatchObject(judged);
+
+          expect(await git(checkoutDir, "config", key)).toBe(header);
+        } finally {
+          await git(checkoutDir, "config", "--unset-all", key).catch(
+            () => undefined,
+          );
+        }
+      }, 30_000);
     });
 
     it("rejects an offline run that does not say what to judge", async () => {

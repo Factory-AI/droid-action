@@ -58,6 +58,7 @@ type AssessInputs = {
   repoDir: string;
   resultPath: string;
   githubToken: string | undefined;
+  keepCheckoutCredentials?: boolean;
   droidBinary?: string;
   judgeApiBaseUrl?: string;
 };
@@ -150,6 +151,8 @@ async function offlineInputs(
     repoDir: resolve(repoDir),
     resultPath: join(resolve(values.out ?? "."), OFFLINE_RESULT_FILE),
     githubToken: token,
+    // The clone is the caller's own, not a job's checkout to be cleaned.
+    keepCheckoutCredentials: true,
     // The judge runs from its evidence workspace, so a path is pinned to the
     // directory this command was run in. A bare name is left for PATH.
     droidBinary: droidBinary?.includes("/")
@@ -183,6 +186,7 @@ export async function run(
     plan: inputs.plan,
     repoDir: inputs.repoDir,
     githubToken: inputs.githubToken,
+    keepCheckoutCredentials: inputs.keepCheckoutCredentials,
     judgeApiBaseUrl: inputs.judgeApiBaseUrl,
     droidBinary: inputs.droidBinary,
     env,

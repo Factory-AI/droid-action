@@ -55,11 +55,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: Factory-AI/droid-action/risk@dev-internal
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           pr_number: ${{ inputs.pr_number }}
 ```
+
+`persist-credentials: false` keeps the workflow token out of the checkout's
+git configuration. The action does not use it, and removes it before the
+judge runs when it finds it there (see
+[What the judge can reach](#what-the-judge-can-reach)).
 
 When the action runs after a review step in the same job, pass that step's
 conclusion so Factory can tell whether the pull request is ready to assess:
@@ -108,9 +115,9 @@ that this version does not know is likewise a `skip` with a warning.
 
 - `id-token: write`. The job's OIDC token proves to Factory which workflow is
   asking, and is exchanged for the read-only GitHub token the judge uses.
-- `contents: read`, and a checkout of the repository earlier in the job. Any
-  fetch depth works: the action fetches the commits it needs and deepens a
-  shallow checkout itself.
+- `contents: read`, and a checkout of the repository earlier in the job, made
+  over HTTPS and not with an SSH key. Any fetch depth works: the action
+  fetches the commits it needs and deepens a shallow checkout itself.
 - The Factory Droid GitHub App installed on the repository.
 - A Linux or macOS runner with `bash` and `git`. `gh` and `ripgrep` are used
   by the judge when present; on Linux the action installs whichever is
@@ -130,6 +137,14 @@ tests), so the action limits what it is given:
   read.
 - The OIDC request credentials are removed from the step before the session
   starts.
+- A token the checkout left in the repository's git configuration, as
+  `actions/checkout` does unless it is given `persist-credentials: false`, is
+  removed before the session starts: from the checkout, from any file its
+  configuration includes, and from its submodules. It is not put back, so a
+  later step in the same job that relies on it has to bring its own
+  credential. A checkout that keeps an SSH key is not judged, because the key
+  file would stay readable; the run fails with
+  `checkout_credentials_persisted`.
 - The two steps that run after the judge (revoking the token and reporting
   to Factory) do not run from the action's checkout or look anything up on
   `PATH`. Each runs a copy of its script bundled before the judge started,
@@ -150,10 +165,10 @@ workflow token instead of a minted one.
 
 The assess step always leaves a result, and the settle step always reports
 it unless the run was cancelled. A failed result carries one short reason,
-for example `github_token_missing`, `evidence_git_failed`, `judge_timeout`,
-`judge_exec_failed`, `invalid_pr_risk_verdict`, `runner_died` or
-`unexpected`. The job log names the reason; it never contains the judge's
-instructions or its answer.
+for example `github_token_missing`, `evidence_git_failed`,
+`checkout_credentials_persisted`, `judge_timeout`, `judge_exec_failed`,
+`invalid_pr_risk_verdict`, `runner_died` or `unexpected`. The job log names
+the reason; it never contains the judge's instructions or its answer.
 
 ## Running a judge offline
 
@@ -173,7 +188,8 @@ bun run src/entrypoints/risk-assess.ts \
   --out ./out
 ```
 
-`--repo-dir` is a clone of the repository whose `origin` is GitHub. The judge
+`--repo-dir` is a clone of the repository whose `origin` is GitHub; its git
+configuration, credentials included, is left as it is. The judge
 file is JSON with `skill` (the judge's instructions; the pull request
 snapshot replaces `{{PR_SNAPSHOT_JSON}}` in it, or is appended when the
 placeholder is absent), `enabledTools`, `settings` (written as the session's

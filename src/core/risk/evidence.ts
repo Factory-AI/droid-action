@@ -1,9 +1,17 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { GITHUB_SERVER_URL } from "../../github/api/config";
 import { buildPrRiskSnapshot } from "./snapshot";
@@ -37,6 +45,11 @@ const FILE_STATUSES: Record<string, PullRequestRiskFileStatus> = {
   R: "renamed",
   C: "copied",
 };
+// How actions/checkout keeps a credential in a clone's configuration: its
+// token as a request header, and an SSH key as the command naming the key's
+// file.
+const TOKEN_HEADER_KEY = /^http\.(.*\.)?extraheader$/;
+const SSH_COMMAND_KEY = "core.sshcommand";
 // Retries cover files that appear while a directory is being emptied.
 const REMOVE_WORKSPACE_OPTIONS = {
   recursive: true,
@@ -370,6 +383,120 @@ export async function createPrRiskEvidenceWorkspace(
   } catch (error) {
     await rm(rootDir, { recursive: true, force: true });
     throw error;
+  }
+}
+
+/** One configuration git can list: what it reads from `cwd`, or one file. */
+type GitConfig = { cwd: string; file?: string };
+
+/**
+ * Finds the credentials in one configuration, each as its key and the file
+ * that sets it. Only names are read, never values.
+ */
+async function persistedCredentials(
+  config: GitConfig,
+): Promise<Array<{ file: string; key: string }>> {
+  const fields = (
+    await git(
+      [
+        "config",
+        ...(config.file ? ["--file", config.file, "--includes"] : []),
+        "--list",
+        "--show-origin",
+        "--name-only",
+        "-z",
+      ],
+      { cwd: config.cwd },
+    )
+  ).split("\0");
+  const found: Array<{ file: string; key: string }> = [];
+  // The file a key comes from, then the key.
+  for (let index = 0; index + 1 < fields.length; index += 2) {
+    const key = fields[index + 1] ?? "";
+    if (!TOKEN_HEADER_KEY.test(key) && key !== SSH_COMMAND_KEY) continue;
+    // A file inside the repository is named relative to `cwd`.
+    const origin = (fields[index] ?? "").replace(/^file:/, "");
+    found.push({ file: resolve(config.cwd, origin), key });
+  }
+  return found;
+}
+
+/**
+ * The config file of every submodule whose git directory is kept under
+ * `modulesDir`. A submodule named `a/b` keeps its git directory at `a/b`,
+ * and those of its own submodules under `a/b/modules`.
+ */
+async function submoduleConfigFiles(modulesDir: string): Promise<string[]> {
+  const found: string[] = [];
+  const entries = await readdir(modulesDir, { withFileTypes: true }).catch(
+    () => [],
+  );
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const dir = join(modulesDir, entry.name);
+    const config = join(dir, "config");
+    const isGitDir = await stat(config).then(
+      (info) => info.isFile(),
+      () => false,
+    );
+    if (isGitDir) found.push(config);
+    found.push(
+      ...(await submoduleConfigFiles(isGitDir ? join(dir, "modules") : dir)),
+    );
+  }
+  return found;
+}
+
+/**
+ * Takes the credentials a checkout persisted out of the judge's reach.
+ * `actions/checkout` leaves its token in the clone's git configuration
+ * unless told `persist-credentials: false`, and the head worktree reads that
+ * same configuration, so a command the judge runs from the pull request
+ * could use a token that writes. The token is removed from every file that
+ * sets it: the checkout's config, the files it includes, and each
+ * submodule's config. An SSH key cannot be taken away like that, because its
+ * file stays on disk, so a checkout that configures one is refused. Throws
+ * rather than let a judge start while either can still be read.
+ */
+export async function removeCheckoutCredentials(
+  repoDir: string,
+  headTreeDir: string,
+): Promise<void> {
+  const commonDir = resolve(
+    repoDir,
+    await git(["rev-parse", "--git-common-dir"], { cwd: repoDir }),
+  );
+  // A submodule's config is read as a file, because git refuses to run in a
+  // submodule's git directory once the submodule's files are gone, which is
+  // how a workspace reused between runs can leave it.
+  const configs: GitConfig[] = [
+    { cwd: repoDir },
+    { cwd: headTreeDir },
+    ...(await submoduleConfigFiles(join(commonDir, "modules"))).map((file) => ({
+      cwd: repoDir,
+      file,
+    })),
+  ];
+  for (const config of configs) {
+    // Listed again after each removal, so a file two of these both read is
+    // only ever asked to drop a key it still has.
+    for (;;) {
+      const token = (await persistedCredentials(config)).find(({ key }) =>
+        TOKEN_HEADER_KEY.test(key),
+      );
+      if (!token) break;
+      await git(["config", "--file", token.file, "--unset-all", token.key], {
+        cwd: config.cwd,
+      });
+    }
+  }
+  for (const config of configs) {
+    if ((await persistedCredentials(config)).length > 0) {
+      throw new RiskError(
+        "checkout_credentials_persisted",
+        "The checkout keeps a git credential the judge could read, such as an SSH key; check out over HTTPS with persist-credentials: false",
+      );
+    }
   }
 }
 

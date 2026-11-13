@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -179,6 +179,90 @@ describe("assessPullRequest", () => {
       durationMs: expect.any(Number),
     });
     expect(asked).toBe(false);
+  });
+
+  describe("with credentials the checkout persisted", () => {
+    const tokenKey = "http.https://github.com/.extraheader";
+    const header = "AUTHORIZATION: basic d29ya2Zsb3ctdG9rZW4=";
+    const unset = (key: string) =>
+      git(checkoutDir, "config", "--unset-all", key).catch(() => undefined);
+
+    afterEach(async () => {
+      await unset(tokenKey);
+      await unset("core.sshCommand");
+    });
+
+    it("removes the checkout's token before the judge runs anything", async () => {
+      await git(checkoutDir, "config", tokenKey, header);
+      const seen: string[] = [];
+
+      const result = await assessPullRequest({
+        plan: planFor({ baseSha, headSha }),
+        repoDir: checkoutDir,
+        githubToken: "read-token",
+        env,
+        executeDroid: async ({ cwd }) => {
+          // What a command from the pull request could read, from the head
+          // worktree and from the job's checkout.
+          for (const dir of [join(cwd, "evidence", "head"), checkoutDir]) {
+            seen.push(await git(dir, "config", "--list"));
+          }
+          return execSummary(validVerdict);
+        },
+      });
+
+      expect(result).toMatchObject({ status: "judged" });
+      expect(seen).toHaveLength(2);
+      for (const config of seen) expect(config).not.toContain("extraheader");
+    });
+
+    it("fails without asking the judge when the checkout keeps an SSH key, and removes the workspace", async () => {
+      await git(checkoutDir, "config", "core.sshCommand", "ssh -i /tmp/key");
+      let asked = false;
+
+      const result = await assessPullRequest({
+        plan: planFor({ baseSha, headSha }),
+        repoDir: checkoutDir,
+        githubToken: "read-token",
+        env,
+        executeDroid: async () => {
+          asked = true;
+          return execSummary(validVerdict);
+        },
+      });
+
+      expect(result).toEqual({
+        status: "failed",
+        reason: "checkout_credentials_persisted",
+        durationMs: expect.any(Number),
+      });
+      expect(asked).toBe(false);
+      expect(
+        (await git(checkoutDir, "worktree", "list", "--porcelain")).match(
+          /^worktree /gm,
+        ),
+      ).toHaveLength(1);
+    });
+
+    it("leaves them alone in a clone that is the caller's own", async () => {
+      await git(checkoutDir, "config", tokenKey, header);
+      await git(checkoutDir, "config", "core.sshCommand", "ssh -i /tmp/key");
+
+      const result = await assessPullRequest({
+        plan: planFor({ baseSha, headSha }),
+        repoDir: checkoutDir,
+        githubToken: "read-token",
+        keepCheckoutCredentials: true,
+        env,
+        executeDroid: async () => execSummary(validVerdict),
+      });
+
+      expect(result).toMatchObject({ status: "judged" });
+      expect(await git(checkoutDir, "config", tokenKey)).toBe(header);
+      expect(await git(checkoutDir, "config", "core.sshCommand")).toBe(
+        "ssh -i /tmp/key",
+      );
+    });
   });
 
   it("settles a run with no GitHub token as a failure rather than throwing", async () => {

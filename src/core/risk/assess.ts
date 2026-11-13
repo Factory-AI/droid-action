@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {
   createPrRiskEvidenceWorkspace,
+  removeCheckoutCredentials,
   removePrRiskEvidenceWorkspace,
 } from "./evidence";
 import {
@@ -26,6 +27,12 @@ export type AssessPullRequestOptions = {
   repoDir: string;
   /** Read-only token for the fetch and the judge's `gh`. */
   githubToken: string | undefined;
+  /**
+   * Leaves the git credentials `repoDir` is configured with where they are.
+   * Only for a clone that belongs to whoever runs the judge; a job's checkout
+   * always has them removed before the judge starts.
+   */
+  keepCheckoutCredentials?: boolean;
   /** Overrides the API host of the judge session only. */
   judgeApiBaseUrl?: string;
   droidBinary?: string;
@@ -68,6 +75,9 @@ export async function assessPullRequest(
       },
     );
     try {
+      if (!options.keepCheckoutCredentials) {
+        await removeCheckoutCredentials(options.repoDir, evidence.headTreeDir);
+      }
       let attemptStartedAt = Date.now();
       const verdict = await runPrRiskJudge(snapshot, {
         judge: plan.judge,
