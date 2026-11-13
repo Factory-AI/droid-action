@@ -8,9 +8,11 @@ export const RISK_OIDC_AUDIENCE = "factory-pr-risk";
 export const RISK_OIDC_HEADER = "x-github-oidc-token";
 export const RISK_WORKFLOW_NOT_TRUSTED = "workflow_not_trusted";
 export const RISK_UNKNOWN_ACTION = "unknown_action";
+export const RISK_VERDICT_KEPT = "verdict_kept";
 export const RISK_JUDGE_SKILL_NAME = "pr-risk-judge";
 export const RISK_SNAPSHOT_PLACEHOLDER = "{{PR_SNAPSHOT_JSON}}";
 export const RISK_SESSION_TAG = "riskAssessment";
+export const RISK_BEGIN_MAX_BODY_BYTES = 256 * 1024;
 export const RISK_SETTLE_MAX_BODY_BYTES = 256 * 1024;
 
 const FAILURE_REASON = /^[a-z][a-z0-9_]{0,63}$/;
@@ -65,6 +67,14 @@ export type RiskBeginRequest = {
   eventDraft?: boolean;
   manual: boolean;
   reviewOutcome?: RiskReviewOutcome;
+  /**
+   * Present when this run can keep a verdict across a push: empty to say so,
+   * and with `changes` to answer Factory's offer to keep one. `diff` is
+   * `git diff <scoredHeadSha> <headSha>`.
+   */
+  keep?: {
+    changes?: { headSha: string; scoredHeadSha: string; diff: string };
+  };
   run: RiskRun;
 };
 
@@ -106,6 +116,18 @@ const RiskJudgeAssignmentSchema = z.object({
   judge: RiskJudgeSchema,
 });
 
+/**
+ * Factory's offer to keep the verdict it approved `scoredHeadSha` on, if
+ * what changed up to `headSha`, the live head, needs no new assessment.
+ * Both go to git as arguments, so each must be a whole commit SHA.
+ */
+const RiskKeepOfferSchema = z.object({
+  action: z.literal("keep"),
+  headSha: CommitShaSchema,
+  scoredHeadSha: CommitShaSchema,
+});
+export type RiskKeepOffer = z.infer<typeof RiskKeepOfferSchema>;
+
 // Reasons stay open strings and unknown keys are dropped, so Factory can add
 // either without breaking a pinned action. An action added later is read as
 // a skip, and a settle status added later as unknown, by the client.
@@ -116,6 +138,7 @@ export const RiskBeginResponseSchema = z.discriminatedUnion("action", [
     reason: z.string(),
     headSha: z.string(),
   }),
+  RiskKeepOfferSchema,
   RiskJudgeAssignmentSchema.extend({ action: z.literal("judge") }),
 ]);
 export type RiskBeginResponse = z.infer<typeof RiskBeginResponseSchema>;

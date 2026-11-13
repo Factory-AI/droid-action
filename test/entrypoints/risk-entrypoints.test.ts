@@ -22,12 +22,20 @@ import { dirname, join } from "node:path";
 import { run as assess } from "../../src/entrypoints/risk-assess";
 import { run as begin } from "../../src/entrypoints/risk-begin";
 import { run as settle } from "../../src/entrypoints/risk-settle";
-import { judge, planFor, validVerdict } from "../core/risk/fixtures";
+import {
+  createRepushedPullRequest,
+  judge,
+  planFor,
+  validVerdict,
+} from "../core/risk/fixtures";
 
 type Received = { path: string; headers: Headers; body: unknown };
 
-/** A stand-in for Factory that records each request and answers with JSON. */
-function fakeFactory(answer: unknown) {
+/**
+ * A stand-in for Factory that records each request and answers with JSON:
+ * the nth request gets the nth answer, and any request after that the last.
+ */
+function fakeFactory(answers: unknown[]) {
   const received: Received[] = [];
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -38,7 +46,9 @@ function fakeFactory(answer: unknown) {
         headers: request.headers,
         body: await request.json(),
       });
-      return Response.json(answer);
+      return Response.json(
+        answers[Math.min(received.length, answers.length) - 1],
+      );
     },
   });
   return {
@@ -63,8 +73,8 @@ describe("risk action entrypoints", () => {
   let factory: ReturnType<typeof fakeFactory> | undefined;
   const frozen: string[] = [];
 
-  function serve(answer: unknown) {
-    factory = fakeFactory(answer);
+  function serve(...answers: unknown[]) {
+    factory = fakeFactory(answers);
     return factory;
   }
 
@@ -150,6 +160,7 @@ describe("risk action entrypoints", () => {
         eventHeadSha: plan.headSha,
         manual: false,
         reviewOutcome: "success",
+        keep: {},
         run: plan.run,
       });
       expect(outputs).toEqual({
@@ -246,6 +257,7 @@ describe("risk action entrypoints", () => {
         repo: "acme/app",
         pr: 456,
         manual: true,
+        keep: {},
         run: { ...plan.run, trigger: "workflow_dispatch" },
       });
     });
@@ -277,6 +289,96 @@ describe("risk action entrypoints", () => {
 
       expect(received).toEqual([]);
       expect(await exists(planPath)).toBe(false);
+    });
+
+    describe("when Factory offers to keep a verdict", () => {
+      const begun = {
+        repo: "acme/app",
+        pr: 123,
+        eventHeadSha: plan.headSha,
+        manual: false,
+        run: plan.run,
+      };
+
+      it("answers with what changed since the approved head, and judges nothing once Factory keeps it", async () => {
+        const { checkoutDir, scoredHeadSha, headSha } =
+          await createRepushedPullRequest(dir);
+        const { received } = serve(
+          { action: "keep", headSha, scoredHeadSha },
+          { action: "skip", reason: "verdict_kept" },
+        );
+
+        await begin(
+          jobEnv({
+            GITHUB_EVENT_PATH: await eventFile(pullRequestEvent),
+            GITHUB_WORKSPACE: checkoutDir,
+          }),
+        );
+
+        expect(received.map((request) => request.path)).toEqual([
+          "/api/internal/pr-risk/begin",
+          "/api/internal/pr-risk/begin",
+        ]);
+        expect(received[0]?.body).toEqual({ ...begun, keep: {} });
+        expect(received[1]?.body).toEqual({
+          ...begun,
+          keep: {
+            changes: {
+              headSha,
+              scoredHeadSha,
+              diff: expect.stringContaining("-const b = 2;\n+const b = 3;\n"),
+            },
+          },
+        });
+        expect(outputs).toEqual({ action: "skip" });
+        expect(await exists(planPath)).toBe(false);
+        expect(core.notice).toHaveBeenCalledWith(
+          expect.stringContaining("Factory kept its approval of #123"),
+        );
+        expect(failed).toEqual([]);
+      });
+
+      it("asks again without changes when the job has no checkout, and judges the head Factory then assigns", async () => {
+        const { received } = serve(
+          {
+            action: "keep",
+            headSha: plan.headSha,
+            scoredHeadSha: "d".repeat(40),
+          },
+          { action: "judge", ...assignment },
+        );
+
+        await begin(
+          jobEnv({ GITHUB_EVENT_PATH: await eventFile(pullRequestEvent) }),
+        );
+
+        expect(received).toHaveLength(2);
+        expect(received[1]?.body).toEqual(begun);
+        expect(outputs).toMatchObject({
+          action: "judge",
+          head_sha: plan.headSha,
+        });
+        frozen.push(dirname(String(outputs.settle_path)));
+        expect(JSON.parse(await readFile(planPath, "utf8"))).toEqual(plan);
+      });
+
+      it("fails when Factory offers again instead of deciding", async () => {
+        const { received } = serve({
+          action: "keep",
+          headSha: plan.headSha,
+          scoredHeadSha: "d".repeat(40),
+        });
+
+        await expect(
+          begin(
+            jobEnv({ GITHUB_EVENT_PATH: await eventFile(pullRequestEvent) }),
+          ),
+        ).rejects.toMatchObject({ reason: "keep_offer_repeated" });
+
+        expect(received).toHaveLength(2);
+        expect(outputs).toEqual({});
+        expect(await exists(planPath)).toBe(false);
+      });
     });
   });
 

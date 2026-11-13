@@ -180,6 +180,38 @@ describe("beginRisk", () => {
       reason: "unknown_action",
     });
   });
+  it("reads an offer to keep a verdict", async () => {
+    const offer: RiskBeginResponse = {
+      action: "keep",
+      headSha: plan.headSha,
+      scoredHeadSha: "d".repeat(40),
+    };
+    const { fetch } = stubFetch([json(200, { ...offer, addedLater: true })]);
+
+    expect(await beginRisk(beginRequest, clientOptions(fetch))).toEqual(offer);
+  });
+
+  it("refuses an offer naming anything but two whole commit SHAs", async () => {
+    const { fetch } = stubFetch([
+      json(200, {
+        action: "keep",
+        headSha: plan.headSha,
+        scoredHeadSha: "--upload-pack=SERVED-VALUE",
+      }),
+    ]);
+
+    const failure = await beginRisk(beginRequest, clientOptions(fetch)).catch(
+      (error: unknown) => error,
+    );
+
+    expect(failure).toMatchObject({
+      reason: "invalid_response",
+      message:
+        "PR risk begin answer was not understood (scoredHeadSha: invalid_string)",
+    });
+    expect(String(failure)).not.toContain("SERVED-VALUE");
+  });
+
   it("names what it could not understand by path and code, never by value", async () => {
     const { fetch } = stubFetch([
       json(200, { ...judgeAnswer, headSha: "SERVED-VALUE" }),

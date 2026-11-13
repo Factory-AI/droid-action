@@ -64,12 +64,17 @@ export function gitEnvironment(
 }
 
 /**
- * Runs one git command against the repository and returns its trimmed stdout.
- * Only the repository's own configuration applies: host-level config,
- * attributes, and hooks cannot change what a head checks out as, so the same
- * commit yields the same evidence on every machine.
+ * Runs one git command against the repository and returns its stdout as git
+ * wrote it. Only the repository's own configuration applies: host-level
+ * config, attributes, and hooks cannot change what a head checks out as, so
+ * the same commit yields the same evidence on every machine. Output past
+ * `maxOutputBytes` fails the command.
  */
-async function git(args: readonly string[], repo: GitRepo): Promise<string> {
+export async function gitOutput(
+  args: readonly string[],
+  repo: GitRepo,
+  maxOutputBytes: number = MAX_GIT_OUTPUT_BYTES,
+): Promise<string> {
   try {
     const { stdout } = await execFileAsync(
       "git",
@@ -77,11 +82,11 @@ async function git(args: readonly string[], repo: GitRepo): Promise<string> {
       {
         cwd: repo.cwd,
         env: gitEnvironment(repo.githubToken),
-        maxBuffer: MAX_GIT_OUTPUT_BYTES,
+        maxBuffer: maxOutputBytes,
         timeout: GIT_TIMEOUT_MS,
       },
     );
-    return stdout.trim();
+    return stdout;
   } catch (error) {
     // The token travels in the environment, so neither the command line nor
     // git's own message in this error carries it.
@@ -91,6 +96,10 @@ async function git(args: readonly string[], repo: GitRepo): Promise<string> {
       { cause: error },
     );
   }
+}
+
+async function git(args: readonly string[], repo: GitRepo): Promise<string> {
+  return (await gitOutput(args, repo)).trim();
 }
 
 /**

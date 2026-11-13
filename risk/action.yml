@@ -32,7 +32,7 @@ inputs:
 
 outputs:
   action:
-    description: "What Factory asked this run to do: skip, hold or judge."
+    description: "What Factory asked this run to do: skip, hold or judge. A verdict Factory kept across a push is a skip."
     value: ${{ steps.begin.outputs.action }}
   outcome:
     description: "Set after a judge run: approve, doNotApprove, unavailable, stale_head, unknown when Factory answered in a way this version does not know, or failed when the result could not be reported."
@@ -73,6 +73,9 @@ runs:
         ENV: ""
         BASH_ENV: ""
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+        # Fetches the two commits Factory names when it offers to keep a
+        # verdict, whether or not the checkout kept its own credentials.
+        GH_TOKEN: ${{ github.token }}
         RISK_API_BASE_URL: ${{ inputs.api_base_url }}
         RISK_PR_NUMBER: ${{ inputs.pr_number }}
         RISK_REVIEW_OUTCOME: ${{ inputs.review_outcome }}
