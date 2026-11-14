@@ -13,7 +13,11 @@ import { freezeReviewRuntime } from "../prepare/review-runtime";
 async function run() {
   try {
     // Bind cleanup before minting: later prompt preparation can fail or skip.
-    await freezeReviewRuntime(["revoke"]);
+    // The full action's risk steps run this from a copy frozen before its
+    // review, along with the cleanup.
+    if (process.env.TRUSTED_TAIL_PREFROZEN !== "true") {
+      await freezeReviewRuntime(["revoke"]);
+    }
     const overrideToken = process.env.OVERRIDE_GITHUB_TOKEN?.trim();
 
     let token: string;

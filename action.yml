@@ -396,6 +396,7 @@ runs:
         DROID_ARGS: ${{ inputs.droid_args }}
         INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}
         ALL_INPUTS: ${{ toJson(inputs) }}
+        RISK_ASSESSMENT: ${{ inputs.risk_assessment }}
 
         REVIEW_SUMMARY: ${{ inputs.review_summary }}
         REVIEW_SUMMARY_SECTIONS: ${{ inputs.review_summary_sections }}
@@ -1764,13 +1765,61 @@ runs:
     # (github.action_status) and holds the assessment instead of leaving an
     # approval of an older commit standing. A cancelled run leaves the pull
     # request to the run that replaced it.
+    #
+    # The review's model session has run with the pull request checked out by
+    # now, so none of these steps trusts the action's checkout or PATH. Each
+    # script runs from a copy the prepare step bundled before the review
+    # started, with the Bun that bundled it, after checking that neither file
+    # changed. A run whose prepare step froze nothing assesses nothing.
     - name: Ask Factory whether to assess risk
       id: risk_begin
       if: ${{ !cancelled() && inputs.risk_assessment == 'true' }}
       shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
-        bun --config=/dev/null --env-file=/dev/null run ${GITHUB_ACTION_PATH}/src/entrypoints/risk-begin.ts
+        set -euo pipefail
+        for path in "${TRUSTED_TAIL_PATH:-}" "${TRUSTED_RUNTIME_PATH:-}"; do
+          case "$path" in /*) ;; *) echo "::error::The trusted risk begin step is unavailable; no mutable fallback will run"; exit 1 ;; esac
+          if [ ! -f "$path" ] || [ -L "$path" ]; then
+            echo "::error::Refusing a missing or symlinked risk begin executable"
+            exit 1
+          fi
+        done
+        if [[ ! "${TRUSTED_TAIL_SHA256:-}" =~ ^[a-f0-9]{64}$ ]] || [[ ! "${TRUSTED_RUNTIME_SHA256:-}" =~ ^[a-f0-9]{64}$ ]]; then
+          echo "::error::Missing trusted risk begin executable digest"
+          exit 1
+        fi
+        if [ -x /usr/bin/sha256sum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/sha256sum --)
+        elif [ -x /usr/bin/shasum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/shasum -a256 --)
+        else
+          echo "::error::No trusted SHA-256 verifier is available; refusing execution"
+          exit 1
+        fi
+        tail_hash=$("${digest_command[@]}" "$TRUSTED_TAIL_PATH")
+        runtime_hash=$("${digest_command[@]}" "$TRUSTED_RUNTIME_PATH")
+        if [ "${tail_hash%% *}" != "$TRUSTED_TAIL_SHA256" ] || [ "${runtime_hash%% *}" != "$TRUSTED_RUNTIME_SHA256" ]; then
+          echo "::error::Risk begin script or runtime changed; refusing to execute"
+          exit 1
+        fi
+        /usr/bin/env -i \
+          PATH=/usr/bin:/bin \
+          FACTORY_API_KEY="${FACTORY_API_KEY:-}" RISK_API_BASE_URL="${RISK_API_BASE_URL:-}" \
+          RISK_PR_NUMBER="${RISK_PR_NUMBER:-}" RISK_REVIEW_OUTCOME="${RISK_REVIEW_OUTCOME:-}" \
+          RISK_DRY_RUN="${RISK_DRY_RUN:-}" RISK_MANUAL="${RISK_MANUAL:-}" \
+          RISK_PLAN_PATH="${RISK_PLAN_PATH:-}" RISK_RESULT_PATH="${RISK_RESULT_PATH:-}" \
+          TRUSTED_TAIL_PREFROZEN=true \
+          GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" GITHUB_EVENT_PATH="${GITHUB_EVENT_PATH:-}" \
+          GITHUB_EVENT_NAME="${GITHUB_EVENT_NAME:-}" GITHUB_RUN_ID="${GITHUB_RUN_ID:-}" \
+          GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" RUNNER_TEMP="${RUNNER_TEMP:-}" \
+          ACTIONS_ID_TOKEN_REQUEST_URL="${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ACTIONS_ID_TOKEN_REQUEST_TOKEN="${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" \
+          GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" \
+          "$TRUSTED_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$TRUSTED_TAIL_PATH"
       env:
+        TRUSTED_TAIL_PATH: ${{ steps.prepare.outputs.review_risk_begin_publisher_path }}
+        TRUSTED_TAIL_SHA256: ${{ steps.prepare.outputs.review_risk_begin_publisher_sha256 }}
+        TRUSTED_RUNTIME_PATH: ${{ steps.prepare.outputs.review_runtime_path }}
+        TRUSTED_RUNTIME_SHA256: ${{ steps.prepare.outputs.review_runtime_sha256 }}
         LD_AUDIT: ""
         LD_LIBRARY_PATH: ""
         LD_PRELOAD: ""
@@ -1781,7 +1830,9 @@ runs:
         BASH_ENV: ""
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         RISK_API_BASE_URL: ${{ inputs.risk_api_base_url }}
-        RISK_PR_NUMBER: ${{ inputs.risk_pr_number }}
+        # A comment on a pull request is an issue_comment event, which names
+        # the pull request as an issue.
+        RISK_PR_NUMBER: ${{ inputs.risk_pr_number || (github.event.issue.pull_request && github.event.issue.number) || '' }}
         # How the steps above ended. `skipped` when they found nothing to do,
         # as on a workflow_dispatch that only asks for the assessment.
         RISK_REVIEW_OUTCOME: ${{ github.action_status == 'success' && steps.prepare.outputs.contains_trigger != 'true' && 'skipped' || github.action_status }}
@@ -1789,10 +1840,10 @@ runs:
         RISK_MANUAL: ${{ inputs.risk_manual }}
         RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
         RISK_RESULT_PATH: ${{ runner.temp }}/pr-risk/result.json
+        RUNNER_TEMP: ${{ runner.temp }}
 
-    # Installed again even when the review installed one: the review's model
-    # session ran with the pull request checked out, and the judge must not
-    # start from an executable that session could have replaced.
+    # Installed again even when the review installed one: the judge must not
+    # start from an executable the review's session could have replaced.
     - name: Install Droid CLI for the risk judge
       if: ${{ !cancelled() && steps.risk_begin.outputs.action == 'judge' }}
       shell: bash
@@ -1833,14 +1884,53 @@ runs:
       if: ${{ !cancelled() && steps.risk_begin.outputs.action == 'judge' }}
       shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
-        dry_run=$(printf '%s' "$RISK_DRY_RUN" | tr '[:upper:]' '[:lower:]')
-        if [ "$dry_run" = "true" ] && [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
-          echo "::notice::Dry run without id-token: write; the judge reads GitHub with the workflow token."
-          echo "use_workflow_token=true" >> "$GITHUB_OUTPUT"
-          exit 0
+        set -euo pipefail
+        case "${RISK_DRY_RUN:-}" in
+          [Tt][Rr][Uu][Ee])
+            if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+              echo "::notice::Dry run without id-token: write; the judge reads GitHub with the workflow token."
+              echo "use_workflow_token=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            ;;
+        esac
+        for path in "${TRUSTED_TAIL_PATH:-}" "${TRUSTED_RUNTIME_PATH:-}"; do
+          case "$path" in /*) ;; *) echo "::error::The trusted token step is unavailable; no mutable fallback will run"; exit 1 ;; esac
+          if [ ! -f "$path" ] || [ -L "$path" ]; then
+            echo "::error::Refusing a missing or symlinked token executable"
+            exit 1
+          fi
+        done
+        if [[ ! "${TRUSTED_TAIL_SHA256:-}" =~ ^[a-f0-9]{64}$ ]] || [[ ! "${TRUSTED_RUNTIME_SHA256:-}" =~ ^[a-f0-9]{64}$ ]]; then
+          echo "::error::Missing trusted token executable digest"
+          exit 1
         fi
-        bun --config=/dev/null --env-file=/dev/null run ${GITHUB_ACTION_PATH}/src/entrypoints/get-token.ts
+        if [ -x /usr/bin/sha256sum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/sha256sum --)
+        elif [ -x /usr/bin/shasum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/shasum -a256 --)
+        else
+          echo "::error::No trusted SHA-256 verifier is available; refusing execution"
+          exit 1
+        fi
+        tail_hash=$("${digest_command[@]}" "$TRUSTED_TAIL_PATH")
+        runtime_hash=$("${digest_command[@]}" "$TRUSTED_RUNTIME_PATH")
+        if [ "${tail_hash%% *}" != "$TRUSTED_TAIL_SHA256" ] || [ "${runtime_hash%% *}" != "$TRUSTED_RUNTIME_SHA256" ]; then
+          echo "::error::Token script or runtime changed; refusing to execute"
+          exit 1
+        fi
+        /usr/bin/env -i \
+          PATH=/usr/bin:/bin \
+          APP_TOKEN_PERMISSIONS="${APP_TOKEN_PERMISSIONS:-}" TRUSTED_TAIL_PREFROZEN=true \
+          ACTIONS_ID_TOKEN_REQUEST_URL="${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ACTIONS_ID_TOKEN_REQUEST_TOKEN="${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" \
+          GITHUB_API_URL="${GITHUB_API_URL:-}" GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" \
+          "$TRUSTED_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$TRUSTED_TAIL_PATH"
       env:
+        TRUSTED_TAIL_PATH: ${{ steps.prepare.outputs.review_risk_token_publisher_path }}
+        TRUSTED_TAIL_SHA256: ${{ steps.prepare.outputs.review_risk_token_publisher_sha256 }}
+        TRUSTED_RUNTIME_PATH: ${{ steps.prepare.outputs.review_runtime_path }}
+        TRUSTED_RUNTIME_SHA256: ${{ steps.prepare.outputs.review_runtime_sha256 }}
+        GITHUB_API_URL: ${{ github.api_url }}
         LD_AUDIT: ""
         LD_LIBRARY_PATH: ""
         LD_PRELOAD: ""
@@ -1863,9 +1953,40 @@ runs:
       if: ${{ !cancelled() && steps.risk_begin.outputs.action == 'judge' }}
       shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
+        set -euo pipefail
+        for path in "${TRUSTED_TAIL_PATH:-}" "${TRUSTED_RUNTIME_PATH:-}"; do
+          case "$path" in /*) ;; *) echo "::error::The trusted assess step is unavailable; no mutable fallback will run"; exit 1 ;; esac
+          if [ ! -f "$path" ] || [ -L "$path" ]; then
+            echo "::error::Refusing a missing or symlinked assess executable"
+            exit 1
+          fi
+        done
+        if [[ ! "${TRUSTED_TAIL_SHA256:-}" =~ ^[a-f0-9]{64}$ ]] || [[ ! "${TRUSTED_RUNTIME_SHA256:-}" =~ ^[a-f0-9]{64}$ ]]; then
+          echo "::error::Missing trusted assess executable digest"
+          exit 1
+        fi
+        if [ -x /usr/bin/sha256sum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/sha256sum --)
+        elif [ -x /usr/bin/shasum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/shasum -a256 --)
+        else
+          echo "::error::No trusted SHA-256 verifier is available; refusing execution"
+          exit 1
+        fi
+        tail_hash=$("${digest_command[@]}" "$TRUSTED_TAIL_PATH")
+        runtime_hash=$("${digest_command[@]}" "$TRUSTED_RUNTIME_PATH")
+        if [ "${tail_hash%% *}" != "$TRUSTED_TAIL_SHA256" ] || [ "${runtime_hash%% *}" != "$TRUSTED_RUNTIME_SHA256" ]; then
+          echo "::error::Assess script or runtime changed; refusing to execute"
+          exit 1
+        fi
         exec /usr/bin/env -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_URL -u ACTIONS_RUNTIME_TOKEN \
-          bun --config=/dev/null --env-file=/dev/null run ${GITHUB_ACTION_PATH}/src/entrypoints/risk-assess.ts
+          -u TRUSTED_TAIL_PATH -u TRUSTED_TAIL_SHA256 -u TRUSTED_RUNTIME_PATH -u TRUSTED_RUNTIME_SHA256 \
+          "$TRUSTED_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$TRUSTED_TAIL_PATH"
       env:
+        TRUSTED_TAIL_PATH: ${{ steps.prepare.outputs.review_risk_assess_publisher_path }}
+        TRUSTED_TAIL_SHA256: ${{ steps.prepare.outputs.review_risk_assess_publisher_sha256 }}
+        TRUSTED_RUNTIME_PATH: ${{ steps.prepare.outputs.review_runtime_path }}
+        TRUSTED_RUNTIME_SHA256: ${{ steps.prepare.outputs.review_runtime_sha256 }}
         LD_AUDIT: ""
         LD_LIBRARY_PATH: ""
         LD_PRELOAD: ""
@@ -1879,12 +2000,8 @@ runs:
         RISK_JUDGE_API_BASE_URL: ${{ inputs.risk_judge_api_base_url }}
         RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
         RISK_RESULT_PATH: ${{ runner.temp }}/pr-risk/result.json
-
-    # The two steps below run after the judge has run pull request code, so
-    # neither trusts the action's checkout or PATH any more. Each runs a copy
-    # of its script that was bundled before the judge started, with the Bun
-    # that bundled it, after checking that neither file changed, and in an
-    # environment holding only what is named here.
+    # The two steps below run in an environment holding only what is named
+    # here.
 
     # Only the token minted above is revoked. The workflow token a dry run may
     # have read with belongs to the job and is never passed here.
@@ -1924,10 +2041,10 @@ runs:
           GITHUB_TOKEN="${GITHUB_TOKEN:-}" GITHUB_API_URL="${GITHUB_API_URL:-}" \
           "$TRUSTED_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$TRUSTED_TAIL_PATH"
       env:
-        TRUSTED_TAIL_PATH: ${{ steps.risk_token.outputs.review_revoke_publisher_path }}
-        TRUSTED_TAIL_SHA256: ${{ steps.risk_token.outputs.review_revoke_publisher_sha256 }}
-        TRUSTED_RUNTIME_PATH: ${{ steps.risk_token.outputs.review_runtime_path }}
-        TRUSTED_RUNTIME_SHA256: ${{ steps.risk_token.outputs.review_runtime_sha256 }}
+        TRUSTED_TAIL_PATH: ${{ steps.prepare.outputs.review_revoke_publisher_path }}
+        TRUSTED_TAIL_SHA256: ${{ steps.prepare.outputs.review_revoke_publisher_sha256 }}
+        TRUSTED_RUNTIME_PATH: ${{ steps.prepare.outputs.review_runtime_path }}
+        TRUSTED_RUNTIME_SHA256: ${{ steps.prepare.outputs.review_runtime_sha256 }}
         GITHUB_API_URL: ${{ github.api_url }}
         LD_AUDIT: ""
         LD_LIBRARY_PATH: ""
@@ -1983,10 +2100,10 @@ runs:
           GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" \
           "$TRUSTED_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$TRUSTED_TAIL_PATH"
       env:
-        TRUSTED_TAIL_PATH: ${{ steps.risk_begin.outputs.review_settle_publisher_path }}
-        TRUSTED_TAIL_SHA256: ${{ steps.risk_begin.outputs.review_settle_publisher_sha256 }}
-        TRUSTED_RUNTIME_PATH: ${{ steps.risk_begin.outputs.review_runtime_path }}
-        TRUSTED_RUNTIME_SHA256: ${{ steps.risk_begin.outputs.review_runtime_sha256 }}
+        TRUSTED_TAIL_PATH: ${{ steps.prepare.outputs.review_settle_publisher_path }}
+        TRUSTED_TAIL_SHA256: ${{ steps.prepare.outputs.review_settle_publisher_sha256 }}
+        TRUSTED_RUNTIME_PATH: ${{ steps.prepare.outputs.review_runtime_path }}
+        TRUSTED_RUNTIME_SHA256: ${{ steps.prepare.outputs.review_runtime_sha256 }}
         LD_AUDIT: ""
         LD_LIBRARY_PATH: ""
         LD_PRELOAD: ""

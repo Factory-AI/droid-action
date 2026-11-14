@@ -15,7 +15,10 @@ import { shouldTriggerTag } from "../tag";
 import { prepare } from "../prepare";
 import { collectActionInputsPresence } from "./collect-inputs";
 import { initializeReviewConfig } from "../prepare/review-config";
-import { freezeReviewRuntime } from "../prepare/review-runtime";
+import {
+  freezeReviewRuntime,
+  RISK_RUNTIME_KINDS,
+} from "../prepare/review-runtime";
 
 async function run() {
   try {
@@ -27,6 +30,11 @@ async function run() {
     // Cleanup must be available even when authentication is followed by an
     // authorization failure, a missing trigger, or a preparation error.
     await freezeReviewRuntime();
+    // The risk steps run after the review's model session, so their scripts
+    // are frozen with the review's.
+    if (process.env.RISK_ASSESSMENT === "true") {
+      await freezeReviewRuntime(RISK_RUNTIME_KINDS);
+    }
 
     // Only the full action narrows its token. The prepare sub-action hands the
     // token to the caller's later steps, which may push or merge with it.

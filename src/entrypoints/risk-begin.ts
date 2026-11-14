@@ -103,8 +103,11 @@ export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
   }
 
   // Frozen before the plan exists: a run whose settle step could not be
-  // pinned never starts a judge.
-  await freezeReviewRuntime(["settle"]);
+  // pinned never starts a judge. The full action froze it before its review
+  // and runs this script from such a copy, which has no source to freeze.
+  if (!parseFlag(env.TRUSTED_TAIL_PREFROZEN)) {
+    await freezeReviewRuntime(["settle"]);
+  }
 
   const { action: _action, ...assignment } = response;
   const plan: RiskPlan = { repo, pr: target.pr, run: riskRun, ...assignment };

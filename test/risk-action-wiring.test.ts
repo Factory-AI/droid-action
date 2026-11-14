@@ -61,6 +61,10 @@ describe.each(variants)(
       return found;
     }
 
+    // The full action freezes every risk script in its prepare step, before
+    // the review; the standalone action freezes each one where it is needed.
+    const frozenBy = (owner: string) => (p ? "prepare" : owner);
+
     function named(name: string): Step {
       const found = steps.find((candidate) => candidate.name === name);
       if (!found) throw new Error(`${file} has no step named ${name}`);
@@ -69,7 +73,7 @@ describe.each(variants)(
 
     it("mints a GitHub token that can only read", () => {
       const token = step("token");
-      expect(token.run).toContain("src/entrypoints/get-token.ts");
+      if (!p) expect(token.run).toContain("src/entrypoints/get-token.ts");
       const permissions = parseAppTokenPermissions(
         token.env?.APP_TOKEN_PERMISSIONS,
       );
@@ -84,8 +88,14 @@ describe.each(variants)(
 
     it("drops the credentials that could mint a broader token before the judge starts", () => {
       const assess = step("assess");
-      expect(assess.run).toContain("src/entrypoints/risk-assess.ts");
-      expect(assess.run?.trimStart().startsWith("exec /usr/bin/env ")).toBe(
+      if (!p) expect(assess.run).toContain("src/entrypoints/risk-assess.ts");
+      // The one command that starts a script is an `exec` through env, so no
+      // shell is left holding the credentials.
+      const launches = assess.run
+        ?.split("\n")
+        .filter((line) => /^\s*exec\s/.test(line));
+      expect(launches).toHaveLength(1);
+      expect(launches?.[0]?.trimStart().startsWith("exec /usr/bin/env ")).toBe(
         true,
       );
       for (const name of OIDC_AND_RUNTIME_CREDENTIALS) {
@@ -143,16 +153,16 @@ describe.each(variants)(
 
     it("binds each step after the judge to a script frozen before the judge", () => {
       expect(named("Revoke judge read token").env).toMatchObject({
-        TRUSTED_TAIL_PATH: `\${{ steps.${p}token.outputs.review_revoke_publisher_path }}`,
-        TRUSTED_TAIL_SHA256: `\${{ steps.${p}token.outputs.review_revoke_publisher_sha256 }}`,
-        TRUSTED_RUNTIME_PATH: `\${{ steps.${p}token.outputs.review_runtime_path }}`,
-        TRUSTED_RUNTIME_SHA256: `\${{ steps.${p}token.outputs.review_runtime_sha256 }}`,
+        TRUSTED_TAIL_PATH: `\${{ steps.${frozenBy("token")}.outputs.review_revoke_publisher_path }}`,
+        TRUSTED_TAIL_SHA256: `\${{ steps.${frozenBy("token")}.outputs.review_revoke_publisher_sha256 }}`,
+        TRUSTED_RUNTIME_PATH: `\${{ steps.${frozenBy("token")}.outputs.review_runtime_path }}`,
+        TRUSTED_RUNTIME_SHA256: `\${{ steps.${frozenBy("token")}.outputs.review_runtime_sha256 }}`,
       });
       expect(step("settle").env).toMatchObject({
-        TRUSTED_TAIL_PATH: `\${{ steps.${p}begin.outputs.review_settle_publisher_path }}`,
-        TRUSTED_TAIL_SHA256: `\${{ steps.${p}begin.outputs.review_settle_publisher_sha256 }}`,
-        TRUSTED_RUNTIME_PATH: `\${{ steps.${p}begin.outputs.review_runtime_path }}`,
-        TRUSTED_RUNTIME_SHA256: `\${{ steps.${p}begin.outputs.review_runtime_sha256 }}`,
+        TRUSTED_TAIL_PATH: `\${{ steps.${frozenBy("begin")}.outputs.review_settle_publisher_path }}`,
+        TRUSTED_TAIL_SHA256: `\${{ steps.${frozenBy("begin")}.outputs.review_settle_publisher_sha256 }}`,
+        TRUSTED_RUNTIME_PATH: `\${{ steps.${frozenBy("begin")}.outputs.review_runtime_path }}`,
+        TRUSTED_RUNTIME_SHA256: `\${{ steps.${frozenBy("begin")}.outputs.review_runtime_sha256 }}`,
       });
     });
 
@@ -210,8 +220,15 @@ describe("risk assessment inside the full action", () => {
       "${{ !cancelled() && inputs.risk_assessment == 'true' }}",
     );
     for (const candidate of before) {
-      expect(JSON.stringify(candidate)).not.toContain("inputs.risk_");
+      const text = JSON.stringify(candidate);
+      // The prepare step is told only so it can freeze the risk scripts.
+      expect(text.replace("${{ inputs.risk_assessment }}", "")).not.toContain(
+        "inputs.risk_",
+      );
     }
+    expect(
+      before.find((candidate) => candidate.id === "prepare")?.env,
+    ).toMatchObject({ RISK_ASSESSMENT: "${{ inputs.risk_assessment }}" });
   });
 
   it("starts only after the review's App token is revoked, and never reads it", () => {
@@ -227,6 +244,39 @@ describe("risk assessment inside the full action", () => {
   it("tells Factory how the review ended, or that there was none", () => {
     expect(begin.env?.RISK_REVIEW_OUTCOME).toBe(
       "${{ github.action_status == 'success' && steps.prepare.outputs.contains_trigger != 'true' && 'skipped' || github.action_status }}",
+    );
+  });
+
+  it("runs every script from a copy frozen before the review, never from the checkout or PATH", () => {
+    for (const [id, kind] of [
+      ["risk_begin", "risk_begin"],
+      ["risk_token", "risk_token"],
+      ["risk_assess", "risk_assess"],
+      ["risk_settle", "settle"],
+    ] as const) {
+      const candidate = risk.find((found) => found.id === id);
+      expect(candidate?.env).toMatchObject({
+        TRUSTED_TAIL_PATH: `\${{ steps.prepare.outputs.review_${kind}_publisher_path }}`,
+        TRUSTED_TAIL_SHA256: `\${{ steps.prepare.outputs.review_${kind}_publisher_sha256 }}`,
+        TRUSTED_RUNTIME_PATH:
+          "${{ steps.prepare.outputs.review_runtime_path }}",
+        TRUSTED_RUNTIME_SHA256:
+          "${{ steps.prepare.outputs.review_runtime_sha256 }}",
+      });
+      expect(candidate?.run).toContain(
+        '"$TRUSTED_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$TRUSTED_TAIL_PATH"',
+      );
+    }
+    for (const candidate of risk) {
+      expect(candidate.run).not.toContain("GITHUB_ACTION_PATH");
+      expect(candidate.run).not.toContain("github.action_path");
+      expect(candidate.run).not.toMatch(/(^|\s)bun\s/);
+    }
+  });
+
+  it("assesses the pull request a comment was left on", () => {
+    expect(begin.env?.RISK_PR_NUMBER).toBe(
+      "${{ inputs.risk_pr_number || (github.event.issue.pull_request && github.event.issue.number) || '' }}",
     );
   });
 
