@@ -79,6 +79,36 @@ conclusion so Factory can tell whether the pull request is ready to assess:
     review_outcome: ${{ steps.review.outcome }}
 ```
 
+## Bundled with the review
+
+The full action runs the same steps after its review when `risk_assessment`
+is `true`, so one step does both:
+
+```yaml
+- uses: Factory-AI/droid-action@dev-internal
+  with:
+    factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+    automatic_review: true
+    risk_assessment: true
+```
+
+The assessment starts once the review's steps have ended and its GitHub App
+token is revoked. The review's model session has run with the pull request
+checked out by then, so every risk script runs from a copy bundled before
+the review started, with the Bun that bundled it, after checking that
+neither changed; nothing is run from the action's checkout or found on
+`PATH`. It still runs when the review failed, and Factory is told
+how the review ended: `success`, `failure`, or `skipped` when the event gave
+the action nothing to review, as on a `workflow_dispatch` that only asks for
+an assessment. A cancelled run assesses nothing. On a comment left on a pull
+request, that pull request is the one assessed.
+
+The inputs are this sub-action's with a `risk_` prefix: `risk_pr_number`,
+`risk_api_base_url`, `risk_judge_api_base_url`, `risk_dry_run` and
+`risk_manual`. `factory_api_key` is shared with the review and there is no
+`review_outcome`. The outputs are `risk_action`, `risk_outcome` and
+`risk_head_sha`. Everything else on this page applies unchanged.
+
 The pull request is taken from the `pull_request` event, from the pull
 request of a `workflow_run` event, or from `pr_number`.
 

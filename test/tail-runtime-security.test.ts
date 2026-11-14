@@ -574,7 +574,7 @@ async function runPreparation(
   const mocks = new Map<string, string>([
     [
       "src/prepare/review-runtime.ts",
-      `${shared}import * as core from "@actions/core";export async function freezeReviewRuntime(){state.events.push("freeze");save();${failFreeze ? 'throw Error("synthetic freeze failure");' : `const outputs=${JSON.stringify(bound)};for(const [key,value]of Object.entries(outputs))core.setOutput(key,value);return outputs;`}}`,
+      `${shared}import * as core from "@actions/core";export const RISK_RUNTIME_KINDS=[];export async function freezeReviewRuntime(){state.events.push("freeze");save();${failFreeze ? 'throw Error("synthetic freeze failure");' : `const outputs=${JSON.stringify(bound)};for(const [key,value]of Object.entries(outputs))core.setOutput(key,value);return outputs;`}}`,
     ],
     [
       "src/github/token.ts",
