@@ -1,0 +1,25 @@
+action.yml
+  s_d57ffe6f0c2565::t_45857e5db27ac7 274-298,304-313,1706-1708,1760-2001
+risk/README.md
+  s_d57ffe6f0c2565::t_ad99b46d68482e 82-106
+test/credential-exposure-wiring.test.ts
+  s_d57ffe6f0c2565::t_a2c014a0109746 92-96
+test/risk-action-wiring.test.ts
+  s_d57ffe6f0c2565::t_382f5d2990c0d8 17-21,24-44,55-61,64-67,70-74,76-83,85-210,212-214,217-221,223,227-230,233-235,237-238,241-252,254-257
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f0c814c13333dcb24ea2cffb63272cb546336754",
+  "prompts": {},
+  "sessions": {
+    "s_d57ffe6f0c2565": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "10b7e9f7-d375-417e-a6e9-afa38921bbc9",
+        "model": "unknown"
+      },
+      "human_author": "Mark Attar <mark.attar@factory.ai>"
+    }
+  }
+}
