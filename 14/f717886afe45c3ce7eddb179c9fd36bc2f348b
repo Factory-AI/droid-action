@@ -1,0 +1,37 @@
+action.yml
+  s_66a121e8fdf54e::t_d0655995ad3aa3 399,1768-1773,1779-1817,1819-1822,1833-1835,1843,1845-1846,1887-1906,1908-1927,1929-1933,1956-1981,1983-1984,1986-1989,2003-2004,2044-2047,2103-2106
+risk/README.md
+  s_66a121e8fdf54e::t_0994c7934a0f87 96-100,103-104
+src/entrypoints/get-token.ts
+  s_66a121e8fdf54e::t_68031723e1648e 16-20
+src/entrypoints/prepare.ts
+  s_66a121e8fdf54e::t_ef472d84ed5b96 18-21,33-37
+src/entrypoints/risk-begin.ts
+  s_66a121e8fdf54e::t_26bb03b912d505 106-110
+src/prepare/review-runtime.ts
+  s_66a121e8fdf54e::t_89a6d06733d4a2 19-22,24-32,38,41,47-49
+test/prepare/review-runtime.test.ts
+  s_66a121e8fdf54e::t_5070fb417f415c 47-49
+test/risk-action-wiring.test.ts
+  s_66a121e8fdf54e::t_f1086cfdeb338a 64-67,76,91-98,156-159,162-165,223-227,229-231,250-282
+test/risk-bundled-runtime.test.ts
+  s_66a121e8fdf54e::t_65a6cf73496bfa 1-264
+test/tail-runtime-security.test.ts
+  s_66a121e8fdf54e::t_95e0b698893d25 577
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "14f717886afe45c3ce7eddb179c9fd36bc2f348b",
+  "prompts": {},
+  "sessions": {
+    "s_66a121e8fdf54e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "d1e67f36-1085-4381-b850-3f5614884c5c",
+        "model": "unknown"
+      },
+      "human_author": "Mark Attar <mark.attar@factory.ai>"
+    }
+  }
+}
