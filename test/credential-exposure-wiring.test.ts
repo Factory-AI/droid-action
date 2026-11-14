@@ -89,7 +89,11 @@ describe("credential exposure wiring", () => {
   ]) {
     it(`revokes the minted App token as the last step of ${relativePath}`, () => {
       const action = loadAction(relativePath);
-      const last = action.runs.steps.at(-1);
+      // The full action's risk assessment steps follow the revocation.
+      const riskStart = action.runs.steps.findIndex(
+        (candidate: { id?: string }) => candidate.id === "risk_begin",
+      );
+      const last = action.runs.steps.at(riskStart === -1 ? -1 : riskStart - 1);
       expect(last.name).toBe("Revoke GitHub App token");
       expect(last.if).toContain("always()");
       expect(last.if).toContain("inputs.github_token == ''");

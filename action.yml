@@ -271,10 +271,45 @@ inputs:
     required: false
     default: ""
 
+  risk_assessment:
+    description: "Internal and experimental. Set to 'true' to assess the pull request's risk after the review: the action asks Factory whether to assess, runs the judge Factory serves against the exact head, and reports the answer back for Factory to publish. Needs the id-token: write permission."
+    required: false
+    default: "false"
+  risk_pr_number:
+    description: "Pull request to risk-assess. Empty uses the pull request of the triggering event."
+    required: false
+    default: ""
+  risk_api_base_url:
+    description: "Factory API host that answers the risk assessment's begin and settle requests."
+    required: false
+    default: "https://app.factory.ai"
+  risk_judge_api_base_url:
+    description: "Factory API host for the risk judge session only. Empty uses the Droid CLI's default."
+    required: false
+    default: ""
+  risk_dry_run:
+    description: "Set to 'true' to tell Factory the risk assessment is a dry run."
+    required: false
+    default: "false"
+  risk_manual:
+    description: "Set to 'true' to make the run an explicit request to risk-assess. Defaults to true for workflow_dispatch."
+    required: false
+    default: ${{ github.event_name == 'workflow_dispatch' }}
+
 outputs:
   github_token:
     description: "The GitHub token used by the action. A Factory Droid App token the action minted is revoked when the action finishes, so later steps that need a token should pass their own github_token."
     value: ${{ steps.prepare.outputs.github_token }}
+
+  risk_action:
+    description: "What Factory asked the risk assessment to do: skip, hold or judge. Empty when risk_assessment is off."
+    value: ${{ steps.risk_begin.outputs.action }}
+  risk_outcome:
+    description: "Set after a risk judge run: approve, doNotApprove, unavailable, stale_head, skipped when Factory took the report and published nothing, unknown when Factory answered in a way this version does not know, or failed when the result could not be reported."
+    value: ${{ steps.risk_settle.outputs.outcome }}
+  risk_head_sha:
+    description: "The head commit Factory named for a risk hold or judge run."
+    value: ${{ steps.risk_begin.outputs.head_sha }}
 
 runs:
   using: "composite"
@@ -1668,8 +1703,9 @@ runs:
         if-no-files-found: ignore
         retention-days: 7
 
-    # Must stay the last step: everything above may still call GitHub with the
-    # token. A provided github_token belongs to the caller and is left alone.
+    # Must stay the last step that is not part of the risk assessment:
+    # everything above may still call GitHub with the token. A provided
+    # github_token belongs to the caller and is left alone.
     - name: Revoke GitHub App token
       if: always() && inputs.github_token == ''
       continue-on-error: true
@@ -1721,3 +1757,245 @@ runs:
         BASH_ENV: ""
         GITHUB_TOKEN: ${{ steps.prepare.outputs.github_token }}
         OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+
+    # PR risk assessment (inputs.risk_assessment). These steps are the last of
+    # the action so the review's App token is already revoked, and they run
+    # after a failed review too: Factory is told how the steps above ended
+    # (github.action_status) and holds the assessment instead of leaving an
+    # approval of an older commit standing. A cancelled run leaves the pull
+    # request to the run that replaced it.
+    - name: Ask Factory whether to assess risk
+      id: risk_begin
+      if: ${{ !cancelled() && inputs.risk_assessment == 'true' }}
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
+      run: |
+        bun --config=/dev/null --env-file=/dev/null run ${GITHUB_ACTION_PATH}/src/entrypoints/risk-begin.ts
+      env:
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+        RISK_API_BASE_URL: ${{ inputs.risk_api_base_url }}
+        RISK_PR_NUMBER: ${{ inputs.risk_pr_number }}
+        # How the steps above ended. `skipped` when they found nothing to do,
+        # as on a workflow_dispatch that only asks for the assessment.
+        RISK_REVIEW_OUTCOME: ${{ github.action_status == 'success' && steps.prepare.outputs.contains_trigger != 'true' && 'skipped' || github.action_status }}
+        RISK_DRY_RUN: ${{ inputs.risk_dry_run }}
+        RISK_MANUAL: ${{ inputs.risk_manual }}
+        RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
+        RISK_RESULT_PATH: ${{ runner.temp }}/pr-risk/result.json
+
+    # Installed again even when the review installed one: the review's model
+    # session ran with the pull request checked out, and the judge must not
+    # start from an executable that session could have replaced.
+    - name: Install Droid CLI for the risk judge
+      if: ${{ !cancelled() && steps.risk_begin.outputs.action == 'judge' }}
+      shell: bash
+      run: |
+        curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        "$HOME/.local/bin/droid" --version
+
+    # `gh` is how the judge reads the pull request on GitHub and ripgrep backs
+    # its Grep tool. GitHub-hosted images ship both; a judge without them
+    # still runs, so a failed install is a warning.
+    - name: Install judge tools
+      if: ${{ !cancelled() && steps.risk_begin.outputs.action == 'judge' }}
+      shell: bash
+      run: |
+        missing=()
+        command -v gh > /dev/null 2>&1 || missing+=(gh)
+        command -v rg > /dev/null 2>&1 || missing+=(ripgrep)
+        if [ "${#missing[@]}" -eq 0 ]; then
+          exit 0
+        fi
+        if [ "$RUNNER_OS" != "Linux" ] || ! command -v apt-get > /dev/null 2>&1; then
+          echo "::warning::Not installed on this runner: ${missing[*]}. The judge runs without them."
+          exit 0
+        fi
+        sudo=""
+        if [ "$(id -u)" != "0" ]; then sudo="sudo"; fi
+        if ! { $sudo apt-get update -qq && $sudo apt-get install -y -qq "${missing[@]}"; }; then
+          echo "::warning::Could not install ${missing[*]}. The judge runs without them."
+        fi
+
+    # The judge session's GitHub credential: read-only, so `gh` can read the
+    # pull request, its checks and its linked issues, and nothing can be
+    # written with it. A dry run without OIDC cannot mint it and reads with
+    # the workflow token instead.
+    - name: Mint judge read token
+      id: risk_token
+      if: ${{ !cancelled() && steps.risk_begin.outputs.action == 'judge' }}
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
+      run: |
+        dry_run=$(printf '%s' "$RISK_DRY_RUN" | tr '[:upper:]' '[:lower:]')
+        if [ "$dry_run" = "true" ] && [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+          echo "::notice::Dry run without id-token: write; the judge reads GitHub with the workflow token."
+          echo "use_workflow_token=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        bun --config=/dev/null --env-file=/dev/null run ${GITHUB_ACTION_PATH}/src/entrypoints/get-token.ts
+      env:
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
+        APP_TOKEN_PERMISSIONS: '{"contents":"read","pull_requests":"read","issues":"read","checks":"read","statuses":"read"}'
+        RISK_DRY_RUN: ${{ inputs.risk_dry_run }}
+
+    # The judge runs pull request code. This step therefore drops the OIDC
+    # request credentials (which could mint a token that writes) before
+    # anything else starts, and the judge session's own environment is an
+    # allow-list. It runs even when an earlier step failed, and always leaves
+    # a result, so the failure is reported instead of leaving the pull request
+    # looking unassessed.
+    - name: Assess PR risk
+      id: risk_assess
+      if: ${{ !cancelled() && steps.risk_begin.outputs.action == 'judge' }}
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
+      run: |
+        exec /usr/bin/env -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_URL -u ACTIONS_RUNTIME_TOKEN \
+          bun --config=/dev/null --env-file=/dev/null run ${GITHUB_ACTION_PATH}/src/entrypoints/risk-assess.ts
+      env:
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+        GH_TOKEN: ${{ steps.risk_token.outputs.github_token || (steps.risk_token.outputs.use_workflow_token == 'true' && github.token) || '' }}
+        RISK_JUDGE_API_BASE_URL: ${{ inputs.risk_judge_api_base_url }}
+        RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
+        RISK_RESULT_PATH: ${{ runner.temp }}/pr-risk/result.json
+
+    # The two steps below run after the judge has run pull request code, so
+    # neither trusts the action's checkout or PATH any more. Each runs a copy
+    # of its script that was bundled before the judge started, with the Bun
+    # that bundled it, after checking that neither file changed, and in an
+    # environment holding only what is named here.
+
+    # Only the token minted above is revoked. The workflow token a dry run may
+    # have read with belongs to the job and is never passed here.
+    - name: Revoke judge read token
+      if: always() && steps.risk_token.outputs.github_token != ''
+      continue-on-error: true
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
+      run: |
+        set -euo pipefail
+        for path in "${TRUSTED_TAIL_PATH:-}" "${TRUSTED_RUNTIME_PATH:-}"; do
+          case "$path" in /*) ;; *) echo "::warning::Trusted token cleanup is unavailable; no mutable fallback will run"; exit 1 ;; esac
+          if [ ! -f "$path" ] || [ -L "$path" ]; then
+            echo "::warning::Refusing a missing or symlinked token cleanup executable"
+            exit 1
+          fi
+        done
+        if [[ ! "${TRUSTED_TAIL_SHA256:-}" =~ ^[a-f0-9]{64}$ ]] || [[ ! "${TRUSTED_RUNTIME_SHA256:-}" =~ ^[a-f0-9]{64}$ ]]; then
+          echo "::warning::Missing trusted token cleanup executable digest"
+          exit 1
+        fi
+        if [ -x /usr/bin/sha256sum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/sha256sum --)
+        elif [ -x /usr/bin/shasum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/shasum -a256 --)
+        else
+          echo "No trusted SHA-256 verifier is available; refusing execution"
+          exit 1
+        fi
+        tail_hash=$("${digest_command[@]}" "$TRUSTED_TAIL_PATH")
+        runtime_hash=$("${digest_command[@]}" "$TRUSTED_RUNTIME_PATH")
+        if [ "${tail_hash%% *}" != "$TRUSTED_TAIL_SHA256" ] || [ "${runtime_hash%% *}" != "$TRUSTED_RUNTIME_SHA256" ]; then
+          echo "::warning::Token cleanup script or runtime changed; refusing to execute"
+          exit 1
+        fi
+        /usr/bin/env -i \
+          PATH=/usr/bin:/bin \
+          GITHUB_TOKEN="${GITHUB_TOKEN:-}" GITHUB_API_URL="${GITHUB_API_URL:-}" \
+          "$TRUSTED_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$TRUSTED_TAIL_PATH"
+      env:
+        TRUSTED_TAIL_PATH: ${{ steps.risk_token.outputs.review_revoke_publisher_path }}
+        TRUSTED_TAIL_SHA256: ${{ steps.risk_token.outputs.review_revoke_publisher_sha256 }}
+        TRUSTED_RUNTIME_PATH: ${{ steps.risk_token.outputs.review_runtime_path }}
+        TRUSTED_RUNTIME_SHA256: ${{ steps.risk_token.outputs.review_runtime_sha256 }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
+        GITHUB_TOKEN: ${{ steps.risk_token.outputs.github_token }}
+
+    # Skipped when the run is cancelled: a superseded run leaves the pull
+    # request to the run that replaced it instead of marking it unavailable
+    # moments before the real answer lands. This is the one step after the
+    # judge that holds the OIDC request credentials, which it needs to prove
+    # to Factory which workflow is reporting.
+    - name: Report risk result to Factory
+      id: risk_settle
+      if: ${{ !cancelled() && steps.risk_begin.outputs.action == 'judge' }}
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
+      run: |
+        set -euo pipefail
+        for path in "${TRUSTED_TAIL_PATH:-}" "${TRUSTED_RUNTIME_PATH:-}"; do
+          case "$path" in /*) ;; *) echo "::error::The trusted settle step is unavailable; no mutable fallback will run"; exit 1 ;; esac
+          if [ ! -f "$path" ] || [ -L "$path" ]; then
+            echo "::error::Refusing a missing or symlinked settle executable"
+            exit 1
+          fi
+        done
+        if [[ ! "${TRUSTED_TAIL_SHA256:-}" =~ ^[a-f0-9]{64}$ ]] || [[ ! "${TRUSTED_RUNTIME_SHA256:-}" =~ ^[a-f0-9]{64}$ ]]; then
+          echo "::error::Missing trusted settle executable digest"
+          exit 1
+        fi
+        if [ -x /usr/bin/sha256sum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/sha256sum --)
+        elif [ -x /usr/bin/shasum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/shasum -a256 --)
+        else
+          echo "::error::No trusted SHA-256 verifier is available; refusing execution"
+          exit 1
+        fi
+        tail_hash=$("${digest_command[@]}" "$TRUSTED_TAIL_PATH")
+        runtime_hash=$("${digest_command[@]}" "$TRUSTED_RUNTIME_PATH")
+        if [ "${tail_hash%% *}" != "$TRUSTED_TAIL_SHA256" ] || [ "${runtime_hash%% *}" != "$TRUSTED_RUNTIME_SHA256" ]; then
+          echo "::error::Settle script or runtime changed; refusing to execute"
+          exit 1
+        fi
+        /usr/bin/env -i \
+          PATH=/usr/bin:/bin \
+          FACTORY_API_KEY="${FACTORY_API_KEY:-}" RISK_API_BASE_URL="${RISK_API_BASE_URL:-}" \
+          RISK_PLAN_PATH="${RISK_PLAN_PATH:-}" RISK_RESULT_PATH="${RISK_RESULT_PATH:-}" \
+          ACTIONS_ID_TOKEN_REQUEST_URL="${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ACTIONS_ID_TOKEN_REQUEST_TOKEN="${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" \
+          GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" \
+          "$TRUSTED_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$TRUSTED_TAIL_PATH"
+      env:
+        TRUSTED_TAIL_PATH: ${{ steps.risk_begin.outputs.review_settle_publisher_path }}
+        TRUSTED_TAIL_SHA256: ${{ steps.risk_begin.outputs.review_settle_publisher_sha256 }}
+        TRUSTED_RUNTIME_PATH: ${{ steps.risk_begin.outputs.review_runtime_path }}
+        TRUSTED_RUNTIME_SHA256: ${{ steps.risk_begin.outputs.review_runtime_sha256 }}
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
+        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+        RISK_API_BASE_URL: ${{ inputs.risk_api_base_url }}
+        RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
+        RISK_RESULT_PATH: ${{ runner.temp }}/pr-risk/result.json
