@@ -136,6 +136,20 @@ describe("parseAppTokenPermissions", () => {
     ).toEqual({ contents: "read", pull_requests: "write" });
   });
 
+  test("reads the read-only set the risk sub-action asks for", () => {
+    expect(
+      parseAppTokenPermissions(
+        '{"contents":"read","pull_requests":"read","issues":"read","checks":"read","statuses":"read"}',
+      ),
+    ).toEqual({
+      contents: "read",
+      pull_requests: "read",
+      issues: "read",
+      checks: "read",
+      statuses: "read",
+    });
+  });
+
   test("rejects a permission the exchange does not narrow to", () => {
     expect(() =>
       parseAppTokenPermissions('{"contents":"read","workflows":"write"}'),

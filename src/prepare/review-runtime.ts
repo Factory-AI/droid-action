@@ -14,18 +14,26 @@ const entrypoints = {
   debug: "../entrypoints/collect-debug-artifacts.ts",
   revoke: "../entrypoints/revoke-github-token.ts",
   steward: "../steward/postrun.ts",
+  // The risk action's last step, which no review action runs.
+  settle: "../entrypoints/risk-settle.ts",
 };
 const sha256 = (value: Uint8Array) =>
   createHash("sha256").update(value).digest("hex");
 
-/** Freeze executable code before either review pass can edit action files. */
+/**
+ * Freeze executable code before either review pass can edit action files.
+ * Without `kinds`, every review entrypoint is frozen and `settle` is not.
+ */
 export async function freezeReviewRuntime(
   kinds?: readonly (keyof typeof entrypoints)[],
 ): Promise<Record<string, string>> {
   const directory = await mkdtemp(join(tmpdir(), "droid-review-publishers-"));
   const outputs: Record<string, string> = {};
   for (const [kind, file] of Object.entries(entrypoints)) {
-    if (kinds && !kinds.some((selected) => selected === kind)) continue;
+    if (
+      kinds ? !kinds.some((selected) => selected === kind) : kind === "settle"
+    )
+      continue;
     const build = await Bun.build({
       entrypoints: [fileURLToPath(new URL(file, import.meta.url))],
       target: "bun",

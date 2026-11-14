@@ -6,13 +6,17 @@ import { extractCommandFromContext } from "./utils/command-parser";
 const PermissionLevelSchema = z.enum(["read", "write"]);
 
 // Mirrors what the token-exchange endpoint accepts. Metadata read is always
-// added by the endpoint, so it is not listed.
+// added by the endpoint, so it is not listed. Checks and statuses exist for
+// the risk sub-action, which asks for them read-only so its judge can see a
+// pull request's CI results; no flow of the full action requests them.
 const AppTokenPermissionsSchema = z
   .object({
     actions: PermissionLevelSchema.optional(),
+    checks: PermissionLevelSchema.optional(),
     contents: PermissionLevelSchema.optional(),
     issues: PermissionLevelSchema.optional(),
     pull_requests: PermissionLevelSchema.optional(),
+    statuses: PermissionLevelSchema.optional(),
   })
   .strict();
 
