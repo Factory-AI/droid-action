@@ -162,6 +162,7 @@ describe("risk action entrypoints", () => {
         eventHeadSha: plan.headSha,
         manual: false,
         reviewOutcome: "success",
+        capabilities: ["incremental_v1"],
         run: plan.run,
       });
       expect(outputs).toEqual({
@@ -258,6 +259,7 @@ describe("risk action entrypoints", () => {
         repo: "acme/app",
         pr: 456,
         manual: true,
+        capabilities: ["incremental_v1"],
         run: { ...plan.run, trigger: "workflow_dispatch" },
       });
     });

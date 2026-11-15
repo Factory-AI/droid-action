@@ -164,6 +164,7 @@ async function offlineInputs(
         JSON.parse(await readFile(values.prior, "utf8")),
       );
       incremental = {
+        mode: "enforce",
         reason,
         priorHeadSha: headSha,
         priorBaseSha: baseSha,
@@ -232,7 +233,7 @@ export async function run(
     return;
   }
 
-  const result = await assessPullRequest({
+  const { result, shadow } = await assessPullRequest({
     plan: inputs.plan,
     repoDir: inputs.repoDir,
     githubToken: inputs.githubToken,
@@ -245,6 +246,7 @@ export async function run(
   await writePrivateJson(inputs.resultPath, {
     ...(droidCliVersion ? { droidCliVersion } : {}),
     result,
+    ...(shadow ? { shadow } : {}),
   } satisfies RiskResultFile);
 
   // The verdict itself stays in the result file; the log only says whether
@@ -254,6 +256,13 @@ export async function run(
       ? `The PR risk judge answered for ${inputs.plan.headSha} after ${result.attempts.length} attempt(s).`
       : `No PR risk verdict for ${inputs.plan.headSha} (${result.reason}).`,
   );
+  if (shadow) {
+    console.log(
+      shadow.status === "judged"
+        ? `The shadow incremental re-check answered (${shadow.mode ?? "full"}).`
+        : `The shadow incremental re-check produced no verdict (${shadow.reason}).`,
+    );
+  }
   if (offline) {
     console.log(`Result written to ${inputs.resultPath}`);
     if (result.status === "failed") process.exitCode = 1;

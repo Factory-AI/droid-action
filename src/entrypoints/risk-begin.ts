@@ -23,6 +23,7 @@ import {
   writePrivateJson,
 } from "../core/risk/plan";
 import {
+  RISK_CAPABILITIES,
   RISK_DEFAULT_API_BASE_URL,
   RISK_UNKNOWN_ACTION,
   RISK_WORKFLOW_NOT_TRUSTED,
@@ -69,6 +70,7 @@ export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
       ...(target.eventDraft ? { eventDraft: true } : {}),
       manual,
       ...(reviewOutcome ? { reviewOutcome } : {}),
+      capabilities: RISK_CAPABILITIES,
       run: riskRun,
     },
     {

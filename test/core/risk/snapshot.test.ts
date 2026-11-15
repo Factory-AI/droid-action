@@ -106,6 +106,7 @@ describe("renderPrRiskSkill", () => {
 
   it("adds the prior verdict and the inter-diff only when the incremental evidence was built", () => {
     const incremental = {
+      mode: "enforce" as const,
       reason: "eligible",
       priorHeadSha: "e".repeat(40),
       priorBaseSha: "f".repeat(40),

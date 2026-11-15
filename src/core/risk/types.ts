@@ -12,6 +12,8 @@ export const RISK_JUDGE_SKILL_NAME = "pr-risk-judge";
 export const RISK_SNAPSHOT_PLACEHOLDER = "{{PR_SNAPSHOT_JSON}}";
 export const RISK_SESSION_TAG = "riskAssessment";
 export const RISK_SETTLE_MAX_BODY_BYTES = 256 * 1024;
+/** What this version can do beyond a full judgment, sent with every begin. */
+export const RISK_CAPABILITIES = ["incremental_v1"];
 
 const FAILURE_REASON = /^[a-z][a-z0-9_]{0,63}$/;
 
@@ -65,6 +67,7 @@ export type RiskBeginRequest = {
   eventDraft?: boolean;
   manual: boolean;
   reviewOutcome?: RiskReviewOutcome;
+  capabilities?: string[];
   run: RiskRun;
 };
 
@@ -100,10 +103,13 @@ export type RiskPriorDecline = z.infer<typeof RiskPriorDeclineSchema>;
 
 /**
  * An earlier verdict on this pull request that Factory asks the judge to
- * re-check against what changed since, instead of judging the head afresh.
- * `scores` is sent only when Factory chooses to show them.
+ * re-check against what changed since. `enforce` judges the head that way
+ * instead of afresh; `shadow` judges it afresh as usual and runs the
+ * re-check alongside, reported separately and never published. `scores` is
+ * sent only when Factory chooses to show them.
  */
 const RiskIncrementalSchema = z.object({
+  mode: z.enum(["shadow", "enforce"]),
   reason: z.string(),
   priorHeadSha: CommitShaSchema,
   priorBaseSha: CommitShaSchema,
@@ -176,6 +182,7 @@ export const RiskSettleResultSchema = z.discriminatedUnion("status", [
     // afresh instead.
     mode: z.enum(["incremental", "full"]).optional(),
     incrementalFallback: z.string().regex(FAILURE_REASON).optional(),
+    priorHeadSha: CommitShaSchema.optional(),
   }),
   z.object({
     status: z.literal("failed"),
@@ -190,6 +197,8 @@ export type RiskSettleResult = z.infer<typeof RiskSettleResultSchema>;
 export const RiskResultFileSchema = z.object({
   droidCliVersion: z.string().min(1).optional(),
   result: RiskSettleResultSchema,
+  /** The incremental re-check run alongside a shadowed full judgment. */
+  shadow: RiskSettleResultSchema.optional(),
 });
 export type RiskResultFile = z.infer<typeof RiskResultFileSchema>;
 
@@ -199,6 +208,7 @@ export type RiskSettleRequest = {
   headSha: string;
   run: RiskRun;
   result: RiskSettleResult;
+  shadow?: RiskSettleResult;
 };
 
 export const RiskSettleResponseSchema = z.discriminatedUnion("status", [

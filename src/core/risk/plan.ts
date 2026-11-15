@@ -216,14 +216,21 @@ export function buildSettleRequest(
         : {}),
     },
     result: file.result,
+    ...(file.shadow ? { shadow: file.shadow } : {}),
   };
-  if (
-    Buffer.byteLength(JSON.stringify(request)) <= RISK_SETTLE_MAX_BODY_BYTES
-  ) {
-    return request;
+  const fits = (candidate: RiskSettleRequest) =>
+    Buffer.byteLength(JSON.stringify(candidate)) <= RISK_SETTLE_MAX_BODY_BYTES;
+  if (fits(request)) return request;
+  // The shadow re-check is only measured, so it gives way to the verdict.
+  const { shadow: _shadow, ...primary } = request;
+  if (fits(primary)) {
+    return {
+      ...primary,
+      shadow: { status: "failed", reason: "result_too_large" },
+    };
   }
   return {
-    ...request,
+    ...primary,
     result: { status: "failed", reason: "result_too_large" },
   };
 }

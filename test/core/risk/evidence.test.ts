@@ -544,6 +544,7 @@ describe("createPrRiskEvidenceWorkspace incremental", () => {
           repoDir: checkoutDir,
           githubToken: "test-token",
           incremental: {
+            mode: "enforce",
             reason: "eligible",
             priorHeadSha,
             priorBaseSha: forkSha,
@@ -622,6 +623,7 @@ describe("createPrRiskEvidenceWorkspace incremental", () => {
           repoDir: checkoutDir,
           githubToken: "test-token",
           incremental: {
+            mode: "enforce",
             reason: "eligible",
             priorHeadSha: "d".repeat(40),
             priorBaseSha: baseSha,

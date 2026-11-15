@@ -305,4 +305,29 @@ describe("buildSettleRequest", () => {
     });
     expect(request.headSha).toBe(plan.headSha);
   });
+
+  it("gives up the shadow re-check, not the verdict, when both together are too large to send", () => {
+    const judged = (details: string): RiskResultFile["result"] => ({
+      status: "judged",
+      baseSha: plan.baseSha,
+      judgeSha256: judge.sha256,
+      snapshotHash: "f".repeat(64),
+      listedFiles: 1,
+      attempts: [{ valid: true }],
+      durationMs: 34,
+      verdict: { ...validVerdict, details },
+    });
+    const result = judged("x".repeat(200 * 1024));
+
+    const request = buildSettleRequest(plan, {
+      result,
+      shadow: { ...judged("y".repeat(200 * 1024)), mode: "incremental" },
+    });
+
+    expect(request.result).toEqual(result);
+    expect(request.shadow).toEqual({
+      status: "failed",
+      reason: "result_too_large",
+    });
+  });
 });
