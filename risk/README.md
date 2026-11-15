@@ -32,7 +32,7 @@ and are never printed to the job log.
 ### Re-checking an earlier verdict
 
 Every begin request says the action can re-check an earlier verdict
-(`capabilities: ["incremental_v1"]`). Factory may then answer `judge` with an
+(`capabilities: ["incremental"]`). Factory may then answer `judge` with an
 `incremental` block naming the prior head, its base and the prior verdict.
 Next to the full evidence, the workspace then holds the pull request's own
 diff as it stood at the prior head, the head-tree changes since the prior

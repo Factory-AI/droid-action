@@ -13,7 +13,7 @@ export const RISK_SNAPSHOT_PLACEHOLDER = "{{PR_SNAPSHOT_JSON}}";
 export const RISK_SESSION_TAG = "riskAssessment";
 export const RISK_SETTLE_MAX_BODY_BYTES = 256 * 1024;
 /** What this version can do beyond a full judgment, sent with every begin. */
-export const RISK_CAPABILITIES = ["incremental_v1"];
+export const RISK_CAPABILITIES = ["incremental"];
 
 const FAILURE_REASON = /^[a-z][a-z0-9_]{0,63}$/;
 
