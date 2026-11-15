@@ -11,7 +11,7 @@ const testHomeDir = join(
   "droid-exec-test-home",
   Date.now().toString(),
 );
-const settingsPath = join(testHomeDir, ".factory", "droid", "settings.json");
+const settingsPath = join(testHomeDir, ".factory", "settings.json");
 const testSettingsDir = join(testHomeDir, ".factory-test");
 const testSettingsPath = join(testSettingsDir, "test-settings.json");
 
@@ -153,10 +153,10 @@ describe("setupDroidSettings", () => {
   });
 
   test("should merge with existing settings", async () => {
-    // First, create some existing settings
-    await setupDroidSettings(
-      JSON.stringify({ existingKey: "existingValue" }),
-      testHomeDir,
+    await mkdir(join(testHomeDir, ".factory"), { recursive: true });
+    await writeFile(
+      settingsPath,
+      JSON.stringify({ existingKey: "existingValue", model: "old-model" }),
     );
 
     // Then, add new settings
@@ -171,5 +171,32 @@ describe("setupDroidSettings", () => {
     expect(settings.existingKey).toBe("existingValue");
     expect(settings.newKey).toBe("newValue");
     expect(settings.model).toBe("gpt-5-codex");
+  });
+
+  test.each([undefined, '{"model":"new-model"}'])(
+    "does not overwrite malformed existing settings with input %s",
+    async (input) => {
+      const contents = '{"apiKey":"existing-secret",';
+      await mkdir(join(testHomeDir, ".factory"), { recursive: true });
+      await writeFile(settingsPath, contents);
+
+      const error = await setupDroidSettings(input, testHomeDir).catch(
+        (e: unknown) => e,
+      );
+      expect(error).toBeInstanceOf(Error);
+      expect(String(error)).toContain(
+        "Failed to read or parse existing Droid settings",
+      );
+      expect(String(error)).not.toContain("existing-secret");
+      expect(await readFile(settingsPath, "utf-8")).toBe(contents);
+    },
+  );
+
+  test("does not treat a read error as a missing settings file", async () => {
+    await mkdir(settingsPath, { recursive: true });
+    await expect(
+      setupDroidSettings('{"model":"new-model"}', testHomeDir),
+    ).rejects.toThrow("Failed to read or parse existing Droid settings");
+    expect((await stat(settingsPath)).isDirectory()).toBe(true);
   });
 });
