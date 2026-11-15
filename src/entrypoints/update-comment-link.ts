@@ -53,7 +53,8 @@ export async function run() {
     const octokit = createOctokit(githubToken);
     const lifecycle = await loadBoundReviewLifecycle(octokit);
     if (lifecycle) {
-      if (!lifecycle.completed)
+      // A superseded post already finished this run's lifecycle.
+      if (!lifecycle.completed && process.env.REVIEW_POSTED !== "superseded")
         await finishReviewLifecycle({
           octokit,
           run: lifecycle,
