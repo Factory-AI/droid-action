@@ -307,7 +307,9 @@ describe("buildSettleRequest", () => {
   });
 
   it("gives up the shadow re-check, not the verdict, when both together are too large to send", () => {
-    const judged = (details: string): RiskResultFile["result"] => ({
+    const judged = (
+      details: string,
+    ): Extract<RiskResultFile["result"], { status: "judged" }> => ({
       status: "judged",
       baseSha: plan.baseSha,
       judgeSha256: judge.sha256,
