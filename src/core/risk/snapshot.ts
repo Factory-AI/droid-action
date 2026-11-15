@@ -6,8 +6,12 @@ import {
   type PullRequestRiskInput,
   type PullRequestRiskSnapshot,
   type PullRequestRiskSnapshotFile,
+  type RiskIncremental,
   type RiskPriorDecline,
 } from "./types";
+
+// The focus list is inlined for this many paths; the file holds all of them.
+const MAX_INLINE_FOCUS_PATHS = 50;
 
 const TEST_PATH =
   /(?:^|\/)(?:__tests__|e2e|test|tests)(?:\/|$)|\.(?:spec|test)\.[^.]+$/i;
@@ -83,14 +87,19 @@ export function buildPrRiskSnapshot(
 /**
  * Renders the judge's skill for one pull request: the snapshot (without the
  * base revision, which the judge never sees) replaces the placeholder in the
- * skill body, or is appended when the skill carries none.
+ * skill body, or is appended when the skill carries none. An incremental
+ * judgment adds the prior verdict and its evidence under `incremental`, and
+ * only when that evidence was built: without it the judge sees a plain full
+ * snapshot and judges afresh.
  */
 export function renderPrRiskSkill(
   skill: string,
   snapshot: PullRequestRiskSnapshot,
   evidence: PrRiskEvidenceWorkspace,
+  incremental?: RiskIncremental,
 ): string {
   const { baseSha: _baseSha, ...pullRequest } = snapshot.pullRequest;
+  const built = incremental ? evidence.incremental : undefined;
   const snapshotJson = JSON.stringify(
     {
       pullRequest,
@@ -103,6 +112,23 @@ export function renderPrRiskSkill(
         inventoryPath: evidence.inventoryPath,
         guidelinesPath: evidence.guidelinesPath,
       },
+      ...(incremental && built
+        ? {
+            incremental: {
+              priorHeadSha: incremental.priorHeadSha,
+              baseMoved: built.focus.baseMoved,
+              prior: incremental.prior,
+              totals: built.focus.totals,
+              focus: built.focus.paths.slice(0, MAX_INLINE_FOCUS_PATHS),
+              testsToRerun: built.focus.testsToRerun,
+              evidence: {
+                interdiffPath: built.interdiffPath,
+                priorDiffPath: built.priorDiffPath,
+                focusPath: built.focusPath,
+              },
+            },
+          }
+        : {}),
     },
     null,
     2,

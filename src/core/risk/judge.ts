@@ -9,6 +9,7 @@ import {
   RiskError,
   type PrRiskEvidenceWorkspace,
   type PullRequestRiskSnapshot,
+  type RiskIncremental,
   type RiskJudge,
   type RiskJudgeAttempt,
   type RiskScoreRanges,
@@ -52,6 +53,8 @@ export type DroidRiskJudgeInvocation = {
 export type RunPrRiskJudgeOptions = {
   judge: RiskJudge;
   evidence: PrRiskEvidenceWorkspace;
+  /** The prior verdict to re-check, for an incremental judgment. */
+  incremental?: RiskIncremental;
   /** The whole environment of the judge session; nothing else is inherited. */
   env: NodeJS.ProcessEnv;
   droidBinary?: string;
@@ -223,7 +226,12 @@ export async function runPrRiskJudge(
   options: RunPrRiskJudgeOptions,
 ): Promise<PrRiskVerdict> {
   const { judge, evidence } = options;
-  const skill = renderPrRiskSkill(judge.skill, snapshot, evidence);
+  const skill = renderPrRiskSkill(
+    judge.skill,
+    snapshot,
+    evidence,
+    options.incremental,
+  );
   const settingsPath = await writePrRiskSettings(evidence, judge.settings);
   const args = [
     "--settings",

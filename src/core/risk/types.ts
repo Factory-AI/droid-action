@@ -98,12 +98,31 @@ const RiskPriorDeclineSchema = z.object({
 });
 export type RiskPriorDecline = z.infer<typeof RiskPriorDeclineSchema>;
 
+/**
+ * An earlier verdict on this pull request that Factory asks the judge to
+ * re-check against what changed since, instead of judging the head afresh.
+ * `scores` is sent only when Factory chooses to show them.
+ */
+const RiskIncrementalSchema = z.object({
+  reason: z.string(),
+  priorHeadSha: CommitShaSchema,
+  priorBaseSha: CommitShaSchema,
+  prior: z.object({
+    verdict: z.boolean(),
+    brief: z.string(),
+    details: z.string(),
+    scores: z.record(z.number()).optional(),
+  }),
+});
+export type RiskIncremental = z.infer<typeof RiskIncrementalSchema>;
+
 const RiskJudgeAssignmentSchema = z.object({
   headSha: CommitShaSchema,
   baseSha: CommitShaSchema,
   pullRequest: RiskPullRequestSchema,
   priorDeclines: z.array(RiskPriorDeclineSchema),
   judge: RiskJudgeSchema,
+  incremental: RiskIncrementalSchema.optional(),
 });
 
 // Reasons stay open strings and unknown keys are dropped, so Factory can add
@@ -151,6 +170,12 @@ export const RiskSettleResultSchema = z.discriminatedUnion("status", [
     attempts: z.array(RiskJudgeAttemptSchema).nonempty(),
     durationMs: z.number().int().nonnegative(),
     verdict: z.record(z.unknown()),
+    // Present only when the plan asked for an incremental judgment:
+    // `incremental` when the judge saw the prior verdict and the inter-diff,
+    // `full` when that evidence could not be built and the head was judged
+    // afresh instead.
+    mode: z.enum(["incremental", "full"]).optional(),
+    incrementalFallback: z.string().regex(FAILURE_REASON).optional(),
   }),
   z.object({
     status: z.literal("failed"),
@@ -268,4 +293,43 @@ export type PrRiskEvidenceWorkspace = {
   /** The default branch's `.factory/pr-risk/guidelines.md`, or null when absent. */
   guidelinesPath: string | null;
   snapshotHash: string;
+  /** Set only for an incremental judgment. */
+  incremental?: PrRiskIncrementalEvidence;
+};
+
+/** What changed since the prior verdict, on disk next to the full evidence. */
+export type PrRiskIncrementalEvidence = {
+  /** Head-tree changes since the prior head, limited to the paths whose own change differs. */
+  interdiffPath: string;
+  /** The pull request's own diff as it stood at the prior head. */
+  priorDiffPath: string;
+  /** What to look at: changed paths, symbols, importers, tests, prior findings. */
+  focusPath: string;
+  focus: PrRiskFocus;
+};
+
+export type PrRiskFocusPath = {
+  path: string;
+  /**
+   * How this path's own change moved since the prior head. `base_changed`:
+   * the pull request's own lines are the same, but the base changed the file
+   * around them.
+   */
+  change: "added_to_pr" | "removed_from_pr" | "changed" | "base_changed";
+  /** The base also changed this path between the two merge bases. */
+  upstreamTouched: boolean;
+  symbols: string[];
+  /** Added or removed lines that declare an export or a signature. */
+  contractLines: number;
+  importers: string[];
+  /** The prior verdict's text names this path. */
+  namedInPrior: boolean;
+};
+
+export type PrRiskFocus = {
+  priorHeadSha: string;
+  baseMoved: boolean;
+  paths: PrRiskFocusPath[];
+  testsToRerun: string[];
+  totals: { paths: number; interdiffLines: number; contractLines: number };
 };

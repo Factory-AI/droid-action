@@ -265,6 +265,73 @@ describe("assessPullRequest", () => {
     });
   });
 
+  it("re-checks a prior verdict on the inter-diff when the plan asks, and says when it could not", async () => {
+    const prior = {
+      verdict: true,
+      brief: "- Prior brief.",
+      details: "Prior details.",
+    };
+    let skill = "";
+    const incremental = await assessPullRequest({
+      plan: planFor({
+        baseSha,
+        headSha,
+        incremental: {
+          reason: "eligible",
+          priorHeadSha: baseSha,
+          priorBaseSha: baseSha,
+          prior,
+        },
+      }),
+      repoDir: checkoutDir,
+      githubToken: "read-token",
+      env,
+      executeDroid: async ({ cwd }) => {
+        skill = await readFile(
+          join(cwd, ".factory", "skills", "pr-risk-judge", "SKILL.md"),
+          "utf8",
+        );
+        return execSummary(validVerdict);
+      },
+    });
+    expect(incremental).toMatchObject({
+      status: "judged",
+      mode: "incremental",
+    });
+    expect(incremental).not.toHaveProperty("incrementalFallback");
+    expect(skill).toContain('"interdiffPath"');
+    expect(skill).toContain("Prior details.");
+
+    const fallback = await assessPullRequest({
+      plan: planFor({
+        baseSha,
+        headSha,
+        incremental: {
+          reason: "eligible",
+          priorHeadSha: "d".repeat(40),
+          priorBaseSha: baseSha,
+          prior,
+        },
+      }),
+      repoDir: checkoutDir,
+      githubToken: "read-token",
+      env,
+      executeDroid: async ({ cwd }) => {
+        skill = await readFile(
+          join(cwd, ".factory", "skills", "pr-risk-judge", "SKILL.md"),
+          "utf8",
+        );
+        return execSummary(validVerdict);
+      },
+    });
+    expect(fallback).toMatchObject({
+      status: "judged",
+      mode: "full",
+      incrementalFallback: "evidence_git_failed",
+    });
+    expect(skill).not.toContain('"incremental"');
+    expect(skill).not.toContain("Prior details.");
+  });
   it("settles a run with no GitHub token as a failure rather than throwing", async () => {
     expect(
       await assessPullRequest({

@@ -60,20 +60,22 @@ export async function assessPullRequest(
         "No GitHub token is available to read the pull request",
       );
     }
-    const { snapshot, evidence } = await createPrRiskEvidenceWorkspace(
-      {
-        repo: plan.repo,
-        prNumber: plan.pr,
-        title: plan.pullRequest.title,
-        baseSha: plan.baseSha,
-        headSha: plan.headSha,
-      },
-      {
-        repoDir: options.repoDir,
-        githubToken: token,
-        priorDeclines: plan.priorDeclines,
-      },
-    );
+    const { snapshot, evidence, incrementalFallback } =
+      await createPrRiskEvidenceWorkspace(
+        {
+          repo: plan.repo,
+          prNumber: plan.pr,
+          title: plan.pullRequest.title,
+          baseSha: plan.baseSha,
+          headSha: plan.headSha,
+        },
+        {
+          repoDir: options.repoDir,
+          githubToken: token,
+          priorDeclines: plan.priorDeclines,
+          incremental: plan.incremental,
+        },
+      );
     try {
       if (!options.keepCheckoutCredentials) {
         await removeCheckoutCredentials(options.repoDir, evidence.headTreeDir);
@@ -82,6 +84,7 @@ export async function assessPullRequest(
       const verdict = await runPrRiskJudge(snapshot, {
         judge: plan.judge,
         evidence,
+        incremental: plan.incremental,
         env: buildJudgeEnvironment(
           {
             group: plan.judge.group,
@@ -115,6 +118,12 @@ export async function assessPullRequest(
         attempts: [first, ...rest],
         durationMs: Date.now() - startedAt,
         verdict: { ...verdict },
+        ...(plan.incremental
+          ? {
+              mode: evidence.incremental ? "incremental" : "full",
+              ...(incrementalFallback ? { incrementalFallback } : {}),
+            }
+          : {}),
       };
     } finally {
       try {

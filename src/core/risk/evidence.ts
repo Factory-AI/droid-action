@@ -4,6 +4,7 @@ import { createReadStream } from "node:fs";
 import {
   mkdir,
   mkdtemp,
+  readFile,
   readdir,
   realpath,
   rm,
@@ -14,11 +15,24 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { GITHUB_SERVER_URL } from "../../github/api/config";
+import {
+  MAX_INCREMENTAL_PATHS,
+  buildFocus,
+  changedOwnPaths,
+  importStem,
+  importsModule,
+  isTestPath,
+  parseDiffFootprints,
+  scanInterdiff,
+} from "./incremental";
 import { buildPrRiskSnapshot } from "./snapshot";
 import {
   RISK_JUDGE_SKILL_NAME,
   RiskError,
+  failureReason,
   type PrRiskEvidenceWorkspace,
+  type PrRiskIncrementalEvidence,
+  type RiskIncremental,
   type PullRequestRiskFile,
   type PullRequestRiskFileStatus,
   type PullRequestRiskSnapshot,
@@ -51,6 +65,19 @@ const FILE_STATUSES: Record<string, PullRequestRiskFileStatus> = {
 const TOKEN_HEADER_KEY = /^http\.(.*\.)?extraheader$/;
 const SSH_COMMAND_KEY = "core.sshcommand";
 // Retries cover files that appear while a directory is being emptied.
+// Importers are searched for this many changed source files at most, in one
+// `git grep`; the rest are listed without importers.
+const MAX_IMPORTER_SEARCHES = 200;
+const SOURCE_PATHSPECS = [
+  "*.ts",
+  "*.tsx",
+  "*.js",
+  "*.jsx",
+  "*.mjs",
+  "*.cjs",
+  "*.mts",
+  "*.cts",
+];
 const REMOVE_WORKSPACE_OPTIONS = {
   recursive: true,
   force: true,
@@ -254,10 +281,13 @@ export async function createPrRiskEvidenceWorkspace(
     repoDir: string;
     githubToken: string;
     priorDeclines?: readonly RiskPriorDecline[];
+    incremental?: RiskIncremental;
   },
 ): Promise<{
   snapshot: PullRequestRiskSnapshot;
   evidence: PrRiskEvidenceWorkspace;
+  /** Why the incremental evidence asked for could not be built. */
+  incrementalFallback?: string;
 }> {
   const { baseSha, headSha, prNumber } = pullRequest;
   const repo = { cwd: options.repoDir, githubToken: options.githubToken };
@@ -359,6 +389,27 @@ export async function createPrRiskEvidenceWorkspace(
       guidelinesPath = join(evidenceDir, "pr-risk-guidelines.md");
       await writeFile(guidelinesPath, `${guidelines}\n`, "utf8");
     }
+    let incremental: PrRiskIncrementalEvidence | undefined;
+    let incrementalFallback: string | undefined;
+    if (options.incremental) {
+      try {
+        incremental = await writeIncrementalEvidence({
+          repo,
+          evidenceDir,
+          diffPath,
+          mergeBase,
+          headSha,
+          incremental: options.incremental,
+        });
+      } catch (error) {
+        // The full evidence is already on disk, so the head is judged
+        // afresh rather than not at all.
+        incrementalFallback = failureReason(error);
+        console.warn(
+          `PR risk incremental evidence unavailable (${incrementalFallback}); judging the full change`,
+        );
+      }
+    }
     await git(["worktree", "add", "--detach", headTreeDir, headSha], repo);
     const hash = createHash("sha256")
       .update(headSha)
@@ -369,6 +420,15 @@ export async function createPrRiskEvidenceWorkspace(
     // Appended only when present, so hashes of repositories without
     // guidelines are unchanged.
     if (guidelines !== null) hash.update("\0").update(guidelines);
+    if (incremental && options.incremental) {
+      hash
+        .update("\0incremental\0")
+        .update(JSON.stringify(options.incremental))
+        .update("\0");
+      for await (const chunk of createReadStream(incremental.interdiffPath)) {
+        hash.update(chunk);
+      }
+    }
     return {
       snapshot,
       evidence: {
@@ -378,12 +438,232 @@ export async function createPrRiskEvidenceWorkspace(
         inventoryPath,
         guidelinesPath,
         snapshotHash: hash.digest("hex"),
+        ...(incremental ? { incremental } : {}),
       },
+      ...(incrementalFallback ? { incrementalFallback } : {}),
     };
   } catch (error) {
     await rm(rootDir, { recursive: true, force: true });
     throw error;
   }
+}
+
+/**
+ * Writes what an incremental judgment reads next to the full evidence: the
+ * pull request's own diff at the prior head, the head-tree changes since the
+ * prior head on every path whose own change moved, and a focus list naming
+ * the changed symbols, their importers, the tests that exercise them, and
+ * the paths the prior verdict discussed. Paths the base alone changed are
+ * left out, so a merge of the base into the branch is not mistaken for the
+ * author's work.
+ */
+async function writeIncrementalEvidence(input: {
+  repo: GitRepo;
+  evidenceDir: string;
+  diffPath: string;
+  mergeBase: string;
+  headSha: string;
+  incremental: RiskIncremental;
+}): Promise<PrRiskIncrementalEvidence> {
+  const { repo, incremental, headSha } = input;
+  const { priorHeadSha, priorBaseSha } = incremental;
+  try {
+    await git(
+      ["fetch", "--no-tags", "origin", priorBaseSha, priorHeadSha],
+      repo,
+    );
+  } catch {
+    // Both may already be here; they are verified below either way.
+  }
+  for (const sha of [priorBaseSha, priorHeadSha]) {
+    const resolved = await git(
+      ["rev-parse", "--verify", `${sha}^{commit}`],
+      repo,
+    );
+    if (resolved !== sha) {
+      throw new RiskError(
+        "pr_risk_prior_unresolved",
+        "PR risk could not resolve the prior revisions",
+      );
+    }
+  }
+  const priorMergeBase = await git(
+    ["merge-base", priorBaseSha, priorHeadSha],
+    repo,
+  );
+  const priorDiffPath = join(input.evidenceDir, "own-diff-at-prior.patch");
+  const interdiffPath = join(input.evidenceDir, "interdiff.patch");
+  const focusPath = join(input.evidenceDir, "focus.json");
+  await git(
+    [
+      "--no-pager",
+      "diff",
+      ...DIFF_OPTIONS,
+      `--output=${priorDiffPath}`,
+      priorMergeBase,
+      priorHeadSha,
+    ],
+    repo,
+  );
+  const baseMoved = priorMergeBase !== input.mergeBase;
+  const upstreamPaths = new Set(
+    baseMoved
+      ? (
+          await git(
+            [
+              "--no-pager",
+              "diff",
+              "--name-only",
+              "-z",
+              priorMergeBase,
+              input.mergeBase,
+            ],
+            repo,
+          )
+        )
+          .split("\0")
+          .filter(Boolean)
+      : [],
+  );
+  const changed = changedOwnPaths(
+    parseDiffFootprints(await readFile(priorDiffPath, "utf8")),
+    parseDiffFootprints(await readFile(input.diffPath, "utf8")),
+    upstreamPaths,
+  );
+  if (changed.length > MAX_INCREMENTAL_PATHS) {
+    throw new RiskError(
+      "pr_risk_incremental_too_wide",
+      "Too many paths changed since the prior verdict",
+    );
+  }
+  const pathspecs = [
+    ...new Set(
+      changed.flatMap((entry) =>
+        entry.previousPath ? [entry.path, entry.previousPath] : [entry.path],
+      ),
+    ),
+  ].map((path) => `:(literal)${path}`);
+  if (pathspecs.length === 0) {
+    await writeFile(interdiffPath, "", "utf8");
+  } else {
+    await git(
+      [
+        "--no-pager",
+        "diff",
+        ...DIFF_OPTIONS,
+        `--output=${interdiffPath}`,
+        priorHeadSha,
+        headSha,
+        "--",
+        ...pathspecs,
+      ],
+      repo,
+    );
+  }
+  const importers = new Map<string, string[]>();
+  const sources = changed.filter(
+    (entry) =>
+      entry.change !== "removed_from_pr" &&
+      !isTestPath(entry.path) &&
+      importStem(entry.path) !== null,
+  );
+  const searched = sources.slice(0, MAX_IMPORTER_SEARCHES).flatMap((entry) => {
+    const stem = importStem(entry.path);
+    return stem ? [{ path: entry.path, stem }] : [];
+  });
+  if (searched.length > 0) {
+    const escape = (value: string) =>
+      value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const names = [
+      ...new Set(searched.map(({ stem }) => stem.split("/").at(-1) ?? stem)),
+    ];
+    const pattern = `['"][^'"]*\\b(${names
+      .map(escape)
+      .join("|")})(/index)?(\\.[cm]?[jt]sx?)?['"]`;
+    let output = "";
+    try {
+      // One search for every stem: each match is printed as
+      // `<rev>:<path>\0<matched specifier>`, so it can be attributed.
+      output = await git(
+        [
+          "grep",
+          "-o",
+          "-z",
+          "-E",
+          "-e",
+          pattern,
+          headSha,
+          "--",
+          ...SOURCE_PATHSPECS,
+        ],
+        repo,
+      );
+    } catch {
+      // `git grep` exits 1 when nothing matches.
+    }
+    for (const line of output.split("\n")) {
+      const separator = line.indexOf("\0");
+      if (separator === -1) continue;
+      const importer = line.slice(headSha.length + 1, separator);
+      const specifier = line.slice(separator + 1).slice(1, -1);
+      for (const { path, stem } of searched) {
+        if (importer === path) continue;
+        if (!importsModule(importer, specifier, stem)) continue;
+        const list = importers.get(path) ?? [];
+        if (!list.includes(importer)) list.push(importer);
+        importers.set(path, list);
+      }
+    }
+    for (const list of importers.values()) list.sort();
+  }
+  const dirs = [
+    ...new Set(
+      sources
+        .map((entry) => entry.path.slice(0, entry.path.lastIndexOf("/") + 1))
+        // A test beside a root-level file is not looked for.
+        .filter(Boolean),
+    ),
+  ];
+  const stems = new Set(
+    sources.map((entry) =>
+      (entry.path.split("/").at(-1) ?? "").replace(/\.[^.]+$/, ""),
+    ),
+  );
+  const siblingTests =
+    dirs.length === 0
+      ? []
+      : (
+          await git(
+            [
+              "ls-tree",
+              "-r",
+              "--name-only",
+              "-z",
+              headSha,
+              "--",
+              ...dirs.map((dir) => `:(literal)${dir}`),
+            ],
+            repo,
+          )
+        )
+          .split("\0")
+          .filter((path) => {
+            const name = path.split("/").at(-1) ?? "";
+            const stem = name.replace(/\.(?:spec|test)\.[^.]+$/i, "");
+            return isTestPath(path) && stem !== name && stems.has(stem);
+          });
+  const focus = buildFocus({
+    priorHeadSha,
+    baseMoved,
+    changed,
+    upstreamPaths,
+    scanned: scanInterdiff(await readFile(interdiffPath, "utf8")),
+    importers,
+    siblingTests,
+    prior: incremental.prior,
+  });
+  await writeFile(focusPath, `${JSON.stringify(focus, null, 2)}\n`, "utf8");
+  return { interdiffPath, priorDiffPath, focusPath, focus };
 }
 
 /** One configuration git can list: what it reads from `cwd`, or one file. */
