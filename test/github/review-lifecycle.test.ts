@@ -659,7 +659,8 @@ describe("review lifecycle production boundaries", () => {
     expect(prepared.run.runAttempt).toBeUndefined();
     const exactFirst = `${SUMMARY_MARKER}\n<!-- droid-review-active:v1 head=${HEAD} run=123 attempt=1 -->`;
     f.setSummary(exactFirst);
-    await expect(f.post([])).rejects.toThrow("superseded");
+    await f.post([]);
+    expect(outputs.review_posted).toBe("superseded");
     expect(f.body()).toBe(exactFirst);
   });
   it("does not downgrade known attempt 2 when an optional identity omits its attempt", async () => {
@@ -668,9 +669,8 @@ describe("review lifecycle production boundaries", () => {
     await f.prepare();
     const legacy = `${SUMMARY_MARKER}\n<!-- droid-review-active:v1 head=${HEAD} run=123 -->`;
     f.setSummary(legacy);
-    await expect(f.post([], undefined, { runId: "123" })).rejects.toThrow(
-      "superseded",
-    );
+    await f.post([], undefined, { runId: "123" });
+    expect(outputs.review_posted).toBe("superseded");
     expect(f.body()).toBe(legacy);
   });
   it("captures the attempt before preparation awaits and retains legacy attempt 1 compatibility", async () => {
@@ -763,6 +763,89 @@ describe("review lifecycle production boundaries", () => {
     const bound = await loadBoundReviewLifecycle(f.octokit);
     expect(bound?.completed).toBe(false);
     expect(bound?.superseded).toBe(true);
+  });
+  it("ends cleanly and says why when a concurrent run already completed the same head", async () => {
+    // An automatic run and an `@droid review` run claim one summary for the
+    // same head; the manual run finishes first. No check exists because
+    // GitHub refused to create it.
+    const stepSummary = join(directory, "step-summary.md");
+    process.env.GITHUB_STEP_SUMMARY = stepSummary;
+    const f = fixture([]);
+    const warnings: string[] = [];
+    (core.warning as any).mockImplementation((message: string) => {
+      warnings.push(String(message));
+    });
+    spyOn(f.octokit.rest.checks, "create").mockImplementation((() =>
+      Promise.reject(
+        Object.assign(new Error("Resource not accessible by integration"), {
+          status: 403,
+        }),
+      )) as any);
+    await f.prepare();
+    expect(process.env.REVIEW_CHECK_ID ?? "").toBe("");
+    expect(warnings.join("\n")).toContain("checks: write");
+    const peer = `${SUMMARY_MARKER}\n${encodeReviewState({ head: HEAD, findings: [] })}\n<!-- droid-review-completed:v1 head=${HEAD} run=456 attempt=1 -->`;
+    f.setSummary(peer);
+    const notices: string[] = [];
+    spyOn(core, "notice").mockImplementation((message) => {
+      notices.push(String(message));
+    });
+    const logs: string[] = [];
+    spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    });
+    f.calls.length = 0;
+    const results = await f.post([{ status: "approved", comment: finding() }]);
+    expect(results.posted).toBe(0);
+    expect(outputs.conclusion).toBe("success");
+    expect(outputs.review_posted).toBe("superseded");
+    expect(f.calls.some((call) => call.method === "createReview")).toBe(false);
+    expect(f.calls.some((call) => call.method === "updateComment")).toBe(false);
+    expect(f.body()).toBe(peer);
+    expect(notices.join("\n")).toContain(
+      "posted none of this run's 1 validated findings",
+    );
+    expect(notices.join("\n")).toContain(
+      "run 456 attempt 1 (completed, head aaaaaaaaaaaa) already finished the review",
+    );
+    const decision = logs.find((line) =>
+      line.startsWith("review-supersede-decision "),
+    );
+    expect(
+      JSON.parse(decision!.slice("review-supersede-decision ".length)),
+    ).toMatchObject({
+      stage: "before-posting",
+      runId: "123",
+      headAtStart: HEAD,
+      headAtDecision: HEAD,
+      reason: "summary-claimed-by-another-session",
+      sessionsOnSummary: [
+        { state: "completed", head: HEAD, run: "456", attempt: "1" },
+      ],
+      findingsPostedByThisRun: 0,
+    });
+    const summaryAfterPost = await readFile(stepSummary, "utf8");
+    expect(summaryAfterPost).toContain("run 456 attempt 1");
+    process.env.REVIEW_PHASE = "finalize";
+    process.env.REVIEW_POSTED = outputs.review_posted;
+    process.env.DROID_SUCCESS = "true";
+    await lifecyclePhase({ octokit: f.octokit });
+    expect(await readFile(stepSummary, "utf8")).toBe(summaryAfterPost);
+    expect(f.body()).toBe(peer);
+  });
+  it("names the moved head when the PR advanced during the review", async () => {
+    const f = fixture([]);
+    await f.prepare();
+    f.setSummary(f.body(), OLD);
+    const notices: string[] = [];
+    spyOn(core, "notice").mockImplementation((message) => {
+      notices.push(String(message));
+    });
+    await f.post([]);
+    expect(outputs.review_posted).toBe("superseded");
+    expect(notices.join("\n")).toContain(
+      `The PR head moved from ${HEAD.slice(0, 12)} to ${OLD.slice(0, 12)}`,
+    );
   });
   it("does not accept an active-marker example in a fenced block as ownership", async () => {
     const f = fixture([]);

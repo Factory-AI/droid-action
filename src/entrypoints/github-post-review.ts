@@ -67,6 +67,7 @@ import {
 import {
   advanceReviewLifecycle,
   authoritativeReviewTarget,
+  describeSupersede,
   fetchImmutableReviewDiff,
   finishReviewLifecycle,
   lifecycleWarning,
@@ -76,6 +77,7 @@ import {
   reopenDroidThread,
   saveReviewLifecycle,
   stateFindings,
+  supersedeLogRecord,
   viewerLogin,
   type ReviewSessionIdentity,
 } from "../github/operations/review-lifecycle";
@@ -422,17 +424,46 @@ export async function run(
     ? await loadBoundReviewLifecycle(octokit, options.reviewSession)
     : null;
   if (lifecycle?.superseded) {
+    const reason = describeSupersede(lifecycle);
+    console.log(
+      `review-supersede-decision ${JSON.stringify(
+        supersedeLogRecord(lifecycle, {
+          stage: "before-posting",
+          approvedFindings: parsed.approvedCount,
+          findingsPostedByThisRun: 0,
+        }),
+      )}`,
+    );
     await finishReviewLifecycle({
       octokit: octokit!,
       run: lifecycle,
-      input: {
-        state: "skipped",
-        skipReason: "Superseded by a newer PR head or review.",
-      },
+      input: { state: "skipped", skipReason: reason },
     });
-    throw new Error(
-      "Review was superseded by a newer PR head or review; no findings were posted.",
+    // Losing the shared summary is an expected outcome of overlapping runs,
+    // not a failed review: failing here would hold the PR's risk assessment.
+    core.notice(
+      `Droid Review posted none of this run's ${parsed.approvedCount} validated findings. ${reason}`,
     );
+    const results: ReviewPostResults = {
+      posted: 0,
+      fallbackPosted: 0,
+      approved: parsed.approvedCount,
+      rejected: parsed.rejectedCount,
+      failed: 0,
+      skipped: parsed.skipped.length,
+      summaryBody: parsed.summaryBody,
+      failures: [],
+    };
+    const resultsPath = githubPostResultsFilePath();
+    await fs.mkdir(path.dirname(resultsPath), { recursive: true });
+    await fs.writeFile(
+      resultsPath,
+      redactCredentials(JSON.stringify(results, null, 2)),
+    );
+    core.setOutput("conclusion", "success");
+    // Tells the finalizer that this run's lifecycle already ended as superseded.
+    core.setOutput("review_posted", "superseded");
+    return results;
   }
   const expectedHead = target?.head || lifecycle?.head;
   if (expectedHead && parsed.commitId && parsed.commitId !== expectedHead)
@@ -889,6 +920,21 @@ export async function run(
       input,
       error: posted.failures[0]?.error,
     });
+    if (lifecycle.superseded) {
+      console.log(
+        `review-supersede-decision ${JSON.stringify(
+          supersedeLogRecord(lifecycle, {
+            stage: "after-posting",
+            reviewId: posted.reviewId,
+            approvedFindings: parsed.approvedCount,
+            findingsPostedByThisRun: posted.posted,
+          }),
+        )}`,
+      );
+      core.warning(
+        `Droid Review posted ${posted.posted} inline comments${posted.reviewId ? ` in review ${posted.reviewId}` : ""} but left the shared summary unchanged. ${describeSupersede(lifecycle)}`,
+      );
+    }
   }
   console.log(
     `Posted ${results.posted}/${parsed.approved.length} inline comments ` +

@@ -148,6 +148,33 @@ export function hasReviewSessionMarker(body: string, marker: string): boolean {
   return sessions.length === 1 && sessions[0] === marker;
 }
 
+export type ReviewSessionMarker = {
+  state: "active" | "completed";
+  head: string;
+  run: string;
+  attempt?: string;
+};
+
+/** Every top-level session marker, for diagnostics only; never proof of ownership. */
+export function readReviewSessions(body: string): ReviewSessionMarker[] {
+  return topLevelComments(body).flatMap((comment) => {
+    const match =
+      /^<!-- droid-review-(active|completed):v1 head=([A-Za-z0-9]{1,64}) run=([A-Za-z0-9_-]{1,64})(?: attempt=(\d{1,10}))? -->$/.exec(
+        comment,
+      );
+    return match
+      ? [
+          {
+            state: match[1] as "active" | "completed",
+            head: match[2]!,
+            run: match[3]!,
+            ...(match[4] ? { attempt: match[4] } : {}),
+          },
+        ]
+      : [];
+  });
+}
+
 /** Historical review text must not carry a prior session into a new summary. */
 export function stripReviewSessionMarkers(body: string): string {
   const sessions = topLevelCommentSpans(body).filter((comment) =>

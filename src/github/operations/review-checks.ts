@@ -98,24 +98,33 @@ export async function createReviewCheck(options: {
     );
     return undefined;
   }
+  let refusedStatus: unknown;
   const response = await optionalGitHubOperation(
     () =>
-      options.octokit.rest.checks.create({
-        owner: options.owner,
-        repo: options.repo,
-        name: options.securityOnly ? "Droid Security Review" : "Droid Review",
-        head_sha: options.head,
-        external_id: externalId,
-        status: "queued",
-        ...(options.jobUrl ? { details_url: options.jobUrl } : {}),
-        output: {
-          title: "Queued…",
-          summary: "Droid is waiting to gather PR context.",
-        },
-      }),
+      options.octokit.rest.checks
+        .create({
+          owner: options.owner,
+          repo: options.repo,
+          name: options.securityOnly ? "Droid Security Review" : "Droid Review",
+          head_sha: options.head,
+          external_id: externalId,
+          status: "queued",
+          ...(options.jobUrl ? { details_url: options.jobUrl } : {}),
+          output: {
+            title: "Queued…",
+            summary: "Droid is waiting to gather PR context.",
+          },
+        })
+        .catch((error: unknown) => {
+          if (isPermissionError(error))
+            refusedStatus = (error as { status: unknown }).status;
+          throw error;
+        }),
     () =>
       options.warn(
-        "Droid could not confirm check creation. It may have succeeded remotely; creation was not retried and no unrelated check will be adopted.",
+        refusedStatus
+          ? `GitHub refused to create the Droid Review check (HTTP ${refusedStatus}); grant the job \`checks: write\` to get one. The review continues without a check run.`
+          : "Droid could not confirm check creation. It may have succeeded remotely; creation was not retried and no unrelated check will be adopted.",
       ),
     1,
   );
