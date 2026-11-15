@@ -29,6 +29,27 @@ and are never printed to the job log.
    reason, so the head is marked unavailable instead of keeping a stale
    result.
 
+### Re-checking an earlier verdict
+
+Every begin request says the action can re-check an earlier verdict
+(`capabilities: ["incremental_v1"]`). Factory may then answer `judge` with an
+`incremental` block naming the prior head, its base and the prior verdict.
+Next to the full evidence, the workspace then holds the pull request's own
+diff as it stood at the prior head, the head-tree changes since the prior
+head on every path whose own change moved (paths the base alone changed are
+left out), and a focus list of those paths with their changed symbols,
+importers in the head tree, related tests, and whether the prior verdict
+named them. When that evidence cannot be built, the head is judged afresh and
+the result says so (`mode: "full"`, `incrementalFallback`).
+
+- `mode: "enforce"`: the judge re-checks the prior verdict, and its answer is
+  the result.
+- `mode: "shadow"`: the head is judged afresh as without the block, and the
+  re-check runs at the same time in a second workspace. Its answer is sent
+  as a separate `shadow` result, which Factory records but never publishes.
+  A shadow failure never changes the main result, and a shadow answer too
+  large to send is dropped before the main one is.
+
 ## Usage
 
 ```yaml
@@ -229,3 +250,9 @@ optionally `group` and `timeoutSeconds`. The result is written to
 was produced. `--droid-binary` selects a Droid CLI other than the one on
 `PATH`; a relative path is taken from the directory the command is run in.
 `FACTORY_API_BASE_URL` points the judge session at another host.
+
+`--head <sha> --base <sha>` judge an earlier revision of the pull request
+instead of its live head; both commits must already be in the clone.
+`--prior <file>` makes the run an enforced re-check of an earlier verdict:
+the file is JSON with `headSha`, `baseSha`, `verdict`, `brief` and `details`,
+and optionally `scores` and `reason`.
