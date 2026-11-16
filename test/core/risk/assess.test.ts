@@ -335,6 +335,55 @@ describe("assessPullRequest", () => {
     expect(skill).not.toContain('"incremental"');
     expect(skill).not.toContain("Prior details.");
   });
+  it("runs an enforced approval's cited checks again and reports the runner's exit codes, not the judge's", async () => {
+    const checks = [
+      {
+        command: "grep -q never evidence/head/app.ts",
+        exitCode: 0,
+        covers: ["app.ts"],
+      },
+      {
+        command: "grep -q next evidence/head/app.ts",
+        exitCode: 0,
+        covers: ["app.ts"],
+      },
+    ];
+    const assess = (verdict: boolean, mode: "enforce" | "shadow") =>
+      assessPullRequest({
+        plan: planFor({
+          baseSha,
+          headSha,
+          incremental: {
+            mode,
+            reason: "eligible",
+            priorHeadSha: baseSha,
+            priorBaseSha: baseSha,
+            prior: { verdict: true, brief: "- Prior.", details: "Prior." },
+          },
+        }),
+        repoDir: checkoutDir,
+        githubToken: "read-token",
+        env,
+        executeDroid: async () =>
+          execSummary({ ...validVerdict, verdict, checks }),
+      });
+
+    const { result: approved } = await assess(true, "enforce");
+    expect(approved).toMatchObject({
+      status: "judged",
+      mode: "incremental",
+      checkRuns: [
+        { index: 0, outcome: "ran", exitCode: 1 },
+        { index: 1, outcome: "ran", exitCode: 0 },
+      ],
+    });
+    const { result: declined } = await assess(false, "enforce");
+    expect(declined).not.toHaveProperty("checkRuns");
+    const { shadow } = await assess(true, "shadow");
+    expect(shadow).toMatchObject({ status: "judged", mode: "incremental" });
+    expect(shadow).not.toHaveProperty("checkRuns");
+  });
+
   it("judges a shadowed plan afresh and runs the re-check alongside in its own workspace", async () => {
     const skills: string[] = [];
     const cwds = new Set<string>();

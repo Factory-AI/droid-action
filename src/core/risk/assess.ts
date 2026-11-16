@@ -10,6 +10,7 @@ import {
   runPrRiskJudge,
   type RunPrRiskJudgeOptions,
 } from "./judge";
+import { rerunCitedChecks } from "./checks";
 import { describeFailure } from "./plan";
 import {
   RiskError,
@@ -190,6 +191,24 @@ async function finishJudgment(
           "The judge answered without a recorded attempt",
         );
       }
+      // Only an enforced approval is published on the strength of its
+      // checks, so only its checks are run again.
+      const checkRuns =
+        incremental?.mode === "enforce" &&
+        evidence.incremental &&
+        verdict.verdict &&
+        verdict.checks?.length
+          ? await rerunCitedChecks({
+              repoDir: options.repoDir,
+              headSha: plan.headSha,
+              evidence,
+              checks: verdict.checks,
+              changedPaths: evidence.incremental.focus.paths.map(
+                ({ path }) => path,
+              ),
+              env,
+            })
+          : undefined;
       return {
         status: "judged",
         baseSha: plan.baseSha,
@@ -206,6 +225,7 @@ async function finishJudgment(
               ...(incrementalFallback ? { incrementalFallback } : {}),
             }
           : {}),
+        ...(checkRuns ? { checkRuns } : {}),
       };
     } finally {
       await removeWorkspace(evidence);

@@ -129,7 +129,10 @@ export function gitEnvironment(
  * attributes, and hooks cannot change what a head checks out as, so the same
  * commit yields the same evidence on every machine.
  */
-async function git(args: readonly string[], repo: GitRepo): Promise<string> {
+export async function git(
+  args: readonly string[],
+  repo: GitRepo,
+): Promise<string> {
   try {
     const { stdout } = await execFileAsync(
       "git",
@@ -393,7 +396,7 @@ export async function createPrRiskEvidenceWorkspace(
     let incrementalFallback: string | undefined;
     if (options.incremental) {
       try {
-        incremental = await writeIncrementalEvidence({
+        const written = await writeIncrementalEvidence({
           repo,
           evidenceDir,
           diffPath,
@@ -401,6 +404,10 @@ export async function createPrRiskEvidenceWorkspace(
           headSha,
           incremental: options.incremental,
         });
+        // Where the judge saves a script it writes for a check, so the
+        // runner can run that check again.
+        await mkdir(join(evidenceDir, "checks"));
+        incremental = written;
       } catch (error) {
         // The full evidence is already on disk, so the head is judged
         // afresh rather than not at all.

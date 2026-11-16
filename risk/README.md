@@ -52,7 +52,17 @@ covers a path that changed since the prior head and, after a decline, every
 concern is resolved.
 
 - `mode: "enforce"`: the judge re-checks the prior verdict, and its answer is
-  the result.
+  the result. When that answer approves, the action runs each check it cited
+  again before settling, and Factory takes the exit codes from that run
+  (`checkRuns`), never from the verdict. Each check runs from the root of a
+  clean workspace laid out like the judge's: a fresh worktree of the head at
+  `evidence/head`, and the scripts the judge saved under `evidence/checks/`.
+  A check gets only `PATH`, `HOME`, `LANG`, its own `TMPDIR` and
+  `CI=true`, none of the job's credentials, and at most 5 minutes (10 for all
+  of them). Its output is discarded. A command that names a file in the temp
+  or home directory (a script the judge did not save) is not run
+  (`rejected`). The run stops at the first check that passes and covers a
+  path that changed since the prior head.
 - `mode: "shadow"`: the head is judged afresh as without the block, and the
   re-check runs at the same time in a second workspace. Its answer is sent
   as a separate `shadow` result, which Factory records but never publishes.

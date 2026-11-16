@@ -176,6 +176,27 @@ export const RiskJudgeAttemptSchema = z
   .strict();
 export type RiskJudgeAttempt = z.infer<typeof RiskJudgeAttemptSchema>;
 
+/**
+ * One check a re-check cited, as the runner ran it again (`index` into the
+ * verdict's `checks`). Only `ran` carries an exit code; a check the runner
+ * did not run (`rejected`, `skipped`) or that did not finish
+ * (`timed_out`, `failed_to_start`) proves nothing.
+ */
+export const RiskCheckRunSchema = z.object({
+  index: z.number().int().nonnegative(),
+  outcome: z.enum([
+    "ran",
+    "timed_out",
+    "failed_to_start",
+    "rejected",
+    "skipped",
+  ]),
+  exitCode: z.number().int().optional(),
+  reason: z.string().regex(FAILURE_REASON).optional(),
+  durationMs: z.number().int().nonnegative().optional(),
+});
+export type RiskCheckRun = z.infer<typeof RiskCheckRunSchema>;
+
 export const RiskSettleResultSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("judged"),
@@ -193,6 +214,9 @@ export const RiskSettleResultSchema = z.discriminatedUnion("status", [
     mode: z.enum(["incremental", "full"]).optional(),
     incrementalFallback: z.string().regex(FAILURE_REASON).optional(),
     priorHeadSha: CommitShaSchema.optional(),
+    // An enforced re-check that approves: the cited checks as the runner
+    // ran them again, the only exit codes Factory accepts.
+    checkRuns: z.array(RiskCheckRunSchema).max(20).optional(),
   }),
   z.object({
     status: z.literal("failed"),
