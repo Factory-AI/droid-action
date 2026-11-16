@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { cp, mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, realpath, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "./evidence";
@@ -137,9 +137,13 @@ export async function rerunCitedChecks(
     const tempDir = join(workspace, "tmp");
     await mkdir(join(workspace, "evidence"), { recursive: true });
     await mkdir(tempDir);
-    const savedScripts = join(options.evidence.rootDir, CHECKS_DIR);
-    if ((await stat(savedScripts).catch(() => undefined))?.isDirectory()) {
-      await cp(savedScripts, join(workspace, CHECKS_DIR), {
+    // Everything but the head checkout: a saved script may read the diff,
+    // the interdiff, or the focus list beside it. The scripts are the
+    // judge's own, so a file it edited there gives it nothing it lacked.
+    const evidenceDir = join(options.evidence.rootDir, "evidence");
+    for (const entry of await readdir(evidenceDir)) {
+      if (entry === "head") continue;
+      await cp(join(evidenceDir, entry), join(workspace, "evidence", entry), {
         recursive: true,
         verbatimSymlinks: true,
       });

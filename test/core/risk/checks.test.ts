@@ -41,14 +41,15 @@ describe("rerunCitedChecks", () => {
     await writeFile(join(checkoutDir, "app.ts"), "export const next = 1;\n");
     headSha = await commit(checkoutDir, "head");
     // The judge's workspace: its head tree carries an edit the judge made,
-    // and it saved one script for a check.
+    // and it saved one script for a check, which reads the diff beside it.
     judgeRoot = await mkdtemp(join(tmpdir(), "pr-risk-judge-root-"));
     await mkdir(join(judgeRoot, "evidence", "head"), { recursive: true });
     await writeFile(join(judgeRoot, "evidence", "head", "planted.txt"), "x");
+    await writeFile(join(judgeRoot, "evidence", "pr.diff"), "+next\n");
     await mkdir(join(judgeRoot, "evidence", "checks"));
     await writeFile(
       join(judgeRoot, "evidence", "checks", "probe.sh"),
-      'grep -q "next" evidence/head/app.ts\n',
+      'grep -q "next" evidence/head/app.ts && grep -q next evidence/pr.diff\n',
     );
   });
 
