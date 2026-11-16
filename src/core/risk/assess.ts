@@ -91,6 +91,15 @@ export async function assessPullRequest(
           },
           env,
         ),
+        sessionTag: {
+          repo: plan.repo,
+          pr: String(plan.pr),
+          headSha: plan.headSha,
+          ...(plan.run.runId ? { runId: plan.run.runId } : {}),
+          ...(plan.run.runAttempt
+            ? { runAttempt: String(plan.run.runAttempt) }
+            : {}),
+        },
         droidBinary: options.droidBinary,
         executeDroid: options.executeDroid,
         onAttempt: (attempt) => {

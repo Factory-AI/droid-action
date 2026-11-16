@@ -8,6 +8,7 @@ import {
   commit,
   createOriginAndCheckout,
   execSummary,
+  execUsage,
   git,
   judge,
   planFor,
@@ -44,21 +45,27 @@ describe("assessPullRequest", () => {
   const env = { PATH: process.env.PATH, FACTORY_API_KEY: "factory-key" };
 
   it("judges the planned head against the fetched evidence and removes the workspace", async () => {
-    const seen: { cwd?: string; diff?: string; skill?: string } = {};
+    const seen: {
+      cwd?: string;
+      diff?: string;
+      skill?: string;
+      tag?: unknown;
+    } = {};
 
     const result = await assessPullRequest({
       plan: planFor({ baseSha, headSha }),
       repoDir: checkoutDir,
       githubToken: "read-token",
       env,
-      executeDroid: async ({ cwd }) => {
+      executeDroid: async ({ args, cwd }) => {
         seen.cwd = cwd;
+        seen.tag = JSON.parse(args[args.indexOf("--tag") + 1] ?? "");
         seen.diff = await readFile(join(cwd, "evidence", "pr.diff"), "utf8");
         seen.skill = await readFile(
           join(cwd, ".factory", "skills", "pr-risk-judge", "SKILL.md"),
           "utf8",
         );
-        return execSummary(validVerdict);
+        return execSummary(validVerdict, "session-1", execUsage(321_000));
       },
     });
 
@@ -69,10 +76,31 @@ describe("assessPullRequest", () => {
       snapshotHash: expect.stringMatching(/^[0-9a-f]{64}$/),
       listedFiles: 1,
       attempts: [
-        { sessionId: "session-1", valid: true, durationMs: expect.any(Number) },
+        {
+          sessionId: "session-1",
+          valid: true,
+          durationMs: expect.any(Number),
+          usage: {
+            factoryCredits: 321_000,
+            inputTokens: 1_000,
+            outputTokens: 200,
+            cacheReadTokens: 30_000,
+            cacheCreationTokens: 500,
+          },
+        },
       ],
       durationMs: expect.any(Number),
       verdict: validVerdict,
+    });
+    expect(seen.tag).toEqual({
+      name: "riskAssessment",
+      metadata: {
+        repo: "acme/app",
+        pr: "123",
+        headSha,
+        runId: "77",
+        runAttempt: "2",
+      },
     });
     expect(seen.diff).toContain("+export const next = 1;");
     expect(seen.skill).toContain(`"headSha": "${headSha}"`);

@@ -7,6 +7,7 @@ import type {
   PullRequestRiskInput,
   RiskJudge,
   RiskPlan,
+  RiskSessionTagMetadata,
 } from "../../../src/core/risk/types";
 
 const execFileAsync = promisify(execFile);
@@ -63,14 +64,39 @@ export const validVerdict = {
   scores: { blastRadius: 2, testCoverage: 3 },
 };
 
+export const sessionTag: RiskSessionTagMetadata = {
+  repo: "acme/app",
+  pr: "123",
+  headSha: "a".repeat(40),
+  runId: "77",
+  runAttempt: "2",
+};
+
+/** The `usage` `droid exec -o json` reports, subagent sessions included. */
+export function execUsage(factoryCredits: number) {
+  return {
+    input_tokens: 1_000,
+    output_tokens: 200,
+    cache_read_input_tokens: 30_000,
+    cache_creation_input_tokens: 500,
+    factory_credits: factoryCredits,
+    thinking_tokens: 40,
+  };
+}
+
 /** The one JSON object `droid exec -o json` prints for a finished session. */
-export function execSummary(result: unknown, sessionId = "session-1"): string {
+export function execSummary(
+  result: unknown,
+  sessionId = "session-1",
+  usage?: unknown,
+): string {
   return JSON.stringify({
     type: "result",
     subtype: "success",
     is_error: false,
     result: typeof result === "string" ? result : JSON.stringify(result),
     session_id: sessionId,
+    ...(usage === undefined ? {} : { usage }),
   });
 }
 
