@@ -18,7 +18,8 @@
  * instead of its live head; both commits must already be in the checkout.
  * `--prior` makes it an incremental judgment against an earlier verdict, a
  * JSON file with `headSha`, `baseSha`, `verdict`, `brief`, `details`, and
- * optionally `scores` and `reason`.
+ * optionally `outcome`, `concerns` (`[{ id, text }]`, after a decline),
+ * `scores` and `reason`.
  *
  * Both modes build a plan and hand it to the same assessment.
  */
@@ -58,8 +59,12 @@ const OfflinePriorSchema = z.object({
   headSha: z.string().regex(COMMIT_SHA),
   baseSha: z.string().regex(COMMIT_SHA),
   verdict: z.boolean(),
+  outcome: z.string().optional(),
   brief: z.string(),
   details: z.string(),
+  concerns: z
+    .array(z.object({ id: z.string().min(1), text: z.string() }))
+    .optional(),
   scores: z.record(z.number()).optional(),
   reason: z.string().default("local"),
 });

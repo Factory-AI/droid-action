@@ -42,6 +42,15 @@ importers in the head tree, related tests, and whether the prior verdict
 named them. When that evidence cannot be built, the head is judged afresh and
 the result says so (`mode: "full"`, `incrementalFallback`).
 
+The prior verdict may be an approval or a decline (`prior.outcome`). After a
+decline, Factory also sends the concerns it rested on (`prior.concerns`, each
+with an id such as `c1`). A re-check answers with the usual verdict plus the
+`checks` it ran (command, exit code, and the changed paths each covers) and,
+after a decline, `resolvedConcerns` (a concern id and the code at this head
+that resolves it). Factory approves a re-check only when a passing check
+covers a path that changed since the prior head and, after a decline, every
+concern is resolved.
+
 - `mode: "enforce"`: the judge re-checks the prior verdict, and its answer is
   the result.
 - `mode: "shadow"`: the head is judged afresh as without the block, and the

@@ -5,6 +5,10 @@ import type { RiskScoreRanges } from "./types";
 // than rejected, and the verdict it carries still lands.
 const BRIEF_MAX_CHARS = 800;
 const DETAILS_MAX_CHARS = 6_000;
+const EVIDENCE_MAX_CHARS = 600;
+const COMMAND_MAX_CHARS = 500;
+const MAX_LISTED = 20;
+const MAX_COVERS = 50;
 const TRUNCATION_MARK = "…";
 
 function truncatedMarkdown(max: number) {
@@ -21,20 +25,25 @@ function truncatedMarkdown(max: number) {
 /**
  * A validated judge answer. `brief` is the short text shown under the
  * headline and `details` the longer body beneath it. `scores` is present only
- * when the judge declares any.
+ * when the judge declares any. An incremental re-check adds the `checks` it
+ * ran and, after a decline, `resolvedConcerns`: for a served concern id, the
+ * code at this head that resolves it. Factory decides from both.
  */
 export type PrRiskVerdict = {
   verdict: boolean;
   brief: string;
   details: string;
   scores?: Record<string, number>;
+  resolvedConcerns?: { concern: string; evidence: string }[];
+  checks?: { command: string; exitCode: number; covers: string[] }[];
 };
 
 /**
- * The JSON contract a judge must answer: `verdict`, `brief`, `details`, and
- * every declared score within its range, and nothing else. Strict so a
- * drifting answer is a retry, never a silently narrowed verdict; only length
- * is forgiven, by truncation.
+ * The JSON contract a judge must answer: `verdict`, `brief`, `details`,
+ * every declared score within its range, optionally `resolvedConcerns` and
+ * `checks`, and nothing else. Strict so a drifting answer is a retry, never
+ * a silently narrowed verdict; only length is forgiven, by truncation, and an
+ * extra key inside one listed concern or check, which is dropped.
  */
 export function compilePrRiskVerdictSchema(
   scores: RiskScoreRanges,
@@ -43,6 +52,25 @@ export function compilePrRiskVerdictSchema(
     verdict: z.boolean(),
     brief: truncatedMarkdown(BRIEF_MAX_CHARS),
     details: truncatedMarkdown(DETAILS_MAX_CHARS),
+    resolvedConcerns: z
+      .array(
+        z.object({
+          concern: z.string().regex(/^c[1-9][0-9]?$/u),
+          evidence: truncatedMarkdown(EVIDENCE_MAX_CHARS),
+        }),
+      )
+      .max(MAX_LISTED)
+      .optional(),
+    checks: z
+      .array(
+        z.object({
+          command: truncatedMarkdown(COMMAND_MAX_CHARS),
+          exitCode: z.number().int(),
+          covers: z.array(z.string().min(1)).max(MAX_COVERS),
+        }),
+      )
+      .max(MAX_LISTED)
+      .optional(),
   });
   const entries = Object.entries(scores);
   if (entries.length === 0) return core.strict();
@@ -76,6 +104,8 @@ export function describePrRiskContract(scores: RiskScoreRanges): string {
             .join(", ")})`,
         ]
       : []),
+    `resolvedConcerns (optional; at most ${MAX_LISTED} objects with exactly concern, a served concern id such as "c1", and evidence, a string)`,
+    `checks (optional; at most ${MAX_LISTED} objects with exactly command (string), exitCode (integer) and covers (array of changed paths))`,
   ]
     .map((line) => `- ${line}`)
     .join("\n");

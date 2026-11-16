@@ -101,12 +101,20 @@ const RiskPriorDeclineSchema = z.object({
 });
 export type RiskPriorDecline = z.infer<typeof RiskPriorDeclineSchema>;
 
+/** One concern of a declined prior verdict, by the id a re-check answers with. */
+const RiskPriorConcernSchema = z.object({
+  id: z.string().min(1),
+  text: z.string(),
+});
+
 /**
  * An earlier verdict on this pull request that Factory asks the judge to
  * re-check against what changed since. `enforce` judges the head that way
  * instead of afresh; `shadow` judges it afresh as usual and runs the
  * re-check alongside, reported separately and never published. `scores` is
- * sent only when Factory chooses to show them.
+ * sent only when Factory chooses to show them. `outcome` is the decision
+ * Factory published on that head (an open string), and after a decline
+ * `concerns` lists what the re-check must show resolved to approve.
  */
 const RiskIncrementalSchema = z.object({
   mode: z.enum(["shadow", "enforce"]),
@@ -115,8 +123,10 @@ const RiskIncrementalSchema = z.object({
   priorBaseSha: CommitShaSchema,
   prior: z.object({
     verdict: z.boolean(),
+    outcome: z.string().optional(),
     brief: z.string(),
     details: z.string(),
+    concerns: z.array(RiskPriorConcernSchema).optional(),
     scores: z.record(z.number()).optional(),
   }),
 });
