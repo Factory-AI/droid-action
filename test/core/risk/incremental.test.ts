@@ -4,6 +4,7 @@ import {
   importStem,
   importsModule,
   parseDiffFootprints,
+  scanInterdiff,
 } from "../../../src/core/risk/incremental";
 
 const diffAt = (start: number, context: string) =>
@@ -40,6 +41,30 @@ describe("parseDiffFootprints", () => {
         new Set(["src/a.ts"]),
       ),
     ).toEqual([{ path: "src/a.ts", change: "base_changed" }]);
+  });
+
+  it("keys a file by its real path when git quotes or pads it", () => {
+    // What `git diff` prints for "p q.ts" (a tab after a spaced path) and
+    // "ü.ts" (octal-quoted under the default core.quotePath).
+    const diff = [
+      "diff --git a/p q.ts b/p q.ts",
+      "index 587be6b..975fbec 100644",
+      "--- a/p q.ts\t",
+      "+++ b/p q.ts\t",
+      "@@ -1 +1 @@",
+      "-x",
+      "+y",
+      'diff --git "a/\\303\\274.ts" "b/\\303\\274.ts"',
+      "index 7898192..6178079 100644",
+      '--- "a/\\303\\274.ts"',
+      '+++ "b/\\303\\274.ts"',
+      "@@ -1 +1 @@",
+      "-a",
+      "+b",
+      "",
+    ].join("\n");
+    expect([...parseDiffFootprints(diff).keys()]).toEqual(["p q.ts", "ü.ts"]);
+    expect([...scanInterdiff(diff).keys()]).toEqual(["p q.ts", "ü.ts"]);
   });
 
   it("tells files that joined or left the pull request apart, keyed by their new path", () => {

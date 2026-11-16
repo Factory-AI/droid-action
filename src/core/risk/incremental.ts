@@ -1,4 +1,8 @@
 import { posix } from "node:path";
+import {
+  normalizePatchPath,
+  pathsFromDiffHeader,
+} from "../review/validated/diff";
 import type { PrRiskFocus, PrRiskFocusPath, RiskIncremental } from "./types";
 
 // Lines that add or remove an exported declaration or a callable signature:
@@ -34,6 +38,7 @@ export function parseDiffFootprints(diff: string): Map<string, DiffFile> {
   const files = new Map<string, DiffFile>();
   for (const section of diff.split(/^diff --git /m).slice(1)) {
     const lines = section.split("\n");
+    const header = pathsFromDiffHeader(`diff --git ${lines[0] ?? ""}`);
     let oldPath: string | undefined;
     let newPath: string | undefined;
     let renameFrom: string | undefined;
@@ -43,15 +48,19 @@ export function parseDiffFootprints(diff: string): Map<string, DiffFile> {
     for (const line of lines.slice(1)) {
       if (!inHunk) {
         if (line.startsWith("--- ")) {
-          oldPath = line === "--- /dev/null" ? undefined : line.slice(6);
+          oldPath = normalizePatchPath(line.slice(4)) ?? undefined;
           continue;
         }
         if (line.startsWith("+++ ")) {
-          newPath = line === "+++ /dev/null" ? undefined : line.slice(6);
+          newPath = normalizePatchPath(line.slice(4)) ?? undefined;
           continue;
         }
-        if (line.startsWith("rename from ")) renameFrom = line.slice(12);
-        if (line.startsWith("rename to ")) renameTo = line.slice(10);
+        if (line.startsWith("rename from ")) {
+          renameFrom = normalizePatchPath(line.slice(12)) ?? undefined;
+        }
+        if (line.startsWith("rename to ")) {
+          renameTo = normalizePatchPath(line.slice(10)) ?? undefined;
+        }
         if (
           /^(new file mode|deleted file mode|old mode|new mode|rename from|rename to|copy from|copy to)/.test(
             line,
@@ -71,8 +80,8 @@ export function parseDiffFootprints(diff: string): Map<string, DiffFile> {
     }
     // A header-only section (mode change, rename without edits) names its
     // paths on the first line only.
-    const header = /^a\/(.*) b\/(.*)$/.exec(lines[0] ?? "");
-    const path = renameTo ?? newPath ?? oldPath ?? header?.[2];
+    const path =
+      renameTo ?? newPath ?? oldPath ?? header.newPath ?? header.oldPath;
     if (!path) continue;
     const previousPath = renameFrom;
     if (kept.some((line) => line.startsWith("Binary files"))) {
@@ -141,9 +150,12 @@ export function scanInterdiff(
   >();
   for (const section of interdiff.split(/^diff --git /m).slice(1)) {
     const lines = section.split("\n");
-    const header = /^a\/(.*) b\/(.*)$/.exec(lines[0] ?? "");
-    const plus = lines.find((line) => line.startsWith("+++ b/"));
-    const path = plus?.slice(6) ?? header?.[2];
+    const header = pathsFromDiffHeader(`diff --git ${lines[0] ?? ""}`);
+    const plus = lines.find((line) => line.startsWith("+++ "));
+    const path =
+      (plus === undefined ? null : normalizePatchPath(plus.slice(4))) ??
+      header.newPath ??
+      header.oldPath;
     if (!path) continue;
     const symbols = new Set<string>();
     let contractLines = 0;
