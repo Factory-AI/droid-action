@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { GITHUB_SERVER_URL } from "../../github/api/config";
+import { escapeRegExp } from "../../github/validation/trigger";
 import {
   MAX_INCREMENTAL_PATHS,
   buildFocus,
@@ -44,6 +45,8 @@ const execFileAsync = promisify(execFile);
 const GIT_TIMEOUT_MS = 120_000;
 const MAX_GIT_OUTPUT_BYTES = 16 * 1024 * 1024;
 const GUIDELINES_REPO_PATH = ".factory/pr-risk/guidelines.md";
+/** Where a judge saves a script it wrote for a check, under the workspace root. */
+const CHECKS_DIR = join("evidence", "checks");
 // The diff and the changed-file list are both taken with these, so the two
 // describe one comparison.
 const DIFF_OPTIONS = ["--no-ext-diff", "--no-textconv", "--find-renames"];
@@ -78,7 +81,7 @@ const SOURCE_PATHSPECS = [
   "*.mts",
   "*.cts",
 ];
-const REMOVE_WORKSPACE_OPTIONS = {
+export const REMOVE_WORKSPACE_OPTIONS = {
   recursive: true,
   force: true,
   maxRetries: 3,
@@ -406,7 +409,7 @@ export async function createPrRiskEvidenceWorkspace(
         });
         // Where the judge saves a script it writes for a check, so the
         // runner can run that check again.
-        await mkdir(join(evidenceDir, "checks"));
+        await mkdir(join(rootDir, CHECKS_DIR));
         incremental = written;
       } catch (error) {
         // The full evidence is already on disk, so the head is judged
@@ -579,13 +582,11 @@ async function writeIncrementalEvidence(input: {
     return stem ? [{ path: entry.path, stem }] : [];
   });
   if (searched.length > 0) {
-    const escape = (value: string) =>
-      value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const names = [
       ...new Set(searched.map(({ stem }) => stem.split("/").at(-1) ?? stem)),
     ];
     const pattern = `['"][^'"]*\\b(${names
-      .map(escape)
+      .map(escapeRegExp)
       .join("|")})(/index)?(\\.[cm]?[jt]sx?)?['"]`;
     let output = "";
     try {
@@ -605,8 +606,15 @@ async function writeIncrementalEvidence(input: {
         ],
         repo,
       );
-    } catch {
-      // `git grep` exits 1 when nothing matches.
+    } catch (error) {
+      // `git grep` exits 1 when nothing matches; anything else leaves the
+      // focus list without importers, which the log should say.
+      const cause = error instanceof Error ? error.cause : undefined;
+      if (!(cause instanceof Error && "code" in cause && cause.code === 1)) {
+        console.warn(
+          `PR risk importer search failed: ${error instanceof Error ? error.message : "git grep failed"}`,
+        );
+      }
     }
     for (const line of output.split("\n")) {
       const separator = line.indexOf("\0");

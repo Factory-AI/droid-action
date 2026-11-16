@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import { posix } from "node:path";
 import {
   normalizePatchPath,
   pathsFromDiffHeader,
 } from "../review/validated/diff";
+import { TEST_PATH } from "./snapshot";
 import type { PrRiskFocus, PrRiskFocusPath, RiskIncremental } from "./types";
 
 // Lines that add or remove an exported declaration or a callable signature:
@@ -15,8 +17,6 @@ const DECLARATION =
   /^[+-]\s*(?:export\s+)?(?:default\s+)?(?:declare\s+)?(?:async\s+)?(?:function\*?|class|interface|type|enum|const|let|var|def|func)\s+([A-Za-z_$][\w$]*)/;
 const HUNK_CONTEXT =
   /^@@[^@]*@@\s*(?:.*?\b(?:function\*?|class|interface|type|enum|const|let|def|func)\s+)?([A-Za-z_$][\w$]*)/;
-const TEST_PATH =
-  /(?:^|\/)(?:__tests__|e2e|test|tests)(?:\/|$)|\.(?:spec|test)\.[^.]+$/i;
 const SOURCE_EXTENSION = /\.(?:[cm]?[jt]sx?)$/;
 const MAX_SYMBOLS_PER_PATH = 20;
 const MAX_IMPORTERS_PER_PATH = 20;
@@ -92,7 +92,7 @@ export function parseDiffFootprints(diff: string): Map<string, DiffFile> {
     files.set(path, {
       path,
       ...(previousPath ? { previousPath } : {}),
-      footprint: kept.join("\n"),
+      footprint: createHash("sha256").update(kept.join("\n")).digest("hex"),
     });
   }
   return files;

@@ -38,7 +38,7 @@ export function failureReason(error: unknown): string {
     : "unexpected";
 }
 
-const CommitShaSchema = z.string().regex(/^[0-9a-f]{40}$/);
+export const CommitShaSchema = z.string().regex(/^[0-9a-f]{40}$/);
 const Sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
 
 export const RiskRunSchema = z.object({
@@ -111,12 +111,11 @@ const RiskPriorConcernSchema = z.object({
  * An earlier verdict on this pull request that Factory asks the judge to
  * re-check against what changed since. `enforce` judges the head that way
  * instead of afresh; `shadow` judges it afresh as usual and runs the
- * re-check alongside, reported separately and never published. `scores` is
- * sent only when Factory chooses to show them. `outcome` is the decision
- * Factory published on that head (an open string), and after a decline
- * `concerns` lists what the re-check must show resolved to approve.
+ * re-check alongside, reported separately and never published. `outcome` is
+ * the decision Factory published on that head (an open string), and after a
+ * decline `concerns` lists what the re-check must show resolved to approve.
  */
-const RiskIncrementalSchema = z.object({
+export const RiskIncrementalSchema = z.object({
   mode: z.enum(["shadow", "enforce"]),
   reason: z.string(),
   priorHeadSha: CommitShaSchema,
@@ -127,7 +126,6 @@ const RiskIncrementalSchema = z.object({
     brief: z.string(),
     details: z.string(),
     concerns: z.array(RiskPriorConcernSchema).optional(),
-    scores: z.record(z.number()).optional(),
   }),
 });
 export type RiskIncremental = z.infer<typeof RiskIncrementalSchema>;
@@ -182,7 +180,7 @@ export type RiskJudgeAttempt = z.infer<typeof RiskJudgeAttemptSchema>;
  * did not run (`rejected`, `skipped`) or that did not finish
  * (`timed_out`, `failed_to_start`) proves nothing.
  */
-export const RiskCheckRunSchema = z.object({
+const RiskCheckRunSchema = z.object({
   index: z.number().int().nonnegative(),
   outcome: z.enum([
     "ran",

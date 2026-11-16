@@ -46,7 +46,7 @@ describe("assessPullRequest", () => {
   it("judges the planned head against the fetched evidence and removes the workspace", async () => {
     const seen: { cwd?: string; diff?: string; skill?: string } = {};
 
-    const { result: result } = await assessPullRequest({
+    const { result } = await assessPullRequest({
       plan: planFor({ baseSha, headSha }),
       repoDir: checkoutDir,
       githubToken: "read-token",
@@ -85,7 +85,7 @@ describe("assessPullRequest", () => {
   it("lists and counts what the planned commits change, whatever the pull request reported when the run began", async () => {
     const seen: { inventory?: unknown; skill?: string } = {};
 
-    const { result: result } = await assessPullRequest({
+    const { result } = await assessPullRequest({
       // Counts GitHub gave for another comparison, as it does once a pull
       // request is pointed at a different base branch.
       plan: planFor({
@@ -135,7 +135,7 @@ describe("assessPullRequest", () => {
   it("reports a judge that never produced a valid answer, with every attempt, and still removes the workspace", async () => {
     let cwd = "unset";
 
-    const { result: result } = await assessPullRequest({
+    const { result } = await assessPullRequest({
       plan: planFor({ baseSha, headSha }),
       repoDir: checkoutDir,
       githubToken: "read-token",
@@ -162,7 +162,7 @@ describe("assessPullRequest", () => {
   it("fails without asking the judge when the planned head cannot be fetched", async () => {
     let asked = false;
 
-    const { result: result } = await assessPullRequest({
+    const { result } = await assessPullRequest({
       plan: planFor({ baseSha, headSha: "f".repeat(40) }),
       repoDir: checkoutDir,
       githubToken: "read-token",
@@ -196,7 +196,7 @@ describe("assessPullRequest", () => {
       await git(checkoutDir, "config", tokenKey, header);
       const seen: string[] = [];
 
-      const { result: result } = await assessPullRequest({
+      const { result } = await assessPullRequest({
         plan: planFor({ baseSha, headSha }),
         repoDir: checkoutDir,
         githubToken: "read-token",
@@ -220,7 +220,7 @@ describe("assessPullRequest", () => {
       await git(checkoutDir, "config", "core.sshCommand", "ssh -i /tmp/key");
       let asked = false;
 
-      const { result: result } = await assessPullRequest({
+      const { result } = await assessPullRequest({
         plan: planFor({ baseSha, headSha }),
         repoDir: checkoutDir,
         githubToken: "read-token",
@@ -248,7 +248,7 @@ describe("assessPullRequest", () => {
       await git(checkoutDir, "config", tokenKey, header);
       await git(checkoutDir, "config", "core.sshCommand", "ssh -i /tmp/key");
 
-      const { result: result } = await assessPullRequest({
+      const { result } = await assessPullRequest({
         plan: planFor({ baseSha, headSha }),
         repoDir: checkoutDir,
         githubToken: "read-token",

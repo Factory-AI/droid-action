@@ -44,7 +44,7 @@ export type AssessPullRequestOptions = {
 };
 
 /** What one assessment leaves to settle. */
-export type RiskAssessment = {
+type RiskAssessment = {
   result: RiskSettleResult;
   shadow?: RiskSettleResult;
 };

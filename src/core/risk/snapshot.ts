@@ -13,7 +13,7 @@ import {
 // The focus list is inlined for this many paths; the file holds all of them.
 const MAX_INLINE_FOCUS_PATHS = 50;
 
-const TEST_PATH =
+export const TEST_PATH =
   /(?:^|\/)(?:__tests__|e2e|test|tests)(?:\/|$)|\.(?:spec|test)\.[^.]+$/i;
 const DOCS_PATH = /(?:^|\/)(?:docs?|examples?)(?:\/|$)|\.(?:md|mdx|rst|txt)$/i;
 const EXECUTABLE_MARKDOWN_PATH =

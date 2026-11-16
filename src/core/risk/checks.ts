@@ -2,18 +2,16 @@ import { spawn } from "node:child_process";
 import { cp, mkdir, mkdtemp, readdir, realpath, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { git } from "./evidence";
+import { REMOVE_WORKSPACE_OPTIONS, git } from "./evidence";
 import { describeFailure } from "./plan";
 import type { PrRiskEvidenceWorkspace, RiskCheckRun } from "./types";
 import type { PrRiskVerdict } from "./verdict";
 
-/** Where a judge saves a script it wrote for a check, under the workspace root. */
-export const CHECKS_DIR = join("evidence", "checks");
 const CHECK_TIMEOUT_MS = 300_000;
 const ALL_CHECKS_TIMEOUT_MS = 600_000;
 const KILL_GRACE_MS = 5_000;
 
-export type RerunCitedChecksOptions = {
+type RerunCitedChecksOptions = {
   repoDir: string;
   headSha: string;
   /** The judge's workspace, still on disk: its saved check scripts are copied. */
@@ -23,7 +21,6 @@ export type RerunCitedChecksOptions = {
   changedPaths: readonly string[];
   env?: NodeJS.ProcessEnv;
   checkTimeoutMs?: number;
-  totalTimeoutMs?: number;
 };
 
 /**
@@ -125,8 +122,7 @@ export async function rerunCitedChecks(
 ): Promise<RiskCheckRun[]> {
   const env = options.env ?? process.env;
   const checkTimeoutMs = options.checkTimeoutMs ?? CHECK_TIMEOUT_MS;
-  const deadline =
-    Date.now() + (options.totalTimeoutMs ?? ALL_CHECKS_TIMEOUT_MS);
+  const deadline = Date.now() + ALL_CHECKS_TIMEOUT_MS;
   const changed = new Set(options.changedPaths);
   const runs: RiskCheckRun[] = [];
   let rootDir: string | undefined;
@@ -219,12 +215,7 @@ export async function rerunCitedChecks(
       }).catch(() => undefined);
     }
     if (rootDir) {
-      await rm(rootDir, {
-        recursive: true,
-        force: true,
-        maxRetries: 3,
-        retryDelay: 200,
-      }).catch(() => undefined);
+      await rm(rootDir, REMOVE_WORKSPACE_OPTIONS).catch(() => undefined);
     }
   }
   return runs;

@@ -18,8 +18,8 @@
  * instead of its live head; both commits must already be in the checkout.
  * `--prior` makes it an incremental judgment against an earlier verdict, a
  * JSON file with `headSha`, `baseSha`, `verdict`, `brief`, `details`, and
- * optionally `outcome`, `concerns` (`[{ id, text }]`, after a decline),
- * `scores` and `reason`.
+ * optionally `outcome`, `concerns` (`[{ id, text }]`, after a decline) and
+ * `reason`.
  *
  * Both modes build a plan and hand it to the same assessment.
  */
@@ -39,8 +39,10 @@ import {
   writePrivateJson,
 } from "../core/risk/plan";
 import {
+  CommitShaSchema,
   RISK_RUNNER,
   RiskError,
+  RiskIncrementalSchema,
   RiskJudgeSchema,
   failureReason,
   type RiskIncremental,
@@ -53,19 +55,10 @@ import { z } from "zod";
 
 const OFFLINE_USAGE =
   "Usage: risk-assess.ts --judge <file> --repo <owner/name> --pr <number> --repo-dir <checkout> [--out <dir>] [--droid-binary <path>] [--head <sha> --base <sha>] [--prior <file>]";
-const COMMIT_SHA = /^[0-9a-f]{40}$/;
 
-const OfflinePriorSchema = z.object({
-  headSha: z.string().regex(COMMIT_SHA),
-  baseSha: z.string().regex(COMMIT_SHA),
-  verdict: z.boolean(),
-  outcome: z.string().optional(),
-  brief: z.string(),
-  details: z.string(),
-  concerns: z
-    .array(z.object({ id: z.string().min(1), text: z.string() }))
-    .optional(),
-  scores: z.record(z.number()).optional(),
+const OfflinePriorSchema = RiskIncrementalSchema.shape.prior.extend({
+  headSha: CommitShaSchema,
+  baseSha: CommitShaSchema,
   reason: z.string().default("local"),
 });
 const OFFLINE_RESULT_FILE = "pr-risk-result.json";
@@ -139,8 +132,10 @@ async function offlineInputs(
     !pr ||
     !/^[1-9][0-9]*$/.test(pr) ||
     (values.head === undefined) !== (values.base === undefined) ||
-    (values.head !== undefined && !COMMIT_SHA.test(values.head)) ||
-    (values.base !== undefined && !COMMIT_SHA.test(values.base))
+    (values.head !== undefined &&
+      !CommitShaSchema.safeParse(values.head).success) ||
+    (values.base !== undefined &&
+      !CommitShaSchema.safeParse(values.base).success)
   ) {
     throw new RiskError("usage", OFFLINE_USAGE);
   }
