@@ -21,10 +21,12 @@ import {
 import { RISK_DEFAULT_API_BASE_URL } from "../core/risk/types";
 
 export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  const settleStartedAt = new Date().toISOString();
   const plan = await readRiskPlan(riskPlanPath(env));
   const request = buildSettleRequest(
     plan,
     await readRiskResult(riskResultPath(env)),
+    settleStartedAt,
   );
   const response = await settleRisk(request, {
     baseUrl: env.RISK_API_BASE_URL?.trim() || RISK_DEFAULT_API_BASE_URL,

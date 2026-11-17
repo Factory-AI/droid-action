@@ -147,6 +147,7 @@ describe("risk action entrypoints", () => {
           GITHUB_EVENT_PATH: await eventFile(pullRequestEvent),
           RISK_REVIEW_OUTCOME: "success",
           RISK_MANUAL: "false",
+          RUNNER_NAME: "nsc-runner-1",
         }),
       );
 
@@ -180,7 +181,19 @@ describe("risk action entrypoints", () => {
         false,
       );
       expect((await stat(settlePath)).mode % 0o1000).toBe(0o600);
-      expect(JSON.parse(await readFile(planPath, "utf8"))).toEqual(plan);
+      const written = JSON.parse(await readFile(planPath, "utf8"));
+      expect(written).toEqual({
+        ...plan,
+        timeline: {
+          runnerName: "nsc-runner-1",
+          beginStartedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*Z$/),
+          beginEndedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*Z$/),
+        },
+      });
+      expect(
+        Date.parse(written.timeline.beginEndedAt) >=
+          Date.parse(written.timeline.beginStartedAt),
+      ).toBe(true);
       expect((await stat(planPath)).mode % 0o1000).toBe(0o600);
     });
 
@@ -319,6 +332,10 @@ describe("risk action entrypoints", () => {
           status: "failed",
           reason: "github_token_missing",
           durationMs: expect.any(Number),
+        },
+        // No evidence was built, so there is no evidence boundary.
+        timeline: {
+          assessStartedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*Z$/),
         },
       });
       expect((await stat(resultPath)).mode % 0o1000).toBe(0o600);
@@ -496,6 +513,10 @@ describe("risk action entrypoints", () => {
         durationMs: 34,
         verdict: validVerdict,
       },
+      timeline: {
+        assessStartedAt: "2026-11-17T10:00:00.000Z",
+        evidenceEndedAt: "2026-11-17T10:00:20.000Z",
+      },
     };
 
     beforeEach(async () => {
@@ -527,6 +548,10 @@ describe("risk action entrypoints", () => {
         headSha: plan.headSha,
         run: { ...plan.run, droidCliVersion: "1.2.3" },
         result: judged.result,
+        timeline: {
+          ...judged.timeline,
+          settleStartedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*Z$/),
+        },
       });
       expect(outputs).toEqual({ outcome: "approve" });
       expect(failed).toEqual([]);
@@ -546,11 +571,35 @@ describe("risk action entrypoints", () => {
         headSha: plan.headSha,
         run: plan.run,
         result: { status: "failed", reason: "runner_died" },
+        timeline: {
+          settleStartedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*Z$/),
+        },
       });
       expect(outputs).toEqual({ outcome: "unavailable" });
       expect(failed).toEqual([
         `PR risk assessment is unavailable for ${plan.headSha} (runner_died).`,
       ]);
+    });
+
+    it("settles a run whose begin timeline cannot be read, without it", async () => {
+      const { received } = serve({ status: "published", outcome: "approve" });
+      await writeFile(
+        planPath,
+        JSON.stringify({ ...plan, timeline: { beginStartedAt: "yesterday" } }),
+      );
+      await writeFile(resultPath, JSON.stringify(judged));
+
+      await settle(jobEnv());
+
+      expect(received[0]?.body).toEqual(
+        expect.objectContaining({
+          timeline: {
+            ...judged.timeline,
+            settleStartedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*Z$/),
+          },
+        }),
+      );
+      expect(outputs).toEqual({ outcome: "approve" });
     });
 
     it("leaves a head that moved on to the run for the newer head", async () => {

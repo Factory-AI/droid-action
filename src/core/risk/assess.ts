@@ -38,6 +38,8 @@ export type AssessPullRequestOptions = {
   droidBinary?: string;
   env?: NodeJS.ProcessEnv;
   executeDroid?: RunPrRiskJudgeOptions["executeDroid"];
+  /** Called once the evidence workspace is built, before the judge starts. */
+  onEvidenceReady?: () => void;
 };
 
 /**
@@ -74,6 +76,7 @@ export async function assessPullRequest(
         priorDeclines: plan.priorDeclines,
       },
     );
+    options.onEvidenceReady?.();
     try {
       if (!options.keepCheckoutCredentials) {
         await removeCheckoutCredentials(options.repoDir, evidence.headTreeDir);

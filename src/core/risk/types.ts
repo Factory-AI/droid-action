@@ -120,11 +120,27 @@ export const RiskBeginResponseSchema = z.discriminatedUnion("action", [
 ]);
 export type RiskBeginResponse = z.infer<typeof RiskBeginResponseSchema>;
 
+/**
+ * When this run crossed each boundary, by the runner's clock, and the
+ * runner it ran on. Factory places the run on a timeline with them; a
+ * value that cannot be read is dropped rather than failing the run.
+ */
+export const RiskTimelineSchema = z.object({
+  runnerName: z.string().min(1).optional(),
+  beginStartedAt: z.string().datetime().optional(),
+  beginEndedAt: z.string().datetime().optional(),
+  assessStartedAt: z.string().datetime().optional(),
+  evidenceEndedAt: z.string().datetime().optional(),
+  settleStartedAt: z.string().datetime().optional(),
+});
+export type RiskTimeline = z.infer<typeof RiskTimelineSchema>;
+
 /** Everything the assess and settle steps need from the begin step. */
 export const RiskPlanSchema = RiskJudgeAssignmentSchema.extend({
   repo: z.string().min(1),
   pr: z.number().int().positive(),
   run: RiskRunSchema,
+  timeline: RiskTimelineSchema.optional().catch(undefined),
 });
 export type RiskPlan = z.infer<typeof RiskPlanSchema>;
 
@@ -165,6 +181,7 @@ export type RiskSettleResult = z.infer<typeof RiskSettleResultSchema>;
 export const RiskResultFileSchema = z.object({
   droidCliVersion: z.string().min(1).optional(),
   result: RiskSettleResultSchema,
+  timeline: RiskTimelineSchema.optional().catch(undefined),
 });
 export type RiskResultFile = z.infer<typeof RiskResultFileSchema>;
 
@@ -174,6 +191,7 @@ export type RiskSettleRequest = {
   headSha: string;
   run: RiskRun;
   result: RiskSettleResult;
+  timeline?: RiskTimeline;
 };
 
 export const RiskSettleResponseSchema = z.discriminatedUnion("status", [

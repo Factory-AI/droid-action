@@ -204,7 +204,13 @@ export function buildRiskRun(
 export function buildSettleRequest(
   plan: RiskPlan,
   file: RiskResultFile,
+  settleStartedAt?: string,
 ): RiskSettleRequest {
+  const timeline = {
+    ...plan.timeline,
+    ...file.timeline,
+    ...(settleStartedAt ? { settleStartedAt } : {}),
+  };
   const request: RiskSettleRequest = {
     repo: plan.repo,
     pr: plan.pr,
@@ -216,6 +222,7 @@ export function buildSettleRequest(
         : {}),
     },
     result: file.result,
+    ...(Object.keys(timeline).length > 0 ? { timeline } : {}),
   };
   if (
     Buffer.byteLength(JSON.stringify(request)) <= RISK_SETTLE_MAX_BODY_BYTES

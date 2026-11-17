@@ -182,7 +182,12 @@ export async function run(
     return;
   }
 
+  const assessStartedAt = new Date().toISOString();
+  let evidenceEndedAt: string | undefined;
   const result = await assessPullRequest({
+    onEvidenceReady: () => {
+      evidenceEndedAt = new Date().toISOString();
+    },
     plan: inputs.plan,
     repoDir: inputs.repoDir,
     githubToken: inputs.githubToken,
@@ -195,6 +200,10 @@ export async function run(
   await writePrivateJson(inputs.resultPath, {
     ...(droidCliVersion ? { droidCliVersion } : {}),
     result,
+    timeline: {
+      assessStartedAt,
+      ...(evidenceEndedAt ? { evidenceEndedAt } : {}),
+    },
   } satisfies RiskResultFile);
 
   // The verdict itself stays in the result file; the log only says whether

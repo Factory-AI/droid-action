@@ -61,6 +61,7 @@ export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
   }
 
   const riskRun = buildRiskRun(dryRun, env);
+  const beginStartedAt = new Date().toISOString();
   const response = await beginRisk(
     {
       repo,
@@ -78,6 +79,7 @@ export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
     },
   );
 
+  const beginEndedAt = new Date().toISOString();
   core.setOutput("action", response.action);
   if (response.action === "skip") {
     if (response.reason === RISK_UNKNOWN_ACTION) {
@@ -110,7 +112,17 @@ export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
   }
 
   const { action: _action, ...assignment } = response;
-  const plan: RiskPlan = { repo, pr: target.pr, run: riskRun, ...assignment };
+  const plan: RiskPlan = {
+    repo,
+    pr: target.pr,
+    run: riskRun,
+    ...assignment,
+    timeline: {
+      ...(env.RUNNER_NAME ? { runnerName: env.RUNNER_NAME } : {}),
+      beginStartedAt,
+      beginEndedAt,
+    },
+  };
   await writePrivateJson(riskPlanPath(env), plan);
   console.log(
     `Factory asked for a PR risk assessment of #${target.pr} at ${response.headSha}.`,
