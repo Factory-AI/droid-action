@@ -166,6 +166,33 @@ describe("trusted base review configuration", () => {
     expect(() => parseReviewConfigYaml(raw)).toThrow();
   });
 
+  it("leaves the rules key to Factory, whatever it holds", () => {
+    const fileConfig = parseReviewConfigYaml(
+      [
+        "depth: shallow",
+        "rules:",
+        "  - paths: ['docs/**', '*.md']",
+        "    risk_assessment:",
+        "      enabled: false",
+      ].join("\n"),
+    );
+    expect(fileConfig).toEqual({ review_depth: "shallow" });
+    expect(resolveReviewUxConfig({ fileConfig })).toEqual(
+      resolveReviewUxConfig({ fileConfig: { review_depth: "shallow" } }),
+    );
+    for (const rules of ["not-a-list", "{unknown_setting: true}", ""])
+      expect(parseReviewConfigYaml(`rules: ${rules}`)).toEqual({});
+  });
+
+  it.each(["rules: []\nruls: []", "rules: []\nrules: []", "Rules: []"])(
+    "accepts no other unknown key next to rules: %s",
+    (raw) => {
+      expect(() => parseReviewConfigYaml(raw)).toThrow(
+        "Invalid .factory/review.yaml",
+      );
+    },
+  );
+
   it("does not expose YAML parser values in a malformed configuration error", () => {
     expect(() => parseReviewConfigYaml("value: [fk-example-secret")).toThrow(
       "configuration is not valid YAML",
@@ -288,6 +315,36 @@ describe("trusted base review configuration", () => {
       path: ".factory/review.yaml",
       ref: base,
     });
+  });
+
+  it("reviews with a base config that also carries Factory's rules", async () => {
+    const config = await loadReviewUxConfigFromBase({
+      client: {
+        rest: {
+          pulls: {
+            get: async () => ({ data: { base: { sha: "a".repeat(40) } } }),
+          },
+          repos: {
+            getContent: async () => ({
+              data: {
+                type: "file",
+                encoding: "base64",
+                content: Buffer.from(
+                  "fix_mode: off\nrules:\n  - risk_assessment:\n      enabled: false\n",
+                ).toString("base64"),
+              },
+            }),
+          },
+          git,
+        },
+      },
+      owner: "owner",
+      repo: "repo",
+      prNumber: 7,
+    });
+    expect(config).toEqual(
+      resolveReviewUxConfig({ fileConfig: { fix_mode: "off" } }),
+    );
   });
 
   it("treats an absent base config as optional, without falling back to head", async () => {
