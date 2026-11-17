@@ -97,6 +97,8 @@ function record(value: unknown): Record<string, unknown> | null {
   return result;
 }
 
+const RULES_KEY = "rules";
+
 const aliases: Record<string, string> = {
   depth: "review_depth",
   severity_threshold: "review_severity_threshold",
@@ -113,6 +115,10 @@ function normalizeFileConfig(value: unknown): Record<string, unknown> {
   if (!source) throw new ReviewConfigError("expected a YAML mapping");
   const normalized: Record<string, unknown> = Object.create(null);
   for (const [key, entry] of Object.entries(source)) {
+    // Factory's pull request rules share this file. Factory reads and
+    // validates them; a review takes nothing from them, so whatever the key
+    // holds is neither a setting nor an error here.
+    if (key === RULES_KEY) continue;
     if (key === "auto_review") {
       const automatic = record(entry);
       if (
