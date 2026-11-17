@@ -12,6 +12,7 @@ const evidence: PrRiskEvidenceWorkspace = {
   diffPath: "/tmp/pr-risk/evidence/pr.diff",
   inventoryPath: "/tmp/pr-risk/evidence/changed-files.json",
   guidelinesPath: null,
+  guidelinesBlobSha: null,
   snapshotHash: "snapshot-hash",
 };
 

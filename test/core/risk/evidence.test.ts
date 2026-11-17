@@ -129,6 +129,7 @@ describe("createPrRiskEvidenceWorkspace", () => {
       ).toBe(localAttributes);
       expect(workspace.snapshotHash).toMatch(/^[0-9a-f]{64}$/);
       expect(workspace.guidelinesPath).toBeNull();
+      expect(workspace.guidelinesBlobSha).toBeNull();
 
       const removed = workspace;
       workspace = undefined;
@@ -192,6 +193,13 @@ describe("createPrRiskEvidenceWorkspace", () => {
       );
       expect(await readFile(workspace.guidelinesPath ?? "", "utf8")).toBe(
         "# Guidelines\n\nMigrations need a human.\n",
+      );
+      expect(workspace.guidelinesBlobSha).toBe(
+        await git(
+          checkoutDir,
+          "rev-parse",
+          `${devSha}:.factory/pr-risk/guidelines.md`,
+        ),
       );
     } finally {
       if (workspace) await removePrRiskEvidenceWorkspace(workspace);

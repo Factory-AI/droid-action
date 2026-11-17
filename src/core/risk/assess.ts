@@ -214,6 +214,7 @@ async function finishJudgment(
         baseSha: plan.baseSha,
         judgeSha256: plan.judge.sha256,
         snapshotHash: evidence.snapshotHash,
+        guidelinesBlobSha: evidence.guidelinesBlobSha,
         listedFiles: snapshot.files.length,
         attempts: [first, ...rest],
         durationMs: Date.now() - startedAt,

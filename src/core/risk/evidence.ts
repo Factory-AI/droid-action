@@ -181,20 +181,26 @@ async function resolveDefaultBranchTip(repo: GitRepo): Promise<string> {
 /**
  * Reads the repository's PR risk guidelines from one verified commit on the
  * default branch. The pull request's own commits are never read, so a pull
- * request cannot rewrite the policy it is judged against. Returns null when
- * that commit has no such file or it is empty.
+ * request cannot rewrite the policy it is judged against. `text` is null
+ * when that commit has no such file or it is empty; `blobSha` is null only
+ * when there is no file, since Factory compares it with the blob it reads
+ * from GitHub.
  */
 async function readGuidelines(
   commit: string,
   repo: GitRepo,
-): Promise<string | null> {
+): Promise<{ text: string | null; blobSha: string | null }> {
   const entry = await git(
     ["ls-tree", commit, "--", GUIDELINES_REPO_PATH],
     repo,
   );
-  if (!entry) return null;
-  const [mode, type] = entry.split(/\s/);
-  if (type !== "blob" || (mode !== "100644" && mode !== "100755")) {
+  if (!entry) return { text: null, blobSha: null };
+  const [mode, type, blobSha = ""] = entry.split(/\s/);
+  if (
+    type !== "blob" ||
+    (mode !== "100644" && mode !== "100755") ||
+    !/^[0-9a-f]{40}$/.test(blobSha)
+  ) {
     throw new RiskError(
       "pr_risk_guidelines_invalid",
       "PR risk guidelines are not a regular file",
@@ -204,7 +210,7 @@ async function readGuidelines(
     ["cat-file", "blob", `${commit}:${GUIDELINES_REPO_PATH}`],
     repo,
   );
-  return guidelines || null;
+  return { text: guidelines || null, blobSha };
 }
 
 /**
@@ -337,7 +343,10 @@ export async function createPrRiskEvidenceWorkspace(
     );
   }
   const mergeBase = await git(["merge-base", baseSha, headSha], repo);
-  const guidelines = await readGuidelines(guidelinesSha, repo);
+  const { text: guidelines, blobSha: guidelinesBlobSha } = await readGuidelines(
+    guidelinesSha,
+    repo,
+  );
   const changed = await listChangedFiles(mergeBase, headSha, repo);
   const linesChanged = (kind: "additions" | "deletions") =>
     changed.reduce((total, file) => total + file[kind], 0);
@@ -447,6 +456,7 @@ export async function createPrRiskEvidenceWorkspace(
         diffPath,
         inventoryPath,
         guidelinesPath,
+        guidelinesBlobSha,
         snapshotHash: hash.digest("hex"),
         ...(incremental ? { incremental } : {}),
       },

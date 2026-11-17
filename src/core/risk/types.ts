@@ -201,6 +201,10 @@ export const RiskSettleResultSchema = z.discriminatedUnion("status", [
     baseSha: CommitShaSchema,
     judgeSha256: Sha256Schema,
     snapshotHash: z.string().min(1),
+    // The blob of `.factory/pr-risk/guidelines.md` the evidence was built
+    // from, null when the default branch has none. Factory keeps a carried
+    // approval only while that blob is unchanged.
+    guidelinesBlobSha: CommitShaSchema.nullable().optional(),
     listedFiles: z.number().int().nonnegative(),
     attempts: z.array(RiskJudgeAttemptSchema).nonempty(),
     durationMs: z.number().int().nonnegative(),
@@ -334,6 +338,8 @@ export type PrRiskEvidenceWorkspace = {
   inventoryPath: string;
   /** The default branch's `.factory/pr-risk/guidelines.md`, or null when absent. */
   guidelinesPath: string | null;
+  /** That file's blob id at the commit read, or null when absent. */
+  guidelinesBlobSha: string | null;
   snapshotHash: string;
   /** Set only for an incremental judgment. */
   incremental?: PrRiskIncrementalEvidence;

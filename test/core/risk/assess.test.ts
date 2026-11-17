@@ -67,6 +67,7 @@ describe("assessPullRequest", () => {
       baseSha,
       judgeSha256: judge.sha256,
       snapshotHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      guidelinesBlobSha: null,
       listedFiles: 1,
       attempts: [
         { sessionId: "session-1", valid: true, durationMs: expect.any(Number) },
