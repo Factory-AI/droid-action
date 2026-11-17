@@ -283,6 +283,7 @@ describe("assessPullRequest", () => {
           priorHeadSha: baseSha,
           priorAssessmentId: "prior-row",
           priorBaseSha: baseSha,
+          judgeSha256: "e".repeat(64),
           prior,
         },
       }),
@@ -302,6 +303,7 @@ describe("assessPullRequest", () => {
       mode: "incremental",
       priorHeadSha: baseSha,
       priorAssessmentId: "prior-row",
+      judgeSha256: "e".repeat(64),
     });
     expect(incremental).not.toHaveProperty("incrementalFallback");
     expect(skill).toContain('"interdiffPath"');
@@ -316,6 +318,7 @@ describe("assessPullRequest", () => {
           reason: "eligible",
           priorHeadSha: "d".repeat(40),
           priorBaseSha: baseSha,
+          judgeSha256: "e".repeat(64),
           prior,
         },
       }),
@@ -335,6 +338,7 @@ describe("assessPullRequest", () => {
       mode: "full",
       incrementalFallback: "evidence_git_failed",
     });
+    expect(fallback).not.toMatchObject({ judgeSha256: "e".repeat(64) });
     expect(skill).not.toContain('"incremental"');
     expect(skill).not.toContain("Prior details.");
   });

@@ -212,7 +212,10 @@ async function finishJudgment(
       return {
         status: "judged",
         baseSha: plan.baseSha,
-        judgeSha256: plan.judge.sha256,
+        judgeSha256:
+          evidence.incremental && incremental?.judgeSha256
+            ? incremental.judgeSha256
+            : plan.judge.sha256,
         snapshotHash: evidence.snapshotHash,
         guidelinesBlobSha: evidence.guidelinesBlobSha,
         listedFiles: snapshot.files.length,

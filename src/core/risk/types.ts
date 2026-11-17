@@ -118,6 +118,9 @@ const RiskPriorConcernSchema = z.object({
  * decline `concerns` lists what the re-check must show resolved to approve.
  * `priorAssessmentId` is Factory's id for that verdict's record, echoed back
  * at settle so Factory checks the re-check against exactly that record.
+ * `judgeSha256` is the judge hash a re-check's result reports in place of
+ * the judge's own, so a server that cannot settle a re-check rejects it
+ * instead of taking it for a full assessment.
  */
 export const RiskIncrementalSchema = z.object({
   mode: z.enum(["shadow", "enforce"]),
@@ -125,6 +128,7 @@ export const RiskIncrementalSchema = z.object({
   priorHeadSha: CommitShaSchema,
   priorAssessmentId: z.string().min(1).optional(),
   priorBaseSha: CommitShaSchema,
+  judgeSha256: Sha256Schema.optional(),
   prior: z.object({
     verdict: z.boolean(),
     outcome: z.string().optional(),
