@@ -166,32 +166,40 @@ describe("trusted base review configuration", () => {
     expect(() => parseReviewConfigYaml(raw)).toThrow();
   });
 
-  it("leaves the rules key to Factory, whatever it holds", () => {
+  it("leaves Factory's rules keys to Factory, whatever they hold", () => {
     const fileConfig = parseReviewConfigYaml(
       [
         "depth: shallow",
+        "risk_assessment:",
+        "  enabled: false",
         "rules:",
-        "  - paths: ['docs/**', '*.md']",
+        "  - include_paths: ['apps/**']",
+        "    exclude_paths: ['apps/**/*.md']",
         "    risk_assessment:",
-        "      enabled: false",
+        "      enabled: true",
       ].join("\n"),
     );
     expect(fileConfig).toEqual({ review_depth: "shallow" });
     expect(resolveReviewUxConfig({ fileConfig })).toEqual(
       resolveReviewUxConfig({ fileConfig: { review_depth: "shallow" } }),
     );
-    for (const rules of ["not-a-list", "{unknown_setting: true}", ""])
-      expect(parseReviewConfigYaml(`rules: ${rules}`)).toEqual({});
+    for (const key of ["rules", "risk_assessment"])
+      for (const held of ["not-a-list", "{unknown_setting: true}", ""])
+        expect(parseReviewConfigYaml(`${key}: ${held}`)).toEqual({});
   });
 
-  it.each(["rules: []\nruls: []", "rules: []\nrules: []", "Rules: []"])(
-    "accepts no other unknown key next to rules: %s",
-    (raw) => {
-      expect(() => parseReviewConfigYaml(raw)).toThrow(
-        "Invalid .factory/review.yaml",
-      );
-    },
-  );
+  it.each([
+    "rules: []\nruls: []",
+    "rules: []\nrules: []",
+    "Rules: []",
+    "risk_assessment: {}\nrisk_assesment: {}",
+    "risk_assessment: {}\nrisk_assessment: {}",
+    "security_review: {enabled: false}",
+  ])("accepts no other unknown key next to Factory's rules keys: %s", (raw) => {
+    expect(() => parseReviewConfigYaml(raw)).toThrow(
+      "Invalid .factory/review.yaml",
+    );
+  });
 
   it("does not expose YAML parser values in a malformed configuration error", () => {
     expect(() => parseReviewConfigYaml("value: [fk-example-secret")).toThrow(
@@ -330,7 +338,7 @@ describe("trusted base review configuration", () => {
                 type: "file",
                 encoding: "base64",
                 content: Buffer.from(
-                  "fix_mode: off\nrules:\n  - risk_assessment:\n      enabled: false\n",
+                  "fix_mode: off\nrisk_assessment:\n  enabled: false\nrules:\n  - include_paths: ['src/**']\n    risk_assessment:\n      enabled: true\n",
                 ).toString("base64"),
               },
             }),

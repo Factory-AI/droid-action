@@ -97,7 +97,12 @@ function record(value: unknown): Record<string, unknown> | null {
   return result;
 }
 
-const RULES_KEY = "rules";
+/**
+ * Keys Factory's pull request rules own in this file: the controls a
+ * repository sets for every pull request, and `rules`, which sets them per
+ * path.
+ */
+const FACTORY_RULES_KEYS = new Set(["rules", "risk_assessment"]);
 
 const aliases: Record<string, string> = {
   depth: "review_depth",
@@ -116,9 +121,9 @@ function normalizeFileConfig(value: unknown): Record<string, unknown> {
   const normalized: Record<string, unknown> = Object.create(null);
   for (const [key, entry] of Object.entries(source)) {
     // Factory's pull request rules share this file. Factory reads and
-    // validates them; a review takes nothing from them, so whatever the key
-    // holds is neither a setting nor an error here.
-    if (key === RULES_KEY) continue;
+    // validates them; a review takes nothing from them, so whatever these
+    // keys hold is neither a setting nor an error here.
+    if (FACTORY_RULES_KEYS.has(key)) continue;
     if (key === "auto_review") {
       const automatic = record(entry);
       if (
