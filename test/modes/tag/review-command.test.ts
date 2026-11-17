@@ -12,6 +12,12 @@ import { DroidRunType } from "../../../src/run-type";
 import { parseSessionTagFromDroidArgs } from "../../utils/session-tag-helpers";
 import * as lifecycle from "../../../src/github/operations/review-lifecycle";
 
+// Minimal stand-in for Octokit's paginator: these mocks return a single page.
+const paginate = async (
+  method: (params: unknown) => Promise<{ data: unknown[] }>,
+  params: unknown,
+) => (await method(params)).data;
+
 const MOCK_PR_DATA = {
   title: "PR for review",
   body: "Existing body",
@@ -166,6 +172,7 @@ describe("prepareReviewMode", () => {
 
     const octokit = {
       rest: {
+        paginate,
         issues: {
           listComments: () => Promise.resolve({ data: [] }),
         },
@@ -272,6 +279,7 @@ describe("prepareReviewMode", () => {
     });
     const octokit = {
       rest: {
+        paginate,
         issues: { listComments: () => Promise.resolve({ data: [] }) },
         pulls: { listReviewComments: () => Promise.resolve({ data: [] }) },
       },
@@ -314,6 +322,7 @@ describe("prepareReviewMode", () => {
     });
     const octokit = {
       rest: {
+        paginate,
         issues: { listComments: () => Promise.resolve({ data: [] }) },
         pulls: { listReviewComments: () => Promise.resolve({ data: [] }) },
       },
@@ -373,6 +382,7 @@ describe("prepareReviewMode", () => {
     });
     const octokit = {
       rest: {
+        paginate,
         issues: { listComments: () => Promise.resolve({ data: [] }) },
         pulls: { listReviewComments: () => Promise.resolve({ data: [] }) },
       },
@@ -419,6 +429,7 @@ describe("prepareReviewMode", () => {
 
     const octokit = {
       rest: {
+        paginate,
         issues: {
           listComments: () => Promise.resolve({ data: [] }),
         },
@@ -495,6 +506,7 @@ describe("prepareReviewMode", () => {
 
     const octokit = {
       rest: {
+        paginate,
         issues: {
           listComments: () => Promise.resolve({ data: [] }),
         },
@@ -567,6 +579,7 @@ describe("prepareReviewMode", () => {
 
     const octokit = {
       rest: {
+        paginate,
         issues: {
           listComments: () => Promise.resolve({ data: [] }),
         },
@@ -640,6 +653,7 @@ describe("prepareReviewMode", () => {
 
     const octokit = {
       rest: {
+        paginate,
         issues: {
           listComments: () => Promise.resolve({ data: [] }),
         },
@@ -697,6 +711,7 @@ describe("prepareReviewMode", () => {
 
     const octokit = {
       rest: {
+        paginate,
         issues: {
           listComments: () => Promise.resolve({ data: [] }),
         },
@@ -752,6 +767,7 @@ describe("prepareReviewMode", () => {
 
     const octokit = {
       rest: {
+        paginate,
         issues: {
           listComments: () => Promise.resolve({ data: [] }),
         },
@@ -806,6 +822,7 @@ describe("prepareReviewMode", () => {
 
     const octokit = {
       rest: {
+        paginate,
         issues: {
           listComments: () => Promise.resolve({ data: [] }),
         },
