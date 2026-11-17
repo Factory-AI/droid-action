@@ -114,11 +114,14 @@ const RiskPriorConcernSchema = z.object({
  * re-check alongside, reported separately and never published. `outcome` is
  * the decision Factory published on that head (an open string), and after a
  * decline `concerns` lists what the re-check must show resolved to approve.
+ * `priorAssessmentId` is Factory's id for that verdict's record, echoed back
+ * at settle so Factory checks the re-check against exactly that record.
  */
 export const RiskIncrementalSchema = z.object({
   mode: z.enum(["shadow", "enforce"]),
   reason: z.string(),
   priorHeadSha: CommitShaSchema,
+  priorAssessmentId: z.string().min(1).optional(),
   priorBaseSha: CommitShaSchema,
   prior: z.object({
     verdict: z.boolean(),
@@ -216,6 +219,7 @@ export const RiskSettleResultSchema = z.discriminatedUnion("status", [
     mode: z.enum(["incremental", "full"]).optional(),
     incrementalFallback: z.string().regex(FAILURE_REASON).optional(),
     priorHeadSha: CommitShaSchema.optional(),
+    priorAssessmentId: z.string().min(1).optional(),
     // An enforced re-check that approves: the cited checks as the runner
     // ran them again, the only exit codes Factory accepts.
     checkRuns: z.array(RiskCheckRunSchema).max(20).optional(),

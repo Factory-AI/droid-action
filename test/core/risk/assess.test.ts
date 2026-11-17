@@ -281,6 +281,7 @@ describe("assessPullRequest", () => {
           mode: "enforce",
           reason: "eligible",
           priorHeadSha: baseSha,
+          priorAssessmentId: "prior-row",
           priorBaseSha: baseSha,
           prior,
         },
@@ -300,6 +301,7 @@ describe("assessPullRequest", () => {
       status: "judged",
       mode: "incremental",
       priorHeadSha: baseSha,
+      priorAssessmentId: "prior-row",
     });
     expect(incremental).not.toHaveProperty("incrementalFallback");
     expect(skill).toContain('"interdiffPath"');

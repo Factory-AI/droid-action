@@ -223,6 +223,9 @@ async function finishJudgment(
           ? {
               mode: evidence.incremental ? "incremental" : "full",
               priorHeadSha: incremental.priorHeadSha,
+              ...(incremental.priorAssessmentId
+                ? { priorAssessmentId: incremental.priorAssessmentId }
+                : {}),
               ...(incrementalFallback ? { incrementalFallback } : {}),
             }
           : {}),
