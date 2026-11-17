@@ -56,12 +56,15 @@ concern is resolved.
   again before settling, and Factory takes the exit codes from that run
   (`checkRuns`), never from the verdict. Each check runs from the root of a
   clean workspace laid out like the judge's: a fresh worktree of the head at
-  `evidence/head`, and the scripts the judge saved under `evidence/checks/`.
-  A check gets only `PATH`, `HOME`, `LANG`, its own `TMPDIR` and
+  `evidence/head`, and the scripts the judge saved under `evidence/checks/`,
+  where each mention of the judge's workspace names the clean one. Each
+  check after the first starts from that layout again: the head tree is reset
+  and cleaned (ignored files, such as installed dependencies, are kept) and
+  the saved files are copied afresh. A check gets only `PATH`, `HOME`, `LANG`, its own `TMPDIR` and
   `CI=true`, none of the job's credentials, and at most 5 minutes (10 for all
   of them). Its output is discarded. A command that names a file in the temp
-  or home directory (a script the judge did not save) is not run
-  (`rejected`). The run stops at the first check that passes and covers a
+  or home directory (a script the judge did not save), or a path built from
+  a variable such as `$HOME/x`, is not run (`rejected`). The run stops at the first check that passes and covers a
   path that changed since the prior head.
 - `mode: "shadow"`: the head is judged afresh as without the block, and the
   re-check runs at the same time in a second workspace. Its answer is sent

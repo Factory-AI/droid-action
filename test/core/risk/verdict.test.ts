@@ -46,6 +46,19 @@ describe("compilePrRiskVerdictSchema", () => {
       { checks: [{ command: "bun test", covers: [] }] },
     ],
     ["a key outside the contract", { resolved: true }],
+    [
+      // Cut to length, it would run as `true`, without the failing tail.
+      "a check command too long to run as written",
+      {
+        checks: [
+          {
+            command: `true #${"x".repeat(500)}\nfalse`,
+            exitCode: 0,
+            covers: [],
+          },
+        ],
+      },
+    ],
   ])("rejects %s", (_name, extra) => {
     expect(schema.safeParse({ ...base, ...extra }).success).toBe(false);
   });

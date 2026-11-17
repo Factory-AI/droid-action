@@ -127,14 +127,17 @@ export function gitEnvironment(
 }
 
 /**
- * Runs one git command against the repository and returns its trimmed stdout.
- * Only the repository's own configuration applies: host-level config,
- * attributes, and hooks cannot change what a head checks out as, so the same
- * commit yields the same evidence on every machine.
+ * Runs one git command against the repository and returns its trimmed stdout,
+ * or all of it with `raw`: a NUL-delimited listing must keep a space that
+ * begins or ends its first or last path. Only the repository's own
+ * configuration applies: host-level config, attributes, and hooks cannot
+ * change what a head checks out as, so the same commit yields the same
+ * evidence on every machine.
  */
 export async function git(
   args: readonly string[],
   repo: GitRepo,
+  options: { raw?: boolean } = {},
 ): Promise<string> {
   try {
     const { stdout } = await execFileAsync(
@@ -147,7 +150,7 @@ export async function git(
         timeout: GIT_TIMEOUT_MS,
       },
     );
-    return stdout.trim();
+    return options.raw ? stdout : stdout.trim();
   } catch (error) {
     // The token travels in the environment, so neither the command line nor
     // git's own message in this error carries it.
@@ -227,6 +230,7 @@ async function listChangedFiles(
       await git(
         ["--no-pager", "diff", ...DIFF_OPTIONS, format, "-z", from, to],
         repo,
+        { raw: true },
       )
     ).split("\0");
 
@@ -539,6 +543,7 @@ async function writeIncrementalEvidence(input: {
               input.mergeBase,
             ],
             repo,
+            { raw: true },
           )
         )
           .split("\0")
@@ -615,6 +620,7 @@ async function writeIncrementalEvidence(input: {
           ...SOURCE_PATHSPECS,
         ],
         repo,
+        { raw: true },
       );
     } catch (error) {
       // `git grep` exits 1 when nothing matches; anything else leaves the
@@ -669,6 +675,7 @@ async function writeIncrementalEvidence(input: {
               ...dirs.map((dir) => `:(literal)${dir}`),
             ],
             repo,
+            { raw: true },
           )
         )
           .split("\0")
@@ -712,6 +719,7 @@ async function persistedCredentials(
         "-z",
       ],
       { cwd: config.cwd },
+      { raw: true },
     )
   ).split("\0");
   const found: Array<{ file: string; key: string }> = [];

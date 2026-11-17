@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -24,8 +24,17 @@ describe("rejectCheckCommand", () => {
     ["node /home/runner/scratch.js", "outside_path"],
     ["node ~/scratch.js", "home_path"],
     ["FILE=/tmp/x node a.js", "outside_path"],
+    ['node "$HOME/probe.js"', "expanded_path"],
+    ["node ${TMPDIR}/probe.js", "expanded_path"],
   ])("refuses %s", (command, reason) => {
     expect(rejectCheckCommand(command, "/home/runner", "/tmp")).toBe(reason);
+  });
+
+  it("reads a path through its .. segments before deciding it is inside the workspace", () => {
+    const check = (command: string) =>
+      rejectCheckCommand(command, "/home/runner", "/tmp", "/tmp/ws");
+    expect(check("node /tmp/ws/evidence/checks/probe.js")).toBeUndefined();
+    expect(check("node /tmp/ws/../probe.js")).toBe("outside_path");
   });
 });
 
@@ -50,6 +59,15 @@ describe("rerunCitedChecks", () => {
     await writeFile(
       join(judgeRoot, "evidence", "checks", "probe.sh"),
       'grep -q "next" evidence/head/app.ts && grep -q next evidence/pr.diff\n',
+    );
+    // Scripts that reach the judge's head tree by its absolute path.
+    await writeFile(
+      join(judgeRoot, "evidence", "checks", "absolute.sh"),
+      `test -f ${judgeRoot}/evidence/head/planted.txt\n`,
+    );
+    await symlink(
+      join(judgeRoot, "evidence", "head"),
+      join(judgeRoot, "evidence", "checks", "head-link"),
     );
   });
 
@@ -99,6 +117,49 @@ describe("rerunCitedChecks", () => {
         /^worktree /gmu,
       ),
     ).toHaveLength(1);
+  });
+
+  it("points a saved script that names the judge's head tree at the clean one", async () => {
+    const runs = await run([
+      { command: "bash evidence/checks/absolute.sh", exitCode: 0, covers: [] },
+      {
+        command: "test -f evidence/checks/head-link/planted.txt",
+        exitCode: 0,
+        covers: [],
+      },
+      {
+        command: "test -f evidence/checks/head-link/app.ts",
+        exitCode: 0,
+        covers: [],
+      },
+    ]);
+    expect(runs.map((entry) => entry.exitCode)).toEqual([1, 1, 0]);
+  });
+
+  it("starts each check from the clean workspace, whatever a failed one changed", async () => {
+    const runs = await run([
+      {
+        command: [
+          "echo planted > evidence/head/app.ts",
+          "echo x > evidence/head/new.txt",
+          "echo 'exit 0' > evidence/checks/probe.sh",
+          "echo x > evidence/planted.txt",
+          "echo x > tmp/x",
+          "exit 1",
+        ].join("; "),
+        exitCode: 0,
+        covers: ["app.ts"],
+      },
+      ...[
+        "grep -q planted evidence/head/app.ts",
+        "test -e evidence/head/new.txt",
+        "grep -q 'exit 0' evidence/checks/probe.sh",
+        "test -e evidence/planted.txt",
+        "test -e tmp/x",
+      ].map((command) => ({ command, exitCode: 0, covers: ["app.ts"] })),
+      { command: "bash evidence/checks/probe.sh", exitCode: 0, covers: [] },
+    ]);
+    expect(runs.map((entry) => entry.exitCode)).toEqual([1, 1, 1, 1, 1, 1, 0]);
   });
 
   it("keeps the job's credentials out of a check", async () => {

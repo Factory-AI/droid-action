@@ -12,6 +12,8 @@ export const RISK_JUDGE_SKILL_NAME = "pr-risk-judge";
 export const RISK_SNAPSHOT_PLACEHOLDER = "{{PR_SNAPSHOT_JSON}}";
 export const RISK_SESSION_TAG = "riskAssessment";
 export const RISK_SETTLE_MAX_BODY_BYTES = 256 * 1024;
+/** How many checks a re-check may cite, so how many the runner re-runs. */
+export const MAX_CITED_CHECKS = 20;
 /** What this version can do beyond a full judgment, sent with every begin. */
 export const RISK_CAPABILITIES = ["incremental"];
 
@@ -222,7 +224,7 @@ export const RiskSettleResultSchema = z.discriminatedUnion("status", [
     priorAssessmentId: z.string().min(1).optional(),
     // An enforced re-check that approves: the cited checks as the runner
     // ran them again, the only exit codes Factory accepts.
-    checkRuns: z.array(RiskCheckRunSchema).max(20).optional(),
+    checkRuns: z.array(RiskCheckRunSchema).max(MAX_CITED_CHECKS).optional(),
   }),
   z.object({
     status: z.literal("failed"),

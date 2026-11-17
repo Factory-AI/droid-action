@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
 import {
+  decodePatchPath,
   normalizePatchPath,
   pathsFromDiffHeader,
 } from "../review/validated/diff";
@@ -25,15 +26,18 @@ const MAX_TESTS = 50;
 // incremental judgment falls back to a full one.
 export const MAX_INCREMENTAL_PATHS = 1000;
 
-/** One file's section of a unified diff, keyed by its path at the newer side. */
-type DiffFile = { path: string; previousPath?: string; footprint: string };
-
 /**
- * Splits a unified diff into per-file footprints: what the file's change
- * adds and removes, and how it changes the file itself (created, deleted,
- * renamed, mode, binary content). Hunk positions and context lines are left
- * out, so the same change replayed onto a moved base keeps its footprint.
+ * One file's section of a unified diff, keyed by its path at the newer side.
+ * `footprint` is what the change adds and removes, and how it changes the
+ * file itself (created, deleted, renamed, mode, binary content), without
+ * hunk positions or context lines. `section` is the whole section.
  */
+type DiffFile = { previousPath?: string; footprint: string; section: string };
+
+const digest = (text: string) =>
+  createHash("sha256").update(text).digest("hex");
+
+/** Splits a unified diff into per-file footprints. */
 export function parseDiffFootprints(diff: string): Map<string, DiffFile> {
   const files = new Map<string, DiffFile>();
   for (const section of diff.split(/^diff --git /m).slice(1)) {
@@ -55,11 +59,13 @@ export function parseDiffFootprints(diff: string): Map<string, DiffFile> {
           newPath = normalizePatchPath(line.slice(4)) ?? undefined;
           continue;
         }
+        // Unlike `---` and `+++`, these name the path without an a/ or b/
+        // prefix, so a leading `a/` is a real directory.
         if (line.startsWith("rename from ")) {
-          renameFrom = normalizePatchPath(line.slice(12)) ?? undefined;
+          renameFrom = decodePatchPath(line.slice(12)) ?? undefined;
         }
         if (line.startsWith("rename to ")) {
-          renameTo = normalizePatchPath(line.slice(10)) ?? undefined;
+          renameTo = decodePatchPath(line.slice(10)) ?? undefined;
         }
         if (
           /^(new file mode|deleted file mode|old mode|new mode|rename from|rename to|copy from|copy to)/.test(
@@ -74,7 +80,10 @@ export function parseDiffFootprints(diff: string): Map<string, DiffFile> {
         inHunk = true;
         continue;
       }
-      if (inHunk && (line.startsWith("+") || line.startsWith("-"))) {
+      if (
+        inHunk &&
+        (line.startsWith("+") || line.startsWith("-") || line.startsWith("\\"))
+      ) {
         kept.push(line);
       }
     }
@@ -90,9 +99,9 @@ export function parseDiffFootprints(diff: string): Map<string, DiffFile> {
       if (index) kept.push(index.split(" ")[1] ?? "");
     }
     files.set(path, {
-      path,
       ...(previousPath ? { previousPath } : {}),
-      footprint: createHash("sha256").update(kept.join("\n")).digest("hex"),
+      footprint: digest(kept.join("\n")),
+      section: digest(section),
     });
   }
   return files;
@@ -101,7 +110,10 @@ export function parseDiffFootprints(diff: string): Map<string, DiffFile> {
 /**
  * The paths whose own change differs between the prior head and this one,
  * and those whose own change is the same but which the base changed between
- * the two merge bases: the same lines then land in different code.
+ * the two merge bases: the same lines then land in different code. Where the
+ * base did not change a path, both diffs start from the same file, so any
+ * difference in its section, even one of position or context alone, is the
+ * author's: the same edit moved to other, identical-looking lines.
  */
 export function changedOwnPaths(
   prior: Map<string, DiffFile>,
@@ -119,23 +131,32 @@ export function changedOwnPaths(
   }> = [];
   for (const [path, file] of current) {
     const before = prior.get(path);
+    const baseChanged =
+      upstreamPaths.has(path) ||
+      (file.previousPath !== undefined && upstreamPaths.has(file.previousPath));
     if (!before) {
       changed.push({
         path,
         ...(file.previousPath ? { previousPath: file.previousPath } : {}),
         change: "added_to_pr",
       });
-    } else if (before.footprint !== file.footprint) {
-      changed.push({ path, change: "changed" });
     } else if (
-      upstreamPaths.has(path) ||
-      (file.previousPath !== undefined && upstreamPaths.has(file.previousPath))
+      before.footprint !== file.footprint ||
+      (!baseChanged && before.section !== file.section)
     ) {
+      changed.push({ path, change: "changed" });
+    } else if (baseChanged) {
       changed.push({ path, change: "base_changed" });
     }
   }
-  for (const path of prior.keys()) {
-    if (!current.has(path)) changed.push({ path, change: "removed_from_pr" });
+  for (const [path, file] of prior) {
+    if (current.has(path)) continue;
+    // An undone rename restores its source, which the inter-diff must show.
+    changed.push({
+      path,
+      ...(file.previousPath ? { previousPath: file.previousPath } : {}),
+      change: "removed_from_pr",
+    });
   }
   return changed.sort((left, right) => left.path.localeCompare(right.path));
 }
@@ -204,11 +225,18 @@ export function importsModule(
   specifier: string,
   stem: string,
 ): boolean {
-  const bare = specifier.replace(/\.[cm]?[jt]sx?$/, "").replace(/\/index$/, "");
-  if (bare.startsWith(".")) {
-    const resolved = posix.normalize(posix.join(posix.dirname(importer), bare));
-    return resolved === stem || resolved === `${stem}/index`;
+  const withoutExtension = specifier.replace(/\.[cm]?[jt]sx?$/, "");
+  if (withoutExtension.startsWith(".")) {
+    // A directory and its index name one module, the root's included: a
+    // root `index.ts` has stem `index`, and `./index` or `.` import it.
+    const directory = (path: string) =>
+      path.replace(/(?:^|\/)index$/, "") || ".";
+    const resolved = posix.normalize(
+      posix.join(posix.dirname(importer), withoutExtension),
+    );
+    return directory(resolved) === directory(stem);
   }
+  const bare = withoutExtension.replace(/\/index$/, "");
   const tail = stem.split("/").slice(-2).join("/");
   return bare === tail || bare.endsWith(`/${tail}`);
 }

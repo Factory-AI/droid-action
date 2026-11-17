@@ -1,11 +1,12 @@
 import { z } from "zod";
-import type { RiskScoreRanges } from "./types";
+import { MAX_CITED_CHECKS, type RiskScoreRanges } from "./types";
 
-// A model cannot count characters, so an overrun is cut with a marker rather
-// than rejected, and the verdict it carries still lands.
+// A model cannot count characters, so an overrun of prose is cut with a
+// marker rather than rejected, and the verdict it carries still lands.
 const BRIEF_MAX_CHARS = 800;
 const DETAILS_MAX_CHARS = 6_000;
 const EVIDENCE_MAX_CHARS = 600;
+// A command is run again, so it is never cut: a cut one is another command.
 const COMMAND_MAX_CHARS = 500;
 const MAX_LISTED = 20;
 const MAX_COVERS = 50;
@@ -42,8 +43,9 @@ export type PrRiskVerdict = {
  * The JSON contract a judge must answer: `verdict`, `brief`, `details`,
  * every declared score within its range, optionally `resolvedConcerns` and
  * `checks`, and nothing else. Strict so a drifting answer is a retry, never
- * a silently narrowed verdict; only length is forgiven, by truncation, and an
- * extra key inside one listed concern or check, which is dropped.
+ * a silently narrowed verdict; only the length of prose is forgiven, by
+ * truncation, and an extra key inside one listed concern or check, which is
+ * dropped.
  */
 export function compilePrRiskVerdictSchema(
   scores: RiskScoreRanges,
@@ -64,12 +66,12 @@ export function compilePrRiskVerdictSchema(
     checks: z
       .array(
         z.object({
-          command: truncatedMarkdown(COMMAND_MAX_CHARS),
+          command: z.string().min(1).max(COMMAND_MAX_CHARS),
           exitCode: z.number().int(),
           covers: z.array(z.string().min(1)).max(MAX_COVERS),
         }),
       )
-      .max(MAX_LISTED)
+      .max(MAX_CITED_CHECKS)
       .optional(),
   });
   const entries = Object.entries(scores);
@@ -105,7 +107,7 @@ export function describePrRiskContract(scores: RiskScoreRanges): string {
         ]
       : []),
     `resolvedConcerns (optional; at most ${MAX_LISTED} objects with exactly concern, a served concern id such as "c1", and evidence, a string)`,
-    `checks (optional; at most ${MAX_LISTED} objects with exactly command (string), exitCode (integer) and covers (array of changed paths))`,
+    `checks (optional; at most ${MAX_CITED_CHECKS} objects with exactly command (string of at most ${COMMAND_MAX_CHARS} characters), exitCode (integer) and covers (array of changed paths))`,
   ]
     .map((line) => `- ${line}`)
     .join("\n");

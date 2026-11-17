@@ -223,14 +223,17 @@ export function buildSettleRequest(
   const fits = (candidate: RiskSettleRequest) =>
     Buffer.byteLength(JSON.stringify(candidate)) <= RISK_SETTLE_MAX_BODY_BYTES;
   if (fits(request)) return request;
-  // The shadow re-check is only measured, so it gives way to the verdict.
+  // The shadow re-check is only measured, so it gives way to the verdict,
+  // and its failure marker too when even that does not fit beside it.
   const { shadow: _shadow, ...primary } = request;
-  if (fits(primary)) {
-    return {
+  if (file.shadow) {
+    const marked: RiskSettleRequest = {
       ...primary,
       shadow: { status: "failed", reason: "result_too_large" },
     };
+    if (fits(marked)) return marked;
   }
+  if (fits(primary)) return primary;
   return {
     ...primary,
     result: { status: "failed", reason: "result_too_large" },

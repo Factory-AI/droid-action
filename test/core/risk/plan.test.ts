@@ -16,6 +16,7 @@ import {
   writePrivateJson,
 } from "../../../src/core/risk/plan";
 import {
+  RISK_SETTLE_MAX_BODY_BYTES,
   RiskError,
   failureReason,
   type RiskResultFile,
@@ -331,5 +332,22 @@ describe("buildSettleRequest", () => {
       status: "failed",
       reason: "result_too_large",
     });
+
+    // A verdict just under the limit leaves no room for the shadow's
+    // failure either, so the shadow is left out.
+    const size = (details: string) =>
+      Buffer.byteLength(
+        JSON.stringify(buildSettleRequest(plan, { result: judged(details) })),
+      );
+    const full = judged("x".repeat(RISK_SETTLE_MAX_BODY_BYTES - 10 - size("")));
+    const crowded = buildSettleRequest(plan, {
+      result: full,
+      shadow: { ...judged("y".repeat(1024)), mode: "incremental" },
+    });
+    expect(crowded.result).toEqual(full);
+    expect(crowded.shadow).toBeUndefined();
+    expect(Buffer.byteLength(JSON.stringify(crowded))).toBeLessThanOrEqual(
+      RISK_SETTLE_MAX_BODY_BYTES,
+    );
   });
 });

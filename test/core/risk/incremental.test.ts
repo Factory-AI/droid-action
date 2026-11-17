@@ -21,11 +21,17 @@ const diffAt = (start: number, context: string) =>
   ].join("\n");
 
 describe("parseDiffFootprints", () => {
-  it("keeps a change's footprint when only its position and context moved, and changes it when its lines did", () => {
+  it("keeps a change's footprint when only the base moved it, and changes it when its lines did", () => {
     const prior = parseDiffFootprints(diffAt(10, "const a = 1;"));
     expect(
-      changedOwnPaths(prior, parseDiffFootprints(diffAt(40, "const b = 1;"))),
+      changedOwnPaths(prior, parseDiffFootprints(diffAt(10, "const a = 1;"))),
     ).toEqual([]);
+    // The base did not change the file, so the same lines elsewhere are the
+    // author's edit moved: two functions that both returned 1, the first
+    // changed at the prior head and the second at this one.
+    expect(
+      changedOwnPaths(prior, parseDiffFootprints(diffAt(40, "const b = 1;"))),
+    ).toEqual([{ path: "src/a.ts", change: "changed" }]);
     expect(
       changedOwnPaths(
         prior,
@@ -41,6 +47,46 @@ describe("parseDiffFootprints", () => {
         new Set(["src/a.ts"]),
       ),
     ).toEqual([{ path: "src/a.ts", change: "base_changed" }]);
+  });
+
+  it("tells a change that gained or lost its final newline apart, even where the base moved", () => {
+    const withoutNewline = diffAt(10, "x").replace(
+      "+  return 2;\n",
+      "+  return 2;\n\\ No newline at end of file\n",
+    );
+    expect(
+      changedOwnPaths(
+        parseDiffFootprints(withoutNewline),
+        parseDiffFootprints(diffAt(40, "x")),
+        new Set(["src/a.ts"]),
+      ),
+    ).toEqual([{ path: "src/a.ts", change: "changed" }]);
+  });
+
+  it("reads rename paths as repository paths, so a directory named a/ keeps its name", () => {
+    const renamed = [
+      "diff --git a/a/old.ts b/a/new.ts",
+      "similarity index 100%",
+      "rename from a/old.ts",
+      "rename to a/new.ts",
+      "",
+    ].join("\n");
+    expect(changedOwnPaths(new Map(), parseDiffFootprints(renamed))).toEqual([
+      { path: "a/new.ts", previousPath: "a/old.ts", change: "added_to_pr" },
+    ]);
+  });
+
+  it("keeps the source of a rename the author undid, so the inter-diff shows it restored", () => {
+    const renamed = [
+      "diff --git a/old.ts b/new.ts",
+      "similarity index 100%",
+      "rename from old.ts",
+      "rename to new.ts",
+      "",
+    ].join("\n");
+    expect(changedOwnPaths(parseDiffFootprints(renamed), new Map())).toEqual([
+      { path: "new.ts", previousPath: "old.ts", change: "removed_from_pr" },
+    ]);
   });
 
   it("keys a file by its real path when git quotes or pads it", () => {
@@ -115,5 +161,11 @@ describe("importsModule", () => {
     expect(importStem("src/lib/index.ts")).toBe("src/lib");
     expect(importsModule("src/main.ts", "./lib", "src/lib")).toBe(true);
     expect(importStem("README.md")).toBeNull();
+    // A root index is named like any other: by `./index`, or by `.`.
+    const root = importStem("index.ts");
+    if (!root) throw new Error("no stem");
+    expect(importsModule("main.ts", "./index", root)).toBe(true);
+    expect(importsModule("main.ts", ".", root)).toBe(true);
+    expect(importsModule("src/main.ts", "./index", root)).toBe(false);
   });
 });

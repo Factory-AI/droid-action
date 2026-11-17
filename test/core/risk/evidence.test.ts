@@ -607,6 +607,73 @@ describe("createPrRiskEvidenceWorkspace incremental", () => {
     }
   });
 
+  it("matches what the base changed by exact path, a leading space included", async () => {
+    const repoDir = await mkdtemp(join(tmpdir(), "pr-risk-evidence-repo-"));
+    let workspace: PrRiskEvidenceWorkspace | undefined;
+    try {
+      const checkoutDir = await createOriginAndCheckout(repoDir);
+      // First in git's listing, where trimming would take its space.
+      const path = " lead.ts";
+      const write = (body: string) => writeFile(join(checkoutDir, path), body);
+      await write("const keep = 1;\n\nexport const lead = 1;\n");
+      const forkSha = await commit(checkoutDir, "fork");
+      await write("const keep = 1;\n\nexport const lead = 2;\n");
+      const priorHeadSha = await commit(checkoutDir, "prior head");
+      await git(checkoutDir, "checkout", "-q", forkSha);
+      await write("const keep = 2;\n\nexport const lead = 1;\n");
+      const baseSha = await commit(checkoutDir, "base moved");
+      await git(checkoutDir, "checkout", "-q", priorHeadSha);
+      await git(
+        checkoutDir,
+        "-c",
+        "user.name=T",
+        "-c",
+        "user.email=t@e",
+        "merge",
+        "-q",
+        "--no-edit",
+        baseSha,
+      );
+      const headSha = (await git(checkoutDir, "rev-parse", "HEAD")).trim();
+      await git(
+        checkoutDir,
+        "push",
+        "-q",
+        "origin",
+        `${baseSha}:refs/heads/dev`,
+        `${forkSha}:refs/heads/old-base`,
+        `${headSha}:refs/pull/123/head`,
+      );
+
+      const built = await createPrRiskEvidenceWorkspace(
+        { ...pullRequest, baseSha, headSha },
+        {
+          repoDir: checkoutDir,
+          githubToken: "test-token",
+          incremental: {
+            mode: "enforce",
+            reason: "eligible",
+            priorHeadSha,
+            priorBaseSha: forkSha,
+            prior,
+          },
+        },
+      );
+      workspace = built.evidence;
+      const focus = workspace.incremental?.focus;
+      expect(
+        focus?.paths.map((entry) => [
+          entry.path,
+          entry.change,
+          entry.upstreamTouched,
+        ]),
+      ).toEqual([[path, "base_changed", true]]);
+    } finally {
+      if (workspace) await removePrRiskEvidenceWorkspace(workspace);
+      await rm(repoDir, { recursive: true, force: true });
+    }
+  });
+
   it("falls back to full evidence when the prior head cannot be read", async () => {
     const repoDir = await mkdtemp(join(tmpdir(), "pr-risk-evidence-repo-"));
     let workspace: PrRiskEvidenceWorkspace | undefined;
