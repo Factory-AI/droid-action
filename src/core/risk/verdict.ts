@@ -1,10 +1,19 @@
 import { z } from "zod";
-import type { RiskScoreRanges, RiskVerdictField } from "./types";
+import {
+  MAX_CITED_CHECKS,
+  type RiskScoreRanges,
+  type RiskVerdictField,
+} from "./types";
 
-// A model cannot count characters, so an overrun is cut with a marker rather
-// than rejected, and the verdict it carries still lands.
+// A model cannot count characters, so an overrun of prose is cut with a
+// marker rather than rejected, and the verdict it carries still lands.
 const BRIEF_MAX_CHARS = 800;
 const DETAILS_MAX_CHARS = 6_000;
+const EVIDENCE_MAX_CHARS = 600;
+// A command is run again, so it is never cut: a cut one is another command.
+const COMMAND_MAX_CHARS = 500;
+const MAX_LISTED = 20;
+const MAX_COVERS = 50;
 const TRUNCATION_MARK = "…";
 
 function truncatedMarkdown(max: number) {
@@ -21,32 +30,66 @@ function truncatedMarkdown(max: number) {
 /**
  * A validated judge answer. `brief` is the short text shown under the
  * headline and `details` the longer body beneath it. `scores` is present only
- * when the judge declares any. `verdict` is absent only for a judge served
- * with `verdictField: "omitted"`.
+ * when the judge declares any. An incremental re-check adds the `checks` it
+ * ran and, after a decline, `resolvedConcerns`: for a served concern id, the
+ * code at this head that resolves it. Factory decides from both. `verdict`
+ * is absent only for a judge served with `verdictField: "omitted"`.
  */
 export type PrRiskVerdict = {
   verdict?: boolean;
   brief: string;
   details: string;
   scores?: Record<string, number>;
+  resolvedConcerns?: { concern: string; evidence: string }[];
+  checks?: { command: string; exitCode: number; covers: string[] }[];
+};
+
+const RECHECK_KEYS = {
+  resolvedConcerns: z
+    .array(
+      z.object({
+        concern: z.string().regex(/^c[1-9][0-9]?$/u),
+        evidence: truncatedMarkdown(EVIDENCE_MAX_CHARS),
+      }),
+    )
+    .max(MAX_LISTED)
+    .optional(),
+  checks: z
+    .array(
+      z.object({
+        command: z.string().min(1).max(COMMAND_MAX_CHARS),
+        exitCode: z.number().int(),
+        covers: z.array(z.string().min(1)).max(MAX_COVERS),
+      }),
+    )
+    .max(MAX_CITED_CHECKS)
+    .optional(),
 };
 
 /**
- * The JSON contract a judge must answer: `verdict`, `brief`, `details`, and
- * every declared score within its range, and nothing else. Strict so a
- * drifting answer is a retry, never a silently narrowed verdict; only length
- * is forgiven, by truncation. For a judge that omits the verdict, one the
+ * The JSON contract a judge must answer: `verdict`, `brief`, `details`,
+ * every declared score within its range, and, for an incremental re-check
+ * only, optionally `resolvedConcerns` and `checks`; nothing else. Strict so
+ * a drifting answer is a retry, never a silently narrowed verdict; only the
+ * length of prose is forgiven, by truncation, and an extra key inside one
+ * listed concern or check, which is dropped. A full judgment keeps the
+ * narrower contract because a Factory that serves no re-check rejects a
+ * verdict with either key. For a judge that omits the verdict, one the
  * model gives anyway is accepted and dropped, as Factory drops it.
  */
 export function compilePrRiskVerdictSchema(
   scores: RiskScoreRanges,
-  verdictField: RiskVerdictField = "required",
+  {
+    incremental = false,
+    verdictField = "required",
+  }: { incremental?: boolean; verdictField?: RiskVerdictField } = {},
 ): z.ZodType<PrRiskVerdict, z.ZodTypeDef, unknown> {
-  const core = z.object({
+  const full = z.object({
     verdict: verdictField === "omitted" ? z.boolean().optional() : z.boolean(),
     brief: truncatedMarkdown(BRIEF_MAX_CHARS),
     details: truncatedMarkdown(DETAILS_MAX_CHARS),
   });
+  const core = incremental ? full.extend(RECHECK_KEYS) : full;
   const entries = Object.entries(scores);
   const answer =
     entries.length === 0
@@ -72,7 +115,10 @@ export function compilePrRiskVerdictSchema(
 /** The exact keys a retry must return, stated from the compiled contract. */
 export function describePrRiskContract(
   scores: RiskScoreRanges,
-  verdictField: RiskVerdictField = "required",
+  {
+    incremental = false,
+    verdictField = "required",
+  }: { incremental?: boolean; verdictField?: RiskVerdictField } = {},
 ): string {
   const names = Object.entries(scores);
   return [
@@ -84,6 +130,12 @@ export function describePrRiskContract(
           `scores (object with exactly these integer keys: ${names
             .map(([name, [min, max]]) => `${name} ${min}-${max}`)
             .join(", ")})`,
+        ]
+      : []),
+    ...(incremental
+      ? [
+          `resolvedConcerns (optional; at most ${MAX_LISTED} objects with exactly concern, a served concern id such as "c1", and evidence, a string)`,
+          `checks (optional; at most ${MAX_CITED_CHECKS} objects with exactly command (string of at most ${COMMAND_MAX_CHARS} characters), exitCode (integer) and covers (array of changed paths))`,
         ]
       : []),
   ]

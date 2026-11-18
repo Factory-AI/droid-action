@@ -166,6 +166,41 @@ describe("trusted base review configuration", () => {
     expect(() => parseReviewConfigYaml(raw)).toThrow();
   });
 
+  it("leaves Factory's rules keys to Factory, whatever they hold", () => {
+    const fileConfig = parseReviewConfigYaml(
+      [
+        "depth: shallow",
+        "risk_assessment:",
+        "  enabled: false",
+        "rules:",
+        "  - include_paths: ['apps/**']",
+        "    exclude_paths: ['apps/**/*.md']",
+        "    risk_assessment:",
+        "      enabled: true",
+      ].join("\n"),
+    );
+    expect(fileConfig).toEqual({ review_depth: "shallow" });
+    expect(resolveReviewUxConfig({ fileConfig })).toEqual(
+      resolveReviewUxConfig({ fileConfig: { review_depth: "shallow" } }),
+    );
+    for (const key of ["rules", "risk_assessment"])
+      for (const held of ["not-a-list", "{unknown_setting: true}", ""])
+        expect(parseReviewConfigYaml(`${key}: ${held}`)).toEqual({});
+  });
+
+  it.each([
+    "rules: []\nruls: []",
+    "rules: []\nrules: []",
+    "Rules: []",
+    "risk_assessment: {}\nrisk_assesment: {}",
+    "risk_assessment: {}\nrisk_assessment: {}",
+    "security_review: {enabled: false}",
+  ])("accepts no other unknown key next to Factory's rules keys: %s", (raw) => {
+    expect(() => parseReviewConfigYaml(raw)).toThrow(
+      "Invalid .factory/review.yaml",
+    );
+  });
+
   it("does not expose YAML parser values in a malformed configuration error", () => {
     expect(() => parseReviewConfigYaml("value: [fk-example-secret")).toThrow(
       "configuration is not valid YAML",
@@ -288,6 +323,36 @@ describe("trusted base review configuration", () => {
       path: ".factory/review.yaml",
       ref: base,
     });
+  });
+
+  it("reviews with a base config that also carries Factory's rules", async () => {
+    const config = await loadReviewUxConfigFromBase({
+      client: {
+        rest: {
+          pulls: {
+            get: async () => ({ data: { base: { sha: "a".repeat(40) } } }),
+          },
+          repos: {
+            getContent: async () => ({
+              data: {
+                type: "file",
+                encoding: "base64",
+                content: Buffer.from(
+                  "fix_mode: off\nrisk_assessment:\n  enabled: false\nrules:\n  - include_paths: ['src/**']\n    risk_assessment:\n      enabled: true\n",
+                ).toString("base64"),
+              },
+            }),
+          },
+          git,
+        },
+      },
+      owner: "owner",
+      repo: "repo",
+      prNumber: 7,
+    });
+    expect(config).toEqual(
+      resolveReviewUxConfig({ fileConfig: { fix_mode: "off" } }),
+    );
   });
 
   it("treats an absent base config as optional, without falling back to head", async () => {

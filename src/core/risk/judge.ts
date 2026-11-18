@@ -9,6 +9,7 @@ import {
   RiskError,
   type PrRiskEvidenceWorkspace,
   type PullRequestRiskSnapshot,
+  type RiskIncremental,
   type RiskJudge,
   type RiskJudgeAttempt,
   type RiskScoreRanges,
@@ -53,6 +54,8 @@ export type DroidRiskJudgeInvocation = {
 export type RunPrRiskJudgeOptions = {
   judge: RiskJudge;
   evidence: PrRiskEvidenceWorkspace;
+  /** The prior verdict to re-check, for an incremental judgment. */
+  incremental?: RiskIncremental;
   /** The whole environment of the judge session; nothing else is inherited. */
   env: NodeJS.ProcessEnv;
   droidBinary?: string;
@@ -100,7 +103,7 @@ export function buildJudgeEnvironment(
 function parsePrRiskJudgeOutput(
   stdout: string,
   scores: RiskScoreRanges,
-  verdictField: RiskVerdictField | undefined,
+  contract: { incremental: boolean; verdictField?: RiskVerdictField },
 ): PrRiskJudgeParse {
   let summary: z.infer<typeof execSummarySchema>;
   try {
@@ -122,7 +125,7 @@ function parsePrRiskJudgeOutput(
       retryFeedback: ["<root>: the session ended in an error"],
     };
   }
-  const schema = compilePrRiskVerdictSchema(scores, verdictField);
+  const schema = compilePrRiskVerdictSchema(scores, contract);
   const trimmed = summary.result.trim();
   const candidates = new Set([
     ...(trimmed.startsWith("{") && trimmed.endsWith("}") ? [trimmed] : []),
@@ -225,7 +228,16 @@ export async function runPrRiskJudge(
   options: RunPrRiskJudgeOptions,
 ): Promise<PrRiskVerdict> {
   const { judge, evidence } = options;
-  const skill = renderPrRiskSkill(judge.skill, snapshot, evidence);
+  // Only a judge shown the prior verdict answers as a re-check.
+  const incremental =
+    options.incremental !== undefined && evidence.incremental !== undefined;
+  const contract = { incremental, verdictField: judge.verdictField };
+  const skill = renderPrRiskSkill(
+    judge.skill,
+    snapshot,
+    evidence,
+    options.incremental,
+  );
   const settingsPath = await writePrRiskSettings(evidence, judge.settings);
   const args = [
     "--settings",
@@ -253,7 +265,7 @@ export async function runPrRiskJudge(
     const parsed = parsePrRiskJudgeOutput(
       await executePrRiskDroid(args, options),
       judge.scores,
-      judge.verdictField,
+      contract,
     );
     options.onAttempt?.({
       ...(parsed.sessionId ? { sessionId: parsed.sessionId } : {}),
@@ -287,7 +299,7 @@ export async function runPrRiskJudge(
       ...first.retryFeedback.map((feedback) => `- ${feedback}`),
       "",
       "Return exactly one JSON object with exactly these keys and no others:",
-      describePrRiskContract(judge.scores, judge.verdictField),
+      describePrRiskContract(judge.scores, contract),
       "",
       "Do not invent evidence or change a judgment to satisfy the contract; restate the same verdict in the required shape.",
       "",

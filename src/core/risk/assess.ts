@@ -10,10 +10,13 @@ import {
   runPrRiskJudge,
   type RunPrRiskJudgeOptions,
 } from "./judge";
+import { rerunCitedChecks } from "./checks";
 import { describeFailure } from "./plan";
 import {
   RiskError,
   failureReason,
+  type PrRiskEvidenceWorkspace,
+  type RiskIncremental,
   type RiskJudgeAttempt,
   type RiskPlan,
   type RiskSettleResult,
@@ -40,17 +43,57 @@ export type AssessPullRequestOptions = {
   executeDroid?: RunPrRiskJudgeOptions["executeDroid"];
 };
 
+/** What one assessment leaves to settle. */
+type RiskAssessment = {
+  result: RiskSettleResult;
+  shadow?: RiskSettleResult;
+};
+
 /**
  * Judges the planned head and returns what to settle. Never throws: a run
  * that produced no verdict is itself a result, settled as `failed` under a
  * short reason so the head is not left looking unassessed.
+ *
+ * A plan whose incremental re-check is in shadow mode is judged afresh as
+ * usual, and the re-check runs alongside in its own workspace. Its result is
+ * returned as `shadow`; a failure there never touches the primary result.
  */
 export async function assessPullRequest(
   options: AssessPullRequestOptions,
-): Promise<RiskSettleResult> {
+): Promise<RiskAssessment> {
   const { plan } = options;
-  const env = options.env ?? process.env;
-  const attempts: RiskJudgeAttempt[] = [];
+  const shadowed =
+    plan.incremental?.mode === "shadow" ? plan.incremental : undefined;
+  const primary = await prepareJudgment(
+    options,
+    shadowed ? undefined : plan.incremental,
+  );
+  // Prepared one after the other: both fetch into the same checkout.
+  const shadow =
+    shadowed && "prepared" in primary
+      ? await prepareJudgment(options, shadowed)
+      : undefined;
+  const [result, shadowResult] = await Promise.all([
+    finishJudgment(options, primary),
+    shadow ? finishJudgment(options, shadow) : undefined,
+  ]);
+  return { result, ...(shadowResult ? { shadow: shadowResult } : {}) };
+}
+
+type PreparedJudgment = Awaited<
+  ReturnType<typeof createPrRiskEvidenceWorkspace>
+> & { token: string; incremental?: RiskIncremental };
+
+type JudgmentStart = { startedAt: number } & (
+  | { prepared: PreparedJudgment }
+  | { failure: unknown }
+);
+
+async function prepareJudgment(
+  options: AssessPullRequestOptions,
+  incremental: RiskIncremental | undefined,
+): Promise<JudgmentStart> {
+  const { plan } = options;
   const startedAt = Date.now();
   try {
     const token = options.githubToken;
@@ -60,7 +103,7 @@ export async function assessPullRequest(
         "No GitHub token is available to read the pull request",
       );
     }
-    const { snapshot, evidence } = await createPrRiskEvidenceWorkspace(
+    const built = await createPrRiskEvidenceWorkspace(
       {
         repo: plan.repo,
         prNumber: plan.pr,
@@ -72,16 +115,58 @@ export async function assessPullRequest(
         repoDir: options.repoDir,
         githubToken: token,
         priorDeclines: plan.priorDeclines,
+        incremental,
       },
     );
-    try {
-      if (!options.keepCheckoutCredentials) {
-        await removeCheckoutCredentials(options.repoDir, evidence.headTreeDir);
+    if (!options.keepCheckoutCredentials) {
+      try {
+        await removeCheckoutCredentials(
+          options.repoDir,
+          built.evidence.headTreeDir,
+        );
+      } catch (error) {
+        await removeWorkspace(built.evidence);
+        throw error;
       }
+    }
+    return { startedAt, prepared: { ...built, token, incremental } };
+  } catch (failure) {
+    return { startedAt, failure };
+  }
+}
+
+async function removeWorkspace(
+  evidence: PrRiskEvidenceWorkspace,
+): Promise<void> {
+  try {
+    await removePrRiskEvidenceWorkspace(evidence);
+  } catch (error) {
+    // By now the judge has answered (or thrown on its own); a workspace
+    // that cannot be deleted must not turn that answer into a failure.
+    console.warn(
+      `PR risk evidence workspace cleanup failed: ${describeFailure(error)}`,
+    );
+  }
+}
+
+async function finishJudgment(
+  options: AssessPullRequestOptions,
+  start: JudgmentStart,
+): Promise<RiskSettleResult> {
+  const { plan } = options;
+  const env = options.env ?? process.env;
+  const attempts: RiskJudgeAttempt[] = [];
+  const { startedAt } = start;
+  try {
+    if ("failure" in start) throw start.failure;
+    const { snapshot, evidence, incrementalFallback, token, incremental } =
+      start.prepared;
+    try {
       let attemptStartedAt = Date.now();
       const verdict = await runPrRiskJudge(snapshot, {
         judge: plan.judge,
         evidence,
+        incremental,
         env: buildJudgeEnvironment(
           {
             group: plan.judge.group,
@@ -106,26 +191,51 @@ export async function assessPullRequest(
           "The judge answered without a recorded attempt",
         );
       }
+      // Only an enforced approval is published on the strength of its
+      // checks, so only its checks are run again.
+      const checkRuns =
+        incremental?.mode === "enforce" &&
+        evidence.incremental &&
+        verdict.verdict &&
+        verdict.checks?.length
+          ? await rerunCitedChecks({
+              repoDir: options.repoDir,
+              headSha: plan.headSha,
+              evidence,
+              checks: verdict.checks,
+              changedPaths: evidence.incremental.focus.paths.map(
+                ({ path }) => path,
+              ),
+              env,
+            })
+          : undefined;
       return {
         status: "judged",
         baseSha: plan.baseSha,
-        judgeSha256: plan.judge.sha256,
+        judgeSha256:
+          evidence.incremental && incremental?.judgeSha256
+            ? incremental.judgeSha256
+            : plan.judge.sha256,
         snapshotHash: evidence.snapshotHash,
+        guidelinesBlobSha: evidence.guidelinesBlobSha,
         listedFiles: snapshot.files.length,
         attempts: [first, ...rest],
         durationMs: Date.now() - startedAt,
         verdict: { ...verdict },
+        ...(incremental
+          ? {
+              mode: evidence.incremental ? "incremental" : "full",
+              priorHeadSha: incremental.priorHeadSha,
+              ...(incremental.priorAssessmentId
+                ? { priorAssessmentId: incremental.priorAssessmentId }
+                : {}),
+              ...(incrementalFallback ? { incrementalFallback } : {}),
+            }
+          : {}),
+        ...(checkRuns ? { checkRuns } : {}),
       };
     } finally {
-      try {
-        await removePrRiskEvidenceWorkspace(evidence);
-      } catch (error) {
-        // By now the judge has answered (or thrown on its own); a workspace
-        // that cannot be deleted must not turn that answer into a failure.
-        console.warn(
-          `PR risk evidence workspace cleanup failed: ${describeFailure(error)}`,
-        );
-      }
+      await removeWorkspace(evidence);
     }
   } catch (error) {
     const reason = failureReason(error);
@@ -140,7 +250,6 @@ export async function assessPullRequest(
     };
   }
 }
-
 /** The installed CLI's version, or undefined when it cannot be asked. */
 export async function readDroidCliVersion(
   droidBinary = "droid",

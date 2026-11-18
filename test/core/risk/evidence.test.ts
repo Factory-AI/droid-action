@@ -129,6 +129,7 @@ describe("createPrRiskEvidenceWorkspace", () => {
       ).toBe(localAttributes);
       expect(workspace.snapshotHash).toMatch(/^[0-9a-f]{64}$/);
       expect(workspace.guidelinesPath).toBeNull();
+      expect(workspace.guidelinesBlobSha).toBeNull();
 
       const removed = workspace;
       workspace = undefined;
@@ -192,6 +193,13 @@ describe("createPrRiskEvidenceWorkspace", () => {
       );
       expect(await readFile(workspace.guidelinesPath ?? "", "utf8")).toBe(
         "# Guidelines\n\nMigrations need a human.\n",
+      );
+      expect(workspace.guidelinesBlobSha).toBe(
+        await git(
+          checkoutDir,
+          "rev-parse",
+          `${devSha}:.factory/pr-risk/guidelines.md`,
+        ),
       );
     } finally {
       if (workspace) await removePrRiskEvidenceWorkspace(workspace);
@@ -458,6 +466,261 @@ describe("createPrRiskEvidenceWorkspace", () => {
   });
 });
 
+describe("createPrRiskEvidenceWorkspace incremental", () => {
+  const prior = {
+    verdict: true,
+    brief: "- `lib.ts` only renames a local.",
+    details: "Read lib.ts and its caller.",
+  };
+
+  it("hands the judge only what the author changed since the prior head, with what to look at", async () => {
+    const repoDir = await mkdtemp(join(tmpdir(), "pr-risk-evidence-repo-"));
+    let workspace: PrRiskEvidenceWorkspace | undefined;
+    try {
+      const checkoutDir = await createOriginAndCheckout(repoDir);
+      const write = (path: string, body: string) =>
+        writeFile(join(checkoutDir, path), body);
+      await mkdir(join(checkoutDir, "src"));
+      await write(
+        "src/lib.ts",
+        "export function total(a: number) {\n  return a;\n}\n",
+      );
+      await write(
+        "src/caller.ts",
+        'import { total } from "./lib";\nexport const t = total(1);\n',
+      );
+      await write(
+        "src/lib.test.ts",
+        'import { total } from "./lib";\ntotal(2);\n',
+      );
+      await write(
+        "src/shared.ts",
+        "const keep = 1;\n\nexport const shared = 1;\n",
+      );
+      await write("upstream.ts", "export const upstream = 1;\n");
+      const forkSha = await commit(checkoutDir, "fork");
+      // Prior head: the author's first change.
+      await write(
+        "src/lib.ts",
+        "export function total(a: number) {\n  return a + 0;\n}\n",
+      );
+      await write(
+        "src/shared.ts",
+        "const keep = 1;\n\nexport const shared = 2;\n",
+      );
+      const priorHeadSha = await commit(checkoutDir, "prior head");
+      // The base moves: one file only upstream touches, and one the
+      // author's unchanged lines sit in.
+      await git(checkoutDir, "checkout", "-q", forkSha);
+      await write("upstream.ts", "export const upstream = 2;\n");
+      await write(
+        "src/shared.ts",
+        "const keep = 2;\n\nexport const shared = 1;\n",
+      );
+      const baseSha = await commit(checkoutDir, "base moved");
+      // Head: the base merged in, then a signature change.
+      await git(checkoutDir, "checkout", "-q", priorHeadSha);
+      await git(
+        checkoutDir,
+        "-c",
+        "user.name=T",
+        "-c",
+        "user.email=t@e",
+        "merge",
+        "-q",
+        "--no-edit",
+        baseSha,
+      );
+      await write(
+        "src/lib.ts",
+        "export function total(a: number, b = 0) {\n  return a + b;\n}\n",
+      );
+      const headSha = await commit(checkoutDir, "head");
+      await git(
+        checkoutDir,
+        "push",
+        "-q",
+        "origin",
+        `${baseSha}:refs/heads/dev`,
+        `${forkSha}:refs/heads/old-base`,
+        `${headSha}:refs/pull/123/head`,
+      );
+
+      const built = await createPrRiskEvidenceWorkspace(
+        { ...pullRequest, baseSha, headSha },
+        {
+          repoDir: checkoutDir,
+          githubToken: "test-token",
+          incremental: {
+            mode: "enforce",
+            reason: "eligible",
+            priorHeadSha,
+            priorBaseSha: forkSha,
+            prior,
+          },
+        },
+      );
+      workspace = built.evidence;
+      expect(built.incrementalFallback).toBeUndefined();
+      const incremental = workspace.incremental;
+      if (!incremental) throw new Error("no incremental evidence");
+      const interdiff = await readFile(incremental.interdiffPath, "utf8");
+      expect(interdiff).toContain("+export function total(a: number, b = 0) {");
+      expect(interdiff).not.toContain("upstream");
+      expect(await readFile(incremental.priorDiffPath, "utf8")).toContain(
+        "+  return a + 0;",
+      );
+      const focus = JSON.parse(await readFile(incremental.focusPath, "utf8"));
+      expect(focus).toEqual(incremental.focus);
+      expect(focus.baseMoved).toBe(true);
+      expect(
+        focus.paths.map((entry: { path: string; change: string }) => [
+          entry.path,
+          entry.change,
+        ]),
+      ).toEqual([
+        ["src/lib.ts", "changed"],
+        ["src/shared.ts", "base_changed"],
+      ]);
+      const lib = focus.paths[0];
+      expect(lib.symbols).toContain("total");
+      expect(lib.contractLines).toBeGreaterThan(0);
+      expect(lib.importers).toEqual(["src/caller.ts", "src/lib.test.ts"]);
+      expect(lib.namedInPrior).toBe(true);
+      expect(focus.paths[1].upstreamTouched).toBe(true);
+      expect(focus.testsToRerun).toEqual(["src/lib.test.ts"]);
+
+      // The same head judged in full hashes differently, so a verdict
+      // reached on the inter-diff is never mistaken for a full one.
+      const removed = workspace;
+      workspace = undefined;
+      await removePrRiskEvidenceWorkspace(removed);
+      ({ evidence: workspace } = await createPrRiskEvidenceWorkspace(
+        { ...pullRequest, baseSha, headSha },
+        { repoDir: checkoutDir, githubToken: "test-token" },
+      ));
+      expect(workspace.incremental).toBeUndefined();
+      expect(workspace.snapshotHash).not.toBe(removed.snapshotHash);
+    } finally {
+      if (workspace) await removePrRiskEvidenceWorkspace(workspace);
+      await rm(repoDir, { recursive: true, force: true });
+    }
+  });
+
+  it("matches what the base changed by exact path, a leading space included", async () => {
+    const repoDir = await mkdtemp(join(tmpdir(), "pr-risk-evidence-repo-"));
+    let workspace: PrRiskEvidenceWorkspace | undefined;
+    try {
+      const checkoutDir = await createOriginAndCheckout(repoDir);
+      // First in git's listing, where trimming would take its space.
+      const path = " lead.ts";
+      const write = (body: string) => writeFile(join(checkoutDir, path), body);
+      await write("const keep = 1;\n\nexport const lead = 1;\n");
+      const forkSha = await commit(checkoutDir, "fork");
+      await write("const keep = 1;\n\nexport const lead = 2;\n");
+      const priorHeadSha = await commit(checkoutDir, "prior head");
+      await git(checkoutDir, "checkout", "-q", forkSha);
+      await write("const keep = 2;\n\nexport const lead = 1;\n");
+      const baseSha = await commit(checkoutDir, "base moved");
+      await git(checkoutDir, "checkout", "-q", priorHeadSha);
+      await git(
+        checkoutDir,
+        "-c",
+        "user.name=T",
+        "-c",
+        "user.email=t@e",
+        "merge",
+        "-q",
+        "--no-edit",
+        baseSha,
+      );
+      const headSha = (await git(checkoutDir, "rev-parse", "HEAD")).trim();
+      await git(
+        checkoutDir,
+        "push",
+        "-q",
+        "origin",
+        `${baseSha}:refs/heads/dev`,
+        `${forkSha}:refs/heads/old-base`,
+        `${headSha}:refs/pull/123/head`,
+      );
+
+      const built = await createPrRiskEvidenceWorkspace(
+        { ...pullRequest, baseSha, headSha },
+        {
+          repoDir: checkoutDir,
+          githubToken: "test-token",
+          incremental: {
+            mode: "enforce",
+            reason: "eligible",
+            priorHeadSha,
+            priorBaseSha: forkSha,
+            prior,
+          },
+        },
+      );
+      workspace = built.evidence;
+      const focus = workspace.incremental?.focus;
+      expect(
+        focus?.paths.map((entry) => [
+          entry.path,
+          entry.change,
+          entry.upstreamTouched,
+        ]),
+      ).toEqual([[path, "base_changed", true]]);
+    } finally {
+      if (workspace) await removePrRiskEvidenceWorkspace(workspace);
+      await rm(repoDir, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to full evidence when the prior head cannot be read", async () => {
+    const repoDir = await mkdtemp(join(tmpdir(), "pr-risk-evidence-repo-"));
+    let workspace: PrRiskEvidenceWorkspace | undefined;
+    try {
+      const checkoutDir = await createOriginAndCheckout(repoDir);
+      await writeFile(join(checkoutDir, "app.ts"), "export const a = 1;\n");
+      const baseSha = await commit(checkoutDir, "base");
+      await writeFile(join(checkoutDir, "app.ts"), "export const a = 2;\n");
+      const headSha = await commit(checkoutDir, "head");
+      await git(
+        checkoutDir,
+        "push",
+        "-q",
+        "origin",
+        `${baseSha}:refs/heads/dev`,
+        `${headSha}:refs/pull/123/head`,
+      );
+
+      const built = await createPrRiskEvidenceWorkspace(
+        { ...pullRequest, baseSha, headSha },
+        {
+          repoDir: checkoutDir,
+          githubToken: "test-token",
+          incremental: {
+            mode: "enforce",
+            reason: "eligible",
+            priorHeadSha: "d".repeat(40),
+            priorBaseSha: baseSha,
+            prior,
+          },
+        },
+      );
+      workspace = built.evidence;
+      expect(built.incrementalFallback).toBe("evidence_git_failed");
+      expect(workspace.incremental).toBeUndefined();
+      expect(await readFile(workspace.diffPath, "utf8")).toContain(
+        "+export const a = 2;",
+      );
+      expect(await readdir(join(workspace.rootDir, "evidence"))).not.toContain(
+        "interdiff.patch",
+      );
+    } finally {
+      if (workspace) await removePrRiskEvidenceWorkspace(workspace);
+      await rm(repoDir, { recursive: true, force: true });
+    }
+  });
+});
 describe("removeCheckoutCredentials", () => {
   const tokenKey = "http.https://github.com/.extraheader";
   const basic = (token: string) =>

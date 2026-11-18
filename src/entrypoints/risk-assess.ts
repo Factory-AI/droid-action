@@ -12,6 +12,14 @@
  *
  *   bun run src/entrypoints/risk-assess.ts --judge <file> --repo <owner/name> \
  *     --pr <number> --repo-dir <checkout> [--out <dir>] [--droid-binary <path>]
+ *     [--head <sha> --base <sha>] [--prior <file>]
+ *
+ * `--head` and `--base` judge an earlier revision of the pull request
+ * instead of its live head; both commits must already be in the checkout.
+ * `--prior` makes it an incremental judgment against an earlier verdict, a
+ * JSON file with `headSha`, `baseSha`, `verdict`, `brief`, `details`, and
+ * optionally `outcome`, `concerns` (`[{ id, text }]`, after a decline) and
+ * `reason`.
  *
  * Both modes build a plan and hand it to the same assessment.
  */
@@ -31,18 +39,28 @@ import {
   writePrivateJson,
 } from "../core/risk/plan";
 import {
+  CommitShaSchema,
   RISK_RUNNER,
   RiskError,
+  RiskIncrementalSchema,
   RiskJudgeSchema,
   failureReason,
+  type RiskIncremental,
   type RiskPlan,
   type RiskResultFile,
 } from "../core/risk/types";
 import { createOctokit } from "../github/api/client";
 import { fetchPullRequestRiskSummary } from "../github/data/pr-risk";
+import { z } from "zod";
 
 const OFFLINE_USAGE =
-  "Usage: risk-assess.ts --judge <file> --repo <owner/name> --pr <number> --repo-dir <checkout> [--out <dir>] [--droid-binary <path>]";
+  "Usage: risk-assess.ts --judge <file> --repo <owner/name> --pr <number> --repo-dir <checkout> [--out <dir>] [--droid-binary <path>] [--head <sha> --base <sha>] [--prior <file>]";
+
+const OfflinePriorSchema = RiskIncrementalSchema.shape.prior.extend({
+  headSha: CommitShaSchema,
+  baseSha: CommitShaSchema,
+  reason: z.string().default("local"),
+});
 const OFFLINE_RESULT_FILE = "pr-risk-result.json";
 const OFFLINE_TIMEOUT_SECONDS = 1800;
 
@@ -92,6 +110,9 @@ async function offlineInputs(
         "repo-dir": { type: "string" },
         out: { type: "string" },
         "droid-binary": { type: "string" },
+        head: { type: "string" },
+        base: { type: "string" },
+        prior: { type: "string" },
       },
     }));
   } catch {
@@ -109,7 +130,12 @@ async function offlineInputs(
     rest.length > 0 ||
     !repoDir ||
     !pr ||
-    !/^[1-9][0-9]*$/.test(pr)
+    !/^[1-9][0-9]*$/.test(pr) ||
+    (values.head === undefined) !== (values.base === undefined) ||
+    (values.head !== undefined &&
+      !CommitShaSchema.safeParse(values.head).success) ||
+    (values.base !== undefined &&
+      !CommitShaSchema.safeParse(values.base).success)
   ) {
     throw new RiskError("usage", OFFLINE_USAGE);
   }
@@ -131,17 +157,42 @@ async function offlineInputs(
       "The judge file must be JSON with skill, enabledTools, settings and scores",
     );
   }
+  let incremental: RiskIncremental | undefined;
+  if (values.prior) {
+    try {
+      const { headSha, baseSha, reason, ...prior } = OfflinePriorSchema.parse(
+        JSON.parse(await readFile(values.prior, "utf8")),
+      );
+      incremental = {
+        mode: "enforce",
+        reason,
+        priorHeadSha: headSha,
+        priorBaseSha: baseSha,
+        prior,
+      };
+    } catch {
+      throw new RiskError(
+        "prior_file_invalid",
+        "The prior file must be JSON with headSha, baseSha, verdict, brief and details",
+      );
+    }
+  }
   const prNumber = Number(pr);
+  const live = await fetchPullRequestRiskSummary({
+    octokits: createOctokit(token),
+    repository: { owner, repo: name },
+    prNumber,
+  });
   return {
     plan: {
       repo,
       pr: prNumber,
       run: { runner: RISK_RUNNER, trigger: "local", dryRun: true },
-      ...(await fetchPullRequestRiskSummary({
-        octokits: createOctokit(token),
-        repository: { owner, repo: name },
-        prNumber,
-      })),
+      ...live,
+      ...(values.head && values.base
+        ? { headSha: values.head, baseSha: values.base }
+        : {}),
+      ...(incremental ? { incremental } : {}),
       priorDeclines: [],
       judge: {
         ...judge,
@@ -182,7 +233,7 @@ export async function run(
     return;
   }
 
-  const result = await assessPullRequest({
+  const { result, shadow } = await assessPullRequest({
     plan: inputs.plan,
     repoDir: inputs.repoDir,
     githubToken: inputs.githubToken,
@@ -195,6 +246,7 @@ export async function run(
   await writePrivateJson(inputs.resultPath, {
     ...(droidCliVersion ? { droidCliVersion } : {}),
     result,
+    ...(shadow ? { shadow } : {}),
   } satisfies RiskResultFile);
 
   // The verdict itself stays in the result file; the log only says whether
@@ -204,6 +256,13 @@ export async function run(
       ? `The PR risk judge answered for ${inputs.plan.headSha} after ${result.attempts.length} attempt(s).`
       : `No PR risk verdict for ${inputs.plan.headSha} (${result.reason}).`,
   );
+  if (shadow) {
+    console.log(
+      shadow.status === "judged"
+        ? `The shadow incremental re-check answered (${shadow.mode ?? "full"}).`
+        : `The shadow incremental re-check produced no verdict (${shadow.reason}).`,
+    );
+  }
   if (offline) {
     console.log(`Result written to ${inputs.resultPath}`);
     if (result.status === "failed") process.exitCode = 1;

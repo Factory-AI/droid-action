@@ -123,7 +123,11 @@ function decodeGitQuotedPath(value: string): string {
   return Buffer.from(bytes).toString("utf8");
 }
 
-export function normalizePatchPath(raw: string): string | null {
+/**
+ * A path as git prints it in a patch, unquoted, with any trailing tab and
+ * timestamp removed but its `a/` or `b/` prefix kept. Null for /dev/null.
+ */
+export function decodePatchPath(raw: string): string | null {
   let value = raw.replace(/\r$/, "");
 
   if (value.startsWith('"')) {
@@ -145,7 +149,12 @@ export function normalizePatchPath(raw: string): string | null {
     value = value.split("\t", 1)[0]!;
   }
 
-  if (value === "/dev/null") return null;
+  return value === "/dev/null" ? null : value;
+}
+
+export function normalizePatchPath(raw: string): string | null {
+  const value = decodePatchPath(raw);
+  if (value === null) return null;
   return value.startsWith("a/") || value.startsWith("b/")
     ? value.slice(2)
     : value;
