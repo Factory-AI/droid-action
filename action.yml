@@ -300,6 +300,12 @@ outputs:
   github_token:
     description: "The GitHub token used by the action. A Factory Droid App token the action minted is revoked when the action finishes, so later steps that need a token should pass their own github_token."
     value: ${{ steps.prepare.outputs.github_token }}
+  review_base_sha:
+    description: "The pull request's base commit, which the review read .factory/review.yaml at. Empty when the event names no pull request. Pass it to the risk sub-action when that runs as a separate step."
+    value: ${{ steps.prepare.outputs.review_base_sha }}
+  review_has_rules:
+    description: "Whether .factory/review.yaml at review_base_sha has a `rules` key: true or false, and empty when the file was not read. Pass it to the risk sub-action when that runs as a separate step."
+    value: ${{ steps.prepare.outputs.review_has_rules }}
 
   risk_action:
     description: "What Factory asked the risk assessment to do: skip, hold or judge. Empty when risk_assessment is off."
