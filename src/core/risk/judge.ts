@@ -12,7 +12,9 @@ import {
   type RiskIncremental,
   type RiskJudge,
   type RiskJudgeAttempt,
+  type RiskJudgeUsage,
   type RiskScoreRanges,
+  type RiskSessionTagMetadata,
 } from "./types";
 import {
   compilePrRiskVerdictSchema,
@@ -30,10 +32,36 @@ const execSummarySchema = z
     is_error: z.boolean(),
     result: z.string(),
     session_id: z.string().min(1).optional(),
+    usage: z.unknown().optional(),
   })
   .passthrough();
 
-type PrRiskJudgeParse = { sessionId?: string } & (
+/** The `usage` exec reports, inclusive of the session's subagents. */
+const execUsageSchema = z.object({
+  factory_credits: z.number().nonnegative(),
+  input_tokens: z.number().nonnegative(),
+  output_tokens: z.number().nonnegative(),
+  cache_read_input_tokens: z.number().nonnegative(),
+  cache_creation_input_tokens: z.number().nonnegative(),
+});
+
+/**
+ * Spend is telemetry: a CLI that reports no usage, or a shape this runner
+ * does not know, leaves the attempt without it rather than failing it.
+ */
+function readExecUsage(usage: unknown): RiskJudgeUsage | undefined {
+  const parsed = execUsageSchema.safeParse(usage);
+  if (!parsed.success) return undefined;
+  return {
+    factoryCredits: parsed.data.factory_credits,
+    inputTokens: parsed.data.input_tokens,
+    outputTokens: parsed.data.output_tokens,
+    cacheReadTokens: parsed.data.cache_read_input_tokens,
+    cacheCreationTokens: parsed.data.cache_creation_input_tokens,
+  };
+}
+
+type PrRiskJudgeParse = { sessionId?: string; usage?: RiskJudgeUsage } & (
   | { verdict: PrRiskVerdict }
   | {
       verdict?: undefined;
@@ -57,6 +85,7 @@ export type RunPrRiskJudgeOptions = {
   incremental?: RiskIncremental;
   /** The whole environment of the judge session; nothing else is inherited. */
   env: NodeJS.ProcessEnv;
+  sessionTag: RiskSessionTagMetadata;
   droidBinary?: string;
   onAttempt?: (attempt: RiskJudgeAttempt) => void;
   executeDroid?: (input: DroidRiskJudgeInvocation) => Promise<string>;
@@ -117,9 +146,11 @@ function parsePrRiskJudgeOutput(
     throw error;
   }
   const sessionId = summary.session_id;
+  const usage = readExecUsage(summary.usage);
   if (summary.is_error) {
     return {
       sessionId,
+      usage,
       invalidReason: "exec_error",
       retryFeedback: ["<root>: the session ended in an error"],
     };
@@ -140,12 +171,13 @@ function parsePrRiskJudgeOutput(
       throw error;
     }
     const result = schema.safeParse(payload);
-    if (result.success) return { sessionId, verdict: result.data };
+    if (result.success) return { sessionId, usage, verdict: result.data };
     schemaFailure ??= result.error;
   }
   if (!schemaFailure) {
     return {
       sessionId,
+      usage,
       invalidReason: "no_json",
       retryFeedback: ["<root>: return exactly one JSON object"],
     };
@@ -154,6 +186,7 @@ function parsePrRiskJudgeOutput(
     issue.path.length === 0 ? "<root>" : issue.path.join(".");
   return {
     sessionId,
+    usage,
     invalidReason: "schema",
     invalidPaths: [...new Set(schemaFailure.issues.map(pathOf))],
     invalidCodes: [...new Set(schemaFailure.issues.map((issue) => issue.code))],
@@ -248,7 +281,7 @@ export async function runPrRiskJudge(
     "high",
     "--disable-builtin-skills",
     "--tag",
-    RISK_SESSION_TAG,
+    JSON.stringify({ name: RISK_SESSION_TAG, metadata: options.sessionTag }),
     "--only-tools",
     judge.enabledTools.join(","),
     "--output-format",
@@ -268,6 +301,7 @@ export async function runPrRiskJudge(
     options.onAttempt?.({
       ...(parsed.sessionId ? { sessionId: parsed.sessionId } : {}),
       valid: parsed.verdict !== undefined,
+      ...(parsed.usage ? { usage: parsed.usage } : {}),
       ...(parsed.verdict === undefined
         ? {
             invalidReason: parsed.invalidReason,

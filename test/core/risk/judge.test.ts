@@ -11,9 +11,11 @@ import type { RiskJudgeAttempt } from "../../../src/core/risk/types";
 import {
   evidenceAt,
   execSummary,
+  execUsage,
   file,
   judge,
   pullRequest,
+  sessionTag,
   validVerdict,
 } from "./fixtures";
 
@@ -48,6 +50,7 @@ describe("runPrRiskJudge", () => {
     const verdict = await runPrRiskJudge(snapshot, {
       judge,
       evidence: evidenceAt(evidenceRoot),
+      sessionTag,
       env,
       onAttempt: (attempt) => attempts.push(attempt),
       executeDroid: async ({ args, cwd, timeoutMs }) => {
@@ -71,7 +74,10 @@ describe("runPrRiskJudge", () => {
     expect(invocations[0]?.cwd).toBe(evidenceRoot);
     expect(args).toContain("--disable-builtin-skills");
     expect(args[args.indexOf("--auto") + 1]).toBe("high");
-    expect(args[args.indexOf("--tag") + 1]).toBe("riskAssessment");
+    expect(JSON.parse(args[args.indexOf("--tag") + 1] ?? "")).toEqual({
+      name: "riskAssessment",
+      metadata: sessionTag,
+    });
     expect(args[args.indexOf("--only-tools") + 1]).toBe("Read,Grep,Task");
     expect(args[args.indexOf("--output-format") + 1]).toBe("json");
     expect(args[args.indexOf("--cwd") + 1]).toBe(evidenceRoot);
@@ -93,6 +99,7 @@ describe("runPrRiskJudge", () => {
     const verdict = await runPrRiskJudge(snapshot, {
       judge,
       evidence: evidenceAt(evidenceRoot),
+      sessionTag,
       env,
       onAttempt: (attempt) => attempts.push(attempt),
       executeDroid: async ({ args, cwd }) => {
@@ -105,7 +112,10 @@ describe("runPrRiskJudge", () => {
     expect(verdict).toEqual({ ...validVerdict, details: "Restated." });
     expect(invocations).toHaveLength(2);
     for (const args of invocations) {
-      expect(args[args.indexOf("--tag") + 1]).toBe("riskAssessment");
+      expect(JSON.parse(args[args.indexOf("--tag") + 1] ?? "")).toEqual({
+        name: "riskAssessment",
+        metadata: sessionTag,
+      });
     }
     expect(attempts).toEqual([
       {
@@ -207,6 +217,7 @@ describe("runPrRiskJudge", () => {
       runPrRiskJudge(snapshot, {
         judge,
         evidence: evidenceAt(evidenceRoot),
+        sessionTag,
         env,
         onAttempt: (attempt) => attempts.push(attempt),
         executeDroid: () =>
@@ -230,10 +241,68 @@ describe("runPrRiskJudge", () => {
     });
   });
 
+  it("records on each attempt what exec reports it spent, the failed ones included", async () => {
+    const attempts: RiskJudgeAttempt[] = [];
+    const outputs = [
+      JSON.stringify({
+        is_error: true,
+        result: "boom",
+        session_id: "s1",
+        usage: execUsage(150_000),
+      }),
+      execSummary(validVerdict, "s2", execUsage(400_000.5)),
+    ];
+
+    await runPrRiskJudge(snapshot, {
+      judge,
+      evidence: evidenceAt(evidenceRoot),
+      sessionTag,
+      env,
+      onAttempt: (attempt) => attempts.push(attempt),
+      executeDroid: () => Promise.resolve(outputs[attempts.length] ?? ""),
+    });
+
+    const usage = (factoryCredits: number) => ({
+      factoryCredits,
+      inputTokens: 1_000,
+      outputTokens: 200,
+      cacheReadTokens: 30_000,
+      cacheCreationTokens: 500,
+    });
+    expect(attempts).toEqual([
+      expect.objectContaining({
+        sessionId: "s1",
+        valid: false,
+        usage: usage(150_000),
+      }),
+      { sessionId: "s2", valid: true, usage: usage(400_000.5) },
+    ]);
+  });
+
+  it("leaves usage off an attempt whose summary reports none it can read, without failing it", async () => {
+    const attempts: RiskJudgeAttempt[] = [];
+
+    const verdict = await runPrRiskJudge(snapshot, {
+      judge,
+      evidence: evidenceAt(evidenceRoot),
+      sessionTag,
+      env,
+      onAttempt: (attempt) => attempts.push(attempt),
+      executeDroid: () =>
+        Promise.resolve(
+          execSummary(validVerdict, "session-1", { factory_credits: "lots" }),
+        ),
+    });
+
+    expect(verdict).toEqual(validVerdict);
+    expect(attempts).toEqual([{ sessionId: "session-1", valid: true }]);
+  });
+
   it("cuts an over-long answer instead of rejecting it", async () => {
     const verdict = await runPrRiskJudge(snapshot, {
       judge,
       evidence: evidenceAt(evidenceRoot),
+      sessionTag,
       env,
       executeDroid: () =>
         Promise.resolve(
@@ -257,6 +326,7 @@ describe("runPrRiskJudge", () => {
     const verdict = await runPrRiskJudge(snapshot, {
       judge,
       evidence: evidenceAt(evidenceRoot),
+      sessionTag,
       env,
       onAttempt: (attempt) => attempts.push(attempt),
       executeDroid: () => Promise.resolve(outputs[attempts.length] ?? ""),
@@ -278,6 +348,7 @@ describe("runPrRiskJudge", () => {
       runPrRiskJudge(snapshot, {
         judge,
         evidence: evidenceAt(evidenceRoot),
+        sessionTag,
         env,
         onAttempt: (attempt) => attempts.push(attempt),
         executeDroid: () => Promise.resolve(execSummary("I decline.")),
@@ -303,6 +374,7 @@ describe("runPrRiskJudge", () => {
       runPrRiskJudge(snapshot, {
         judge,
         evidence: evidenceAt(evidenceRoot),
+        sessionTag,
         env,
         droidBinary: slowDroid,
         onAttempt: (attempt) => attempts.push(attempt),
@@ -326,6 +398,7 @@ describe("runPrRiskJudge", () => {
       runPrRiskJudge(snapshot, {
         judge,
         evidence: evidenceAt(evidenceRoot),
+        sessionTag,
         env,
         droidBinary: failingDroid,
         onAttempt: (attempt) => attempts.push(attempt),
@@ -347,6 +420,7 @@ describe("runPrRiskJudge", () => {
     const failure = await runPrRiskJudge(snapshot, {
       judge,
       evidence: evidenceAt(evidenceRoot),
+      sessionTag,
       env,
       droidBinary: brokenDroid,
     }).catch((error: unknown) => error);
@@ -378,6 +452,7 @@ describe("runPrRiskJudge", () => {
       await runPrRiskJudge(snapshot, {
         judge,
         evidence: evidenceAt(evidenceRoot),
+        sessionTag,
         env: buildJudgeEnvironment(
           { group: judge.group, repo: "acme/app", githubToken: "read-token" },
           process.env,

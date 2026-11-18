@@ -10,6 +10,11 @@ export const RISK_WORKFLOW_NOT_TRUSTED = "workflow_not_trusted";
 export const RISK_UNKNOWN_ACTION = "unknown_action";
 export const RISK_JUDGE_SKILL_NAME = "pr-risk-judge";
 export const RISK_SNAPSHOT_PLACEHOLDER = "{{PR_SNAPSHOT_JSON}}";
+/**
+ * The judge session's `--tag` name. It has always been the bare name, so it
+ * stays the same for anything filtering on it; the metadata is what ties a
+ * session to its repository, pull request, head, and workflow run.
+ */
 export const RISK_SESSION_TAG = "riskAssessment";
 export const RISK_SETTLE_MAX_BODY_BYTES = 256 * 1024;
 /** How many checks a re-check may cite, so how many the runner re-runs. */
@@ -170,11 +175,43 @@ export const RiskPlanSchema = RiskJudgeAssignmentSchema.extend({
 });
 export type RiskPlan = z.infer<typeof RiskPlanSchema>;
 
+/**
+ * Every value is a string: `droid exec` validates `--tag` metadata as a
+ * string-to-string record and refuses to start on anything else.
+ */
+export type RiskSessionTagMetadata = {
+  /** `owner/repo`. */
+  repo: string;
+  pr: string;
+  headSha: string;
+  /** `GITHUB_RUN_ID`; shared by both attempts of one run. */
+  runId?: string;
+  /** `GITHUB_RUN_ATTEMPT`; re-runs of the same run id get distinct sessions. */
+  runAttempt?: string;
+};
+
+/**
+ * What one attempt spent, from the `usage` of `droid exec -o json`:
+ * inclusive of the subagent sessions the judge delegated to, which the
+ * attempt's `sessionId` alone does not cover.
+ */
+export const RiskJudgeUsageSchema = z
+  .object({
+    factoryCredits: z.number().nonnegative(),
+    inputTokens: z.number().nonnegative(),
+    outputTokens: z.number().nonnegative(),
+    cacheReadTokens: z.number().nonnegative(),
+    cacheCreationTokens: z.number().nonnegative(),
+  })
+  .strict();
+export type RiskJudgeUsage = z.infer<typeof RiskJudgeUsageSchema>;
+
 export const RiskJudgeAttemptSchema = z
   .object({
     sessionId: z.string().min(1).optional(),
     valid: z.boolean(),
     durationMs: z.number().int().nonnegative().optional(),
+    usage: RiskJudgeUsageSchema.optional(),
     invalidReason: z.enum(["exec_error", "no_json", "schema"]).optional(),
     invalidPaths: z.array(z.string()).optional(),
     invalidCodes: z.array(z.string()).optional(),
