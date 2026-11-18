@@ -47,7 +47,9 @@ decline, Factory also sends the concerns it rested on (`prior.concerns`, each
 with an id such as `c1`). A re-check answers with the usual verdict plus the
 `checks` it ran (command, exit code, and the changed paths each covers) and,
 after a decline, `resolvedConcerns` (a concern id and the code at this head
-that resolves it). Factory approves a re-check only when a passing check
+that resolves it). A full judgment, including one that fell back from an
+incremental plan, answers without either key. Factory approves a re-check
+only when a passing check
 covers a path that changed since the prior head and, after a decline, every
 concern is resolved.
 

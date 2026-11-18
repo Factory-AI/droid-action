@@ -39,41 +39,48 @@ export type PrRiskVerdict = {
   checks?: { command: string; exitCode: number; covers: string[] }[];
 };
 
+const RECHECK_KEYS = {
+  resolvedConcerns: z
+    .array(
+      z.object({
+        concern: z.string().regex(/^c[1-9][0-9]?$/u),
+        evidence: truncatedMarkdown(EVIDENCE_MAX_CHARS),
+      }),
+    )
+    .max(MAX_LISTED)
+    .optional(),
+  checks: z
+    .array(
+      z.object({
+        command: z.string().min(1).max(COMMAND_MAX_CHARS),
+        exitCode: z.number().int(),
+        covers: z.array(z.string().min(1)).max(MAX_COVERS),
+      }),
+    )
+    .max(MAX_CITED_CHECKS)
+    .optional(),
+};
+
 /**
  * The JSON contract a judge must answer: `verdict`, `brief`, `details`,
- * every declared score within its range, optionally `resolvedConcerns` and
- * `checks`, and nothing else. Strict so a drifting answer is a retry, never
- * a silently narrowed verdict; only the length of prose is forgiven, by
- * truncation, and an extra key inside one listed concern or check, which is
- * dropped.
+ * every declared score within its range, and, for an incremental re-check
+ * only, optionally `resolvedConcerns` and `checks`; nothing else. Strict so
+ * a drifting answer is a retry, never a silently narrowed verdict; only the
+ * length of prose is forgiven, by truncation, and an extra key inside one
+ * listed concern or check, which is dropped. A full judgment keeps the
+ * narrower contract because a Factory that serves no re-check rejects a
+ * verdict with either key.
  */
 export function compilePrRiskVerdictSchema(
   scores: RiskScoreRanges,
+  { incremental = false }: { incremental?: boolean } = {},
 ): z.ZodType<PrRiskVerdict, z.ZodTypeDef, unknown> {
-  const core = z.object({
+  const full = z.object({
     verdict: z.boolean(),
     brief: truncatedMarkdown(BRIEF_MAX_CHARS),
     details: truncatedMarkdown(DETAILS_MAX_CHARS),
-    resolvedConcerns: z
-      .array(
-        z.object({
-          concern: z.string().regex(/^c[1-9][0-9]?$/u),
-          evidence: truncatedMarkdown(EVIDENCE_MAX_CHARS),
-        }),
-      )
-      .max(MAX_LISTED)
-      .optional(),
-    checks: z
-      .array(
-        z.object({
-          command: z.string().min(1).max(COMMAND_MAX_CHARS),
-          exitCode: z.number().int(),
-          covers: z.array(z.string().min(1)).max(MAX_COVERS),
-        }),
-      )
-      .max(MAX_CITED_CHECKS)
-      .optional(),
   });
+  const core = incremental ? full.extend(RECHECK_KEYS) : full;
   const entries = Object.entries(scores);
   if (entries.length === 0) return core.strict();
   return core
@@ -93,7 +100,10 @@ export function compilePrRiskVerdictSchema(
 }
 
 /** The exact keys a retry must return, stated from the compiled contract. */
-export function describePrRiskContract(scores: RiskScoreRanges): string {
+export function describePrRiskContract(
+  scores: RiskScoreRanges,
+  { incremental = false }: { incremental?: boolean } = {},
+): string {
   const names = Object.entries(scores);
   return [
     "verdict (boolean)",
@@ -106,8 +116,12 @@ export function describePrRiskContract(scores: RiskScoreRanges): string {
             .join(", ")})`,
         ]
       : []),
-    `resolvedConcerns (optional; at most ${MAX_LISTED} objects with exactly concern, a served concern id such as "c1", and evidence, a string)`,
-    `checks (optional; at most ${MAX_CITED_CHECKS} objects with exactly command (string of at most ${COMMAND_MAX_CHARS} characters), exitCode (integer) and covers (array of changed paths))`,
+    ...(incremental
+      ? [
+          `resolvedConcerns (optional; at most ${MAX_LISTED} objects with exactly concern, a served concern id such as "c1", and evidence, a string)`,
+          `checks (optional; at most ${MAX_CITED_CHECKS} objects with exactly command (string of at most ${COMMAND_MAX_CHARS} characters), exitCode (integer) and covers (array of changed paths))`,
+        ]
+      : []),
   ]
     .map((line) => `- ${line}`)
     .join("\n");

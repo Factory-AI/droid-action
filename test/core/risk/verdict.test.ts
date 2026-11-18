@@ -6,7 +6,18 @@ import { planFor } from "./fixtures";
 const base = { verdict: true, brief: "- Fine.", details: "Fixed." };
 
 describe("compilePrRiskVerdictSchema", () => {
-  const schema = compilePrRiskVerdictSchema({});
+  const schema = compilePrRiskVerdictSchema({}, { incremental: true });
+
+  it("keeps a full judgment to verdict, brief, details and scores", () => {
+    const full = compilePrRiskVerdictSchema({});
+    expect(full.safeParse(base).success).toBe(true);
+    for (const extra of [
+      { resolvedConcerns: [] },
+      { checks: [{ command: "bun test", exitCode: 0, covers: [] }] },
+    ]) {
+      expect(full.safeParse({ ...base, ...extra }).success).toBe(false);
+    }
+  });
 
   it("accepts the concerns a re-check resolved and the checks it ran", () => {
     const answer = {
