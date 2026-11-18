@@ -13,6 +13,14 @@ inputs:
     description: "Conclusion of the review step that ran before this one: success, failure, cancelled or skipped (for example steps.review.outcome). Factory uses it to decide whether the pull request is ready to assess."
     required: false
     default: ""
+  review_base_sha:
+    description: "The review_base_sha output of the review step that ran before this one: the base commit it read .factory/review.yaml at. Factory reads the pull request's rules at the same commit. Needs review_has_rules."
+    required: false
+    default: ""
+  review_has_rules:
+    description: "The review_has_rules output of the review step that ran before this one: whether the file at review_base_sha has a `rules` key. Factory reads nothing when it has none. Needs review_base_sha."
+    required: false
+    default: ""
   api_base_url:
     description: "Factory API host that answers the begin and settle requests."
     required: false
@@ -76,6 +84,8 @@ runs:
         RISK_API_BASE_URL: ${{ inputs.api_base_url }}
         RISK_PR_NUMBER: ${{ inputs.pr_number }}
         RISK_REVIEW_OUTCOME: ${{ inputs.review_outcome }}
+        RISK_REVIEW_BASE_SHA: ${{ inputs.review_base_sha }}
+        RISK_REVIEW_HAS_RULES: ${{ inputs.review_has_rules }}
         RISK_DRY_RUN: ${{ inputs.dry_run }}
         RISK_MANUAL: ${{ inputs.manual }}
         RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json

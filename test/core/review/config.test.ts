@@ -350,11 +350,85 @@ describe("trusted base review configuration", () => {
     );
   });
 
+  it.each([
+    [
+      "rules",
+      "fix_mode: off\nrules:\n  - risk_assessment:\n      enabled: false\n",
+      true,
+    ],
+    ["an empty rules key", "rules:\n", true],
+    ["no rules key", "fix_mode: off\n", false],
+    ["no settings at all", "# nothing yet\n", false],
+  ])(
+    "says whether a base config with %s has Factory's rules",
+    async (_name, content, expected) => {
+      const said: boolean[] = [];
+      await loadReviewUxConfigFromBase({
+        client: {
+          rest: {
+            pulls: {
+              get: async () => ({ data: { base: { sha: "a".repeat(40) } } }),
+            },
+            repos: {
+              getContent: async () => ({
+                data: {
+                  type: "file",
+                  encoding: "base64",
+                  content: Buffer.from(content).toString("base64"),
+                },
+              }),
+            },
+            git,
+          },
+        },
+        owner: "owner",
+        repo: "repo",
+        prNumber: 7,
+        onRules: (present) => said.push(present),
+      });
+      expect(said).toEqual([expected]);
+    },
+  );
+
+  it("says nothing of the rules in a base config it refuses", async () => {
+    const said: boolean[] = [];
+    await expect(
+      loadReviewUxConfigFromBase({
+        client: {
+          rest: {
+            pulls: {
+              get: async () => ({ data: { base: { sha: "a".repeat(40) } } }),
+            },
+            repos: {
+              getContent: async () => ({
+                data: {
+                  type: "file",
+                  encoding: "base64",
+                  content: Buffer.from(
+                    "rules: []\nnot_a_setting: 1\n",
+                  ).toString("base64"),
+                },
+              }),
+            },
+            git,
+          },
+        },
+        owner: "owner",
+        repo: "repo",
+        prNumber: 7,
+        onRules: (present) => said.push(present),
+      }),
+    ).rejects.toThrow("unknown configuration setting");
+    expect(said).toEqual([]);
+  });
+
   it("treats an absent base config as optional, without falling back to head", async () => {
     const getContent = mock(async () => {
       throw Object.assign(new Error("missing"), { status: 404 });
     });
+    const said: boolean[] = [];
     const config = await loadReviewUxConfigFromBase({
+      onRules: (present) => said.push(present),
       client: {
         rest: {
           pulls: {
@@ -370,6 +444,8 @@ describe("trusted base review configuration", () => {
     });
     expect(config).toEqual(resolveReviewUxConfig());
     expect(getContent).toHaveBeenCalledTimes(1);
+    // A repository without the file has no rules.
+    expect(said).toEqual([false]);
   });
 
   it("refuses unsafe ref fallback and symlink config", async () => {

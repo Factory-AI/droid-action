@@ -2,7 +2,7 @@ import {
   MAX_REVIEW_CONFIG_BYTES,
   REVIEW_CONFIG_PATH,
   ReviewConfigError,
-  parseReviewConfigYaml,
+  parseReviewConfigFile,
   resolveReviewUxConfig,
   type ReviewConfigInputs,
   type ReviewUxConfig,
@@ -51,6 +51,8 @@ export async function loadReviewUxConfigFromBase(options: {
   prNumber: number;
   inputs?: ReviewConfigInputs;
   onBaseSha?: (sha: string) => void;
+  /** Told whether the base commit's file has Factory's `rules` key. */
+  onRules?: (present: boolean) => void;
 }): Promise<ReviewUxConfig> {
   const { client, owner, repo, prNumber } = options;
   const request = <T>(operation: () => Promise<T>) =>
@@ -82,6 +84,7 @@ export async function loadReviewUxConfigFromBase(options: {
     );
   } catch (error) {
     if (status(error) !== 404) throw error;
+    options.onRules?.(false);
     return resolveReviewUxConfig({ inputs: options.inputs });
   }
   const data = record(content.data);
@@ -139,8 +142,12 @@ export async function loadReviewUxConfigFromBase(options: {
       treeSha = entry.sha;
     }
   }
-  const fileConfig = parseReviewConfigYaml(
+  const file = parseReviewConfigFile(
     Buffer.from(data.content, "base64").toString("utf8"),
   );
-  return resolveReviewUxConfig({ fileConfig, inputs: options.inputs });
+  options.onRules?.(file.hasRules);
+  return resolveReviewUxConfig({
+    fileConfig: file.config,
+    inputs: options.inputs,
+  });
 }

@@ -114,7 +114,9 @@ judge runs when it finds it there (see
 [What the judge can reach](#what-the-judge-can-reach)).
 
 When the action runs after a review step in the same job, pass that step's
-conclusion so Factory can tell whether the pull request is ready to assess:
+conclusion so Factory can tell whether the pull request is ready to assess,
+and what it read of `.factory/review.yaml`, so Factory reads the pull
+request's rules at the same commit and reads nothing when the file has none:
 
 ```yaml
 - uses: Factory-AI/droid-action/risk@dev-internal
@@ -122,7 +124,12 @@ conclusion so Factory can tell whether the pull request is ready to assess:
   with:
     factory_api_key: ${{ secrets.FACTORY_API_KEY }}
     review_outcome: ${{ steps.review.outcome }}
+    review_base_sha: ${{ steps.review.outputs.review_base_sha }}
+    review_has_rules: ${{ steps.review.outputs.review_has_rules }}
 ```
+
+Without both of the last two, Factory reads the rules from the tip of the
+base branch.
 
 ## Bundled with the review
 
@@ -148,11 +155,20 @@ the action nothing to review, as on a `workflow_dispatch` that only asks for
 an assessment. A cancelled run assesses nothing. On a comment left on a pull
 request, that pull request is the one assessed.
 
+Factory is also told what the review read of `.factory/review.yaml` before
+it started: the pull request's base commit, and whether the file there has
+a `rules` key. Factory reads the pull request's rules at that commit, so
+one version of the file configures the review and the assessment, and reads
+nothing when the file has no rules. The full action also has both as
+outputs, `review_base_sha` and `review_has_rules`, for a workflow that runs
+this sub-action as its own step.
+
 The inputs are this sub-action's with a `risk_` prefix: `risk_pr_number`,
 `risk_api_base_url`, `risk_judge_api_base_url`, `risk_dry_run` and
 `risk_manual`. `factory_api_key` is shared with the review and there is no
-`review_outcome`. The outputs are `risk_action`, `risk_outcome` and
-`risk_head_sha`. Everything else on this page applies unchanged.
+`review_outcome`, `review_base_sha` or `review_has_rules`. The outputs are
+`risk_action`, `risk_outcome` and `risk_head_sha`. Everything else on this
+page applies unchanged.
 
 The pull request is taken from the `pull_request` event, from the pull
 request of a `workflow_run` event, or from `pr_number`.
@@ -164,6 +180,8 @@ request of a `workflow_run` event, or from `pr_number`.
 | `factory_api_key`    | yes      |                               | Factory API key. Used for the begin and settle requests and by the judge session.                       |
 | `pr_number`          | no       | the event's pull request      | Pull request to assess.                                                                                 |
 | `review_outcome`     | no       |                               | Conclusion of the review step that ran before this one: `success`, `failure`, `cancelled` or `skipped`. |
+| `review_base_sha`    | no       |                               | The review step's `review_base_sha` output: the base commit it read `.factory/review.yaml` at.          |
+| `review_has_rules`   | no       |                               | The review step's `review_has_rules` output: whether that file has a `rules` key.                       |
 | `api_base_url`       | no       | `https://app.factory.ai`      | Factory API host that answers the begin and settle requests.                                            |
 | `judge_api_base_url` | no       | the Droid CLI's default       | Factory API host for the judge session only.                                                            |
 | `dry_run`            | no       | `false`                       | Tells Factory this is a dry run. A dry run can also run without `id-token: write`.                      |

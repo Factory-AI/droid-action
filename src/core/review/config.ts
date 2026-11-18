@@ -174,8 +174,15 @@ function invalidConfig(error: z.ZodError): ReviewConfigError {
   );
 }
 
-/** The caller supplies content fetched from the base commit, never the checkout. */
-export function parseReviewConfigYaml(raw: string): Record<string, unknown> {
+/**
+ * The file's review settings, and whether it also has the `rules` key that
+ * Factory reads. The caller supplies content fetched from the base commit,
+ * never the checkout.
+ */
+export function parseReviewConfigFile(raw: string): {
+  config: Record<string, unknown>;
+  hasRules: boolean;
+} {
   if (Buffer.byteLength(raw, "utf8") > MAX_REVIEW_CONFIG_BYTES)
     throw new ReviewConfigError("file exceeds 64 KiB");
   try {
@@ -186,12 +193,19 @@ export function parseReviewConfigYaml(raw: string): Record<string, unknown> {
     const config = normalizeFileConfig(value ?? {});
     const parsed = configSchema.partial().safeParse(config);
     if (!parsed.success) throw invalidConfig(parsed.error);
-    return config;
+    // Whatever the key holds, an empty list included: what it means is
+    // Factory's to say.
+    return { config, hasRules: Object.hasOwn(record(value) ?? {}, RULES_KEY) };
   } catch (error) {
     if (error instanceof ReviewConfigError) throw error;
     // Parser errors can quote source values. Never leak raw config or secrets.
     throw new ReviewConfigError("configuration is not valid YAML");
   }
+}
+
+/** The review settings of `parseReviewConfigFile`. */
+export function parseReviewConfigYaml(raw: string): Record<string, unknown> {
+  return parseReviewConfigFile(raw).config;
 }
 
 const inputSchemas = Object.fromEntries(

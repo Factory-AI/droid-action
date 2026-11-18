@@ -27,6 +27,9 @@ export async function initializeReviewConfig(
             core.exportVariable("REVIEW_BASE_SHA", sha);
             core.setOutput("review_base_sha", sha);
           },
+          onRules: (present) => {
+            core.setOutput("review_has_rules", String(present));
+          },
         })
       : reviewConfigFromEnvironment();
   context.inputs.reviewConfig = config;
