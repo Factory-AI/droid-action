@@ -82,6 +82,9 @@ export async function loadReviewUxConfigFromBase(options: {
     );
   } catch (error) {
     if (status(error) !== 404) throw error;
+    console.log(
+      `No ${REVIEW_CONFIG_PATH} at base ${baseSha}; using the workflow inputs and defaults.`,
+    );
     return resolveReviewUxConfig({ inputs: options.inputs });
   }
   const data = record(content.data);

@@ -1,9 +1,12 @@
 #!/usr/bin/env bun
+import * as core from "@actions/core";
 import { createOctokit, type Octokits } from "../github/api/client";
 import {
   advanceReviewLifecycle,
+  describeSupersede,
   finishReviewLifecycle,
   loadBoundReviewLifecycle,
+  supersedeLogRecord,
   type ReviewSessionIdentity,
 } from "../github/operations/review-lifecycle";
 import { redactCredentials } from "../utils/redact-credentials";
@@ -17,6 +20,7 @@ export async function run(
   if (!process.env.GITHUB_TOKEN && !options.octokit) return;
   if (
     (process.env.REVIEW_POSTED === "true" ||
+      process.env.REVIEW_POSTED === "superseded" ||
       process.env.REVIEW_SKIPPED === "true") &&
     process.env.DROID_SUCCESS !== "false"
   )
@@ -28,6 +32,14 @@ export async function run(
   );
   if (!lifecycle || lifecycle.completed) return;
   const phase = process.env.REVIEW_PHASE || "finalize";
+  if (lifecycle.superseded) {
+    console.log(
+      `review-supersede-decision ${JSON.stringify(supersedeLogRecord(lifecycle, { stage: phase }))}`,
+    );
+    core.warning(
+      `This review run no longer owns the shared summary (phase ${phase}). ${describeSupersede(lifecycle)}`,
+    );
+  }
   if (phase === "finalize") {
     const error =
       process.env.DROID_POST_ERROR_MESSAGE ||

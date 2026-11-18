@@ -14,7 +14,9 @@ import {
   hasSummaryMarker,
   SUMMARY_MARKER,
   hasReviewSessionMarker,
+  readReviewSessions,
   stripReviewSessionMarkers,
+  type ReviewSessionMarker,
   type ReviewState,
 } from "../../core/review/markers";
 import { planIncrementalReview } from "../../core/review/incremental";
@@ -85,10 +87,91 @@ export type ReviewLifecycleRun = {
   renderInput?: ReviewRenderInput;
   completed?: boolean;
   superseded?: boolean;
+  supersededBy?: ReviewSupersedeEvidence;
   pullRequest?: { title: string; body: string; baseSha: string };
   previousState?: ReviewState;
   full?: boolean;
 };
+
+/** What a run saw when it gave up its claim on the shared review summary. */
+export type ReviewSupersedeEvidence = {
+  reason:
+    | "summary-claimed-by-another-session"
+    | "summary-already-completed"
+    | "pr-head-moved";
+  /** Session markers on the summary when the decision was made. */
+  sessions?: ReviewSessionMarker[];
+  liveHead?: string;
+  decidedAt: string;
+};
+
+function markSuperseded(
+  run: ReviewLifecycleRun,
+  evidence: Omit<ReviewSupersedeEvidence, "decidedAt">,
+): void {
+  run.superseded = true;
+  // Keep the first cause, except that a moved head explains more than a
+  // summary claimed by the run reviewing that newer head.
+  if (
+    !run.supersededBy ||
+    (evidence.reason === "pr-head-moved" &&
+      run.supersededBy.reason !== "pr-head-moved")
+  )
+    run.supersededBy = {
+      ...run.supersededBy,
+      ...evidence,
+      decidedAt: new Date().toISOString(),
+    };
+}
+
+function sessionLabel(session: ReviewSessionMarker): string {
+  return `run ${session.run}${session.attempt ? ` attempt ${session.attempt}` : ""} (${session.state}, head ${session.head.slice(0, 12)})`;
+}
+
+/** A one-sentence reason a reviewer can act on, built only from markers and SHAs. */
+export function describeSupersede(run: ReviewLifecycleRun): string {
+  const evidence = run.supersededBy;
+  const ours = `run ${run.runId ?? "unknown"}${run.runAttempt ? ` attempt ${run.runAttempt}` : ""}`;
+  if (!evidence) return `Superseded by a newer review or PR head (${ours}).`;
+  if (evidence.reason === "pr-head-moved")
+    return `The PR head moved from ${run.head.slice(0, 12)} to ${evidence.liveHead?.slice(0, 12) ?? "an unknown commit"} while ${ours} was reviewing.`;
+  const others = (evidence.sessions ?? []).filter(
+    (session) =>
+      session.run !== run.runId ||
+      (session.attempt ?? "1") !== (run.runAttempt ?? "1"),
+  );
+  const completedSameHead = others.find(
+    (session) => session.state === "completed" && session.head === run.head,
+  );
+  if (completedSameHead)
+    return `${sessionLabel(completedSameHead)} already finished the review of ${run.head.slice(0, 12)} in the shared summary, so ${ours} left it unchanged.`;
+  if (others.length)
+    return `The shared summary now belongs to ${others.map(sessionLabel).join(", ")}, so ${ours} left it unchanged.`;
+  if (evidence.reason === "summary-already-completed")
+    return `The shared summary already records a finished session for ${ours}.`;
+  return `The shared summary no longer carries the session marker of ${ours}.`;
+}
+
+/** Inputs of the supersede decision, safe to log: ids, SHAs and markers only. */
+export function supersedeLogRecord(
+  run: ReviewLifecycleRun,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    pr: run.prNumber,
+    runId: run.runId,
+    runAttempt: run.runAttempt,
+    summaryCommentId: run.commentId || undefined,
+    checkId: run.checkId,
+    headAtStart: run.head,
+    startedAt: run.startedAt,
+    reason: run.supersededBy?.reason,
+    headAtDecision: run.supersededBy?.liveHead ?? run.head,
+    sessionsOnSummary: run.supersededBy?.sessions,
+    decidedAt: run.supersededBy?.decidedAt,
+    ...extra,
+  };
+}
 
 export type ReviewSessionIdentity = Readonly<{
   runId: string;
@@ -206,6 +289,7 @@ export async function loadBoundReviewLifecycle(
     eligibleFixedIds: undefined,
     skipReason: undefined,
     superseded: false,
+    supersededBy: undefined,
     previousState: undefined,
     pullRequest: undefined,
     full: undefined,
@@ -224,6 +308,7 @@ export async function loadBoundReviewLifecycle(
   };
   const warn = lifecycleWarning(run);
   const commentId = Number(process.env.REVIEW_COMMENT_ID);
+  let summaryBody = "";
   if (Number.isSafeInteger(commentId) && commentId > 0) {
     const comment = await optionalGitHubOperation(
       () =>
@@ -245,6 +330,7 @@ export async function loadBoundReviewLifecycle(
         "The prepared summary is not an owned review comment on this PR.",
       );
     if (comment) {
+      summaryBody = comment.data.body || "";
       run.commentId = commentId;
       run.state = decodeReviewState(comment.data.body || "") ?? {
         head: "",
@@ -259,7 +345,11 @@ export async function loadBoundReviewLifecycle(
         !hasSession(comment.data.body || "", run, "active")
       ) {
         run.completed = hasSession(comment.data.body || "", run, "completed");
-        run.superseded = !run.completed;
+        if (!run.completed)
+          markSuperseded(run, {
+            reason: "summary-claimed-by-another-session",
+            sessions: readReviewSessions(comment.data.body || ""),
+          });
       }
     }
   }
@@ -270,7 +360,11 @@ export async function loadBoundReviewLifecycle(
     reviewConfigFromEnvironment().review_check_run
   ) {
     // A shared summary is not evidence that this run's check has finished.
-    if (run.completed) run.superseded = true;
+    if (run.completed)
+      markSuperseded(run, {
+        reason: "summary-already-completed",
+        sessions: readReviewSessions(summaryBody),
+      });
     run.completed = false;
     const check = await optionalGitHubOperation(
       () =>
@@ -324,7 +418,11 @@ export async function loadBoundReviewLifecycle(
     warn,
   );
   if (pr) {
-    if (pr.data.head.sha !== target.head) run.superseded = true;
+    if (pr.data.head.sha !== target.head)
+      markSuperseded(run, {
+        reason: "pr-head-moved",
+        liveHead: pr.data.head.sha,
+      });
     run.pullRequest = {
       title: pr.data.title,
       body: pr.data.body || "",
@@ -481,7 +579,16 @@ async function ownsReviewSummary(
     hasSummaryMarker(body) &&
     (hasSession(body, run, "active") ||
       (allowCompleted && hasSession(body, run, "completed")));
-  if (!owned) run.superseded = true;
+  if (!owned)
+    markSuperseded(
+      run,
+      pr.data.head.sha !== run.head
+        ? { reason: "pr-head-moved", liveHead: pr.data.head.sha }
+        : {
+            reason: "summary-claimed-by-another-session",
+            sessions: readReviewSessions(body),
+          },
+    );
   return owned;
 }
 export async function findReviewSummary(options: {
@@ -1027,7 +1134,7 @@ export async function finishReviewLifecycle(options: {
     ...(run.superseded
       ? {
           state: "skipped",
-          skipReason: "Superseded by a newer review or PR head.",
+          skipReason: describeSupersede(run),
         }
       : {}),
   };
