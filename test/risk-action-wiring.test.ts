@@ -114,6 +114,17 @@ describe.each(variants)(
       }
     });
 
+    it("gives the token the worker is downloaded with to the judge step alone", () => {
+      const assess = step("assess");
+      expect(assess.env?.RISK_WORKER_TOKEN).toBe(
+        `\${{ inputs.${p}worker_token }}`,
+      );
+      for (const candidate of steps) {
+        if (candidate === assess) continue;
+        expect(JSON.stringify(candidate)).not.toContain("worker_token");
+      }
+    });
+
     it("reports a failed judge run, and leaves a cancelled one to the run that replaced it", () => {
       for (const id of ["assess", "settle"]) {
         expect(step(id).if).toBe(

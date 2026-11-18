@@ -1,47 +1,17 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type {
-  PrRiskEvidenceWorkspace,
-  PullRequestRiskFile,
-  PullRequestRiskInput,
   RiskJudge,
   RiskPlan,
+  RiskWorker,
 } from "../../../src/core/risk/types";
 
 const execFileAsync = promisify(execFile);
 
-export const pullRequest: PullRequestRiskInput = {
-  repo: "acme/app",
-  prNumber: 123,
-  title: "Rotate sessions safely",
-  baseSha: "b".repeat(40),
-  headSha: "a".repeat(40),
-  additions: 430,
-  deletions: 90,
-  changedFiles: 1,
-};
-
-export function file(
-  filename: string,
-  additions = 10,
-  deletions = 2,
-): PullRequestRiskFile {
-  return { filename, status: "modified", additions, deletions };
-}
-
-export function evidenceAt(rootDir: string): PrRiskEvidenceWorkspace {
-  const evidenceDir = join(rootDir, "evidence");
-  return {
-    rootDir,
-    headTreeDir: join(evidenceDir, "head"),
-    diffPath: join(evidenceDir, "pr.diff"),
-    inventoryPath: join(evidenceDir, "changed-files.json"),
-    guidelinesPath: null,
-    guidelinesBlobSha: null,
-    snapshotHash: "snapshot-hash",
-  };
-}
+type RiskIncremental = NonNullable<RiskPlan["incremental"]>;
 
 export const judge: RiskJudge = {
   group: "group-a",
@@ -64,17 +34,6 @@ export const validVerdict = {
   scores: { blastRadius: 2, testCoverage: 3 },
 };
 
-/** The one JSON object `droid exec -o json` prints for a finished session. */
-export function execSummary(result: unknown, sessionId = "session-1"): string {
-  return JSON.stringify({
-    type: "result",
-    subtype: "success",
-    is_error: false,
-    result: typeof result === "string" ? result : JSON.stringify(result),
-    session_id: sessionId,
-  });
-}
-
 export function planFor(overrides: Partial<RiskPlan> = {}): RiskPlan {
   return {
     repo: "acme/app",
@@ -88,14 +47,31 @@ export function planFor(overrides: Partial<RiskPlan> = {}): RiskPlan {
     },
     headSha: "a".repeat(40),
     baseSha: "b".repeat(40),
-    pullRequest: {
-      title: "Rotate sessions safely",
-      additions: 2,
-      deletions: 1,
-      changedFiles: 1,
-    },
+    pullRequest: { title: "Rotate sessions safely" },
     priorDeclines: [],
     judge,
+    ...overrides,
+  };
+}
+
+/** An earlier verdict to re-check, as Factory's `begin` serves one. */
+export function incrementalFor(
+  overrides: Partial<RiskIncremental> = {},
+): RiskIncremental {
+  return {
+    mode: "enforce",
+    reason: "small_change_since_decline",
+    priorHeadSha: "1".repeat(40),
+    priorAssessmentId: "0b9f6f0e-4c1d-4a55-9d2e-6a1f0c3b7e21",
+    priorBaseSha: "2".repeat(40),
+    judgeSha256: "9".repeat(64),
+    prior: {
+      verdict: false,
+      outcome: "doNotApprove",
+      brief: "- The rotation is untested.",
+      details: "No test exercises the rotation.",
+      concerns: [{ id: "c1", text: "The rotation is untested." }],
+    },
     ...overrides,
   };
 }
@@ -143,4 +119,152 @@ export async function createOriginAndCheckout(
   const checkoutDir = join(repoDir, "checkout");
   await git(repoDir, "clone", "-q", "origin.git", checkoutDir);
   return checkoutDir;
+}
+
+/**
+ * An origin with pull request 123 and a clone of it. Three commits leave one
+ * fork point: the pull request's head, the tip of its base branch `release`,
+ * and the tip of the default branch `dev`.
+ */
+export async function checkoutWithPullRequest(repoDir: string) {
+  const checkoutDir = await createOriginAndCheckout(repoDir);
+  await writeFile(join(checkoutDir, "app.ts"), "export const old = 1;\n");
+  const forkSha = await commit(checkoutDir, "fork point");
+  await writeFile(join(checkoutDir, "feature.ts"), "export const f = 1;\n");
+  const headSha = await commit(checkoutDir, "head");
+  await git(checkoutDir, "checkout", "-q", forkSha);
+  await writeFile(join(checkoutDir, "base-only.ts"), "export {};\n");
+  const baseSha = await commit(checkoutDir, "base tip");
+  await git(checkoutDir, "checkout", "-q", forkSha);
+  await writeFile(join(checkoutDir, "default-only.ts"), "export {};\n");
+  const policySha = await commit(checkoutDir, "default branch tip");
+  // The head and base an earlier verdict judged, both since replaced: the
+  // remote still has them, and no branch or pull request leads to them.
+  await git(checkoutDir, "checkout", "-q", forkSha);
+  await writeFile(join(checkoutDir, "feature.ts"), "export const f = 0;\n");
+  const priorHeadSha = await commit(checkoutDir, "earlier head");
+  await git(checkoutDir, "checkout", "-q", forkSha);
+  await writeFile(join(checkoutDir, "base-earlier.ts"), "export {};\n");
+  const priorBaseSha = await commit(checkoutDir, "earlier base tip");
+  await git(
+    checkoutDir,
+    "push",
+    "-q",
+    "origin",
+    `${policySha}:refs/heads/dev`,
+    `${baseSha}:refs/heads/release`,
+    `${headSha}:refs/pull/123/head`,
+    `${priorHeadSha}:refs/replaced/head`,
+    `${priorBaseSha}:refs/replaced/base`,
+  );
+  return {
+    checkoutDir,
+    originDir: join(repoDir, "origin.git"),
+    forkSha,
+    headSha,
+    baseSha,
+    policySha,
+    priorHeadSha,
+    priorBaseSha,
+  };
+}
+
+/** What a stand-in worker does once it has recorded how it was run. */
+export type WorkerScript = {
+  recordPath: string;
+  /** Left at the report's path when set. */
+  report?: unknown;
+  exitCode: number;
+  stderr?: string;
+  /** Keeps running until asked to stop, or through that until killed. */
+  until?: "asked" | "killed";
+};
+
+/** How a stand-in worker was run, as it saw it. */
+export type WorkerRun = {
+  args: string[];
+  env: Record<string, string>;
+  cwd: string;
+  input: unknown;
+  /** The checkout's git configuration when the worker started. */
+  repoConfig: string;
+};
+
+/**
+ * Publishes a stand-in for the `droid-review` worker the way GitHub
+ * publishes the real one: an address that answers only a request for the
+ * file's bytes that holds `token`, by redirecting to storage on another
+ * origin. `worker` names that address and the stand-in's true digest, and
+ * `forwarded` holds every Authorization header the storage was sent.
+ */
+export function serveWorker(script: WorkerScript): {
+  worker: RiskWorker;
+  token: string;
+  forwarded: string[];
+  stop: () => Promise<void>;
+} {
+  const source = `
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+const script = ${JSON.stringify(script)};
+const args = process.argv.slice(2);
+const flag = (name) => args[args.indexOf(name) + 1];
+const end = () => {
+  if (script.report !== undefined) {
+    writeFileSync(flag("--report"), JSON.stringify(script.report));
+  }
+  process.stderr.write(script.stderr ?? "");
+  process.exit(script.exitCode);
+};
+if (script.until) {
+  process.on("SIGTERM", script.until === "asked" ? end : () => {});
+  setInterval(() => {}, 1000);
+}
+writeFileSync(
+  script.recordPath,
+  JSON.stringify({
+    args,
+    env: process.env,
+    cwd: process.cwd(),
+    input: JSON.parse(readFileSync(flag("--input"), "utf8")),
+    repoConfig: readFileSync(join(flag("--repo"), ".git", "config"), "utf8"),
+  }),
+);
+if (!script.until) end();
+`;
+  const token = "worker-token";
+  const forwarded: string[] = [];
+  const storage = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(request) {
+      const authorization = request.headers.get("authorization");
+      if (authorization) forwarded.push(authorization);
+      return new Response(source);
+    },
+  });
+  const api = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(request) {
+      const asked =
+        request.headers.get("authorization") === `Bearer ${token}` &&
+        request.headers.get("accept") === "application/octet-stream";
+      return asked
+        ? Response.redirect(`http://127.0.0.1:${storage.port}/droid-review.mjs`)
+        : new Response("Not Found", { status: 404 });
+    },
+  });
+  return {
+    worker: {
+      url: `http://127.0.0.1:${api.port}/releases/assets/1`,
+      sha256: createHash("sha256").update(source).digest("hex"),
+    },
+    token,
+    forwarded,
+    stop: async () => {
+      await api.stop(true);
+      await storage.stop(true);
+    },
+  };
 }

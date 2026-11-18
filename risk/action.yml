@@ -5,6 +5,9 @@ inputs:
   factory_api_key:
     description: "Factory API key"
     required: true
+  worker_token:
+    description: "GitHub token that can read the droid-review release the judge's worker is downloaded from. Used for that download only: it is not passed to the worker or to the judge session."
+    required: true
   pr_number:
     description: "Pull request to assess. Empty uses the pull request of the triggering event."
     required: false
@@ -152,10 +155,12 @@ runs:
 
     # The judge runs pull request code. This step therefore drops the OIDC
     # request credentials (which could mint a token that writes) before
-    # anything else starts, and the judge session's own environment is an
-    # allow-list. It runs even when an earlier step failed, and always leaves
-    # a result, so the failure is reported instead of leaving the pull request
-    # looking unassessed.
+    # anything else starts. It downloads the droid-review worker with the
+    # worker token, runs it only when its bytes have the digest this version
+    # of the action names, and gives it an allow-listed environment to run
+    # the judge in, which leaves that token out. It runs even when an earlier
+    # step failed, and always leaves a result, so the failure is reported
+    # instead of leaving the pull request looking unassessed.
     - name: Assess PR risk
       id: assess
       if: ${{ !cancelled() && steps.begin.outputs.action == 'judge' }}
@@ -175,6 +180,7 @@ runs:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         GH_TOKEN: ${{ steps.token.outputs.github_token || (steps.token.outputs.use_workflow_token == 'true' && github.token) || '' }}
         RISK_JUDGE_API_BASE_URL: ${{ inputs.judge_api_base_url }}
+        RISK_WORKER_TOKEN: ${{ inputs.worker_token }}
         RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
         RISK_RESULT_PATH: ${{ runner.temp }}/pr-risk/result.json
 
