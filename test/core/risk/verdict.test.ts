@@ -8,6 +8,26 @@ const base = { verdict: true, brief: "- Fine.", details: "Fixed." };
 describe("compilePrRiskVerdictSchema", () => {
   const schema = compilePrRiskVerdictSchema({}, { incremental: true });
 
+  it.each([null, "yes", { value: true }])(
+    "drops a stray verdict of any value (%p) from a judge served without one",
+    (verdict) => {
+      const { verdict: _omitted, ...answer } = base;
+      const omitted = compilePrRiskVerdictSchema(
+        {},
+        { verdictField: "omitted" },
+      );
+
+      expect(omitted.parse({ ...answer, verdict })).toStrictEqual(answer);
+      expect(
+        compilePrRiskVerdictSchema({}).safeParse({ ...answer, verdict })
+          .success,
+      ).toBe(false);
+      expect(omitted.safeParse({ ...answer, verdict, extra: 1 }).success).toBe(
+        false,
+      );
+    },
+  );
+
   it("keeps a full judgment to verdict, brief, details and scores", () => {
     const full = compilePrRiskVerdictSchema({});
     expect(full.safeParse(base).success).toBe(true);

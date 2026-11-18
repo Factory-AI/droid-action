@@ -75,7 +75,8 @@ const RECHECK_KEYS = {
  * listed concern or check, which is dropped. A full judgment keeps the
  * narrower contract because a Factory that serves no re-check rejects a
  * verdict with either key. For a judge that omits the verdict, one the
- * model gives anyway is accepted and dropped, as Factory drops it.
+ * model gives anyway, of any value, is accepted and dropped, as Factory
+ * drops it.
  */
 export function compilePrRiskVerdictSchema(
   scores: RiskScoreRanges,
@@ -85,7 +86,10 @@ export function compilePrRiskVerdictSchema(
   }: { incremental?: boolean; verdictField?: RiskVerdictField } = {},
 ): z.ZodType<PrRiskVerdict, z.ZodTypeDef, unknown> {
   const full = z.object({
-    verdict: verdictField === "omitted" ? z.boolean().optional() : z.boolean(),
+    verdict:
+      verdictField === "omitted"
+        ? z.unknown().transform(() => undefined)
+        : z.boolean(),
     brief: truncatedMarkdown(BRIEF_MAX_CHARS),
     details: truncatedMarkdown(DETAILS_MAX_CHARS),
   });
