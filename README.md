@@ -496,7 +496,7 @@ fix_mode: commit
 
 The shorter aliases `depth`, `severity_threshold`, `ignore_paths`, `summary_sections`, `badges`, `incremental`, `auto_resolve`, and `max_auto_runs` are accepted. Do not specify an alias and its full key together. Model and reasoning inputs still override the selected depth preset.
 
-The file may also carry Factory's pull request rules: a top-level `risk_assessment` key, which applies to every pull request, and a top-level `rules` key, which sets the same controls per path. Factory reads and validates both itself. Reviews ignore these two keys and whatever they hold, so they change no review setting and cannot fail a review. Any other key that is not a setting above still fails explicitly.
+The file may also carry a top-level `rules` key. It holds Factory's pull request rules, which Factory reads and validates itself. Reviews ignore the key and whatever it holds, so it changes no review setting and cannot fail a review. Any other key that is not a setting above still fails explicitly.
 
 ### Review Depth
 
