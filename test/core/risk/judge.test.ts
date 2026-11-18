@@ -7,7 +7,10 @@ import {
   runPrRiskJudge,
 } from "../../../src/core/risk/judge";
 import { buildPrRiskSnapshot } from "../../../src/core/risk/snapshot";
-import type { RiskJudgeAttempt } from "../../../src/core/risk/types";
+import {
+  RiskJudgeSchema,
+  type RiskJudgeAttempt,
+} from "../../../src/core/risk/types";
 import {
   evidenceAt,
   execSummary,
@@ -129,6 +132,51 @@ describe("runPrRiskJudge", () => {
         "- scores (object with exactly these integer keys: blastRadius 1-5, testCoverage 0-3)",
       ].join("\n"),
     );
+  });
+
+  it("asks a judge served without a verdict for none, and drops one it gives anyway", async () => {
+    const { verdict: _omitted, ...answer } = validVerdict;
+    const outputs = [{ ...answer, confidence: 5 }, validVerdict];
+    const skills: string[] = [];
+
+    const verdict = await runPrRiskJudge(snapshot, {
+      judge: { ...judge, verdictField: "omitted" },
+      evidence: evidenceAt(evidenceRoot),
+      env,
+      executeDroid: async ({ cwd }) => {
+        skills.push(await readFile(join(cwd, ...SKILL_PATH), "utf8"));
+        return execSummary(outputs[skills.length - 1], `s${skills.length}`);
+      },
+    });
+
+    expect(verdict).toStrictEqual(answer);
+    expect(skills[1]).toContain(
+      [
+        "exactly these keys and no others:",
+        "- brief (string; one to three Markdown bullets shown under the headline, cut at 800 characters)",
+      ].join("\n"),
+    );
+    expect(skills[1]).not.toContain("- verdict (boolean)");
+  });
+
+  it("still demands the verdict from a judge served with a mode it does not know", async () => {
+    const { verdict: _omitted, ...answer } = validVerdict;
+    const served = RiskJudgeSchema.parse({ ...judge, verdictField: "maybe" });
+    const attempts: RiskJudgeAttempt[] = [];
+
+    await expect(
+      runPrRiskJudge(snapshot, {
+        judge: served,
+        evidence: evidenceAt(evidenceRoot),
+        env,
+        onAttempt: (attempt) => attempts.push(attempt),
+        executeDroid: async () => execSummary(answer),
+      }),
+    ).rejects.toThrow("PR risk judge produced no valid verdict");
+    expect(attempts.map((attempt) => attempt.invalidPaths)).toEqual([
+      ["verdict"],
+      ["verdict"],
+    ]);
   });
 
   it("holds scores to their declared ranges and fails after the retry", async () => {

@@ -39,6 +39,8 @@ export function failureReason(error: unknown): string {
 const CommitShaSchema = z.string().regex(/^[0-9a-f]{40}$/);
 const Sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
 
+export const RISK_VERDICT_FIELD_MODES = ["required", "omitted"] as const;
+
 export const RiskRunSchema = z.object({
   runner: z.string().min(1),
   trigger: z.string().min(1).optional(),
@@ -71,7 +73,10 @@ export type RiskBeginRequest = {
 /**
  * The judge as Factory serves it. `settings` is written to the session's
  * settings file untouched, and `sha256` goes back with the verdict so Factory
- * can tell which judge answered.
+ * can tell which judge answered. `verdictField` is sent only as `omitted`,
+ * for a judge decided by risk level alone; absent, or a value this version
+ * does not know, it is `required`, so an unknown mode can only fail a run,
+ * never let an answer skip the verdict.
  */
 export const RiskJudgeSchema = z.object({
   group: z.string().min(1),
@@ -80,10 +85,12 @@ export const RiskJudgeSchema = z.object({
   settings: z.record(z.unknown()),
   scores: z.record(z.tuple([z.number().int(), z.number().int()])),
   timeoutSeconds: z.number().int().positive(),
+  verdictField: z.enum(RISK_VERDICT_FIELD_MODES).optional().catch("required"),
   sha256: Sha256Schema,
 });
 export type RiskJudge = z.infer<typeof RiskJudgeSchema>;
 export type RiskScoreRanges = RiskJudge["scores"];
+export type RiskVerdictField = NonNullable<RiskJudge["verdictField"]>;
 
 const RiskPullRequestSchema = z.object({
   title: z.string(),

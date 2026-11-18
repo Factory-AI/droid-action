@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { RiskScoreRanges } from "./types";
+import type { RiskScoreRanges, RiskVerdictField } from "./types";
 
 // A model cannot count characters, so an overrun is cut with a marker rather
 // than rejected, and the verdict it carries still lands.
@@ -21,10 +21,11 @@ function truncatedMarkdown(max: number) {
 /**
  * A validated judge answer. `brief` is the short text shown under the
  * headline and `details` the longer body beneath it. `scores` is present only
- * when the judge declares any.
+ * when the judge declares any. `verdict` is absent only for a judge served
+ * with `verdictField: "omitted"`.
  */
 export type PrRiskVerdict = {
-  verdict: boolean;
+  verdict?: boolean;
   brief: string;
   details: string;
   scores?: Record<string, number>;
@@ -34,39 +35,48 @@ export type PrRiskVerdict = {
  * The JSON contract a judge must answer: `verdict`, `brief`, `details`, and
  * every declared score within its range, and nothing else. Strict so a
  * drifting answer is a retry, never a silently narrowed verdict; only length
- * is forgiven, by truncation.
+ * is forgiven, by truncation. For a judge that omits the verdict, one the
+ * model gives anyway is accepted and dropped, as Factory drops it.
  */
 export function compilePrRiskVerdictSchema(
   scores: RiskScoreRanges,
+  verdictField: RiskVerdictField = "required",
 ): z.ZodType<PrRiskVerdict, z.ZodTypeDef, unknown> {
   const core = z.object({
-    verdict: z.boolean(),
+    verdict: verdictField === "omitted" ? z.boolean().optional() : z.boolean(),
     brief: truncatedMarkdown(BRIEF_MAX_CHARS),
     details: truncatedMarkdown(DETAILS_MAX_CHARS),
   });
   const entries = Object.entries(scores);
-  if (entries.length === 0) return core.strict();
-  return core
-    .extend({
-      scores: z
-        .object(
-          Object.fromEntries(
-            entries.map(([name, [min, max]]) => [
-              name,
-              z.number().int().min(min).max(max),
-            ]),
-          ),
-        )
-        .strict(),
-    })
-    .strict();
+  const answer =
+    entries.length === 0
+      ? core.strict()
+      : core
+          .extend({
+            scores: z
+              .object(
+                Object.fromEntries(
+                  entries.map(([name, [min, max]]) => [
+                    name,
+                    z.number().int().min(min).max(max),
+                  ]),
+                ),
+              )
+              .strict(),
+          })
+          .strict();
+  if (verdictField !== "omitted") return answer;
+  return answer.transform(({ verdict: _dropped, ...rest }) => rest);
 }
 
 /** The exact keys a retry must return, stated from the compiled contract. */
-export function describePrRiskContract(scores: RiskScoreRanges): string {
+export function describePrRiskContract(
+  scores: RiskScoreRanges,
+  verdictField: RiskVerdictField = "required",
+): string {
   const names = Object.entries(scores);
   return [
-    "verdict (boolean)",
+    ...(verdictField === "omitted" ? [] : ["verdict (boolean)"]),
     `brief (string; one to three Markdown bullets shown under the headline, cut at ${BRIEF_MAX_CHARS} characters)`,
     `details (string; the Markdown body of the "Why this decision" drawer, cut at ${DETAILS_MAX_CHARS} characters)`,
     ...(names.length > 0

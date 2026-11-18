@@ -12,6 +12,7 @@ import {
   type RiskJudge,
   type RiskJudgeAttempt,
   type RiskScoreRanges,
+  type RiskVerdictField,
 } from "./types";
 import {
   compilePrRiskVerdictSchema,
@@ -99,6 +100,7 @@ export function buildJudgeEnvironment(
 function parsePrRiskJudgeOutput(
   stdout: string,
   scores: RiskScoreRanges,
+  verdictField: RiskVerdictField | undefined,
 ): PrRiskJudgeParse {
   let summary: z.infer<typeof execSummarySchema>;
   try {
@@ -120,7 +122,7 @@ function parsePrRiskJudgeOutput(
       retryFeedback: ["<root>: the session ended in an error"],
     };
   }
-  const schema = compilePrRiskVerdictSchema(scores);
+  const schema = compilePrRiskVerdictSchema(scores, verdictField);
   const trimmed = summary.result.trim();
   const candidates = new Set([
     ...(trimmed.startsWith("{") && trimmed.endsWith("}") ? [trimmed] : []),
@@ -251,6 +253,7 @@ export async function runPrRiskJudge(
     const parsed = parsePrRiskJudgeOutput(
       await executePrRiskDroid(args, options),
       judge.scores,
+      judge.verdictField,
     );
     options.onAttempt?.({
       ...(parsed.sessionId ? { sessionId: parsed.sessionId } : {}),
@@ -284,7 +287,7 @@ export async function runPrRiskJudge(
       ...first.retryFeedback.map((feedback) => `- ${feedback}`),
       "",
       "Return exactly one JSON object with exactly these keys and no others:",
-      describePrRiskContract(judge.scores),
+      describePrRiskContract(judge.scores, judge.verdictField),
       "",
       "Do not invent evidence or change a judgment to satisfy the contract; restate the same verdict in the required shape.",
       "",
