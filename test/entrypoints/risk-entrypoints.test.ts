@@ -945,7 +945,16 @@ describe("risk action entrypoints", () => {
       30_000,
     );
 
-    it.each(unanswered)(
+    it.each([
+      ...unanswered,
+      // What the worker reports for a re-check it could not lay out.
+      [
+        "had no evidence laid out and ran no session",
+        { sessions: [], status: "failed", problem: "start" },
+        "judge_exec_failed",
+        undefined,
+      ],
+    ] satisfies typeof unanswered)(
       "reports a shadow that %s as a failed shadow, beside the judgment it ran with",
       async (_ending, shadow, reason, attempts) => {
         const { plan, workspace, ended } = await planned({ mode: "shadow" });

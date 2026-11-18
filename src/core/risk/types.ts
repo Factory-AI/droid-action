@@ -14,12 +14,12 @@ export const RISK_CAPABILITIES = ["incremental"];
 /**
  * The one `droid-review` worker this version runs: the built file that runs
  * `droid-review risk`, and the SHA-256 of its bytes. The file is the
- * `droid-review.mjs` asset of release v0.0.0-bootstrap.1 of a private
+ * `droid-review.mjs` asset of release v0.0.0-bootstrap.2 of a private
  * repository, which GitHub serves only to a token that can read it.
  */
 export const RISK_WORKER = {
-  url: "https://api.github.com/repos/Factory-AI/droid-review/releases/assets/763479411",
-  sha256: "007ce58b4df9b203fea16ad0232866424e3204b648c22dc28249afd35bd34e09",
+  url: "https://api.github.com/repos/Factory-AI/droid-review/releases/assets/764051876",
+  sha256: "af384ffbd6e353dae4051d9ec249d0592615de17f23d978b1719981c0c89b0ae",
 };
 
 const FAILURE_REASON = /^[a-z][a-z0-9_]{0,63}$/;
