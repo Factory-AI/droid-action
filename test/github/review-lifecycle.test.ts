@@ -436,6 +436,13 @@ describe("review lifecycle production boundaries", () => {
       expect(task).toContain("Run 123, attempt 2");
       expect(task).not.toMatch(/:\/\/|\\/);
       expect(body.match(/\[Fix in Factory\]/g)).toHaveLength(1);
+      const inline = f.calls.find((call) => call.method === "createReview")
+        ?.input.comments[0].body;
+      const single = expectFactoryFixAction(inline).task;
+      expect(single).toContain("github.com/o/r/pull/7. ");
+      expect(single).toContain(`Reported at head: ${HEAD}.`);
+      expect(single).toContain("Run 123, attempt 2");
+      expect(single).not.toMatch(/:\/\/|\\|#/);
     });
   }
   it("QA75 2135 exports an explicit immutable base and reloads it rather than the cache", async () => {

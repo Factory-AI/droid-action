@@ -103,17 +103,18 @@ export function buildReviewPreviews(raw: string): Record<string, string> {
     ],
   };
   const factoryFixHead = "0123456789012345678901234567890123456789";
+  const factoryFix = {
+    reviewUrl: "https://github.com/example/repo/pull/42#issuecomment-123",
+    head: factoryFixHead,
+    runId: "123",
+    runAttempt: "1",
+  };
   const previews: Record<string, string> = {
     "Summary with findings": summary,
     "Summary with Fix in Factory": renderReviewSummary({
       ...input,
       head: factoryFixHead,
-      factoryFix: {
-        reviewUrl: "https://github.com/example/repo/pull/42#issuecomment-123",
-        head: factoryFixHead,
-        runId: "123",
-        runAttempt: "1",
-      },
+      factoryFix,
       reviewState: {
         head: factoryFixHead,
         base: input.base,
@@ -228,6 +229,11 @@ export function buildReviewPreviews(raw: string): Record<string, string> {
         { ...input, badges },
       );
   }
+  previews["Inline with Fix in Factory"] = renderInlineComment(findings[0]!, {
+    ...input,
+    head: factoryFixHead,
+    factoryFix,
+  });
   for (const [name, body] of Object.entries(previews)) {
     const errors = validateRenderedMarkdown(body);
     if (/summary/i.test(name) && !hasSummaryMarker(body))

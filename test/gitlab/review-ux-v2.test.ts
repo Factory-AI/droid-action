@@ -2476,11 +2476,14 @@ describe("GitLab v2 production entrypoints, local API only", () => {
           )
           .at(-1)?.body.body,
       ).not.toContain("[Fix in Factory]");
-      expect(
-        t.requests.filter(
-          (r) => r.method === "POST" && r.path.endsWith("/discussions"),
-        ),
-      ).toHaveLength(1);
+      const discussions = t.requests.filter(
+        (r) => r.method === "POST" && r.path.endsWith("/discussions"),
+      );
+      expect(discussions).toHaveLength(1);
+      const single = expectFactoryFixAction(discussions[0]!.body.body).task;
+      expect(single).toContain("gitlab.com/group/repo/-/merge_requests/7. ");
+      expect(single).toContain(`Reported at head: ${HEAD}.`);
+      expect(single).not.toMatch(/:\/\/|\\|#/);
     });
   });
 
