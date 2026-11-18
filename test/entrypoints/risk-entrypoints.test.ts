@@ -584,6 +584,7 @@ describe("risk action entrypoints", () => {
               issues: [
                 { path: ["scores", "blastRadius"], code: "too_big" },
                 { path: [], code: "invalid_type" },
+                { path: ["scores", "blastRadius"], code: "invalid_type" },
               ],
             },
             { ...session("session-1", 47), status: "answered" },
@@ -646,6 +647,7 @@ describe("risk action entrypoints", () => {
               retryFeedback: [
                 "scores.blastRadius: too_big",
                 "<root>: invalid_type",
+                "scores.blastRadius: invalid_type",
               ],
             },
             { sessionId: "session-1", valid: true, durationMs: 47 },
@@ -1015,16 +1017,18 @@ describe("risk action entrypoints", () => {
     it.each<
       [string, (ended: { revision: object }) => object | undefined, string]
     >([
-      [
-        "answers about commits that were not planned",
-        (ended: { revision: object }) => ({
-          ...ended,
-          revision: { ...ended.revision, head: "e".repeat(40) },
-          ...answeredBy("session-0"),
-          answer,
-        }),
-        "is not about the planned commits",
-      ],
+      ...(["head", "base"] as const).map(
+        (side): [string, (ended: { revision: object }) => object, string] => [
+          `answers about a ${side} that was not planned`,
+          (ended) => ({
+            ...ended,
+            revision: { ...ended.revision, [side]: "e".repeat(40) },
+            ...answeredBy("session-0"),
+            answer,
+          }),
+          "is not about the planned commits",
+        ],
+      ),
       [
         "claims an answer and holds none",
         (ended: object) => ({ ...ended, ...answeredBy("session-0") }),

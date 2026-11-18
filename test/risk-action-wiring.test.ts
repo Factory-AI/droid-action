@@ -307,6 +307,28 @@ describe("risk assessment inside the full action", () => {
     }
   });
 
+  // The review ran before this step, and whatever it left in the job's
+  // environment would otherwise reach the one process that holds the token.
+  it("starts the download from an empty environment, given only the token and where to leave the worker", () => {
+    const launch = risk
+      .find((found) => found.id === "risk_download")
+      ?.run?.replace(/\\\n/g, " ")
+      .split("\n")
+      .find((line) => line.includes('run "$TRUSTED_TAIL_PATH"'));
+    expect(launch?.trim().split(/\s+/)).toEqual([
+      "/usr/bin/env",
+      "-i",
+      "PATH=/usr/bin:/bin",
+      'RISK_WORKER_TOKEN="${RISK_WORKER_TOKEN:-}"',
+      'RISK_WORKER_PATH="${RISK_WORKER_PATH:-}"',
+      '"$TRUSTED_RUNTIME_PATH"',
+      "--config=/dev/null",
+      "--env-file=/dev/null",
+      "run",
+      '"$TRUSTED_TAIL_PATH"',
+    ]);
+  });
+
   it("assesses the pull request a comment was left on", () => {
     expect(begin.env?.RISK_PR_NUMBER).toBe(
       "${{ inputs.risk_pr_number || (github.event.issue.pull_request && github.event.issue.number) || '' }}",
