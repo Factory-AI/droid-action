@@ -8,6 +8,12 @@ import {
   encodeReviewState,
   SUMMARY_MARKER,
 } from "../../src/core/review/markers";
+import {
+  MAX_INLINE_OUTPUT_BYTES,
+  outputBytes,
+  renderInlineComment,
+  type RenderOptions,
+} from "../../src/core/review/render";
 import { normalizeFinding } from "../../src/core/review/validated/finding";
 import { expectFactoryFixAction } from "../helpers/factory-fix";
 import {
@@ -440,6 +446,113 @@ describe("GitLab review UX v2", () => {
     expect(seen).toHaveBeenCalledWith(
       expect.objectContaining({ threadUrl: `${mr.web_url}#note_100` }),
     );
+  });
+
+  it("posts a finding that fits only without its Fix in Factory button", async () => {
+    const t = setup();
+    const bare: RenderOptions = { platform: "gitlab", head: HEAD };
+    const renderOptions: RenderOptions = {
+      ...bare,
+      factoryFix: { reviewUrl: `${mr.web_url}#note_1`, head: HEAD, runId: "9" },
+    };
+    const sized = (count: number, options: RenderOptions) => {
+      const candidate = { ...finding, suggestion: "<li>a</li>".repeat(count) };
+      return outputBytes(
+        `${renderInlineComment(candidate, options)}\n\n${encodeReviewState({
+          head: HEAD,
+          findings: [stateFinding(candidate)],
+        })}`,
+      );
+    };
+    let count = 600;
+    while (sized(count + 1, bare) <= MAX_INLINE_OUTPUT_BYTES) count += 1;
+    const suggestion = "<li>a</li>".repeat(count);
+    expect(sized(count, renderOptions)).toBeGreaterThan(
+      MAX_INLINE_OUTPUT_BYTES,
+    );
+    expect(outputBytes(suggestion)).toBeLessThan(8 * 1024);
+    await postReview({
+      client: t.client,
+      projectId: 42,
+      mrIid: 7,
+      comments: [
+        {
+          path: finding.path,
+          body: finding.body,
+          line: 10,
+          startLine: null,
+          side: "RIGHT",
+          old_path: null,
+          old_line: null,
+          finding: { ...finding, suggestion },
+        },
+      ],
+      renderOptions,
+    });
+    const posted = t.requests.filter(
+      (r) => r.method === "POST" && r.path.endsWith("/discussions"),
+    );
+    expect(posted).toHaveLength(1);
+    const body: string = posted[0]!.body.body;
+    expect(outputBytes(body)).toBe(sized(count, bare));
+    expect(body).toContain(`~~~suggestion\n${suggestion}\n~~~`);
+    expect(body).not.toContain("[Fix in Factory]");
+    expect(decodeFindingMarker(body)?.ref).toBeUndefined();
+    expect(decodeReviewState(body)?.findings[0]?.finding?.suggestion).toBe(
+      suggestion,
+    );
+  });
+
+  it("gives findings that share an id their own Fix in Factory refs", async () => {
+    const t = setup();
+    await postReview({
+      client: t.client,
+      projectId: 42,
+      mrIid: 7,
+      comments: [
+        {
+          path: finding.path,
+          body: finding.body,
+          line: 10,
+          startLine: null,
+          side: "RIGHT",
+          old_path: null,
+          old_line: null,
+          finding,
+        },
+        {
+          path: finding.path,
+          body: finding.body,
+          line: null,
+          startLine: null,
+          side: "LEFT",
+          old_path: finding.path,
+          old_line: 10,
+          finding: { ...finding, side: "LEFT" },
+        },
+      ],
+      renderOptions: {
+        platform: "gitlab",
+        head: HEAD,
+        factoryFix: {
+          reviewUrl: `${mr.web_url}#note_1`,
+          head: HEAD,
+          runId: "9",
+        },
+      },
+    });
+    const bodies: string[] = t.requests
+      .filter((r) => r.method === "POST" && r.path.endsWith("/discussions"))
+      .map((r) => r.body.body);
+    expect(bodies).toHaveLength(2);
+    const refs = bodies.map((body) => decodeFindingMarker(body)?.ref);
+    expect(refs[0]).toMatch(/^[a-f0-9]{16}$/);
+    expect(refs[1]).toMatch(/^[a-f0-9]{16}$/);
+    expect(refs[0]).not.toBe(refs[1]);
+    for (const [index, body] of bodies.entries())
+      expect(expectFactoryFixAction(body).task).toContain(
+        `has ref ${refs[index]}.`,
+      );
   });
 
   it("keeps unanchorable findings in the sticky summary rather than another note", async () => {

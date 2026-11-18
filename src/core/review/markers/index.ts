@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { record } from "../validated/finding";
 import { normalizeFinding } from "../validated/finding";
 import type { ReviewFinding, ReviewSeverity } from "../validated/types";
@@ -42,6 +43,11 @@ export type FindingMarker = {
    */
   title?: string;
   security?: boolean;
+  /**
+   * Opaque handle for this one posted comment. The single-finding Fix in
+   * Factory task cites it, so no model-written text reaches that prompt.
+   */
+  ref?: string;
 };
 export type ReviewMarker = { head: string; stale?: boolean };
 export type SeverityCounts = {
@@ -374,6 +380,32 @@ export function decodeReviewState(body: string): ReviewState | null {
       : {}),
   };
 }
+/**
+ * The anchor is part of the digest because finding ids are not unique: the
+ * fallback id ignores the line, and a review may repeat an explicit one.
+ */
+export function encodeFindingReference(
+  head: string,
+  finding: Pick<
+    ReviewFinding,
+    "id" | "path" | "oldPath" | "side" | "line" | "startLine"
+  >,
+): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify([
+        head,
+        finding.id,
+        finding.side,
+        finding.path,
+        finding.oldPath ?? null,
+        finding.startLine,
+        finding.line,
+      ]),
+    )
+    .digest("hex")
+    .slice(0, 16);
+}
 export function encodeFindingMarker(marker: FindingMarker): string {
   return jsonMarker("droid-finding:v1", marker);
 }
@@ -392,6 +424,9 @@ export function decodeFindingMarker(body: string): FindingMarker | null {
     ...(typeof value.head === "string" ? { head: value.head } : {}),
     ...(typeof value.title === "string" ? { title: value.title } : {}),
     ...(value.security === true ? { security: true } : {}),
+    ...(typeof value.ref === "string" && /^[a-f0-9]{16}$/.test(value.ref)
+      ? { ref: value.ref }
+      : {}),
   };
 }
 export function encodeReviewMarker(marker: ReviewMarker): string {

@@ -17,6 +17,7 @@ import { createMockContext } from "../mockContext";
 import { expectFactoryFixAction } from "../helpers/factory-fix";
 import { normalizeFinding } from "../../src/core/review/validated/finding";
 import {
+  decodeFindingMarker,
   decodeReviewState,
   encodeFindingMarker,
   encodeReviewState,
@@ -445,6 +446,30 @@ describe("review lifecycle production boundaries", () => {
       expect(single).not.toMatch(/:\/\/|\\|#/);
     });
   }
+  it("gives findings that share an id their own Fix in Factory refs", async () => {
+    const f = fixture([]);
+    await f.prepare();
+    await f.post([
+      { status: "approved", comment: finding() },
+      { status: "approved", comment: finding({ line: 2 }) },
+    ]);
+    const bodies: string[] = f.calls
+      .find((call) => call.method === "createReview")
+      ?.input.comments.map((comment: { body: string }) => comment.body);
+    expect(bodies).toHaveLength(2);
+    const refs = bodies.map((body) => decodeFindingMarker(body)?.ref);
+    expect(bodies.map((body) => decodeFindingMarker(body)?.id)).toEqual([
+      "f-known",
+      "f-known",
+    ]);
+    expect(refs[0]).toMatch(/^[a-f0-9]{16}$/);
+    expect(refs[1]).toMatch(/^[a-f0-9]{16}$/);
+    expect(refs[0]).not.toBe(refs[1]);
+    for (const [index, body] of bodies.entries())
+      expect(expectFactoryFixAction(body).task).toContain(
+        `has ref ${refs[index]}.`,
+      );
+  });
   it("QA75 2135 exports an explicit immutable base and reloads it rather than the cache", async () => {
     delete process.env.REVIEW_BASE_SHA;
     const f = fixture([]);

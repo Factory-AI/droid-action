@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { format } from "prettier";
 import {
+  pluralize,
   renderCheckRun,
   renderInlineComment,
   renderReviewBody,
@@ -86,7 +87,7 @@ export function buildReviewPreviews(raw: string): Record<string, string> {
         durationSeconds: 4,
       },
       {
-        name: `Generated ${input.candidatesConsidered} candidates`,
+        name: `Generated ${pluralize(input.candidatesConsidered ?? 0, "candidate")}`,
         status: "completed" as const,
         durationSeconds: 91,
       },
@@ -229,11 +230,12 @@ export function buildReviewPreviews(raw: string): Record<string, string> {
         { ...input, badges },
       );
   }
-  previews["Inline with Fix in Factory"] = renderInlineComment(findings[0]!, {
-    ...input,
-    head: factoryFixHead,
-    factoryFix,
-  });
+  if (findings[0])
+    previews["Inline with Fix in Factory"] = renderInlineComment(findings[0], {
+      ...input,
+      head: factoryFixHead,
+      factoryFix,
+    });
   for (const [name, body] of Object.entries(previews)) {
     const errors = validateRenderedMarkdown(body);
     if (/summary/i.test(name) && !hasSummaryMarker(body))

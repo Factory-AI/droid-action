@@ -33,6 +33,31 @@ describe("review render templates", () => {
       expect(body).not.toContain("👎");
     });
   }
+  it("keeps the single-finding Fix in Factory example for the fixture", () => {
+    expect(Object.keys(buildReviewPreviews(raw))).toContain(
+      "Inline with Fix in Factory",
+    );
+  });
+  for (const [name, results] of [
+    ["an empty results array", []],
+    [
+      "an all-rejected review",
+      [
+        {
+          status: "rejected",
+          candidate: { path: "src/a.ts", title: "Not a bug" },
+          reason: "An existing guard covers it.",
+        },
+      ],
+    ],
+  ] as const)
+    it(`builds previews without an inline example for ${name}`, () => {
+      const names = Object.keys(
+        buildReviewPreviews(JSON.stringify({ results })),
+      );
+      expect(names).toContain("Clean summary");
+      expect(names.filter((key) => key.startsWith("Inline"))).toEqual([]);
+    });
   it("omits empty sections and counts in a clean review", () => {
     const body = renderReviewSummary({
       state: "clean",

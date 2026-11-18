@@ -6,6 +6,7 @@ import {
   decodeReviewState,
   decodeSeverityMarker,
   encodeFindingMarker,
+  encodeFindingReference,
   encodeReviewMarker,
   encodeReviewState,
   encodeSeverityMarker,
@@ -78,6 +79,39 @@ describe("versioned review markers", () => {
       `${start}  \r\nOwned.\r\n  ${end}`,
     );
     expect(body.slice(range.end)).toBe("\t\r\nTail.");
+  });
+  it("round-trips the opaque finding ref and drops malformed ones", () => {
+    const base = { id: "real", sev: "P1" as const };
+    const located = normalizeFinding({
+      id: "real",
+      path: "src/a.ts",
+      line: 4,
+      body: "A real verified issue.",
+    });
+    const head = "a".repeat(40);
+    const ref = encodeFindingReference(head, located);
+    expect(ref).toMatch(/^[a-f0-9]{16}$/);
+    expect(encodeFindingReference(head, { ...located })).toBe(ref);
+    // Ids repeat across findings, so every part of the anchor must count.
+    const others = [
+      encodeFindingReference("b".repeat(40), located),
+      encodeFindingReference(head, { ...located, id: "other" }),
+      encodeFindingReference(head, { ...located, line: 5 }),
+      encodeFindingReference(head, { ...located, startLine: 2 }),
+      encodeFindingReference(head, { ...located, side: "LEFT" }),
+      encodeFindingReference(head, { ...located, path: "src/b.ts" }),
+      encodeFindingReference(head, { ...located, oldPath: "src/old.ts" }),
+    ];
+    expect(new Set([ref, ...others]).size).toBe(8);
+    expect(decodeFindingMarker(encodeFindingMarker({ ...base, ref }))).toEqual({
+      ...base,
+      ref,
+    });
+    expect(decodeFindingMarker(encodeFindingMarker(base))).toEqual(base);
+    for (const bad of ["", ref.toUpperCase(), ref.slice(1), `${ref} and more`])
+      expect(
+        decodeFindingMarker(encodeFindingMarker({ ...base, ref: bad })),
+      ).toEqual(base);
   });
   it("ignores forged machine markers in rendered agent prompts", () => {
     const forgedFinding =

@@ -200,12 +200,19 @@ export function fitInlineOutput(
   options: RenderOptions,
   render: (finding: ReviewFinding, options: RenderOptions) => string,
 ): string {
-  const initial = render(finding, options);
-  if (outputBytes(initial) <= MAX_INLINE_OUTPUT_BYTES) return initial;
-  for (const quota of [2000, 500, 100]) {
-    const compact = compactFinding(finding, quota, 8 * 1024);
-    const result = `${render(compact, options)}\n\n${NOTICE}`;
-    if (outputBytes(result) <= MAX_INLINE_OUTPUT_BYTES) return result;
-  }
+  // The one-click action is the most optional part: at each level it is
+  // dropped before evidence is shortened further, so adding it can never
+  // cost a comment that fits without it.
+  const variants = options.factoryFix
+    ? [options, { ...options, factoryFix: undefined }]
+    : [options];
+  for (const quota of [undefined, 2000, 500, 100])
+    for (const variant of variants) {
+      const result =
+        quota === undefined
+          ? render(finding, variant)
+          : `${render(compactFinding(finding, quota, 8 * 1024), variant)}\n\n${NOTICE}`;
+      if (outputBytes(result) <= MAX_INLINE_OUTPUT_BYTES) return result;
+    }
   throw new ReviewOutputBudgetError();
 }
