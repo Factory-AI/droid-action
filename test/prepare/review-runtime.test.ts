@@ -45,7 +45,13 @@ describe("trusted review publisher artifacts", () => {
         line!.slice("__OUTPUTS__".length),
       );
       // The risk steps' scripts are frozen only when asked for by name.
-      for (const kind of ["settle", "risk_begin", "risk_token", "risk_assess"])
+      for (const kind of [
+        "settle",
+        "risk_begin",
+        "risk_token",
+        "risk_download",
+        "risk_assess",
+      ])
         expect(outputs[`review_${kind}_publisher_path`]).toBeUndefined();
       const directory = dirname(outputs.review_lifecycle_publisher_path!);
       try {

@@ -21,6 +21,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { run as assess } from "../../src/entrypoints/risk-assess";
 import { run as begin } from "../../src/entrypoints/risk-begin";
+import { run as download } from "../../src/entrypoints/risk-download";
 import { run as settle } from "../../src/entrypoints/risk-settle";
 import {
   checkoutWithPullRequest,
@@ -29,6 +30,7 @@ import {
   judge,
   planFor,
   serveWorker,
+  standInWorker,
   validVerdict,
   type WorkerRun,
   type WorkerScript,
@@ -68,6 +70,7 @@ describe("risk action entrypoints", () => {
   let dir = "";
   let planPath = "";
   let resultPath = "";
+  let workerPath = "";
   let outputs: Record<string, unknown> = {};
   let failed: string[] = [];
   let factory: ReturnType<typeof fakeFactory> | undefined;
@@ -95,6 +98,7 @@ describe("risk action entrypoints", () => {
       RISK_DRY_RUN: "true",
       RISK_PLAN_PATH: planPath,
       RISK_RESULT_PATH: resultPath,
+      RISK_WORKER_PATH: workerPath,
       ...overrides,
     };
   }
@@ -103,6 +107,7 @@ describe("risk action entrypoints", () => {
     dir = await mkdtemp(join(tmpdir(), "pr-risk-entrypoint-test-"));
     planPath = join(dir, "pr-risk", "plan.json");
     resultPath = join(dir, "pr-risk", "result.json");
+    workerPath = join(dir, "pr-risk", "droid-review.mjs");
     outputs = {};
     failed = [];
     spyOn(core, "setOutput").mockImplementation((name, value) => {
@@ -473,47 +478,41 @@ describe("risk action entrypoints", () => {
     }
 
     /**
-     * Runs the step against a stand-in worker; returns what each left, and
-     * every Authorization header the worker's storage was sent. `wrong`
-     * replaces the digest the step expects or the token it is given.
+     * Runs the step with a stand-in worker where the download step leaves
+     * the real one, and returns what each left. `left` is what the step
+     * finds there: the worker it runs, that worker with a line added, or
+     * no file.
      */
     async function assessWith(
       workspace: string,
       script: Omit<WorkerScript, "recordPath">,
-      wrong: { sha256?: string; token?: string } = {},
-    ): Promise<{
-      result: unknown;
-      ran: WorkerRun | undefined;
-      forwarded: string[];
-    }> {
+      left: "worker" | "changed" | "nothing" = "worker",
+    ): Promise<{ result: unknown; ran: WorkerRun | undefined }> {
       const recordPath = join(dir, "worker-run.json");
-      const served = serveWorker({ ...script, recordPath });
-      try {
-        await assess(
-          jobEnv({
-            PATH: process.env.PATH,
-            HOME: process.env.HOME,
-            GITHUB_WORKSPACE: workspace,
-            GH_TOKEN: "read-token",
-            GITHUB_TOKEN: "workflow-token",
-            ACTIONS_ID_TOKEN_REQUEST_TOKEN: "oidc-request-token",
-            RISK_JUDGE_API_BASE_URL: "https://judge.example",
-            RISK_WORKER_TOKEN: wrong.token ?? served.token,
-          }),
-          {
-            ...served.worker,
-            ...(wrong.sha256 ? { sha256: wrong.sha256 } : {}),
-          },
+      const { source, sha256 } = standInWorker({ ...script, recordPath });
+      if (left !== "nothing") {
+        await writeFile(
+          workerPath,
+          left === "worker" ? source : `${source}// changed\n`,
         );
-      } finally {
-        await served.stop();
       }
+      await assess(
+        jobEnv({
+          PATH: process.env.PATH,
+          HOME: process.env.HOME,
+          GITHUB_WORKSPACE: workspace,
+          GH_TOKEN: "read-token",
+          GITHUB_TOKEN: "workflow-token",
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: "oidc-request-token",
+          RISK_JUDGE_API_BASE_URL: "https://judge.example",
+        }),
+        sha256,
+      );
       return {
         result: JSON.parse(await readFile(resultPath, "utf8")),
         ran: (await exists(recordPath))
           ? JSON.parse(await readFile(recordPath, "utf8"))
           : undefined,
-        forwarded: served.forwarded,
       };
     }
 
@@ -573,7 +572,7 @@ describe("risk action entrypoints", () => {
     it("runs the worker on the planned commits with the judge's credentials and nothing else of the job, and settles its answer", async () => {
       const { plan, workspace, policySha, ended } = await planned();
 
-      const { result, ran, forwarded } = await assessWith(workspace, {
+      const { result, ran } = await assessWith(workspace, {
         exitCode: 0,
         report: {
           ...ended,
@@ -622,9 +621,6 @@ describe("risk action entrypoints", () => {
         GH_TOKEN: "read-token",
         FACTORY_API_BASE_URL: "https://judge.example",
       });
-      // The token the worker was downloaded with went to the address that
-      // asks for it, and not on to the storage that address redirects to.
-      expect(forwarded).toEqual([]);
       // The checkout held no credential by the time the worker started, and
       // held the history a merge base needs.
       expect(ran?.repoConfig).not.toContain("extraheader");
@@ -1067,30 +1063,29 @@ describe("risk action entrypoints", () => {
 
     it.each([
       [
-        "whose bytes are not the ones this version runs",
-        { sha256: "0".repeat(64) },
-        "its bytes are not the ones this version runs",
+        "a worker whose bytes are not the ones this version runs",
+        "changed",
+        "bytes are not the ones this version runs",
       ],
       [
-        "it has no token to download",
-        { token: " " },
-        "RISK_WORKER_TOKEN is empty",
+        "anything when the download step left no worker",
+        "nothing",
+        "left no PR risk worker to run",
       ],
-      [
-        "its token cannot download",
-        { token: "a-token-that-cannot-read-it" },
-        "could not be downloaded with its token and verified (status 404)",
-      ],
-    ])(
-      "does not run a worker %s, and says why without quoting a token",
-      async (_refused, wrong, logged) => {
+    ] as const)(
+      "does not run %s, and settles no verdict",
+      async (_refused, left, logged) => {
         const warning = spyOn(core, "warning").mockImplementation(() => {});
-        const { workspace } = await planned();
+        const { workspace, ended } = await planned();
 
+        // A worker that would answer, were it run.
         const { result, ran } = await assessWith(
           workspace,
-          { exitCode: 0 },
-          wrong,
+          {
+            exitCode: 0,
+            report: { ...ended, ...answeredBy("session-0"), answer },
+          },
+          left,
         );
 
         expect(ran).toBeUndefined();
@@ -1103,11 +1098,61 @@ describe("risk action entrypoints", () => {
         });
         expect(warning).toHaveBeenCalledTimes(1);
         expect(warning).toHaveBeenCalledWith(expect.stringContaining(logged));
-        expect(warning).not.toHaveBeenCalledWith(
-          expect.stringContaining("token-that"),
-        );
       },
       30_000,
+    );
+  });
+
+  describe("risk-download", () => {
+    const source = "console.log('a stand-in for the worker');\n";
+    let served: ReturnType<typeof serveWorker> | undefined;
+    let logged: string[] = [];
+
+    beforeEach(() => {
+      served = serveWorker(source);
+      logged = [];
+      const keep = (...parts: unknown[]) => {
+        logged.push(parts.join(" "));
+      };
+      spyOn(core, "warning").mockImplementation(keep);
+      spyOn(console, "log").mockImplementation(keep);
+      spyOn(console, "error").mockImplementation(keep);
+    });
+
+    afterEach(async () => {
+      await served?.stop();
+    });
+
+    it("leaves the worker in a file only the job's user can read, and sends the token no further than the address that asks for it", async () => {
+      await download(jobEnv({ RISK_WORKER_TOKEN: served!.token }), served!.url);
+
+      expect(await readFile(workerPath, "utf8")).toBe(source);
+      expect((await stat(workerPath)).mode % 0o1000).toBe(0o600);
+      expect((await stat(dirname(workerPath))).mode % 0o1000).toBe(0o700);
+      // GitHub's API redirects the download to storage on another host.
+      expect(served!.forwarded).toEqual([]);
+      expect(core.warning).not.toHaveBeenCalled();
+      expect(logged.join("\n")).not.toContain(served!.token);
+    });
+
+    it.each([
+      ["it has no token", " ", "(RISK_WORKER_TOKEN is empty)"],
+      [
+        "its token cannot read the worker",
+        "a-token-that-cannot-read-it",
+        "(status 404)",
+      ],
+    ])(
+      "leaves no worker when %s, and says why without quoting a token",
+      async (_refused, token, why) => {
+        // Resolves: a failed download is the assess step's to report.
+        await download(jobEnv({ RISK_WORKER_TOKEN: token }), served!.url);
+
+        expect(await exists(workerPath)).toBe(false);
+        expect(core.warning).toHaveBeenCalledTimes(1);
+        expect(core.warning).toHaveBeenCalledWith(expect.stringContaining(why));
+        expect(logged.join("\n")).not.toContain("token-that");
+      },
     );
   });
 

@@ -276,7 +276,7 @@ inputs:
     required: false
     default: "false"
   risk_worker_token:
-    description: "Needed when risk_assessment is 'true': a GitHub token that can read the droid-review release the risk judge's worker is downloaded from. Used for that download only: it is not passed to the worker or to the judge session."
+    description: "Needed when risk_assessment is 'true': a GitHub token that can read the droid-review release the risk judge's worker is downloaded from. Given only to the step that downloads it, which ends before the judge starts, and to the prepare step, which is handed every input and ends before the review starts."
     required: false
     default: ""
   risk_pr_number:
@@ -1958,14 +1958,69 @@ runs:
         APP_TOKEN_PERMISSIONS: '{"contents":"read","pull_requests":"read","issues":"read","checks":"read","statuses":"read"}'
         RISK_DRY_RUN: ${{ inputs.risk_dry_run }}
 
+    # The one step that is given the worker token. It downloads the
+    # droid-review worker to a file only the job's user can read and exits
+    # before the judge starts, so no process that runs pull request code is
+    # given the token. A failed download writes nothing and is a warning
+    # here: the next step finds no worker to run and reports that.
+    - name: Download the risk worker
+      id: risk_download
+      if: ${{ !cancelled() && steps.risk_begin.outputs.action == 'judge' }}
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
+      run: |
+        set -euo pipefail
+        for path in "${TRUSTED_TAIL_PATH:-}" "${TRUSTED_RUNTIME_PATH:-}"; do
+          case "$path" in /*) ;; *) echo "::error::The trusted download step is unavailable; no mutable fallback will run"; exit 1 ;; esac
+          if [ ! -f "$path" ] || [ -L "$path" ]; then
+            echo "::error::Refusing a missing or symlinked download executable"
+            exit 1
+          fi
+        done
+        if [[ ! "${TRUSTED_TAIL_SHA256:-}" =~ ^[a-f0-9]{64}$ ]] || [[ ! "${TRUSTED_RUNTIME_SHA256:-}" =~ ^[a-f0-9]{64}$ ]]; then
+          echo "::error::Missing trusted download executable digest"
+          exit 1
+        fi
+        if [ -x /usr/bin/sha256sum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/sha256sum --)
+        elif [ -x /usr/bin/shasum ]; then
+          digest_command=(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/shasum -a256 --)
+        else
+          echo "::error::No trusted SHA-256 verifier is available; refusing execution"
+          exit 1
+        fi
+        tail_hash=$("${digest_command[@]}" "$TRUSTED_TAIL_PATH")
+        runtime_hash=$("${digest_command[@]}" "$TRUSTED_RUNTIME_PATH")
+        if [ "${tail_hash%% *}" != "$TRUSTED_TAIL_SHA256" ] || [ "${runtime_hash%% *}" != "$TRUSTED_RUNTIME_SHA256" ]; then
+          echo "::error::Download script or runtime changed; refusing to execute"
+          exit 1
+        fi
+        /usr/bin/env -i \
+          PATH=/usr/bin:/bin \
+          RISK_WORKER_TOKEN="${RISK_WORKER_TOKEN:-}" RISK_WORKER_PATH="${RISK_WORKER_PATH:-}" \
+          "$TRUSTED_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$TRUSTED_TAIL_PATH"
+      env:
+        TRUSTED_TAIL_PATH: ${{ steps.prepare.outputs.review_risk_download_publisher_path }}
+        TRUSTED_TAIL_SHA256: ${{ steps.prepare.outputs.review_risk_download_publisher_sha256 }}
+        TRUSTED_RUNTIME_PATH: ${{ steps.prepare.outputs.review_runtime_path }}
+        TRUSTED_RUNTIME_SHA256: ${{ steps.prepare.outputs.review_runtime_sha256 }}
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
+        RISK_WORKER_TOKEN: ${{ inputs.risk_worker_token }}
+        RISK_WORKER_PATH: ${{ runner.temp }}/pr-risk/droid-review.mjs
+
     # The judge runs pull request code. This step therefore drops the OIDC
     # request credentials (which could mint a token that writes) before
-    # anything else starts. It downloads the droid-review worker with the
-    # worker token, runs it only when its bytes have the digest this version
-    # of the action names, and gives it an allow-listed environment to run
-    # the judge in, which leaves that token out. It runs even when an earlier
-    # step failed, and always leaves a result, so the failure is reported
-    # instead of leaving the pull request looking unassessed.
+    # anything else starts. It runs the worker the step above left only when
+    # its bytes have the digest this version of the action names, and gives
+    # it an allow-listed environment to run the judge in. It runs even when
+    # an earlier step failed, and always leaves a result, so the failure is
+    # reported instead of leaving the pull request looking unassessed.
     - name: Assess PR risk
       id: risk_assess
       if: ${{ !cancelled() && steps.risk_begin.outputs.action == 'judge' }}
@@ -2016,7 +2071,7 @@ runs:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         GH_TOKEN: ${{ steps.risk_token.outputs.github_token || (steps.risk_token.outputs.use_workflow_token == 'true' && github.token) || '' }}
         RISK_JUDGE_API_BASE_URL: ${{ inputs.risk_judge_api_base_url }}
-        RISK_WORKER_TOKEN: ${{ inputs.risk_worker_token }}
+        RISK_WORKER_PATH: ${{ runner.temp }}/pr-risk/droid-review.mjs
         RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
         RISK_RESULT_PATH: ${{ runner.temp }}/pr-risk/result.json
     # The two steps below run in an environment holding only what is named

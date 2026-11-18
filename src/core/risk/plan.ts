@@ -96,15 +96,25 @@ export function riskResultPath(env: NodeJS.ProcessEnv = process.env): string {
   return env.RISK_RESULT_PATH?.trim() || join(workDir(env), "result.json");
 }
 
-/** Writes JSON only its owner can read: these files carry the served judge. */
-export async function writePrivateJson(
+/** Where the download step leaves the worker for the assess step. */
+export function riskWorkerPath(env: NodeJS.ProcessEnv = process.env): string {
+  return env.RISK_WORKER_PATH?.trim() || join(workDir(env), "droid-review.mjs");
+}
+
+/** Writes a file only its owner can read, in a directory only they can open. */
+export async function writePrivateFile(
   path: string,
-  value: unknown,
+  data: string | Uint8Array,
 ): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  await writeFile(path, JSON.stringify(value), { mode: 0o600 });
+  await writeFile(path, data, { mode: 0o600 });
   // writeFile applies its mode only when it creates the file.
   await chmod(path, 0o600);
+}
+
+/** Writes JSON only its owner can read: these files carry the served judge. */
+export function writePrivateJson(path: string, value: unknown): Promise<void> {
+  return writePrivateFile(path, JSON.stringify(value));
 }
 
 // Parse failures are reported without Zod's message, which can quote values

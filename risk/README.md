@@ -17,12 +17,12 @@ and are never printed to the job log.
    Factory answers `skip`, `hold` or `judge`. For `skip` and `hold` the
    action stops there and succeeds.
 2. **Judge.** For `judge`, the action installs the Droid CLI, mints a
-   read-only GitHub token, and fetches into the job's checkout the commits
-   a judgment reads: the base, the pull request's head, the tip of the
-   default branch, and for a re-check the two commits of the earlier
-   verdict. It then runs the `droid-review` worker on them
-   (see [The worker](#the-worker)). The worker builds the evidence from
-   those commits alone: the diff, the changed-file list with its counts (at
+   read-only GitHub token, downloads the `droid-review` worker
+   (see [The worker](#the-worker)), and fetches into the job's checkout the
+   commits a judgment reads: the base, the pull request's head, the tip of
+   the default branch, and for a re-check the two commits of the earlier
+   verdict. It then runs the worker on them. The worker builds the evidence
+   from those commits alone: the diff, the changed-file list with its counts (at
    most 3,000 files are named and the rest counted), the head checked out
    in a repository of its own, and the default branch's
    `.factory/pr-risk/guidelines.md` when the repository has one. It runs the
@@ -165,8 +165,10 @@ The inputs are this sub-action's with a `risk_` prefix: `risk_worker_token`,
 `risk_pr_number`, `risk_api_base_url`, `risk_judge_api_base_url`,
 `risk_dry_run` and `risk_manual`. `factory_api_key` is shared with the review
 and there is no `review_outcome`, `review_base_sha` or `review_has_rules`. The
-outputs are `risk_action`, `risk_outcome` and `risk_head_sha`. Everything else
-on this page applies unchanged.
+outputs are `risk_action`, `risk_outcome` and `risk_head_sha`. The full
+action's prepare step is handed every input at once, `risk_worker_token`
+among them, and ends before the review starts. Everything else on this page
+applies unchanged.
 
 The pull request is taken from the `pull_request` event, from the pull
 request of a `workflow_run` event, or from `pr_number`.
@@ -221,17 +223,23 @@ that this version does not know is likewise a `skip` with a warning.
 
 The judge session is run by `droid-review`, a worker built as one file. Each
 version of the action names one build of it: the address of the file and the
-SHA-256 digest of its bytes. The assess step downloads the file, runs it only
-when its bytes have that digest, and deletes it when the run ends. The worker
+SHA-256 digest of its bytes. A step of its own downloads the file into the
+runner's temporary directory, where only the job's user can read it, and
+ends. The assess step then reads the file, runs those bytes only when they
+have that digest, and deletes the copy it ran when the run ends. The worker
 runs under the Bun the step itself runs under, never one found on `PATH`.
 
 The file is an asset of a release in a private repository, which GitHub
 serves only to a token that can read that repository. `worker_token` is that
-token. The step sends it to GitHub's API with the request for the file and
-nowhere else: the storage GitHub redirects the download to is not sent it,
-the worker and the judge session are not handed it, and the job log never
-quotes it. Without the token, or with one that cannot read the release, the
-run fails with `worker_unavailable`.
+token, and the download step is the only step of this sub-action given it. That
+step sends it to GitHub's API with the request for the file and nowhere
+else: the storage GitHub redirects the download to is not sent it, and the
+job log never quotes it. The step has ended before the assess step starts,
+so the worker, the judge session and everything the session runs start
+after the one process that was given the token is gone. Without the token,
+or with one that cannot read the release, the download step warns, the
+assess step finds no worker to run, and the run fails with
+`worker_unavailable`.
 
 The worker is handed the commits to judge, the judge Factory served, and the
 credentials listed under
@@ -271,10 +279,16 @@ tests), so the action limits what it is given:
 
 The session still runs as the job's user on the job's machine, where a
 process can read the environment of another process of the same user. The
-assess step's own environment holds `worker_token` and whatever the job sets
-for every step. Run this action only for pull requests whose authors you
-would let run code in that job, the same as for any workflow that builds a
-pull request with secrets present.
+assess step's own environment holds the Factory API key, the read-only
+GitHub token and whatever the job sets for every step. It does not hold
+`worker_token`: the one step given that token has ended before the session
+starts. Two things stay out of this action's hands. A process already
+running as the job's user when the download step starts, left behind by an
+earlier step of the job or by the full action's review, can read that step's
+environment while it runs. And the runner holds every secret of the job in
+its own memory, as it does for any action. Run this action only for pull
+requests whose authors you would let run code in that job, the same as for
+any workflow that builds a pull request with secrets present.
 
 ## Dry runs
 

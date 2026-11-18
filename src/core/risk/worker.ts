@@ -4,7 +4,6 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
-import { retryWithBackoff } from "../../utils/retry";
 import { writePrivateJson } from "./plan";
 import {
   CommitShaSchema,
@@ -14,10 +13,8 @@ import {
   type RiskPlan,
   type RiskResultFile,
   type RiskSettleResult,
-  type RiskWorker,
 } from "./types";
 
-const DOWNLOAD_TIMEOUT_MS = 60_000;
 const MAX_QUOTED_STDERR_CHARS = 1000;
 // The worker runs the judge at most twice (an answer that breaks the
 // contract earns one more session), bounds each session by the judge's
@@ -143,70 +140,42 @@ type RiskReport = z.infer<typeof RiskReportSchema>;
 const pathName = (path: ReadonlyArray<string | number>) =>
   path.join(".") || "<root>";
 
-class DownloadStatusError extends Error {
-  constructor(readonly status: number) {
-    super(`status ${status}`);
-  }
-}
+/** The file the download step left, and the digest of the bytes to run. */
+type DownloadedWorker = { path: string; sha256: string };
 
 /**
- * Downloads the worker with `token`, and returns it only when its bytes are
- * the ones `worker.sha256` names.
+ * The downloaded worker's bytes, when they are the ones `sha256` names. This
+ * is the one place those bytes are checked, and what it returns is what is
+ * run: a file changed after this read changes nothing.
  */
-async function downloadWorker(
-  worker: RiskWorker,
-  token: string,
-): Promise<Buffer> {
-  try {
-    const bytes = await retryWithBackoff(
-      async () => {
-        const response = await fetch(worker.url, {
-          // GitHub answers a release asset's address with the asset's bytes
-          // only when asked for them this way, by redirecting to storage on
-          // another host. `fetch` follows a redirect to another origin
-          // without the Authorization header, so the token goes to GitHub's
-          // API and no further.
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/octet-stream",
-          },
-          signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
-        });
-        if (!response.ok) throw new DownloadStatusError(response.status);
-        return Buffer.from(await response.arrayBuffer());
-      },
-      {
-        shouldRetry: (error) =>
-          !(error instanceof DownloadStatusError) || error.status >= 500,
-      },
-    );
-    if (createHash("sha256").update(bytes).digest("hex") !== worker.sha256) {
-      throw new Error("its bytes are not the ones this version runs");
-    }
-    return bytes;
-  } catch (error) {
+async function readWorker({ path, sha256 }: DownloadedWorker): Promise<Buffer> {
+  const bytes = await readFile(path).catch(() => {
     throw new RiskError(
       "worker_unavailable",
-      `The PR risk worker could not be downloaded with its token and verified (${
-        error instanceof Error ? error.message : "error"
-      })`,
+      "The download step left no PR risk worker to run",
+    );
+  });
+  if (createHash("sha256").update(bytes).digest("hex") !== sha256) {
+    throw new RiskError(
+      "worker_unavailable",
+      "The downloaded PR risk worker's bytes are not the ones this version runs",
     );
   }
+  return bytes;
 }
 
 /**
  * Runs `droid-review risk` on a checkout that already holds the input's
- * commits, and returns the report it wrote. The worker is downloaded with
- * `workerToken` and checked against its digest first, runs under the runtime
- * this process runs under, and gets `env` as its whole environment, which
- * the token is no part of. Exit 0 and 1 are a report; anything else is a
- * worker that left none, whatever file may sit at the report's path. A
- * worker that outlives every bound it sets itself is asked to stop, which it
- * answers with an `interrupted` report, and then killed.
+ * commits, and returns the report it wrote. The worker is the file the
+ * download step left, run only when its bytes have the digest named, under
+ * the runtime this process runs under, with `env` as its whole environment.
+ * Exit 0 and 1 are a report; anything else is a worker that left none,
+ * whatever file may sit at the report's path. A worker that outlives every
+ * bound it sets itself is asked to stop, which it answers with an
+ * `interrupted` report, and then killed.
  */
 export async function runRiskWorker(options: {
-  worker: RiskWorker;
-  workerToken: string;
+  worker: DownloadedWorker;
   repoDir: string;
   input: RiskWorkerInput;
   env: NodeJS.ProcessEnv;
@@ -214,7 +183,7 @@ export async function runRiskWorker(options: {
 }): Promise<RiskReport> {
   const { stopAfterMs, killAfterMs } =
     options.bounds ?? workerBounds(options.input.judge.timeoutSeconds);
-  const worker = await downloadWorker(options.worker, options.workerToken);
+  const worker = await readWorker(options.worker);
   const dir = await mkdtemp(join(tmpdir(), "pr-risk-worker-"));
   try {
     const workerPath = join(dir, "droid-review.mjs");

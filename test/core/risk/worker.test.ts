@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildWorkerInput, runRiskWorker } from "../../../src/core/risk/worker";
 import {
   git,
   planFor,
-  serveWorker,
+  standInWorker,
   type WorkerRun,
   type WorkerScript,
 } from "./fixtures";
@@ -14,7 +14,6 @@ import {
 describe("runRiskWorker", () => {
   let dir = "";
   let recordPath = "";
-  let served: ReturnType<typeof serveWorker> | undefined;
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "pr-risk-worker-test-"));
@@ -23,19 +22,18 @@ describe("runRiskWorker", () => {
   });
 
   afterEach(async () => {
-    await served?.stop();
-    served = undefined;
     await rm(dir, { recursive: true, force: true });
   });
 
-  function run(
+  async function run(
     script: Omit<WorkerScript, "recordPath">,
     bounds: { stopAfterMs: number; killAfterMs: number },
   ) {
-    served = serveWorker({ ...script, recordPath });
+    const { source, sha256 } = standInWorker({ ...script, recordPath });
+    const path = join(dir, "droid-review.mjs");
+    await writeFile(path, source);
     return runRiskWorker({
-      worker: served.worker,
-      workerToken: served.token,
+      worker: { path, sha256 },
       repoDir: dir,
       input: buildWorkerInput(planFor(), "d".repeat(40)),
       env: { PATH: process.env.PATH, HOME: process.env.HOME },

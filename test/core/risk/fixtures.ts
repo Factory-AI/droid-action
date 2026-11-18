@@ -3,11 +3,7 @@ import { createHash } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type {
-  RiskJudge,
-  RiskPlan,
-  RiskWorker,
-} from "../../../src/core/risk/types";
+import type { RiskJudge, RiskPlan } from "../../../src/core/risk/types";
 
 const execFileAsync = promisify(execFile);
 
@@ -190,18 +186,10 @@ export type WorkerRun = {
   repoConfig: string;
 };
 
-/**
- * Publishes a stand-in for the `droid-review` worker the way GitHub
- * publishes the real one: an address that answers only a request for the
- * file's bytes that holds `token`, by redirecting to storage on another
- * origin. `worker` names that address and the stand-in's true digest, and
- * `forwarded` holds every Authorization header the storage was sent.
- */
-export function serveWorker(script: WorkerScript): {
-  worker: RiskWorker;
-  token: string;
-  forwarded: string[];
-  stop: () => Promise<void>;
+/** A stand-in for the `droid-review` worker, and the digest of its bytes. */
+export function standInWorker(script: WorkerScript): {
+  source: string;
+  sha256: string;
 } {
   const source = `
 import { readFileSync, writeFileSync } from "node:fs";
@@ -232,6 +220,21 @@ writeFileSync(
 );
 if (!script.until) end();
 `;
+  return { source, sha256: createHash("sha256").update(source).digest("hex") };
+}
+
+/**
+ * Publishes `source` the way GitHub publishes the real worker: an address
+ * that answers only a request for the file's bytes that holds `token`, by
+ * redirecting to storage on another origin. `forwarded` holds every
+ * Authorization header the storage was sent.
+ */
+export function serveWorker(source: string): {
+  url: string;
+  token: string;
+  forwarded: string[];
+  stop: () => Promise<void>;
+} {
   const token = "worker-token";
   const forwarded: string[] = [];
   const storage = Bun.serve({
@@ -256,10 +259,7 @@ if (!script.until) end();
     },
   });
   return {
-    worker: {
-      url: `http://127.0.0.1:${api.port}/releases/assets/1`,
-      sha256: createHash("sha256").update(source).digest("hex"),
-    },
+    url: `http://127.0.0.1:${api.port}/releases/assets/1`,
     token,
     forwarded,
     stop: async () => {

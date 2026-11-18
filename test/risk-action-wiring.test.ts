@@ -114,19 +114,28 @@ describe.each(variants)(
       }
     });
 
-    it("gives the token the worker is downloaded with to the judge step alone", () => {
-      const assess = step("assess");
-      expect(assess.env?.RISK_WORKER_TOKEN).toBe(
+    it("gives the token the worker is downloaded with to one step, which ends before the judge step starts", () => {
+      const download = step("download");
+      if (!p)
+        expect(download.run).toContain("src/entrypoints/risk-download.ts");
+      expect(download.env?.RISK_WORKER_TOKEN).toBe(
         `\${{ inputs.${p}worker_token }}`,
       );
       for (const candidate of steps) {
-        if (candidate === assess) continue;
-        expect(JSON.stringify(candidate)).not.toContain("worker_token");
+        if (candidate === download) continue;
+        expect(JSON.stringify(candidate)).not.toMatch(/worker_token/i);
+      }
+      expect(steps.indexOf(download)).toBe(steps.indexOf(step("assess")) - 1);
+      // The judge step reads the worker from where that step left it.
+      for (const { env } of [download, step("assess")]) {
+        expect(env?.RISK_WORKER_PATH).toBe(
+          "${{ runner.temp }}/pr-risk/droid-review.mjs",
+        );
       }
     });
 
     it("reports a failed judge run, and leaves a cancelled one to the run that replaced it", () => {
-      for (const id of ["assess", "settle"]) {
+      for (const id of ["download", "assess", "settle"]) {
         expect(step(id).if).toBe(
           `\${{ !cancelled() && steps.${p}begin.outputs.action == 'judge' }}`,
         );
@@ -186,6 +195,7 @@ describe.each(variants)(
       ).toEqual([
         `${p}begin`,
         `${p}token`,
+        `${p}download`,
         `${p}assess`,
         "Revoke judge read token",
         `${p}settle`,
@@ -242,6 +252,17 @@ describe("risk assessment inside the full action", () => {
     ).toMatchObject({ RISK_ASSESSMENT: "${{ inputs.risk_assessment }}" });
   });
 
+  // `toJson(inputs)` holds the worker token whatever the step names.
+  it("hands every input at once to the prepare step alone", () => {
+    expect(
+      rootSteps
+        .filter((candidate) =>
+          /toJson\(\s*inputs/i.test(JSON.stringify(candidate)),
+        )
+        .map((candidate) => candidate.id),
+    ).toEqual(["prepare"]);
+  });
+
   it("starts only after the review's App token is revoked, and never reads it", () => {
     expect(before.at(-1)?.name).toBe("Revoke GitHub App token");
     for (const candidate of risk) {
@@ -262,6 +283,7 @@ describe("risk assessment inside the full action", () => {
     for (const [id, kind] of [
       ["risk_begin", "risk_begin"],
       ["risk_token", "risk_token"],
+      ["risk_download", "risk_download"],
       ["risk_assess", "risk_assess"],
       ["risk_settle", "settle"],
     ] as const) {

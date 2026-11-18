@@ -21,7 +21,6 @@ export const RISK_WORKER = {
   url: "https://api.github.com/repos/Factory-AI/droid-review/releases/assets/763479411",
   sha256: "007ce58b4df9b203fea16ad0232866424e3204b648c22dc28249afd35bd34e09",
 };
-export type RiskWorker = typeof RISK_WORKER;
 
 const FAILURE_REASON = /^[a-z][a-z0-9_]{0,63}$/;
 

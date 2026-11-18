@@ -2,8 +2,10 @@
 
 /**
  * The judge step of the risk action. It reads the plan the begin step left,
- * fetches the plan's commits into the job's checkout, downloads the
- * `droid-review risk` worker this version names, and runs it on them. The
+ * fetches the plan's commits into the job's checkout, and runs on them the
+ * `droid-review risk` worker the download step left, when its bytes are the
+ * ones this version names. This step is never given the token the worker
+ * was downloaded with: the judge runs pull request code beneath it. The
  * worker builds the evidence and runs the judge Factory served: on the whole
  * change, as a re-check of an earlier verdict, or both, as the plan asks.
  * What the worker reports becomes the result the settle step reads. It
@@ -22,6 +24,7 @@ import {
   requiredEnv,
   riskPlanPath,
   riskResultPath,
+  riskWorkerPath,
   writePrivateJson,
 } from "../core/risk/plan";
 import {
@@ -29,7 +32,6 @@ import {
   RiskError,
   failureReason,
   type RiskResultFile,
-  type RiskWorker,
 } from "../core/risk/types";
 import {
   buildWorkerInput,
@@ -39,7 +41,7 @@ import {
 
 async function assess(
   env: NodeJS.ProcessEnv,
-  worker: RiskWorker,
+  workerSha256: string,
   startedAt: number,
 ): Promise<RiskResultFile> {
   const plan = await readRiskPlan(riskPlanPath(env));
@@ -54,24 +56,16 @@ async function assess(
       "No GitHub token is available to read the pull request",
     );
   }
-  const workerToken = env.RISK_WORKER_TOKEN?.trim();
-  if (!workerToken) {
-    throw new RiskError(
-      "worker_unavailable",
-      "The PR risk worker is downloaded with a token, and RISK_WORKER_TOKEN is empty",
-    );
-  }
   const policySha = await fetchRiskRevisions(plan, { repoDir, githubToken });
   await removeCheckoutCredentials(repoDir);
   const judgeApiBaseUrl = env.RISK_JUDGE_API_BASE_URL?.trim();
   const report = await runRiskWorker({
-    worker,
-    workerToken,
+    worker: { path: riskWorkerPath(env), sha256: workerSha256 },
     repoDir,
     input: buildWorkerInput(plan, policySha),
     // The worker's whole environment. Its judge session runs pull request
     // code, so it gets the Factory credential, the read-only GitHub token,
-    // and nothing else the job holds: not the token it was downloaded with.
+    // and nothing else the job holds.
     env: {
       ...(env.PATH ? { PATH: env.PATH } : {}),
       ...(env.HOME ? { HOME: env.HOME } : {}),
@@ -87,12 +81,12 @@ async function assess(
 
 export async function run(
   env: NodeJS.ProcessEnv = process.env,
-  worker: RiskWorker = RISK_WORKER,
+  workerSha256: string = RISK_WORKER.sha256,
 ): Promise<void> {
   const startedAt = Date.now();
   let file: RiskResultFile;
   try {
-    file = await assess(env, worker, startedAt);
+    file = await assess(env, workerSha256, startedAt);
   } catch (error) {
     const reason = failureReason(error);
     core.warning(
