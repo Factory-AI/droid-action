@@ -148,6 +148,13 @@ the action nothing to review, as on a `workflow_dispatch` that only asks for
 an assessment. A cancelled run assesses nothing. On a comment left on a pull
 request, that pull request is the one assessed.
 
+Factory is also told what the review read of `.factory/review.yaml` before
+it started: the pull request's base commit, and whether the file there has
+a `rules` key. Factory reads the pull request's rules at that commit, so
+one version of the file configures the review and the assessment, and reads
+nothing when the file has no rules. This sub-action runs no review and says
+neither, so Factory reads the rules from the tip of the base branch.
+
 The inputs are this sub-action's with a `risk_` prefix: `risk_pr_number`,
 `risk_api_base_url`, `risk_judge_api_base_url`, `risk_dry_run` and
 `risk_manual`. `factory_api_key` is shared with the review and there is no

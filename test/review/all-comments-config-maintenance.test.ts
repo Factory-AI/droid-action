@@ -327,6 +327,15 @@ describe("all-comments pinned regular GitHub configuration", () => {
       },
     };
   }
+  it("hands the steps after the review the base commit and whether its file has Factory's rules", async () => {
+    const f = fixture();
+    await initializeReviewConfig(f.context, f.client);
+    expect(core.setOutput).toHaveBeenCalledWith(
+      "review_base_sha",
+      "a".repeat(40),
+    );
+    expect(core.setOutput).toHaveBeenCalledWith("review_has_rules", "false");
+  });
   it.each(["100644", "100755"])(
     "accepts regular Git object mode %s pinned to base, never head",
     async (mode) => {

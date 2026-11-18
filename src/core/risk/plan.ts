@@ -12,6 +12,7 @@ import {
   RiskReviewOutcomeSchema,
   type RiskPlan,
   type RiskResultFile,
+  type RiskReviewConfig,
   type RiskReviewOutcome,
   type RiskRun,
   type RiskSettleRequest,
@@ -62,6 +63,21 @@ export function parseReviewOutcome(
 ): RiskReviewOutcome | undefined {
   const parsed = RiskReviewOutcomeSchema.safeParse(value?.trim());
   return parsed.success ? parsed.data : undefined;
+}
+
+/**
+ * What the review's prepare step read of `.factory/review.yaml`, or
+ * undefined unless it said both where and what: a run with half of it has
+ * nothing to tell Factory.
+ */
+export function parseReviewConfig(
+  baseSha: string | undefined,
+  hasRules: string | undefined,
+): RiskReviewConfig | undefined {
+  const sha = CommitShaSchema.safeParse(baseSha?.trim());
+  const flag = hasRules?.trim();
+  if (!sha.success || (flag !== "true" && flag !== "false")) return undefined;
+  return { baseSha: sha.data, hasRules: flag === "true" };
 }
 
 function workDir(env: NodeJS.ProcessEnv): string {

@@ -1807,6 +1807,7 @@ runs:
           FACTORY_API_KEY="${FACTORY_API_KEY:-}" RISK_API_BASE_URL="${RISK_API_BASE_URL:-}" \
           RISK_PR_NUMBER="${RISK_PR_NUMBER:-}" RISK_REVIEW_OUTCOME="${RISK_REVIEW_OUTCOME:-}" \
           RISK_DRY_RUN="${RISK_DRY_RUN:-}" RISK_MANUAL="${RISK_MANUAL:-}" \
+          RISK_REVIEW_BASE_SHA="${RISK_REVIEW_BASE_SHA:-}" RISK_REVIEW_HAS_RULES="${RISK_REVIEW_HAS_RULES:-}" \
           RISK_PLAN_PATH="${RISK_PLAN_PATH:-}" RISK_RESULT_PATH="${RISK_RESULT_PATH:-}" \
           TRUSTED_TAIL_PREFROZEN=true \
           GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" GITHUB_EVENT_PATH="${GITHUB_EVENT_PATH:-}" \
@@ -1838,6 +1839,11 @@ runs:
         RISK_REVIEW_OUTCOME: ${{ github.action_status == 'success' && steps.prepare.outputs.contains_trigger != 'true' && 'skipped' || github.action_status }}
         RISK_DRY_RUN: ${{ inputs.risk_dry_run }}
         RISK_MANUAL: ${{ inputs.risk_manual }}
+        # What the prepare step read of .factory/review.yaml, before the
+        # review ran: Factory reads the rules at the same commit, and reads
+        # nothing when the file has none.
+        RISK_REVIEW_BASE_SHA: ${{ steps.prepare.outputs.review_base_sha }}
+        RISK_REVIEW_HAS_RULES: ${{ steps.prepare.outputs.review_has_rules }}
         RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
         RISK_RESULT_PATH: ${{ runner.temp }}/pr-risk/result.json
         RUNNER_TEMP: ${{ runner.temp }}

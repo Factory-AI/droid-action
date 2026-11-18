@@ -185,6 +185,51 @@ describe("risk action entrypoints", () => {
       expect((await stat(planPath)).mode % 0o1000).toBe(0o600);
     });
 
+    it("tells Factory what the review read of the review configuration", async () => {
+      const { received } = serve({ action: "skip", reason: "draft" });
+
+      await begin(
+        jobEnv({
+          GITHUB_EVENT_PATH: await eventFile(pullRequestEvent),
+          RISK_REVIEW_BASE_SHA: plan.baseSha,
+          RISK_REVIEW_HAS_RULES: "false",
+        }),
+      );
+
+      expect(received[0]?.body).toMatchObject({
+        pr: 123,
+        reviewConfig: { baseSha: plan.baseSha, hasRules: false },
+      });
+    });
+
+    it.each([
+      ["no commit", { RISK_REVIEW_HAS_RULES: "true" }],
+      ["no word on the rules", { RISK_REVIEW_BASE_SHA: "b".repeat(40) }],
+      [
+        "a commit that is not a full SHA",
+        { RISK_REVIEW_BASE_SHA: "main", RISK_REVIEW_HAS_RULES: "true" },
+      ],
+      [
+        "a word on the rules that is not true or false",
+        { RISK_REVIEW_BASE_SHA: "b".repeat(40), RISK_REVIEW_HAS_RULES: "" },
+      ],
+    ])(
+      "says nothing of the review configuration when the review left %s",
+      async (_name, said) => {
+        const { received } = serve({ action: "skip", reason: "draft" });
+
+        await begin(
+          jobEnv({
+            GITHUB_EVENT_PATH: await eventFile(pullRequestEvent),
+            ...said,
+          }),
+        );
+
+        expect(received).toHaveLength(1);
+        expect(received[0]?.body).not.toHaveProperty("reviewConfig");
+      },
+    );
+
     it("tells Factory when the event saw a draft", async () => {
       const { received } = serve({ action: "skip", reason: "draft" });
 
