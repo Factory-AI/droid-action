@@ -22,6 +22,32 @@ import {
 } from "./verdict";
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * The judge's tools when Factory serves no `enabledTools`: what reading and
+ * verifying a pull request needs. The CLI adds Script and WaitForScript to
+ * any `--only-tools` set, so a Script-mode model drives these through Script.
+ * An allow-list rather than the CLI default keeps out the file-writing tools
+ * and Factory's org-write tools (automations, loops, missions, generators),
+ * which the judge, reading untrusted pull request content, must not reach
+ * as first-class tools; any tool the CLI adds later stays opt-in. It is not
+ * a boundary: `Execute` runs unsandboxed shell commands.
+ */
+export const RISK_JUDGE_DEFAULT_TOOLS = [
+  "Read",
+  "Grep",
+  "Glob",
+  "LS",
+  "Execute",
+  "Task",
+  "TaskOutput",
+  "TaskStop",
+  "Skill",
+  "ToolSearch",
+  "TodoWrite",
+  "FetchUrl",
+  "WebSearch",
+] as const;
 const MAX_DROID_OUTPUT_BYTES = 16 * 1024 * 1024;
 
 /** The one JSON object `droid exec -o json` writes to stdout. */
@@ -250,7 +276,7 @@ export async function runPrRiskJudge(
     "--tag",
     RISK_SESSION_TAG,
     "--only-tools",
-    judge.enabledTools.join(","),
+    (judge.enabledTools ?? RISK_JUDGE_DEFAULT_TOOLS).join(","),
     "--output-format",
     "json",
     "--cwd",

@@ -81,7 +81,11 @@ export type RiskBeginRequest = {
 export const RiskJudgeSchema = z.object({
   group: z.string().min(1),
   skill: z.string().min(1),
-  enabledTools: z.array(z.string().min(1)).nonempty(),
+  /**
+   * The judge's allow-list (`--only-tools`). Absent, the judge gets the
+   * runner's read-and-verify set (`RISK_JUDGE_DEFAULT_TOOLS`).
+   */
+  enabledTools: z.array(z.string().min(1)).nonempty().optional(),
   settings: z.record(z.unknown()),
   scores: z.record(z.tuple([z.number().int(), z.number().int()])),
   timeoutSeconds: z.number().int().positive(),

@@ -29,6 +29,22 @@ and are never printed to the job log.
    reason, so the head is marked unavailable instead of keeping a stale
    result.
 
+### The judge's tools
+
+The session runs `droid exec --auto high --only-tools <list>`. The list is
+the judge's `enabledTools` when Factory serves one. Without it, the action
+uses its own read-and-verify set: `Read`, `Grep`, `Glob`, `LS`, `Execute`,
+`Task`, `TaskOutput`, `TaskStop`, `Skill`, `ToolSearch`, `TodoWrite`,
+`FetchUrl` and `WebSearch`. The CLI adds `Script` and `WaitForScript` to any
+`--only-tools` set, so a model that calls tools through Script uses the same
+tools that way. The judge is meant to read and verify, never change
+anything, so the set leaves out the file-writing tools (`Create`, `Edit`,
+`ApplyPatch`) and Factory's org-write tools (automations, loops, missions,
+generators). A tool the CLI adds later stays out until it is listed. This
+is not a sandbox: `Execute` runs shell commands on the runner unsandboxed,
+and the session's environment (the Factory key and a read-only GitHub
+token) is the boundary.
+
 ### Re-checking an earlier verdict
 
 Every begin request says the action can re-check an earlier verdict
@@ -267,8 +283,8 @@ bun run src/entrypoints/risk-assess.ts \
 configuration, credentials included, is left as it is. The judge
 file is JSON with `skill` (the judge's instructions; the pull request
 snapshot replaces `{{PR_SNAPSHOT_JSON}}` in it, or is appended when the
-placeholder is absent), `enabledTools`, `settings` (written as the session's
-settings file), `scores` (each score's name with its `[min, max]` range), and
+placeholder is absent), optionally `enabledTools`, `settings` (written as the
+session's settings file), `scores` (each score's name with its `[min, max]` range), and
 optionally `group` and `timeoutSeconds`. The result is written to
 `<out>/pr-risk-result.json`, and the command exits non-zero when no verdict
 was produced. `--droid-binary` selects a Droid CLI other than the one on

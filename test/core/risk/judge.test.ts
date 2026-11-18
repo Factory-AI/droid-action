@@ -7,7 +7,10 @@ import {
   runPrRiskJudge,
 } from "../../../src/core/risk/judge";
 import { buildPrRiskSnapshot } from "../../../src/core/risk/snapshot";
-import type { RiskJudgeAttempt } from "../../../src/core/risk/types";
+import {
+  RiskJudgeSchema,
+  type RiskJudgeAttempt,
+} from "../../../src/core/risk/types";
 import {
   evidenceAt,
   execSummary,
@@ -79,6 +82,73 @@ describe("runPrRiskJudge", () => {
     expect(args).not.toContain("--model");
     expect(verdict).toEqual(validVerdict);
     expect(attempts).toEqual([{ sessionId: "session-1", valid: true }]);
+  });
+
+  it("accepts a served judge without enabledTools and still rejects an empty list", () => {
+    const { enabledTools: _enabledTools, ...withoutTools } = judge;
+    expect(
+      RiskJudgeSchema.safeParse({ ...withoutTools, sha256: "a".repeat(64) })
+        .success,
+    ).toBe(true);
+    expect(
+      RiskJudgeSchema.safeParse({
+        ...judge,
+        enabledTools: [],
+        sha256: "a".repeat(64),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("gives a judge served without enabledTools the read-and-verify set, with no org-write tools", async () => {
+    const invocations: Array<readonly string[]> = [];
+
+    await runPrRiskJudge(snapshot, {
+      judge: { ...judge, enabledTools: undefined },
+      evidence: evidenceAt(evidenceRoot),
+      env,
+      executeDroid: async ({ args }) => {
+        invocations.push(args);
+        return execSummary(validVerdict);
+      },
+    });
+
+    const args = invocations[0] ?? [];
+    const onlyTools = (args[args.indexOf("--only-tools") + 1] ?? "").split(",");
+    expect(onlyTools).toEqual([
+      "Read",
+      "Grep",
+      "Glob",
+      "LS",
+      "Execute",
+      "Task",
+      "TaskOutput",
+      "TaskStop",
+      "Skill",
+      "ToolSearch",
+      "TodoWrite",
+      "FetchUrl",
+      "WebSearch",
+    ]);
+    for (const orgWrite of [
+      "CreateAutomation",
+      "EditAutomation",
+      "DeleteAutomation",
+      "RunAutomation",
+      "loop_create",
+      "loop_pause",
+      "loop_resume",
+      "loop_cancel",
+      "ProposeMission",
+      "StartMissionRun",
+      "GenerateDroid",
+      "GenerateImage",
+      "Create",
+      "Edit",
+      "ApplyPatch",
+    ]) {
+      expect(onlyTools).not.toContain(orgWrite);
+    }
+    expect(args).not.toContain("--remove-tools");
   });
 
   it("retries once with the exact contract when the answer carries an undeclared key", async () => {

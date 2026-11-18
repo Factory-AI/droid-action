@@ -154,7 +154,7 @@ async function offlineInputs(
   } catch {
     throw new RiskError(
       "judge_file_invalid",
-      "The judge file must be JSON with skill, enabledTools, settings and scores",
+      "The judge file must be JSON with skill, settings and scores, and optionally enabledTools",
     );
   }
   let incremental: RiskIncremental | undefined;
