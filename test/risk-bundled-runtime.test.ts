@@ -158,6 +158,8 @@ describe("full action risk steps before the judge", () => {
         RISK_REVIEW_OUTCOME: "failure",
         RISK_DRY_RUN: "true",
         RISK_MANUAL: "false",
+        RISK_REVIEW_BASE_SHA: "b".repeat(40),
+        RISK_REVIEW_HAS_RULES: "true",
         RISK_PLAN_PATH: join(work, "pr-risk", "plan.json"),
         RISK_RESULT_PATH: join(work, "pr-risk", "result.json"),
         RUNNER_TEMP: work,
@@ -197,6 +199,7 @@ describe("full action risk steps before the judge", () => {
       repo: "acme/app",
       pr: 123,
       reviewOutcome: "failure",
+      reviewConfig: { baseSha: "b".repeat(40), hasRules: true },
     });
     const output = await readFile(outputPath, "utf8");
     expect(output).toMatch(/^action<<(\S+)\njudge\n\1\n/);

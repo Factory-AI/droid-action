@@ -308,3 +308,38 @@ describe("risk assessment inside the full action", () => {
     }
   });
 });
+
+// A workflow that runs the review and the assessment as two steps hands
+// what the review read from one to the other.
+describe("what the review read, passed between two steps", () => {
+  type Declared = {
+    inputs?: Record<string, { required?: boolean; default?: string }>;
+    outputs?: Record<string, { value?: string }>;
+  };
+  const declared = (relativePath: string): Declared =>
+    parse(readFileSync(join(import.meta.dir, "..", relativePath), "utf8"));
+  const root = declared("action.yml");
+  const standalone = declared("risk/action.yml");
+
+  it.each([
+    ["review_base_sha", "RISK_REVIEW_BASE_SHA"],
+    ["review_has_rules", "RISK_REVIEW_HAS_RULES"],
+  ])(
+    "leaves the full action as %s and reaches the standalone begin step as %s",
+    (name, variable) => {
+      const fromPrepare = `\${{ steps.prepare.outputs.${name} }}`;
+      expect(root.outputs?.[name]?.value).toBe(fromPrepare);
+      // The bundled assessment is told the same thing the output says.
+      expect(rootSteps[rootRiskStart]?.env?.[variable]).toBe(fromPrepare);
+
+      expect(standalone.inputs?.[name]).toMatchObject({
+        required: false,
+        default: "",
+      });
+      const begin = load("risk/action.yml").find(
+        (candidate) => candidate.id === "begin",
+      );
+      expect(begin?.env?.[variable]).toBe(`\${{ inputs.${name} }}`);
+    },
+  );
+});

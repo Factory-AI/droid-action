@@ -63,6 +63,13 @@ export const RiskReviewOutcomeSchema = z.enum([
 ]);
 export type RiskReviewOutcome = z.infer<typeof RiskReviewOutcomeSchema>;
 
+/**
+ * `.factory/review.yaml` as the review's prepare step read it: the pull
+ * request's base commit, which it read the file at, and whether the file
+ * has a `rules` key. A repository without the file has none.
+ */
+export type RiskReviewConfig = { baseSha: string; hasRules: boolean };
+
 export type RiskBeginRequest = {
   repo: string;
   pr: number;
@@ -71,6 +78,12 @@ export type RiskBeginRequest = {
   eventDraft?: boolean;
   manual: boolean;
   reviewOutcome?: RiskReviewOutcome;
+  /**
+   * Lets Factory read the rules at the commit the review was configured
+   * at, and skip the read when the file has none. Absent when no review
+   * ran in this job.
+   */
+  reviewConfig?: RiskReviewConfig;
   capabilities?: string[];
   run: RiskRun;
 };

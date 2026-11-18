@@ -14,6 +14,7 @@ import {
   buildRiskRun,
   describeFailure,
   parseFlag,
+  parseReviewConfig,
   parseReviewOutcome,
   readEvent,
   requiredEnv,
@@ -61,6 +62,10 @@ export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
     );
   }
 
+  const reviewConfig = parseReviewConfig(
+    env.RISK_REVIEW_BASE_SHA,
+    env.RISK_REVIEW_HAS_RULES,
+  );
   const riskRun = buildRiskRun(dryRun, env);
   const response = await beginRisk(
     {
@@ -70,6 +75,7 @@ export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
       ...(target.eventDraft ? { eventDraft: true } : {}),
       manual,
       ...(reviewOutcome ? { reviewOutcome } : {}),
+      ...(reviewConfig ? { reviewConfig } : {}),
       capabilities: RISK_CAPABILITIES,
       run: riskRun,
     },
