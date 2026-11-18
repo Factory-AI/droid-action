@@ -16,6 +16,7 @@ import {
   writePrivateJson,
 } from "../../../src/core/risk/plan";
 import {
+  RISK_SETTLE_MAX_BODY_BYTES,
   RiskError,
   failureReason,
   type RiskResultFile,
@@ -304,5 +305,49 @@ describe("buildSettleRequest", () => {
       reason: "result_too_large",
     });
     expect(request.headSha).toBe(plan.headSha);
+  });
+
+  it("gives up the shadow re-check, not the verdict, when both together are too large to send", () => {
+    const judged = (
+      details: string,
+    ): Extract<RiskResultFile["result"], { status: "judged" }> => ({
+      status: "judged",
+      baseSha: plan.baseSha,
+      judgeSha256: judge.sha256,
+      snapshotHash: "f".repeat(64),
+      listedFiles: 1,
+      attempts: [{ valid: true }],
+      durationMs: 34,
+      verdict: { ...validVerdict, details },
+    });
+    const result = judged("x".repeat(200 * 1024));
+
+    const request = buildSettleRequest(plan, {
+      result,
+      shadow: { ...judged("y".repeat(200 * 1024)), mode: "incremental" },
+    });
+
+    expect(request.result).toEqual(result);
+    expect(request.shadow).toEqual({
+      status: "failed",
+      reason: "result_too_large",
+    });
+
+    // A verdict just under the limit leaves no room for the shadow's
+    // failure either, so the shadow is left out.
+    const size = (details: string) =>
+      Buffer.byteLength(
+        JSON.stringify(buildSettleRequest(plan, { result: judged(details) })),
+      );
+    const full = judged("x".repeat(RISK_SETTLE_MAX_BODY_BYTES - 10 - size("")));
+    const crowded = buildSettleRequest(plan, {
+      result: full,
+      shadow: { ...judged("y".repeat(1024)), mode: "incremental" },
+    });
+    expect(crowded.result).toEqual(full);
+    expect(crowded.shadow).toBeUndefined();
+    expect(Buffer.byteLength(JSON.stringify(crowded))).toBeLessThanOrEqual(
+      RISK_SETTLE_MAX_BODY_BYTES,
+    );
   });
 });

@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { z } from "zod";
 import { redactCredentials } from "../../utils/redact-credentials";
 import {
+  CommitShaSchema,
   RISK_RUNNER,
   RISK_SETTLE_MAX_BODY_BYTES,
   RiskError,
@@ -16,7 +17,6 @@ import {
   type RiskSettleRequest,
 } from "./types";
 
-const COMMIT_SHA = /^[0-9a-f]{40}$/;
 const MAX_LOGGED_ERROR_CHARS = 2000;
 
 const PullRequestRefSchema = z.object({
@@ -175,7 +175,9 @@ export function resolveTarget(
   const sha = match?.head?.sha;
   return {
     pr,
-    ...(sha && COMMIT_SHA.test(sha) ? { eventHeadSha: sha } : {}),
+    ...(sha && CommitShaSchema.safeParse(sha).success
+      ? { eventHeadSha: sha }
+      : {}),
     ...(match && "draft" in match && match.draft === true
       ? { eventDraft: true }
       : {}),
@@ -216,14 +218,24 @@ export function buildSettleRequest(
         : {}),
     },
     result: file.result,
+    ...(file.shadow ? { shadow: file.shadow } : {}),
   };
-  if (
-    Buffer.byteLength(JSON.stringify(request)) <= RISK_SETTLE_MAX_BODY_BYTES
-  ) {
-    return request;
+  const fits = (candidate: RiskSettleRequest) =>
+    Buffer.byteLength(JSON.stringify(candidate)) <= RISK_SETTLE_MAX_BODY_BYTES;
+  if (fits(request)) return request;
+  // The shadow re-check is only measured, so it gives way to the verdict,
+  // and its failure marker too when even that does not fit beside it.
+  const { shadow: _shadow, ...primary } = request;
+  if (file.shadow) {
+    const marked: RiskSettleRequest = {
+      ...primary,
+      shadow: { status: "failed", reason: "result_too_large" },
+    };
+    if (fits(marked)) return marked;
   }
+  if (fits(primary)) return primary;
   return {
-    ...request,
+    ...primary,
     result: { status: "failed", reason: "result_too_large" },
   };
 }

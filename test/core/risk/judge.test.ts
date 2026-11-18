@@ -131,6 +131,75 @@ describe("runPrRiskJudge", () => {
     );
   });
 
+  it.each([
+    [
+      "resolvedConcerns",
+      { resolvedConcerns: [{ concern: "c1", evidence: "x" }] },
+    ],
+    ["checks", { checks: [{ command: "bun test", exitCode: 0, covers: [] }] }],
+  ])(
+    "retries a full judgment that answers with %s, and never offers it in the retry contract",
+    async (_name, extra) => {
+      const outputs = [{ ...validVerdict, ...extra }, validVerdict];
+      const skills: string[] = [];
+
+      const verdict = await runPrRiskJudge(snapshot, {
+        judge,
+        evidence: evidenceAt(evidenceRoot),
+        env,
+        executeDroid: async ({ cwd }) => {
+          skills.push(await readFile(join(cwd, ...SKILL_PATH), "utf8"));
+          return execSummary(outputs[skills.length - 1], `s${skills.length}`);
+        },
+      });
+
+      expect(verdict).toEqual(validVerdict);
+      expect(skills).toHaveLength(2);
+      expect(skills[1]).toContain("## Strict retry");
+      expect(skills[1]).not.toContain("resolvedConcerns");
+      expect(skills[1]).not.toContain("- checks");
+    },
+  );
+
+  it("accepts the checks and resolved concerns of a re-check whose evidence was built", async () => {
+    const answer = {
+      ...validVerdict,
+      resolvedConcerns: [{ concern: "c1", evidence: "`src/a.ts:12` retries." }],
+      checks: [{ command: "bun test", exitCode: 0, covers: ["src/a.ts"] }],
+    };
+    const incremental = {
+      mode: "enforce" as const,
+      reason: "eligible",
+      priorHeadSha: "e".repeat(40),
+      priorBaseSha: "f".repeat(40),
+      prior: { verdict: true, brief: "- Prior.", details: "Prior details." },
+    };
+
+    const verdict = await runPrRiskJudge(snapshot, {
+      judge,
+      evidence: {
+        ...evidenceAt(evidenceRoot),
+        incremental: {
+          interdiffPath: join(evidenceRoot, "interdiff.patch"),
+          priorDiffPath: join(evidenceRoot, "own-diff-at-prior.patch"),
+          focusPath: join(evidenceRoot, "focus.json"),
+          focus: {
+            priorHeadSha: incremental.priorHeadSha,
+            baseMoved: false,
+            paths: [],
+            testsToRerun: [],
+            totals: { paths: 0, interdiffLines: 0, contractLines: 0 },
+          },
+        },
+      },
+      incremental,
+      env,
+      executeDroid: async () => execSummary(answer),
+    });
+
+    expect(verdict).toEqual(answer);
+  });
+
   it("holds scores to their declared ranges and fails after the retry", async () => {
     const attempts: RiskJudgeAttempt[] = [];
 

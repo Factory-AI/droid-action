@@ -46,7 +46,7 @@ describe("assessPullRequest", () => {
   it("judges the planned head against the fetched evidence and removes the workspace", async () => {
     const seen: { cwd?: string; diff?: string; skill?: string } = {};
 
-    const result = await assessPullRequest({
+    const { result } = await assessPullRequest({
       plan: planFor({ baseSha, headSha }),
       repoDir: checkoutDir,
       githubToken: "read-token",
@@ -67,6 +67,7 @@ describe("assessPullRequest", () => {
       baseSha,
       judgeSha256: judge.sha256,
       snapshotHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      guidelinesBlobSha: null,
       listedFiles: 1,
       attempts: [
         { sessionId: "session-1", valid: true, durationMs: expect.any(Number) },
@@ -85,7 +86,7 @@ describe("assessPullRequest", () => {
   it("lists and counts what the planned commits change, whatever the pull request reported when the run began", async () => {
     const seen: { inventory?: unknown; skill?: string } = {};
 
-    const result = await assessPullRequest({
+    const { result } = await assessPullRequest({
       // Counts GitHub gave for another comparison, as it does once a pull
       // request is pointed at a different base branch.
       plan: planFor({
@@ -135,7 +136,7 @@ describe("assessPullRequest", () => {
   it("reports a judge that never produced a valid answer, with every attempt, and still removes the workspace", async () => {
     let cwd = "unset";
 
-    const result = await assessPullRequest({
+    const { result } = await assessPullRequest({
       plan: planFor({ baseSha, headSha }),
       repoDir: checkoutDir,
       githubToken: "read-token",
@@ -162,7 +163,7 @@ describe("assessPullRequest", () => {
   it("fails without asking the judge when the planned head cannot be fetched", async () => {
     let asked = false;
 
-    const result = await assessPullRequest({
+    const { result } = await assessPullRequest({
       plan: planFor({ baseSha, headSha: "f".repeat(40) }),
       repoDir: checkoutDir,
       githubToken: "read-token",
@@ -196,7 +197,7 @@ describe("assessPullRequest", () => {
       await git(checkoutDir, "config", tokenKey, header);
       const seen: string[] = [];
 
-      const result = await assessPullRequest({
+      const { result } = await assessPullRequest({
         plan: planFor({ baseSha, headSha }),
         repoDir: checkoutDir,
         githubToken: "read-token",
@@ -220,7 +221,7 @@ describe("assessPullRequest", () => {
       await git(checkoutDir, "config", "core.sshCommand", "ssh -i /tmp/key");
       let asked = false;
 
-      const result = await assessPullRequest({
+      const { result } = await assessPullRequest({
         plan: planFor({ baseSha, headSha }),
         repoDir: checkoutDir,
         githubToken: "read-token",
@@ -248,7 +249,7 @@ describe("assessPullRequest", () => {
       await git(checkoutDir, "config", tokenKey, header);
       await git(checkoutDir, "config", "core.sshCommand", "ssh -i /tmp/key");
 
-      const result = await assessPullRequest({
+      const { result } = await assessPullRequest({
         plan: planFor({ baseSha, headSha }),
         repoDir: checkoutDir,
         githubToken: "read-token",
@@ -265,6 +266,188 @@ describe("assessPullRequest", () => {
     });
   });
 
+  it("re-checks a prior verdict on the inter-diff when the plan asks, and says when it could not", async () => {
+    const prior = {
+      verdict: true,
+      brief: "- Prior brief.",
+      details: "Prior details.",
+    };
+    let skill = "";
+    const { result: incremental } = await assessPullRequest({
+      plan: planFor({
+        baseSha,
+        headSha,
+        incremental: {
+          mode: "enforce",
+          reason: "eligible",
+          priorHeadSha: baseSha,
+          priorAssessmentId: "prior-row",
+          priorBaseSha: baseSha,
+          judgeSha256: "e".repeat(64),
+          prior,
+        },
+      }),
+      repoDir: checkoutDir,
+      githubToken: "read-token",
+      env,
+      executeDroid: async ({ cwd }) => {
+        skill = await readFile(
+          join(cwd, ".factory", "skills", "pr-risk-judge", "SKILL.md"),
+          "utf8",
+        );
+        return execSummary(validVerdict);
+      },
+    });
+    expect(incremental).toMatchObject({
+      status: "judged",
+      mode: "incremental",
+      priorHeadSha: baseSha,
+      priorAssessmentId: "prior-row",
+      judgeSha256: "e".repeat(64),
+    });
+    expect(incremental).not.toHaveProperty("incrementalFallback");
+    expect(skill).toContain('"interdiffPath"');
+    expect(skill).toContain("Prior details.");
+
+    const { result: fallback } = await assessPullRequest({
+      plan: planFor({
+        baseSha,
+        headSha,
+        incremental: {
+          mode: "enforce",
+          reason: "eligible",
+          priorHeadSha: "d".repeat(40),
+          priorBaseSha: baseSha,
+          judgeSha256: "e".repeat(64),
+          prior,
+        },
+      }),
+      repoDir: checkoutDir,
+      githubToken: "read-token",
+      env,
+      executeDroid: async ({ cwd }) => {
+        skill = await readFile(
+          join(cwd, ".factory", "skills", "pr-risk-judge", "SKILL.md"),
+          "utf8",
+        );
+        return execSummary(validVerdict);
+      },
+    });
+    expect(fallback).toMatchObject({
+      status: "judged",
+      mode: "full",
+      incrementalFallback: "evidence_git_failed",
+    });
+    expect(fallback).not.toMatchObject({ judgeSha256: "e".repeat(64) });
+    expect(skill).not.toContain('"incremental"');
+    expect(skill).not.toContain("Prior details.");
+  });
+  it("runs an enforced approval's cited checks again and reports the runner's exit codes, not the judge's", async () => {
+    const checks = [
+      {
+        command: "grep -q never evidence/head/app.ts",
+        exitCode: 0,
+        covers: ["app.ts"],
+      },
+      {
+        command: "grep -q next evidence/head/app.ts",
+        exitCode: 0,
+        covers: ["app.ts"],
+      },
+    ];
+    const assess = (verdict: boolean, mode: "enforce" | "shadow") =>
+      assessPullRequest({
+        plan: planFor({
+          baseSha,
+          headSha,
+          incremental: {
+            mode,
+            reason: "eligible",
+            priorHeadSha: baseSha,
+            priorBaseSha: baseSha,
+            prior: { verdict: true, brief: "- Prior.", details: "Prior." },
+          },
+        }),
+        repoDir: checkoutDir,
+        githubToken: "read-token",
+        env,
+        executeDroid: async () =>
+          execSummary({ ...validVerdict, verdict, checks }),
+      });
+
+    const { result: approved } = await assess(true, "enforce");
+    expect(approved).toMatchObject({
+      status: "judged",
+      mode: "incremental",
+      checkRuns: [
+        { index: 0, outcome: "ran", exitCode: 1 },
+        { index: 1, outcome: "ran", exitCode: 0 },
+      ],
+    });
+    const { result: declined } = await assess(false, "enforce");
+    expect(declined).not.toHaveProperty("checkRuns");
+    const { shadow } = await assess(true, "shadow");
+    expect(shadow).toMatchObject({ status: "judged", mode: "incremental" });
+    expect(shadow).not.toHaveProperty("checkRuns");
+  });
+
+  it("judges a shadowed plan afresh and runs the re-check alongside in its own workspace", async () => {
+    const skills: string[] = [];
+    const cwds = new Set<string>();
+    const assessment = await assessPullRequest({
+      plan: planFor({
+        baseSha,
+        headSha,
+        incremental: {
+          mode: "shadow",
+          reason: "eligible",
+          priorHeadSha: baseSha,
+          priorBaseSha: baseSha,
+          prior: {
+            verdict: true,
+            brief: "- Prior.",
+            details: "Prior details.",
+          },
+        },
+      }),
+      repoDir: checkoutDir,
+      githubToken: "read-token",
+      env,
+      executeDroid: async ({ cwd }) => {
+        cwds.add(cwd);
+        const skill = await readFile(
+          join(cwd, ".factory", "skills", "pr-risk-judge", "SKILL.md"),
+          "utf8",
+        );
+        skills.push(skill);
+        if (skill.includes("Prior details.")) {
+          throw new RiskError("judge_timeout", "PR risk judge timed out");
+        }
+        return execSummary(validVerdict);
+      },
+    });
+
+    expect(assessment.result).toMatchObject({
+      status: "judged",
+      verdict: validVerdict,
+    });
+    expect(assessment.result).not.toHaveProperty("mode");
+    expect(assessment.shadow).toMatchObject({
+      status: "failed",
+      reason: "judge_timeout",
+    });
+    expect(skills).toHaveLength(2);
+    expect(
+      skills.filter((skill) => skill.includes('"interdiffPath"')),
+    ).toHaveLength(1);
+    expect(cwds.size).toBe(2);
+    for (const cwd of cwds) {
+      expect(
+        await git(checkoutDir, "worktree", "list", "--porcelain"),
+      ).not.toContain(cwd);
+    }
+  });
+
   it("settles a run with no GitHub token as a failure rather than throwing", async () => {
     expect(
       await assessPullRequest({
@@ -274,14 +457,16 @@ describe("assessPullRequest", () => {
         env,
       }),
     ).toEqual({
-      status: "failed",
-      reason: "github_token_missing",
-      durationMs: expect.any(Number),
+      result: {
+        status: "failed",
+        reason: "github_token_missing",
+        durationMs: expect.any(Number),
+      },
     });
   });
 
   it("keeps a labelled failure's reason and files anything else as unexpected", async () => {
-    const labelled = await assessPullRequest({
+    const { result: labelled } = await assessPullRequest({
       plan: planFor({ baseSha, headSha }),
       repoDir: checkoutDir,
       githubToken: "read-token",
@@ -295,7 +480,7 @@ describe("assessPullRequest", () => {
       reason: "judge_timeout",
     });
 
-    const unlabelled = await assessPullRequest({
+    const { result: unlabelled } = await assessPullRequest({
       plan: planFor({ baseSha, headSha }),
       repoDir: checkoutDir,
       githubToken: "read-token",

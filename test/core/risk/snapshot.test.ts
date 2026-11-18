@@ -12,6 +12,7 @@ const evidence: PrRiskEvidenceWorkspace = {
   diffPath: "/tmp/pr-risk/evidence/pr.diff",
   inventoryPath: "/tmp/pr-risk/evidence/changed-files.json",
   guidelinesPath: null,
+  guidelinesBlobSha: null,
   snapshotHash: "snapshot-hash",
 };
 
@@ -104,6 +105,54 @@ describe("renderPrRiskSkill", () => {
     expect(skill).toContain(`"guidelinesPath": "${guidelinesPath}"`);
   });
 
+  it("adds the prior verdict and the inter-diff only when the incremental evidence was built", () => {
+    const incremental = {
+      mode: "enforce" as const,
+      reason: "eligible",
+      priorHeadSha: "e".repeat(40),
+      priorBaseSha: "f".repeat(40),
+      prior: { verdict: true, brief: "- Prior.", details: "Prior details." },
+    };
+    const focus = {
+      priorHeadSha: incremental.priorHeadSha,
+      baseMoved: false,
+      paths: [],
+      testsToRerun: ["src/a.test.ts"],
+      totals: { paths: 0, interdiffLines: 0, contractLines: 0 },
+    };
+    const built = renderPrRiskSkill(
+      "{{PR_SNAPSHOT_JSON}}",
+      snapshot,
+      {
+        ...evidence,
+        incremental: {
+          interdiffPath: "/tmp/pr-risk/evidence/interdiff.patch",
+          priorDiffPath: "/tmp/pr-risk/evidence/own-diff-at-prior.patch",
+          focusPath: "/tmp/pr-risk/evidence/focus.json",
+          focus,
+        },
+      },
+      incremental,
+    );
+    const parsed = JSON.parse(built);
+    expect(parsed.incremental).toMatchObject({
+      priorHeadSha: incremental.priorHeadSha,
+      prior: incremental.prior,
+      testsToRerun: ["src/a.test.ts"],
+      evidence: { interdiffPath: "/tmp/pr-risk/evidence/interdiff.patch" },
+    });
+    expect(built).not.toContain(incremental.priorBaseSha);
+    expect(
+      JSON.parse(
+        renderPrRiskSkill(
+          "{{PR_SNAPSHOT_JSON}}",
+          snapshot,
+          evidence,
+          incremental,
+        ),
+      ),
+    ).not.toHaveProperty("incremental");
+  });
   it("appends the snapshot as a fenced section when the skill carries no placeholder", () => {
     const skill = renderPrRiskSkill("RULES\n", snapshot, evidence);
 

@@ -12,6 +12,10 @@ export const RISK_JUDGE_SKILL_NAME = "pr-risk-judge";
 export const RISK_SNAPSHOT_PLACEHOLDER = "{{PR_SNAPSHOT_JSON}}";
 export const RISK_SESSION_TAG = "riskAssessment";
 export const RISK_SETTLE_MAX_BODY_BYTES = 256 * 1024;
+/** How many checks a re-check may cite, so how many the runner re-runs. */
+export const MAX_CITED_CHECKS = 20;
+/** What this version can do beyond a full judgment, sent with every begin. */
+export const RISK_CAPABILITIES = ["incremental"];
 
 const FAILURE_REASON = /^[a-z][a-z0-9_]{0,63}$/;
 
@@ -36,7 +40,7 @@ export function failureReason(error: unknown): string {
     : "unexpected";
 }
 
-const CommitShaSchema = z.string().regex(/^[0-9a-f]{40}$/);
+export const CommitShaSchema = z.string().regex(/^[0-9a-f]{40}$/);
 const Sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
 
 export const RiskRunSchema = z.object({
@@ -65,6 +69,7 @@ export type RiskBeginRequest = {
   eventDraft?: boolean;
   manual: boolean;
   reviewOutcome?: RiskReviewOutcome;
+  capabilities?: string[];
   run: RiskRun;
 };
 
@@ -98,12 +103,49 @@ const RiskPriorDeclineSchema = z.object({
 });
 export type RiskPriorDecline = z.infer<typeof RiskPriorDeclineSchema>;
 
+/** One concern of a declined prior verdict, by the id a re-check answers with. */
+const RiskPriorConcernSchema = z.object({
+  id: z.string().min(1),
+  text: z.string(),
+});
+
+/**
+ * An earlier verdict on this pull request that Factory asks the judge to
+ * re-check against what changed since. `enforce` judges the head that way
+ * instead of afresh; `shadow` judges it afresh as usual and runs the
+ * re-check alongside, reported separately and never published. `outcome` is
+ * the decision Factory published on that head (an open string), and after a
+ * decline `concerns` lists what the re-check must show resolved to approve.
+ * `priorAssessmentId` is Factory's id for that verdict's record, echoed back
+ * at settle so Factory checks the re-check against exactly that record.
+ * `judgeSha256` is the judge hash a re-check's result reports in place of
+ * the judge's own, so a server that cannot settle a re-check rejects it
+ * instead of taking it for a full assessment.
+ */
+export const RiskIncrementalSchema = z.object({
+  mode: z.enum(["shadow", "enforce"]),
+  reason: z.string(),
+  priorHeadSha: CommitShaSchema,
+  priorAssessmentId: z.string().min(1).optional(),
+  priorBaseSha: CommitShaSchema,
+  judgeSha256: Sha256Schema.optional(),
+  prior: z.object({
+    verdict: z.boolean(),
+    outcome: z.string().optional(),
+    brief: z.string(),
+    details: z.string(),
+    concerns: z.array(RiskPriorConcernSchema).optional(),
+  }),
+});
+export type RiskIncremental = z.infer<typeof RiskIncrementalSchema>;
+
 const RiskJudgeAssignmentSchema = z.object({
   headSha: CommitShaSchema,
   baseSha: CommitShaSchema,
   pullRequest: RiskPullRequestSchema,
   priorDeclines: z.array(RiskPriorDeclineSchema),
   judge: RiskJudgeSchema,
+  incremental: RiskIncrementalSchema.optional(),
 });
 
 // Reasons stay open strings and unknown keys are dropped, so Factory can add
@@ -141,16 +183,52 @@ export const RiskJudgeAttemptSchema = z
   .strict();
 export type RiskJudgeAttempt = z.infer<typeof RiskJudgeAttemptSchema>;
 
+/**
+ * One check a re-check cited, as the runner ran it again (`index` into the
+ * verdict's `checks`). Only `ran` carries an exit code; a check the runner
+ * did not run (`rejected`, `skipped`) or that did not finish
+ * (`timed_out`, `failed_to_start`) proves nothing.
+ */
+const RiskCheckRunSchema = z.object({
+  index: z.number().int().nonnegative(),
+  outcome: z.enum([
+    "ran",
+    "timed_out",
+    "failed_to_start",
+    "rejected",
+    "skipped",
+  ]),
+  exitCode: z.number().int().optional(),
+  reason: z.string().regex(FAILURE_REASON).optional(),
+  durationMs: z.number().int().nonnegative().optional(),
+});
+export type RiskCheckRun = z.infer<typeof RiskCheckRunSchema>;
+
 export const RiskSettleResultSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("judged"),
     baseSha: CommitShaSchema,
     judgeSha256: Sha256Schema,
     snapshotHash: z.string().min(1),
+    // The blob of `.factory/pr-risk/guidelines.md` the evidence was built
+    // from, null when the default branch has none. Factory keeps a carried
+    // approval only while that blob is unchanged.
+    guidelinesBlobSha: CommitShaSchema.nullable().optional(),
     listedFiles: z.number().int().nonnegative(),
     attempts: z.array(RiskJudgeAttemptSchema).nonempty(),
     durationMs: z.number().int().nonnegative(),
     verdict: z.record(z.unknown()),
+    // Present only when the plan asked for an incremental judgment:
+    // `incremental` when the judge saw the prior verdict and the inter-diff,
+    // `full` when that evidence could not be built and the head was judged
+    // afresh instead.
+    mode: z.enum(["incremental", "full"]).optional(),
+    incrementalFallback: z.string().regex(FAILURE_REASON).optional(),
+    priorHeadSha: CommitShaSchema.optional(),
+    priorAssessmentId: z.string().min(1).optional(),
+    // An enforced re-check that approves: the cited checks as the runner
+    // ran them again, the only exit codes Factory accepts.
+    checkRuns: z.array(RiskCheckRunSchema).max(MAX_CITED_CHECKS).optional(),
   }),
   z.object({
     status: z.literal("failed"),
@@ -165,6 +243,8 @@ export type RiskSettleResult = z.infer<typeof RiskSettleResultSchema>;
 export const RiskResultFileSchema = z.object({
   droidCliVersion: z.string().min(1).optional(),
   result: RiskSettleResultSchema,
+  /** The incremental re-check run alongside a shadowed full judgment. */
+  shadow: RiskSettleResultSchema.optional(),
 });
 export type RiskResultFile = z.infer<typeof RiskResultFileSchema>;
 
@@ -174,6 +254,7 @@ export type RiskSettleRequest = {
   headSha: string;
   run: RiskRun;
   result: RiskSettleResult;
+  shadow?: RiskSettleResult;
 };
 
 export const RiskSettleResponseSchema = z.discriminatedUnion("status", [
@@ -267,5 +348,46 @@ export type PrRiskEvidenceWorkspace = {
   inventoryPath: string;
   /** The default branch's `.factory/pr-risk/guidelines.md`, or null when absent. */
   guidelinesPath: string | null;
+  /** That file's blob id at the commit read, or null when absent. */
+  guidelinesBlobSha: string | null;
   snapshotHash: string;
+  /** Set only for an incremental judgment. */
+  incremental?: PrRiskIncrementalEvidence;
+};
+
+/** What changed since the prior verdict, on disk next to the full evidence. */
+export type PrRiskIncrementalEvidence = {
+  /** Head-tree changes since the prior head, limited to the paths whose own change differs. */
+  interdiffPath: string;
+  /** The pull request's own diff as it stood at the prior head. */
+  priorDiffPath: string;
+  /** What to look at: changed paths, symbols, importers, tests, prior findings. */
+  focusPath: string;
+  focus: PrRiskFocus;
+};
+
+export type PrRiskFocusPath = {
+  path: string;
+  /**
+   * How this path's own change moved since the prior head. `base_changed`:
+   * the pull request's own lines are the same, but the base changed the file
+   * around them.
+   */
+  change: "added_to_pr" | "removed_from_pr" | "changed" | "base_changed";
+  /** The base also changed this path between the two merge bases. */
+  upstreamTouched: boolean;
+  symbols: string[];
+  /** Added or removed lines that declare an export or a signature. */
+  contractLines: number;
+  importers: string[];
+  /** The prior verdict's text names this path. */
+  namedInPrior: boolean;
+};
+
+export type PrRiskFocus = {
+  priorHeadSha: string;
+  baseMoved: boolean;
+  paths: PrRiskFocusPath[];
+  testsToRerun: string[];
+  totals: { paths: number; interdiffLines: number; contractLines: number };
 };

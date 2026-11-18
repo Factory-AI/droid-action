@@ -38,6 +38,7 @@ export function evidenceAt(rootDir: string): PrRiskEvidenceWorkspace {
     diffPath: join(evidenceDir, "pr.diff"),
     inventoryPath: join(evidenceDir, "changed-files.json"),
     guidelinesPath: null,
+    guidelinesBlobSha: null,
     snapshotHash: "snapshot-hash",
   };
 }

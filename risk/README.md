@@ -29,6 +29,51 @@ and are never printed to the job log.
    reason, so the head is marked unavailable instead of keeping a stale
    result.
 
+### Re-checking an earlier verdict
+
+Every begin request says the action can re-check an earlier verdict
+(`capabilities: ["incremental"]`). Factory may then answer `judge` with an
+`incremental` block naming the prior head, its base and the prior verdict.
+Next to the full evidence, the workspace then holds the pull request's own
+diff as it stood at the prior head, the head-tree changes since the prior
+head on every path whose own change moved (paths the base alone changed are
+left out), and a focus list of those paths with their changed symbols,
+importers in the head tree, related tests, and whether the prior verdict
+named them. When that evidence cannot be built, the head is judged afresh and
+the result says so (`mode: "full"`, `incrementalFallback`).
+
+The prior verdict may be an approval or a decline (`prior.outcome`). After a
+decline, Factory also sends the concerns it rested on (`prior.concerns`, each
+with an id such as `c1`). A re-check answers with the usual verdict plus the
+`checks` it ran (command, exit code, and the changed paths each covers) and,
+after a decline, `resolvedConcerns` (a concern id and the code at this head
+that resolves it). A full judgment, including one that fell back from an
+incremental plan, answers without either key. Factory approves a re-check
+only when a passing check
+covers a path that changed since the prior head and, after a decline, every
+concern is resolved.
+
+- `mode: "enforce"`: the judge re-checks the prior verdict, and its answer is
+  the result. When that answer approves, the action runs each check it cited
+  again before settling, and Factory takes the exit codes from that run
+  (`checkRuns`), never from the verdict. Each check runs from the root of a
+  clean workspace laid out like the judge's: a fresh worktree of the head at
+  `evidence/head`, and the scripts the judge saved under `evidence/checks/`,
+  where each mention of the judge's workspace names the clean one. Each
+  check after the first starts from that layout again: the head tree is reset
+  and cleaned (ignored files, such as installed dependencies, are kept) and
+  the saved files are copied afresh. A check gets only `PATH`, `HOME`, `LANG`, its own `TMPDIR` and
+  `CI=true`, none of the job's credentials, and at most 5 minutes (10 for all
+  of them). Its output is discarded. A command that names a file in the temp
+  or home directory (a script the judge did not save), or a path built from
+  a variable such as `$HOME/x`, is not run (`rejected`). The run stops at the first check that passes and covers a
+  path that changed since the prior head.
+- `mode: "shadow"`: the head is judged afresh as without the block, and the
+  re-check runs at the same time in a second workspace. Its answer is sent
+  as a separate `shadow` result, which Factory records but never publishes.
+  A shadow failure never changes the main result, and a shadow answer too
+  large to send is dropped before the main one is.
+
 ## Usage
 
 ```yaml
@@ -229,3 +274,9 @@ optionally `group` and `timeoutSeconds`. The result is written to
 was produced. `--droid-binary` selects a Droid CLI other than the one on
 `PATH`; a relative path is taken from the directory the command is run in.
 `FACTORY_API_BASE_URL` points the judge session at another host.
+
+`--head <sha> --base <sha>` judge an earlier revision of the pull request
+instead of its live head; both commits must already be in the clone.
+`--prior <file>` makes the run an enforced re-check of an earlier verdict:
+the file is JSON with `headSha`, `baseSha`, `verdict`, `brief` and `details`,
+and optionally `scores` and `reason`.

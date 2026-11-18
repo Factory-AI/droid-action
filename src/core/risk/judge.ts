@@ -9,6 +9,7 @@ import {
   RiskError,
   type PrRiskEvidenceWorkspace,
   type PullRequestRiskSnapshot,
+  type RiskIncremental,
   type RiskJudge,
   type RiskJudgeAttempt,
   type RiskScoreRanges,
@@ -52,6 +53,8 @@ export type DroidRiskJudgeInvocation = {
 export type RunPrRiskJudgeOptions = {
   judge: RiskJudge;
   evidence: PrRiskEvidenceWorkspace;
+  /** The prior verdict to re-check, for an incremental judgment. */
+  incremental?: RiskIncremental;
   /** The whole environment of the judge session; nothing else is inherited. */
   env: NodeJS.ProcessEnv;
   droidBinary?: string;
@@ -99,6 +102,7 @@ export function buildJudgeEnvironment(
 function parsePrRiskJudgeOutput(
   stdout: string,
   scores: RiskScoreRanges,
+  incremental: boolean,
 ): PrRiskJudgeParse {
   let summary: z.infer<typeof execSummarySchema>;
   try {
@@ -120,7 +124,7 @@ function parsePrRiskJudgeOutput(
       retryFeedback: ["<root>: the session ended in an error"],
     };
   }
-  const schema = compilePrRiskVerdictSchema(scores);
+  const schema = compilePrRiskVerdictSchema(scores, { incremental });
   const trimmed = summary.result.trim();
   const candidates = new Set([
     ...(trimmed.startsWith("{") && trimmed.endsWith("}") ? [trimmed] : []),
@@ -223,7 +227,15 @@ export async function runPrRiskJudge(
   options: RunPrRiskJudgeOptions,
 ): Promise<PrRiskVerdict> {
   const { judge, evidence } = options;
-  const skill = renderPrRiskSkill(judge.skill, snapshot, evidence);
+  // Only a judge shown the prior verdict answers as a re-check.
+  const incremental =
+    options.incremental !== undefined && evidence.incremental !== undefined;
+  const skill = renderPrRiskSkill(
+    judge.skill,
+    snapshot,
+    evidence,
+    options.incremental,
+  );
   const settingsPath = await writePrRiskSettings(evidence, judge.settings);
   const args = [
     "--settings",
@@ -251,6 +263,7 @@ export async function runPrRiskJudge(
     const parsed = parsePrRiskJudgeOutput(
       await executePrRiskDroid(args, options),
       judge.scores,
+      incremental,
     );
     options.onAttempt?.({
       ...(parsed.sessionId ? { sessionId: parsed.sessionId } : {}),
@@ -284,7 +297,7 @@ export async function runPrRiskJudge(
       ...first.retryFeedback.map((feedback) => `- ${feedback}`),
       "",
       "Return exactly one JSON object with exactly these keys and no others:",
-      describePrRiskContract(judge.scores),
+      describePrRiskContract(judge.scores, { incremental }),
       "",
       "Do not invent evidence or change a judgment to satisfy the contract; restate the same verdict in the required shape.",
       "",
