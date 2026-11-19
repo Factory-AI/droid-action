@@ -267,6 +267,7 @@ Pull requests from forks are reviewed without checking out their code. The actio
 | `@droid review`                               | Review changes since the last successful review, full review on first use.                       |
 | `@droid review --full`                        | Review the full diff, bypassing identical-diff skips.                                            |
 | `@droid review <focus text>`                  | Focus on the requested behavior or area.                                                         |
+| `@droid review /<skill>`                      | Review with the base branch's `<skill>` skill from `.factory/skills/`, else from one plugin.     |
 | `@droid security`, `@droid review security`   | Run a security-focused review.                                                                   |
 | `@droid security --full`                      | Run a full repository security audit and create a report PR/MR.                                  |
 | `@droid fix`                                  | In a Droid finding thread, fix that finding; at PR level, fix open inline Droid finding threads. |

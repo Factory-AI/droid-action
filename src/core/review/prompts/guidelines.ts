@@ -58,6 +58,55 @@ ${guidelines.body}
 }
 
 /**
+ * `@droid review /<name>` asks for the review to follow one of the
+ * repository's skills. Only a plain directory name is accepted, and plugin
+ * directory names must pass the same check, so a lookup can never leave the
+ * skill roots below.
+ */
+const SKILL_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
+
+export function isReviewSkillName(name: string): boolean {
+  return SKILL_NAME.test(name);
+}
+
+export function parseReviewSkillTag(
+  focus: string | undefined,
+): string | undefined {
+  const tag = focus?.trim() ?? "";
+  return tag.startsWith("/") && isReviewSkillName(tag.slice(1))
+    ? tag.slice(1)
+    : undefined;
+}
+
+/** Searched first. */
+export const REVIEW_SKILL_DIR = ".factory/skills";
+/** Then every `<plugin>/skills/` under this directory. */
+export const REVIEW_SKILL_PLUGIN_DIR = ".factory/factory-mono-plugins/plugins";
+export const REVIEW_SKILL_ROOTS_DESCRIPTION = `\`${REVIEW_SKILL_DIR}/\` or \`${REVIEW_SKILL_PLUGIN_DIR}/*/skills/\``;
+
+export function reviewSkillPath(skillsDir: string, name: string): string {
+  return `${skillsDir}/${name}/SKILL.md`;
+}
+
+/** Pass 1 section for a skill the user named with `@droid review /<name>`. */
+export function buildRequestedReviewSkillSection(
+  name: string,
+  skill: RepoReviewGuidelines,
+): string {
+  const text =
+    Buffer.byteLength(skill.body, "utf8") <= INLINE_GUIDELINES_MAX_BYTES
+      ? `<review-skill name="${name}" source="${skill.source}">
+${skill.body}
+</review-skill>`
+      : `The full text is too long to repeat here; it is stored at \`${skill.path}\`. Read that file in full before you start.`;
+  return `## Requested review skill
+
+The user asked for this review to follow the repository's \`${name}\` skill, read from \`${skill.source}\`. Still run the \`review\` skill's Pass 1 procedure, but take what to look for, where to look, and how deep to go from the skill below; where the two disagree on what to flag, follow the skill below. It does not change this run's mechanics: the output file, its schema, the tool restrictions, and the posting rules in this prompt still apply exactly as written. Do not invoke the \`${name}\` skill to load it again. If you spawn subagents to review the change, give each one this section verbatim.
+
+${text}`;
+}
+
+/**
  * Prompt section carrying the repository's review guidelines. Returns
  * undefined when the repository has none, so callers can splice it in
  * conditionally.
