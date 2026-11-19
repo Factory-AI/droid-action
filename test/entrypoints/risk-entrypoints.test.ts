@@ -236,6 +236,19 @@ describe("risk action entrypoints", () => {
         expect(await exists(planPath)).toBe(false);
       },
     );
+    it("plans no judge run for a judge served with a verdict mode this version does not know", async () => {
+      serve({
+        action: "judge",
+        ...assignment,
+        judge: { ...judge, verdictField: "a_mode_added_later" },
+      });
+
+      await expect(
+        begin(jobEnv({ GITHUB_EVENT_PATH: await eventFile(pullRequestEvent) })),
+      ).rejects.toThrow("judge.verdictField: invalid_literal");
+      expect(await exists(planPath)).toBe(false);
+    });
+
     it("tells Factory what the review read of the review configuration", async () => {
       const { received } = serve({ action: "skip", reason: "draft" });
 
