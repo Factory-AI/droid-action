@@ -9,7 +9,6 @@ import {
   RISK_UNKNOWN_ACTION,
   RISK_WORKFLOW_NOT_TRUSTED,
   RiskBeginResponseSchema,
-  RiskError,
   RiskSettleResponseSchema,
   type RiskBeginRequest,
   type RiskBeginResponse,
@@ -17,6 +16,7 @@ import {
   type RiskSettleRequest,
   type RiskSettleResponse,
 } from "./types";
+import { StepError } from "../worker/step";
 
 const BEGIN_TIMEOUT_MS = 60_000;
 const SETTLE_TIMEOUT_MS = 90_000;
@@ -41,7 +41,7 @@ export type RiskClientOptions = {
 };
 
 /** `status` is undefined when no HTTP answer arrived at all. */
-class RiskRequestError extends RiskError {
+class RiskRequestError extends StepError {
   constructor(
     readonly status: number | undefined,
     readonly code: string | undefined,
@@ -61,7 +61,7 @@ export async function getRiskOidcToken(
 ): Promise<string | undefined> {
   if (!env.ACTIONS_ID_TOKEN_REQUEST_URL) {
     if (dryRun) return undefined;
-    throw new RiskError(
+    throw new StepError(
       "oidc_unavailable",
       "This job cannot request an OIDC token. Add `id-token: write` to the job's permissions.",
     );
@@ -131,7 +131,7 @@ async function post(
       try {
         return await response.json();
       } catch {
-        throw new RiskError(
+        throw new StepError(
           "invalid_response",
           `PR risk ${label} answer was not JSON`,
         );
@@ -158,7 +158,7 @@ function parseAnswer<T>(
   const issues = parsed.error.issues
     .map((issue) => `${issue.path.join(".") || "<root>"}: ${issue.code}`)
     .join(", ");
-  throw new RiskError(
+  throw new StepError(
     "invalid_response",
     `PR risk ${label} answer was not understood (${issues})`,
   );

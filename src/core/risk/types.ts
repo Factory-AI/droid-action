@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { FAILURE_REASON } from "../worker/step";
 
 export const RISK_RUNNER = "droid-action";
 export const RISK_DEFAULT_API_BASE_URL = "https://app.factory.ai";
@@ -11,39 +12,9 @@ export const RISK_UNKNOWN_ACTION = "unknown_action";
 export const RISK_SETTLE_MAX_BODY_BYTES = 256 * 1024;
 /** What this version can do beyond a full judgment, sent with every begin. */
 export const RISK_CAPABILITIES = ["incremental"];
-/**
- * The one `droid-review` worker this version runs: the built file that runs
- * `droid-review risk`, and the SHA-256 of its bytes. The file is the
- * `droid-review.mjs` asset of release v0.0.0-bootstrap.2 of a private
- * repository, which GitHub serves only to a token that can read it.
- */
-export const RISK_WORKER = {
-  url: "https://api.github.com/repos/Factory-AI/droid-review/releases/assets/764051876",
-  sha256: "af384ffbd6e353dae4051d9ec249d0592615de17f23d978b1719981c0c89b0ae",
-};
-
-const FAILURE_REASON = /^[a-z][a-z0-9_]{0,63}$/;
 
 /** The part of `fetch` these modules use, so a test can stand in for it. */
 export type RiskFetch = (url: string, init: RequestInit) => Promise<Response>;
-
-/** A failure with the short machine label a failed run is settled under. */
-export class RiskError extends Error {
-  readonly reason: string;
-
-  constructor(reason: string, message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = "RiskError";
-    this.reason = reason;
-  }
-}
-
-/** The label a failure is reported under; anything unlabelled is `unexpected`. */
-export function failureReason(error: unknown): string {
-  return error instanceof RiskError && FAILURE_REASON.test(error.reason)
-    ? error.reason
-    : "unexpected";
-}
 
 export const CommitShaSchema = z.string().regex(/^[0-9a-f]{40}$/);
 const Sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);

@@ -117,8 +117,8 @@ describe.each(variants)(
     it("gives the token the worker is downloaded with to one step, which ends before the judge step starts", () => {
       const download = step("download");
       if (!p)
-        expect(download.run).toContain("src/entrypoints/risk-download.ts");
-      expect(download.env?.RISK_WORKER_TOKEN).toBe(
+        expect(download.run).toContain("src/entrypoints/worker-download.ts");
+      expect(download.env?.WORKER_TOKEN).toBe(
         `\${{ inputs.${p}worker_token }}`,
       );
       for (const candidate of steps) {
@@ -128,9 +128,7 @@ describe.each(variants)(
       expect(steps.indexOf(download)).toBe(steps.indexOf(step("assess")) - 1);
       // The judge step reads the worker from where that step left it.
       for (const { env } of [download, step("assess")]) {
-        expect(env?.RISK_WORKER_PATH).toBe(
-          "${{ runner.temp }}/pr-risk/droid-review.mjs",
-        );
+        expect(env?.WORKER_DIR).toBe("${{ runner.temp }}/droid-worker");
       }
     });
 
@@ -319,8 +317,8 @@ describe("risk assessment inside the full action", () => {
       "/usr/bin/env",
       "-i",
       "PATH=/usr/bin:/bin",
-      'RISK_WORKER_TOKEN="${RISK_WORKER_TOKEN:-}"',
-      'RISK_WORKER_PATH="${RISK_WORKER_PATH:-}"',
+      'WORKER_TOKEN="${WORKER_TOKEN:-}"',
+      'WORKER_DIR="${WORKER_DIR:-}"',
       '"$TRUSTED_RUNTIME_PATH"',
       "--config=/dev/null",
       "--env-file=/dev/null",

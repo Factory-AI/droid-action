@@ -19,7 +19,7 @@ const entrypoints = {
   // The full action's risk steps, which run after its review.
   risk_begin: "../entrypoints/risk-begin.ts",
   risk_token: "../entrypoints/get-token.ts",
-  risk_download: "../entrypoints/risk-download.ts",
+  risk_download: "../entrypoints/worker-download.ts",
   risk_assess: "../entrypoints/risk-assess.ts",
 };
 type RuntimeKind = keyof typeof entrypoints;

@@ -218,12 +218,12 @@ describe("full action risk steps before the judge", () => {
 
   it("ends a download that has no token with a warning, through the frozen bundle and runtime", async () => {
     const work = await mkdtemp(join(dir, "work-"));
-    const workerPath = join(work, "pr-risk", "droid-review.mjs");
+    const workerDir = join(work, "droid-worker");
 
     const result = await runStep(step("risk_download"), {
       ...bindingsFor("risk_download"),
-      RISK_WORKER_TOKEN: "",
-      RISK_WORKER_PATH: workerPath,
+      WORKER_TOKEN: "",
+      WORKER_DIR: workerDir,
     });
 
     // The assess step reports a run that has no worker; this one passes.
@@ -232,9 +232,9 @@ describe("full action risk steps before the judge", () => {
       stderr: "",
     });
     expect(result.stdout).toContain(
-      "::warning::The PR risk worker was not downloaded with its token (RISK_WORKER_TOKEN is empty).",
+      "::warning::droid-review.mjs was not downloaded with the worker token (WORKER_TOKEN is empty).",
     );
-    expect(await exists(workerPath)).toBe(false);
+    expect(await exists(workerDir)).toBe(false);
     expect(await exists(sentinel)).toBe(false);
   });
 

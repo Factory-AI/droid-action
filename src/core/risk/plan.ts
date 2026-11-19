@@ -1,12 +1,11 @@
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { z } from "zod";
-import { redactCredentials } from "../../utils/redact-credentials";
+import { StepError } from "../worker/step";
 import {
   CommitShaSchema,
   RISK_RUNNER,
   RISK_SETTLE_MAX_BODY_BYTES,
-  RiskError,
   RiskPlanSchema,
   RiskResultFileSchema,
   RiskReviewOutcomeSchema,
@@ -17,8 +16,6 @@ import {
   type RiskRun,
   type RiskSettleRequest,
 } from "./types";
-
-const MAX_LOGGED_ERROR_CHARS = 2000;
 
 const PullRequestRefSchema = z.object({
   number: z.number().int().positive(),
@@ -36,22 +33,6 @@ const EventSchema = z.object({
     .optional(),
   inputs: z.record(z.unknown()).nullish(),
 });
-
-export function requiredEnv(
-  name: string,
-  env: NodeJS.ProcessEnv = process.env,
-): string {
-  const value = env[name]?.trim();
-  if (!value) throw new RiskError("env_missing", `${name} is not set`);
-  return value;
-}
-
-/** An error's message with the job's credentials removed, for the log. */
-export function describeFailure(error: unknown): string {
-  return redactCredentials(
-    error instanceof Error ? error.message : String(error),
-  ).slice(0, MAX_LOGGED_ERROR_CHARS);
-}
 
 export function parseFlag(value: string | undefined): boolean {
   return value?.trim().toLowerCase() === "true";
@@ -83,7 +64,7 @@ export function parseReviewConfig(
 function workDir(env: NodeJS.ProcessEnv): string {
   const temp = env.RUNNER_TEMP?.trim();
   if (!temp) {
-    throw new RiskError("runner_temp_missing", "RUNNER_TEMP is not set");
+    throw new StepError("runner_temp_missing", "RUNNER_TEMP is not set");
   }
   return join(temp, "pr-risk");
 }
@@ -96,34 +77,13 @@ export function riskResultPath(env: NodeJS.ProcessEnv = process.env): string {
   return env.RISK_RESULT_PATH?.trim() || join(workDir(env), "result.json");
 }
 
-/** Where the download step leaves the worker for the assess step. */
-export function riskWorkerPath(env: NodeJS.ProcessEnv = process.env): string {
-  return env.RISK_WORKER_PATH?.trim() || join(workDir(env), "droid-review.mjs");
-}
-
-/** Writes a file only its owner can read, in a directory only they can open. */
-export async function writePrivateFile(
-  path: string,
-  data: string | Uint8Array,
-): Promise<void> {
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  await writeFile(path, data, { mode: 0o600 });
-  // writeFile applies its mode only when it creates the file.
-  await chmod(path, 0o600);
-}
-
-/** Writes JSON only its owner can read: these files carry the served judge. */
-export function writePrivateJson(path: string, value: unknown): Promise<void> {
-  return writePrivateFile(path, JSON.stringify(value));
-}
-
 // Parse failures are reported without Zod's message, which can quote values
 // from a file that holds the served judge.
 export async function readRiskPlan(path: string): Promise<RiskPlan> {
   try {
     return RiskPlanSchema.parse(JSON.parse(await readFile(path, "utf8")));
   } catch {
-    throw new RiskError(
+    throw new StepError(
       "plan_unreadable",
       "The PR risk plan from the begin step could not be read",
     );
@@ -189,7 +149,7 @@ export function resolveTarget(
   let pr = match?.number;
   if (explicit) {
     if (!/^[1-9][0-9]*$/.test(explicit)) {
-      throw new RiskError(
+      throw new StepError(
         "invalid_pr_number",
         "pr_number must be a positive integer",
       );

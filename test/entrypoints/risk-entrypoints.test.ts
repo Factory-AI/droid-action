@@ -21,20 +21,20 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { run as assess } from "../../src/entrypoints/risk-assess";
 import { run as begin } from "../../src/entrypoints/risk-begin";
-import { run as download } from "../../src/entrypoints/risk-download";
 import { run as settle } from "../../src/entrypoints/risk-settle";
 import {
-  checkoutWithPullRequest,
-  git,
   incrementalFor,
   judge,
   planFor,
-  serveWorker,
-  standInWorker,
   validVerdict,
+} from "../core/risk/fixtures";
+import {
+  checkoutWithPullRequest,
+  git,
+  standInWorker,
   type WorkerRun,
   type WorkerScript,
-} from "../core/risk/fixtures";
+} from "../core/worker/fixtures";
 
 type Received = { path: string; headers: Headers; body: unknown };
 
@@ -98,7 +98,7 @@ describe("risk action entrypoints", () => {
       RISK_DRY_RUN: "true",
       RISK_PLAN_PATH: planPath,
       RISK_RESULT_PATH: resultPath,
-      RISK_WORKER_PATH: workerPath,
+      WORKER_DIR: dirname(workerPath),
       ...overrides,
     };
   }
@@ -107,7 +107,7 @@ describe("risk action entrypoints", () => {
     dir = await mkdtemp(join(tmpdir(), "pr-risk-entrypoint-test-"));
     planPath = join(dir, "pr-risk", "plan.json");
     resultPath = join(dir, "pr-risk", "result.json");
-    workerPath = join(dir, "pr-risk", "droid-review.mjs");
+    workerPath = join(dir, "droid-worker", "droid-review.mjs");
     outputs = {};
     failed = [];
     spyOn(core, "setOutput").mockImplementation((name, value) => {
@@ -491,6 +491,7 @@ describe("risk action entrypoints", () => {
       const recordPath = join(dir, "worker-run.json");
       const { source, sha256 } = standInWorker({ ...script, recordPath });
       if (left !== "nothing") {
+        await mkdir(dirname(workerPath));
         await writeFile(
           workerPath,
           left === "worker" ? source : `${source}// changed\n`,
@@ -506,7 +507,7 @@ describe("risk action entrypoints", () => {
           ACTIONS_ID_TOKEN_REQUEST_TOKEN: "oidc-request-token",
           RISK_JUDGE_API_BASE_URL: "https://judge.example",
         }),
-        sha256,
+        { name: "droid-review.mjs", url: "", sha256 },
       );
       return {
         result: JSON.parse(await readFile(resultPath, "utf8")),
@@ -1076,14 +1077,14 @@ describe("risk action entrypoints", () => {
 
     it.each([
       [
-        "a worker whose bytes are not the ones this version runs",
+        "a worker whose bytes are not the ones this version pins",
         "changed",
-        "bytes are not the ones this version runs",
+        "droid-review.mjs does not have the bytes this version pins",
       ],
       [
         "anything when the download step left no worker",
         "nothing",
-        "left no PR risk worker to run",
+        "The download step left no droid-review.mjs",
       ],
     ] as const)(
       "does not run %s, and settles no verdict",
@@ -1113,59 +1114,6 @@ describe("risk action entrypoints", () => {
         expect(warning).toHaveBeenCalledWith(expect.stringContaining(logged));
       },
       30_000,
-    );
-  });
-
-  describe("risk-download", () => {
-    const source = "console.log('a stand-in for the worker');\n";
-    let served: ReturnType<typeof serveWorker> | undefined;
-    let logged: string[] = [];
-
-    beforeEach(() => {
-      served = serveWorker(source);
-      logged = [];
-      const keep = (...parts: unknown[]) => {
-        logged.push(parts.join(" "));
-      };
-      spyOn(core, "warning").mockImplementation(keep);
-      spyOn(console, "log").mockImplementation(keep);
-      spyOn(console, "error").mockImplementation(keep);
-    });
-
-    afterEach(async () => {
-      await served?.stop();
-    });
-
-    it("leaves the worker in a file only the job's user can read, and sends the token no further than the address that asks for it", async () => {
-      await download(jobEnv({ RISK_WORKER_TOKEN: served!.token }), served!.url);
-
-      expect(await readFile(workerPath, "utf8")).toBe(source);
-      expect((await stat(workerPath)).mode % 0o1000).toBe(0o600);
-      expect((await stat(dirname(workerPath))).mode % 0o1000).toBe(0o700);
-      // GitHub's API redirects the download to storage on another host.
-      expect(served!.forwarded).toEqual([]);
-      expect(core.warning).not.toHaveBeenCalled();
-      expect(logged.join("\n")).not.toContain(served!.token);
-    });
-
-    it.each([
-      ["it has no token", " ", "(RISK_WORKER_TOKEN is empty)"],
-      [
-        "its token cannot read the worker",
-        "a-token-that-cannot-read-it",
-        "(status 404)",
-      ],
-    ])(
-      "leaves no worker when %s, and says why without quoting a token",
-      async (_refused, token, why) => {
-        // Resolves: a failed download is the assess step's to report.
-        await download(jobEnv({ RISK_WORKER_TOKEN: token }), served!.url);
-
-        expect(await exists(workerPath)).toBe(false);
-        expect(core.warning).toHaveBeenCalledTimes(1);
-        expect(core.warning).toHaveBeenCalledWith(expect.stringContaining(why));
-        expect(logged.join("\n")).not.toContain("token-that");
-      },
     );
   });
 

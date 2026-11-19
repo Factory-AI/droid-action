@@ -11,14 +11,13 @@ import * as core from "@actions/core";
 import { getRiskOidcToken, settleRisk } from "../core/risk/client";
 import {
   buildSettleRequest,
-  describeFailure,
   readRiskPlan,
   readRiskResult,
-  requiredEnv,
   riskPlanPath,
   riskResultPath,
 } from "../core/risk/plan";
 import { RISK_DEFAULT_API_BASE_URL } from "../core/risk/types";
+import { describeFailure, requiredEnv } from "../core/worker/step";
 
 export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
   const plan = await readRiskPlan(riskPlanPath(env));

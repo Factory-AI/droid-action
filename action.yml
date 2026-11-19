@@ -1996,7 +1996,7 @@ runs:
         fi
         /usr/bin/env -i \
           PATH=/usr/bin:/bin \
-          RISK_WORKER_TOKEN="${RISK_WORKER_TOKEN:-}" RISK_WORKER_PATH="${RISK_WORKER_PATH:-}" \
+          WORKER_TOKEN="${WORKER_TOKEN:-}" WORKER_DIR="${WORKER_DIR:-}" \
           "$TRUSTED_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$TRUSTED_TAIL_PATH"
       env:
         TRUSTED_TAIL_PATH: ${{ steps.prepare.outputs.review_risk_download_publisher_path }}
@@ -2011,8 +2011,8 @@ runs:
         NODE_OPTIONS: ""
         ENV: ""
         BASH_ENV: ""
-        RISK_WORKER_TOKEN: ${{ inputs.risk_worker_token }}
-        RISK_WORKER_PATH: ${{ runner.temp }}/pr-risk/droid-review.mjs
+        WORKER_TOKEN: ${{ inputs.risk_worker_token }}
+        WORKER_DIR: ${{ runner.temp }}/droid-worker
 
     # The judge runs pull request code. This step therefore drops the OIDC
     # request credentials (which could mint a token that writes) before
@@ -2071,7 +2071,7 @@ runs:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         GH_TOKEN: ${{ steps.risk_token.outputs.github_token || (steps.risk_token.outputs.use_workflow_token == 'true' && github.token) || '' }}
         RISK_JUDGE_API_BASE_URL: ${{ inputs.risk_judge_api_base_url }}
-        RISK_WORKER_PATH: ${{ runner.temp }}/pr-risk/droid-review.mjs
+        WORKER_DIR: ${{ runner.temp }}/droid-worker
         RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
         RISK_RESULT_PATH: ${{ runner.temp }}/pr-risk/result.json
     # The two steps below run in an environment holding only what is named

@@ -163,7 +163,7 @@ runs:
       if: ${{ !cancelled() && steps.begin.outputs.action == 'judge' }}
       shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
-        bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../src/entrypoints/risk-download.ts
+        bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../src/entrypoints/worker-download.ts
       env:
         LD_AUDIT: ""
         LD_LIBRARY_PATH: ""
@@ -173,8 +173,8 @@ runs:
         NODE_OPTIONS: ""
         ENV: ""
         BASH_ENV: ""
-        RISK_WORKER_TOKEN: ${{ inputs.worker_token }}
-        RISK_WORKER_PATH: ${{ runner.temp }}/pr-risk/droid-review.mjs
+        WORKER_TOKEN: ${{ inputs.worker_token }}
+        WORKER_DIR: ${{ runner.temp }}/droid-worker
 
     # The judge runs pull request code. This step therefore drops the OIDC
     # request credentials (which could mint a token that writes) before
@@ -202,7 +202,7 @@ runs:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         GH_TOKEN: ${{ steps.token.outputs.github_token || (steps.token.outputs.use_workflow_token == 'true' && github.token) || '' }}
         RISK_JUDGE_API_BASE_URL: ${{ inputs.judge_api_base_url }}
-        RISK_WORKER_PATH: ${{ runner.temp }}/pr-risk/droid-review.mjs
+        WORKER_DIR: ${{ runner.temp }}/droid-worker
         RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
         RISK_RESULT_PATH: ${{ runner.temp }}/pr-risk/result.json
 
