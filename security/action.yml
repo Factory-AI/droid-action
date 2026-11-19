@@ -214,16 +214,6 @@ runs:
         # Enough to check out the PR, read it, and post the review and comments.
         APP_TOKEN_PERMISSIONS: '{"contents":"read","pull_requests":"write"}'
 
-    - name: Install Security Plugin
-      shell: bash
-      run: |
-        echo "Installing security-engineer plugin from factory-plugins marketplace..."
-        droid plugin marketplace add https://github.com/Factory-AI/factory-plugins 2>/dev/null || true
-        droid plugin install security-engineer@factory-plugins --scope user 2>/dev/null || {
-          echo "Warning: Could not install security-engineer plugin. Security review may have limited functionality."
-        }
-        echo "Security plugin installation complete"
-
     - name: Setup Custom Droids
       shell: bash
       run: |

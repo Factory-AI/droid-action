@@ -480,14 +480,18 @@ runs:
       env:
         EXPERIMENTAL_ALLOWED_DOMAINS: ${{ inputs.experimental_allowed_domains }}
 
-    - name: Install Security Plugin
+    # Only full-repository scans set install_security_skills. PR security
+    # reviews must not install this plugin: its security-review skill has the
+    # same name as the CLI's built-in one and a user-scope plugin skill wins,
+    # so the review would run the plugin's older copy.
+    - name: Install Security Scan Plugin
       if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true' && steps.prepare.outputs.install_security_skills == 'true'
       shell: bash
       run: |
         echo "Installing security-engineer plugin from factory-plugins marketplace..."
         droid plugin marketplace add https://github.com/Factory-AI/factory-plugins 2>/dev/null || true
         droid plugin install security-engineer@factory-plugins --scope user 2>/dev/null || {
-          echo "Warning: Could not install security-engineer plugin. Security review may have limited functionality."
+          echo "Warning: Could not install security-engineer plugin. Security scan may have limited functionality."
         }
         echo "Security plugin installation complete"
 

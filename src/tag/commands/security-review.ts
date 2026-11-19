@@ -146,7 +146,6 @@ export async function prepareSecurityReviewMode({
     generatePrompt: generateSecurityCandidatesPrompt,
     reviewArtifacts,
   });
-  core.setOutput("install_security_skills", "true");
 
   const rawUserArgs = process.env.DROID_ARGS || "";
   const normalizedUserArgs = normalizeDroidArgs(rawUserArgs);
