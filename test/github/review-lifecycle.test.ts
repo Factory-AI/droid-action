@@ -1256,6 +1256,36 @@ describe("review lifecycle production boundaries", () => {
       ).toBe(threadResolved);
     });
   }
+  it("lists findings that only the summary would have published when the summary cannot fit", async () => {
+    const f = fixture();
+    await f.prepare();
+    await f.post(
+      Array.from({ length: 120 }, (_, i) => ({
+        status: "approved",
+        comment: finding({
+          id: `f-big-${i}`,
+          title:
+            i === 7
+              ? "Retries drop the original request body"
+              : `Large finding ${i}`,
+          severity: i === 7 ? "P1" : "P2",
+          // Line 99 is outside the diff, so the summary is the only place these appear.
+          line: 99,
+          body: "x".repeat(3000),
+        }),
+      })),
+    );
+    const body = f.body();
+    expect(body).toContain("Droid couldn't finish this review.");
+    expect(body).toContain(
+      "The review summary is larger than GitHub allows in one comment.",
+    );
+    expect(body).toContain("120 findings without an inline comment");
+    expect(body).toContain("P0: 0 · P1: 1 · P2: 119");
+    const rows = body.split("\n").filter((line) => line.startsWith("- **"));
+    expect(rows[0]).toContain("Retries drop the original request body");
+    expect(rows).toHaveLength(50);
+  });
   it("incremental safety: does not reopen human dismissals or repost unchanged open IDs", async () => {
     for (const status of ["dismissed", "open"] as const) {
       const f = fixture();

@@ -268,6 +268,12 @@ Check the legacy webhook key lookup, bind verification to the current tenant, an
 >
 > Update the FACTORY_API_KEY secret, then comment `@droid review` to retry. [View job](https://github.com/example/repo/actions/runs/123/job/456)
 
+#### 1 finding without an inline comment
+
+P0: 0 · P1: 1 · P2: 0 · security: 1
+
+- **P1** 🔒 Legacy webhooks accept signatures from a different tenant · [<code>src/api/legacy/hooks.ts:88</code>](https://github.com/example/repo/blob/9ea6c830123456789abcdef0123456789abcdef012/src/api/legacy/hooks.ts#L88)
+
 <details>
 <summary>Error details</summary>
 
