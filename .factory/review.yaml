@@ -1,0 +1,10 @@
+# Factory review configuration, read from the branch a pull request merges
+# into, never from the pull request itself. Factory's PR risk assessment
+# reads `rules`; Droid Auto Review leaves that key to Factory.
+rules:
+  # Shadow mode: every pull request is assessed and gets a risk comment, and
+  # the assessment never approves. To let it approve, set approve_pr to true,
+  # optionally with approve_risk_level (minimal, low, medium or high) to cap
+  # the highest overall risk level it may approve.
+  - risk_assessment:
+      approve_pr: false
