@@ -143,8 +143,6 @@ export async function runWorker<Report>(options: {
     const child = spawn(
       process.execPath,
       [
-        "--config=/dev/null",
-        "--env-file=/dev/null",
         "run",
         workerPath,
         options.product,
