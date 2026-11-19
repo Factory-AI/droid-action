@@ -732,6 +732,24 @@ describe("GitLab command bridge", () => {
     );
   });
 
+  it("answers @droid risk in a thread with help instead of running the model", async () => {
+    const t = setup({ command: "@droid risk", thread: true });
+    const execute = mock<CommandExecution>(async () => "unused");
+    const result = await dispatchGitlabCommand({
+      client: t.client,
+      projectId: 42,
+      mr,
+      config: config(),
+      noteId: 20,
+      execute,
+    });
+    expect(result.handled).toBe(true);
+    expect(execute).not.toHaveBeenCalled();
+    expect(t.requests.find((r) => r.method === "POST")?.body.body).toContain(
+      "@droid help",
+    );
+  });
+
   it("pause persists a versioned state marker without deleting previous review", async () => {
     const t = setup({ command: "@droid pause" });
     await dispatchGitlabCommand({

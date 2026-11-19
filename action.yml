@@ -292,7 +292,7 @@ inputs:
     required: false
     default: "false"
   risk_manual:
-    description: "Set to 'true' to make the run an explicit request to risk-assess. Defaults to true for workflow_dispatch."
+    description: "Set to 'true' to make the run an explicit request to risk-assess. Defaults to true for workflow_dispatch. An `@droid risk` comment is always an explicit request."
     required: false
     default: ${{ github.event_name == 'workflow_dispatch' }}
 
@@ -1841,10 +1841,13 @@ runs:
         # the pull request as an issue.
         RISK_PR_NUMBER: ${{ inputs.risk_pr_number || (github.event.issue.pull_request && github.event.issue.number) || '' }}
         # How the steps above ended. `skipped` when they found nothing to do,
-        # as on a workflow_dispatch that only asks for the assessment.
-        RISK_REVIEW_OUTCOME: ${{ github.action_status == 'success' && steps.prepare.outputs.contains_trigger != 'true' && 'skipped' || github.action_status }}
+        # as on a workflow_dispatch or an `@droid risk` comment that only
+        # asks for the assessment.
+        RISK_REVIEW_OUTCOME: ${{ github.action_status == 'success' && (steps.prepare.outputs.contains_trigger != 'true' || steps.prepare.outputs.risk_requested == 'true') && 'skipped' || github.action_status }}
         RISK_DRY_RUN: ${{ inputs.risk_dry_run }}
-        RISK_MANUAL: ${{ inputs.risk_manual }}
+        # An `@droid risk` comment from someone the prepare step let through
+        # is an explicit request, like a workflow_dispatch.
+        RISK_MANUAL: ${{ steps.prepare.outputs.risk_requested == 'true' && 'true' || inputs.risk_manual }}
         # What the prepare step read of .factory/review.yaml, before the
         # review ran: Factory reads the rules at the same commit, and reads
         # nothing when the file has none.

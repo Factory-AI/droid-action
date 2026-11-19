@@ -169,6 +169,7 @@ export async function prepareTagExecution({
       "resolve",
       "pause",
       "resume",
+      "risk",
     ].includes(commandContext.command)
   ) {
     return prepareConversationCommand({

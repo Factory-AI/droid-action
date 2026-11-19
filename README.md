@@ -273,6 +273,7 @@ Pull requests from forks are reviewed without checking out their code. The actio
 | `@droid resolve`                              | Resolve open Droid threads as dismissed, without claiming the code was fixed.                    |
 | `@droid pause`, `@droid resume`               | Pause automatic reviews; resume resets the automatic-run budget.                                 |
 | `@droid fill`                                 | Replace only Droid's marked description block, preserving author text.                           |
+| `@droid risk`                                 | Assess the PR's risk now, when the workflow sets `risk_assessment: true`. No review runs.        |
 | `@droid <question>` in a Droid finding thread | Answer in that thread, without starting a review.                                                |
 
 Unknown top-level commands show help. Mentions inside fenced or inline code do not trigger commands.

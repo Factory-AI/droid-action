@@ -90,6 +90,7 @@ export function resolveTagRunType({
     case "resolve":
     case "pause":
     case "resume":
+    case "risk":
       return DroidRunType.Control;
     case "fill":
       return DroidRunType.Fill;

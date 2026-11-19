@@ -158,6 +158,14 @@ the action nothing to review, as on a `workflow_dispatch` that only asks for
 an assessment. A cancelled run assesses nothing. On a comment left on a pull
 request, that pull request is the one assessed.
 
+A `@droid risk` comment asks for an assessment without a review. The
+prepare step checks the commenter like any other command (write access, and
+a human unless `allowed_bots` lets the bot in), reacts with 👀, and skips
+the review; the assessment then runs as an explicit request, as if
+`risk_manual` were `true`, and Factory is told the review was `skipped`.
+A description that says `@droid risk` requests nothing. When
+`risk_assessment` is off, the action answers the comment instead.
+
 Factory is also told what the review read of `.factory/review.yaml` before
 it started: the pull request's base commit, and whether the file there has
 a `rules` key. Factory reads the pull request's rules at that commit, so
