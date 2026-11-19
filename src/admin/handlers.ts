@@ -1,4 +1,3 @@
-// Throwaway fixture for the AUT-3012 dry run. Never merge this file.
 import { exec } from "child_process";
 import { readFile } from "fs/promises";
 import type { Request, Response } from "express";
@@ -19,7 +18,10 @@ export function fileInfo(req: Request, res: Response) {
 }
 
 export async function readUserFile(req: Request, res: Response) {
-  const contents = await readFile(`/var/app/uploads/${req.params.name}`, "utf8");
+  const contents = await readFile(
+    `/var/app/uploads/${req.params.name}`,
+    "utf8",
+  );
   res.send(contents);
 }
 
