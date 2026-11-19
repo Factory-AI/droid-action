@@ -165,7 +165,7 @@ describe("review-run entrypoint", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it("runs the worker's review on the checkout with the prepared input, the code judge, and only the Factory credential", async () => {
+  it("runs the worker's review on the checkout with the prepared input, the code judge, how the runner reaches the network, and only the Factory credential", async () => {
     // What actions/checkout leaves in the clone's config unless told not to.
     await git(
       checkoutDir,
@@ -174,7 +174,17 @@ describe("review-run entrypoint", () => {
       "AUTHORIZATION: basic d29ya2Zsb3c=",
     );
 
-    const ran = await review({ report: answered(), exitCode: 0 });
+    const ran = await review(
+      { report: answered(), exitCode: 0 },
+      {
+        env: {
+          HTTPS_PROXY: "http://proxy.example:3128",
+          NODE_EXTRA_CA_CERTS: "/runner/ca.pem",
+          // How the step's shell passes a name the runner holds no value for.
+          NO_PROXY: "",
+        },
+      },
+    );
 
     expect(ran?.args.slice(0, 3)).toEqual(["review", "--repo", checkoutDir]);
     expect(ran?.input).toEqual({
@@ -186,6 +196,8 @@ describe("review-run entrypoint", () => {
       HOME: process.env.HOME!,
       DROID_BIN: "/frozen/droid",
       FACTORY_API_KEY: "factory-key",
+      HTTPS_PROXY: "http://proxy.example:3128",
+      NODE_EXTRA_CA_CERTS: "/runner/ca.pem",
     });
     expect(ran?.repoConfig).not.toContain("extraheader");
   });

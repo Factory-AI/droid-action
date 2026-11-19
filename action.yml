@@ -845,6 +845,11 @@ runs:
           REVIEW_BASE_SHA="${REVIEW_BASE_SHA:-}" \
           REVIEW_SECURITY_ONLY="${REVIEW_SECURITY_ONLY:-}" \
           REVIEW_VALIDATED_PATH="${REVIEW_VALIDATED_PATH:-}" \
+          FACTORY_API_BASE_URL="${FACTORY_API_BASE_URL:-}" FACTORY_AIRGAP_ENABLED="${FACTORY_AIRGAP_ENABLED:-}" \
+          HTTP_PROXY="${HTTP_PROXY:-}" HTTPS_PROXY="${HTTPS_PROXY:-}" NO_PROXY="${NO_PROXY:-}" ALL_PROXY="${ALL_PROXY:-}" \
+          http_proxy="${http_proxy:-}" https_proxy="${https_proxy:-}" no_proxy="${no_proxy:-}" all_proxy="${all_proxy:-}" \
+          SSL_CERT_FILE="${SSL_CERT_FILE:-}" SSL_CERT_DIR="${SSL_CERT_DIR:-}" NODE_EXTRA_CA_CERTS="${NODE_EXTRA_CA_CERTS:-}" \
+          LANG="${LANG:-}" LC_ALL="${LC_ALL:-}" \
           "$TRUSTED_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$TRUSTED_TAIL_PATH"
       env:
         HOME: ${{ steps.review_cli.outputs.review_home }}

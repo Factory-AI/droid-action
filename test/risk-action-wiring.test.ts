@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { parse } from "yaml";
+import { AMBIENT } from "../src/core/worker/step";
 import { parseAppTokenPermissions } from "../src/github/token-permissions";
 
 type Step = {
@@ -108,6 +109,23 @@ describe.each(variants)(
       for (const name of OIDC_AND_RUNTIME_CREDENTIALS) {
         expect(assess.run).toContain(`-u ${name} `);
       }
+    });
+
+    it("leaves the judge step how the runner reaches the network", () => {
+      const launch = step("assess").run?.slice(
+        step("assess").run?.indexOf("exec /usr/bin/env "),
+      );
+      // The step's environment is kept apart from what the launch names.
+      expect(launch).not.toMatch(/\s-i\s/);
+      const dropped = [...(launch?.matchAll(/-u (\S+)/g) ?? [])].map(
+        (match) => match[1],
+      );
+      expect(dropped).toEqual(
+        expect.arrayContaining(OIDC_AND_RUNTIME_CREDENTIALS),
+      );
+      expect(dropped.filter((name) => AMBIENT.includes(name as never))).toEqual(
+        [],
+      );
     });
 
     it("gives the judge step the minted read token and never a token of the caller's", () => {

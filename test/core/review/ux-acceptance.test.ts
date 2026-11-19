@@ -1280,8 +1280,9 @@ describe("review UX production boundaries", () => {
         );
         if (!review) expect(captured.REVIEW_CONFIG_JSON).toBe(config);
         for (const key of [
-          "HTTPS_PROXY",
-          "NODE_EXTRA_CA_CERTS",
+          // The step that runs the review holds no GitHub token, and its
+          // sessions reach Factory the way the runner does.
+          ...(review ? [] : ["HTTPS_PROXY", "NODE_EXTRA_CA_CERTS"]),
           "NODE_DEBUG",
           "SSLKEYLOGFILE",
         ])

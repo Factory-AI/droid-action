@@ -26,6 +26,45 @@ export function failureReason(error: unknown): string {
     : "unexpected";
 }
 
+/**
+ * What every session keeps of its worker's environment: where Factory is,
+ * how the network reaches it, and the locale. The worker reads these names
+ * from the environment it is run in. None of them names a token.
+ */
+export const AMBIENT = [
+  "FACTORY_API_BASE_URL",
+  "FACTORY_AIRGAP_ENABLED",
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "NO_PROXY",
+  "ALL_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "no_proxy",
+  "all_proxy",
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+  "NODE_EXTRA_CA_CERTS",
+  "LANG",
+  "LC_ALL",
+] as const;
+
+/**
+ * What a step hands on of its own environment to a program it starts, the
+ * worker or git: where programs and files are, and each ambient name the
+ * runner holds a value for. A name it holds none for is left out.
+ */
+export function ambientEnvironment(
+  env: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
+  return Object.fromEntries(
+    ["PATH", "HOME", "TMPDIR", ...AMBIENT].flatMap((name) => {
+      const value = env[name];
+      return value ? [[name, value]] : [];
+    }),
+  );
+}
+
 export function requiredEnv(
   name: string,
   env: NodeJS.ProcessEnv = process.env,

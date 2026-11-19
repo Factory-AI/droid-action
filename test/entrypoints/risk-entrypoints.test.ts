@@ -505,7 +505,11 @@ describe("risk action entrypoints", () => {
           GH_TOKEN: "read-token",
           GITHUB_TOKEN: "workflow-token",
           ACTIONS_ID_TOKEN_REQUEST_TOKEN: "oidc-request-token",
+          WORKER_TOKEN: "download-token",
           RISK_JUDGE_API_BASE_URL: "https://judge.example",
+          FACTORY_API_BASE_URL: "https://job.example",
+          HTTPS_PROXY: "http://proxy.example:3128",
+          NODE_EXTRA_CA_CERTS: "/runner/ca.pem",
         }),
         { name: "droid-review.mjs", url: "", sha256 },
       );
@@ -570,7 +574,7 @@ describe("risk action entrypoints", () => {
       });
     });
 
-    it("runs the worker on the planned commits with the judge's credentials and nothing else of the job, and settles its answer", async () => {
+    it("runs the worker on the planned commits with the judge's credentials, how the runner reaches the network and nothing else of the job, and settles its answer", async () => {
       const { plan, workspace, policySha, ended } = await planned();
 
       const { result, ran } = await assessWith(workspace, {
@@ -621,7 +625,10 @@ describe("risk action entrypoints", () => {
         DROID_BIN: "droid",
         FACTORY_API_KEY: "factory-key",
         GH_TOKEN: "read-token",
+        // The judge's own address, not the job's.
         FACTORY_API_BASE_URL: "https://judge.example",
+        HTTPS_PROXY: "http://proxy.example:3128",
+        NODE_EXTRA_CA_CERTS: "/runner/ca.pem",
       });
       // The checkout held no credential by the time the worker started, and
       // held the history a merge base needs.

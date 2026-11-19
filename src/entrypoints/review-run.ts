@@ -30,6 +30,7 @@ import { REVIEW_JUDGES, WORKER, type Pin } from "../core/worker/pins";
 import { readDownloaded, runWorker } from "../core/worker/run";
 import {
   StepError,
+  ambientEnvironment,
   describeFailure,
   requiredEnv,
   writePrivateJson,
@@ -64,11 +65,9 @@ async function review(
     repoDir,
     input: { ...input, judge },
     // The worker's whole environment. Its passes run pull request code, so
-    // they get the Factory credential and nothing else the job holds.
+    // of the job's credentials they get the Factory one and no other.
     env: {
-      ...(env.PATH ? { PATH: env.PATH } : {}),
-      ...(env.HOME ? { HOME: env.HOME } : {}),
-      ...(env.TMPDIR ? { TMPDIR: env.TMPDIR } : {}),
+      ...ambientEnvironment(env),
       DROID_BIN: requiredEnv("DROID_BIN", env),
       FACTORY_API_KEY: requiredEnv("FACTORY_API_KEY", env),
     },

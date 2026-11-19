@@ -28,6 +28,7 @@ import { WORKER, type Pin } from "../core/worker/pins";
 import { readDownloaded, runWorker } from "../core/worker/run";
 import {
   StepError,
+  ambientEnvironment,
   describeFailure,
   failureReason,
   requiredEnv,
@@ -60,12 +61,11 @@ async function assess(
     repoDir,
     input: buildWorkerInput(plan, policySha),
     // The worker's whole environment. Its judge session runs pull request
-    // code, so it gets the Factory credential, the read-only GitHub token,
-    // and nothing else the job holds.
+    // code, so of the job's credentials it gets the Factory one, the
+    // read-only GitHub token, and no other. The judge's own address, when
+    // the workflow names one, replaces the job's.
     env: {
-      ...(env.PATH ? { PATH: env.PATH } : {}),
-      ...(env.HOME ? { HOME: env.HOME } : {}),
-      ...(env.TMPDIR ? { TMPDIR: env.TMPDIR } : {}),
+      ...ambientEnvironment(env),
       DROID_BIN: env.DROID_BIN?.trim() || "droid",
       FACTORY_API_KEY: requiredEnv("FACTORY_API_KEY", env),
       GH_TOKEN: githubToken,

@@ -153,6 +153,8 @@ describe("gitEnvironment", () => {
     PATH: process.env.PATH,
     HOME: "/home/runner",
     TMPDIR: "/tmp",
+    https_proxy: "http://proxy.example:3128",
+    SSL_CERT_FILE: "/runner/ca.pem",
     FACTORY_API_KEY: "factory-key",
     GITHUB_TOKEN: "workflow-token",
     ACTIONS_ID_TOKEN_REQUEST_TOKEN: "oidc-request-token",
@@ -160,11 +162,13 @@ describe("gitEnvironment", () => {
     ACTIONS_RUNTIME_TOKEN: "runtime-token",
   };
 
-  it("passes git nothing of the job but where to find programs and files", () => {
+  it("passes git nothing of the job but where programs and files are and how the runner reaches the network", () => {
     expect(gitEnvironment(undefined, job)).toEqual({
       PATH: job.PATH,
       HOME: "/home/runner",
       TMPDIR: "/tmp",
+      https_proxy: "http://proxy.example:3128",
+      SSL_CERT_FILE: "/runner/ca.pem",
       GIT_TERMINAL_PROMPT: "0",
       GIT_CONFIG_NOSYSTEM: "1",
       GIT_CONFIG_GLOBAL: "/dev/null",

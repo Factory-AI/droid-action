@@ -3,7 +3,7 @@ import { readdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { GITHUB_SERVER_URL } from "../../github/api/config";
-import { StepError } from "./step";
+import { StepError, ambientEnvironment } from "./step";
 
 const execFileAsync = promisify(execFile);
 const GIT_TIMEOUT_MS = 120_000;
@@ -18,9 +18,9 @@ const SSH_COMMAND_KEY = "core.sshcommand";
 export type GitRepo = { cwd: string; githubToken?: string };
 
 /**
- * The environment every git command of a worker step runs in: an allow-list,
- * so no credential of the job reaches git, plus the token as a request header
- * for this one command.
+ * The environment every git command of a worker step runs in: an allow-list
+ * that keeps how the runner reaches the network, so no credential of the job
+ * reaches git, plus the token as a request header for this one command.
  */
 export function gitEnvironment(
   githubToken?: string,
@@ -29,9 +29,7 @@ export function gitEnvironment(
 ): NodeJS.ProcessEnv {
   const header = `http.${serverUrl}/.extraheader`;
   return {
-    ...(source.PATH ? { PATH: source.PATH } : {}),
-    ...(source.HOME ? { HOME: source.HOME } : {}),
-    ...(source.TMPDIR ? { TMPDIR: source.TMPDIR } : {}),
+    ...ambientEnvironment(source),
     ...(githubToken
       ? {
           // actions/checkout leaves its own Authorization header in the

@@ -5,6 +5,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { readFileSync } from "fs";
 import { parse } from "yaml";
+import { AMBIENT } from "../src/core/worker/step";
 import { freezeReviewCli } from "../src/entrypoints/freeze-review-cli";
 import { createControlledRuntime } from "./helpers/controlled-runtime";
 
@@ -22,7 +23,7 @@ describe("frozen review executable workflow boundary", () => {
       output.review_cli_sha256,
     );
   });
-  it("runs the actual publisher shell with allowlisted env, gives the review step no GitHub token, and refuses altered Droid CLI bytes", async () => {
+  it("runs the actual publisher shell with allowlisted env, gives the review step how the runner reaches the network and no GitHub token, and refuses altered Droid CLI bytes", async () => {
     const directory = await mkdtemp(join(tmpdir(), "review-runtime-guard-"));
     try {
       const capture = join(directory, "captured.json");
@@ -52,6 +53,10 @@ describe("frozen review executable workflow boundary", () => {
         REVIEW_VALIDATED_PATH: join(directory, "validated.json"),
         WORKER_DIR: join(directory, "droid-worker"),
       };
+      // Every name a session keeps, as a runner behind a proxy holds them.
+      const ambient = Object.fromEntries(
+        AMBIENT.map((name) => [name, `runner-${name}`]),
+      );
       const controlledRuntime = await createControlledRuntime(directory);
       const runtime = await freezeReviewCli(controlledRuntime.path);
       const post = manifest.runs.steps.find(
@@ -73,12 +78,12 @@ describe("frozen review executable workflow boundary", () => {
             cwd: directory,
             env: {
               ...answeredAbout,
-              HTTPS_PROXY: "https://untrusted.invalid",
-              NODE_EXTRA_CA_CERTS: "/untrusted-cert",
+              ...ambient,
               ...Object.fromEntries(
                 Object.entries(step.env).filter(([, value]) => value === ""),
               ),
               GITHUB_TOKEN: "synthetic-only",
+              WORKER_TOKEN: "synthetic-only",
               FACTORY_API_KEY: "synthetic-factory-key",
               TRUSTED_TAIL_PATH: publisher,
               TRUSTED_TAIL_SHA256: digest(source),
@@ -106,12 +111,15 @@ describe("frozen review executable workflow boundary", () => {
       expect((await execute(post)).exit).toBe(0);
       const env = JSON.parse(await readFile(capture, "utf8"));
       expect(env.GITHUB_TOKEN).toBe("synthetic-only");
-      expect(env.HTTPS_PROXY).toBeUndefined();
-      expect(env.NODE_EXTRA_CA_CERTS).toBeUndefined();
+      // A step that holds a GitHub token runs after pull request code, which
+      // can have changed what the runner holds for these names.
+      for (const name of AMBIENT) expect(env[name]).toBeUndefined();
       await rm(capture);
       expect((await execute(review)).exit).toBe(0);
       const reviewEnv = JSON.parse(await readFile(capture, "utf8"));
+      expect(reviewEnv).toMatchObject(ambient);
       expect(reviewEnv.GITHUB_TOKEN).toBeUndefined();
+      expect(reviewEnv.WORKER_TOKEN).toBeUndefined();
       expect(reviewEnv.FACTORY_API_KEY).toBe("synthetic-factory-key");
       expect(reviewEnv.DROID_BIN).toBe(cli);
       expect(reviewEnv).toMatchObject(answeredAbout);
