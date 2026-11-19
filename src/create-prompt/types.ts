@@ -1,6 +1,7 @@
 import type { GitHubContext } from "../github/context";
 import type { ReviewArtifactPaths } from "../core/review/artifacts/types";
 import type { RepoReviewGuidelines } from "../core/review/prompts/types";
+import type { ReviewIterationContext } from "../core/review/iteration";
 
 export type CommonFields = {
   repository: string;
@@ -105,7 +106,9 @@ export type EventData =
   | PullRequestEvent
   | PullRequestTargetEvent;
 
-export type ReviewArtifacts = ReviewArtifactPaths;
+export type ReviewArtifacts = ReviewArtifactPaths & {
+  iteration?: ReviewIterationContext;
+};
 
 export type PrBranchPromptData = {
   headRefName: string;

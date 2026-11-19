@@ -3,6 +3,7 @@ import type { SecurityReportProvenance } from "../security-report";
 import type {
   DroppedFinding,
   ReviewFinding,
+  ReviewSeverity,
   ReviewSummaryData,
 } from "../validated/types";
 
@@ -54,6 +55,13 @@ export type ReviewRenderInput = RenderOptions & {
   skipReason?: string;
   unchangedSuggestions?: number;
   reviewState?: ReviewState;
+  /** Follow-up round context for the summary footer. */
+  iteration?: {
+    round: number;
+    full: boolean;
+    skill?: boolean;
+    followupThreshold: ReviewSeverity;
+  };
   /** Full repository scan provenance, separate from ordinary review lifecycle. */
   securityReport?: SecurityReportProvenance;
 };

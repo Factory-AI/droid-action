@@ -91,6 +91,11 @@ import {
   shouldIgnoreReviewPath,
 } from "../core/review/config";
 import { enrichReviewSummary } from "../core/review/validated/metadata";
+import {
+  followupBarApplies,
+  followupDropReason,
+  reviewRound,
+} from "../core/review/iteration";
 
 export const MAX_GITHUB_REVIEW_COMMENTS = 30;
 
@@ -476,6 +481,8 @@ export async function run(
         : "Below the configured severity threshold",
     })),
   ];
+  const followupDropped: Array<{ finding: ReviewFinding; reason: string }> = [];
+  let round = 1;
   let newFindings = findings;
   let resolved: ReviewFinding[] = [];
   let unchangedSuggestions = 0;
@@ -552,6 +559,36 @@ export async function run(
             lifecycleWarning(lifecycle),
           )
         : undefined;
+    round = reviewRound(lifecycle.state, commitId || lifecycle.head);
+    const threshold = config.review_followup_severity_threshold;
+    if (followupBarApplies({ round, full: lifecycle.full, threshold })) {
+      const previousIds = new Set(previous.map((finding) => finding.id));
+      const addedSinceLastReview =
+        priorDiff === undefined ? undefined : changedReviewLines(priorDiff);
+      // Only newly emitted IDs are filtered; tracked findings keep their state.
+      for (const finding of findings) {
+        if (previousIds.has(finding.id)) continue;
+        const reason = followupDropReason(finding, {
+          threshold,
+          addedSinceLastReview,
+        });
+        if (reason) followupDropped.push({ finding, reason });
+      }
+      for (const { finding } of followupDropped) excludedIds.add(finding.id);
+      findings = findings.filter((finding) => !excludedIds.has(finding.id));
+      dropped.push(
+        ...followupDropped.map(({ finding, reason }, index) => ({
+          index:
+            parsed.approvedCount +
+            parsed.rejectedCount +
+            excluded.length +
+            index,
+          path: finding.path,
+          title: finding.title,
+          reason,
+        })),
+      );
+    }
     const eligibleFixedIds =
       priorDiff === undefined
         ? []
@@ -687,7 +724,11 @@ export async function run(
       )
       .map((finding, index) => ({
         index:
-          parsed.approvedCount + parsed.rejectedCount + excluded.length + index,
+          parsed.approvedCount +
+          parsed.rejectedCount +
+          excluded.length +
+          followupDropped.length +
+          index,
         path: finding.path,
         title: finding.title,
         reason:
@@ -818,6 +859,11 @@ export async function run(
       error: posted.failures[0]?.error,
       previousBody: lifecycle.previousBody,
       previousHead,
+      iteration: {
+        round,
+        full: !!lifecycle.full,
+        followupThreshold: config.review_followup_severity_threshold,
+      },
     };
     let codeowners: string | undefined;
     if (
