@@ -12,7 +12,7 @@ inputs:
     required: false
     default: ""
   worker_token:
-    description: "GitHub token that can read the droid-review release the review's worker is downloaded from. Given only to the step that downloads it, which ends before the review starts."
+    description: "GitHub token that can read the droid-review release the review's worker is downloaded from. Given only to the step that downloads it and to the prepare step, which is handed every input; both end before the review starts."
     required: true
   tracking_comment_id:
     description: "ID of the tracking comment to update"
