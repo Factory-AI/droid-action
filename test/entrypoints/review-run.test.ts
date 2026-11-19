@@ -109,10 +109,15 @@ describe("review-run entrypoint", () => {
         REVIEW_HEAD_SHA: head,
         REVIEW_BASE_SHA: base,
         // What the job around the step holds, none of it the worker's.
-        GITHUB_TOKEN: "workflow-token",
+        GITHUB_TOKEN: "app-token",
         GH_TOKEN: "read-token",
+        WORKFLOW_GITHUB_TOKEN: "workflow-token",
+        DEFAULT_WORKFLOW_TOKEN: "workflow-token",
+        OVERRIDE_GITHUB_TOKEN: "caller-token",
         WORKER_TOKEN: "download-token",
         ACTIONS_ID_TOKEN_REQUEST_TOKEN: "oidc-request-token",
+        ACTIONS_ID_TOKEN_REQUEST_URL: "https://oidc.invalid",
+        ACTIONS_RUNTIME_TOKEN: "runtime-token",
         ...options.env,
       },
       {

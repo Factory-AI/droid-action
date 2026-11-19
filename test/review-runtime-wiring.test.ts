@@ -34,6 +34,24 @@ describe("frozen review executable workflow boundary", () => {
       const cli = join(directory, "fake-droid");
       await writeFile(cli, "original cli");
       const cliHash = digest(await readFile(cli));
+      // What a pull request can leave where the steps run.
+      const preloaded = join(directory, "preloaded");
+      await writeFile(
+        join(directory, "preload.mjs"),
+        `import {writeFileSync} from "fs";writeFileSync(${JSON.stringify(preloaded)},"");`,
+      );
+      await writeFile(
+        join(directory, "bunfig.toml"),
+        `preload = [${JSON.stringify(join(directory, "preload.mjs"))}]\n`,
+      );
+      await writeFile(join(directory, ".env"), "LEFT_IN_WORKSPACE=1\n");
+      const answeredAbout = {
+        REVIEW_HEAD_SHA: "a".repeat(40),
+        REVIEW_BASE_SHA: "b".repeat(40),
+        REVIEW_SECURITY_ONLY: "true",
+        REVIEW_VALIDATED_PATH: join(directory, "validated.json"),
+        WORKER_DIR: join(directory, "droid-worker"),
+      };
       const controlledRuntime = await createControlledRuntime(directory);
       const runtime = await freezeReviewCli(controlledRuntime.path);
       const post = manifest.runs.steps.find(
@@ -52,7 +70,9 @@ describe("frozen review executable workflow boundary", () => {
         const child = Bun.spawn(
           [...step.shell.split(" ").slice(0, -1), script],
           {
+            cwd: directory,
             env: {
+              ...answeredAbout,
               HTTPS_PROXY: "https://untrusted.invalid",
               NODE_EXTRA_CA_CERTS: "/untrusted-cert",
               ...Object.fromEntries(
@@ -94,6 +114,9 @@ describe("frozen review executable workflow boundary", () => {
       expect(reviewEnv.GITHUB_TOKEN).toBeUndefined();
       expect(reviewEnv.FACTORY_API_KEY).toBe("synthetic-factory-key");
       expect(reviewEnv.DROID_BIN).toBe(cli);
+      expect(reviewEnv).toMatchObject(answeredAbout);
+      expect(reviewEnv.LEFT_IN_WORKSPACE).toBeUndefined();
+      await expect(readFile(preloaded)).rejects.toThrow();
       await rm(capture);
       await writeFile(cli, "altered cli");
       const denied = await execute(review);

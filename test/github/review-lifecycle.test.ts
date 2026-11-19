@@ -1648,6 +1648,38 @@ describe("review lifecycle production boundaries", () => {
     );
     expect(f.calls).toEqual([]);
   });
+  it("shows one Reviewing step at the real entrypoint, and closes it with how many candidates were kept", async () => {
+    const f = fixture([]);
+    await f.prepare();
+    process.env.REVIEW_PHASE = "reviewing";
+    await lifecyclePhase({ octokit: f.octokit });
+    expect((await readReviewLifecycle())!.steps.at(-1)).toMatchObject({
+      name: "Reviewing",
+      status: "running",
+    });
+    await f.post([
+      { status: "approved", comment: finding({ id: "f-kept" }) },
+      {
+        status: "rejected",
+        comment: finding({ id: "f-dropped" }),
+        reason: "The guard is still there.",
+      },
+    ]);
+    expect(
+      (await readReviewLifecycle())!.steps.map(({ name }) => name),
+    ).toContain("Reviewed, kept 1 of 2 candidates");
+  });
+  it("refuses a lifecycle phase it does not know", async () => {
+    const f = fixture([]);
+    await f.prepare();
+    process.env.REVIEW_PHASE = "validated";
+    await expect(lifecyclePhase({ octokit: f.octokit })).rejects.toThrow(
+      "Unknown review lifecycle phase: validated",
+    );
+    expect(
+      (await readReviewLifecycle())!.steps.map(({ name }) => name),
+    ).toEqual(["Gathering PR context"]);
+  });
   it("drops a planted clean disposition and false completed flag at the real finalizer entrypoint", async () => {
     const f = fixture();
     await f.prepare();

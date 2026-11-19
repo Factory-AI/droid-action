@@ -49,20 +49,27 @@ describe("trusted review publisher artifacts", () => {
         expect(outputs[`review_${kind}_publisher_path`]).toBeUndefined();
       const directory = dirname(outputs.review_lifecycle_publisher_path!);
       try {
-        for (const kind of [
-          "lifecycle",
-          "post",
-          "tracking",
-          "run",
-          "debug",
-          "revoke",
-          "steward",
-        ]) {
+        for (const [kind, source] of [
+          ["lifecycle", "src/entrypoints/github-review-lifecycle.ts"],
+          ["post", "src/entrypoints/github-post-review.ts"],
+          ["tracking", "src/entrypoints/update-comment-link.ts"],
+          ["run", "src/entrypoints/review-run.ts"],
+          ["debug", "src/entrypoints/collect-debug-artifacts.ts"],
+          ["revoke", "src/entrypoints/revoke-github-token.ts"],
+          ["steward", "src/steward/postrun.ts"],
+        ] as const) {
           const file = outputs[`review_${kind}_publisher_path`]!;
           const bytes = await readFile(file);
           expect(createHash("sha256").update(bytes).digest("hex")).toBe(
             outputs[`review_${kind}_publisher_sha256`]!,
           );
+          // The bundler names each module it inlines, the entrypoint last.
+          expect(
+            bytes
+              .toString()
+              .match(/^\/\/ (\S+\.ts)$/gm)
+              ?.at(-1),
+          ).toBe(`// ${source}`);
           // Importing the frozen artifact must not execute its CLI entrypoint.
           const module = await import(pathToFileURL(file).href);
           if (["lifecycle", "post", "tracking", "run"].includes(kind))

@@ -2,16 +2,19 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { createHash } from "node:crypto";
 import {
   access,
+  mkdir,
   mkdtemp,
   readFile,
   realpath,
   rm,
   stat,
+  writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { prepareReviewInput } from "../../../src/github/data/review-input";
 import * as lifecycle from "../../../src/github/operations/review-lifecycle";
+import { normalizeFinding } from "../../../src/core/review/validated/finding";
 import { checkoutWithPullRequest, git } from "../../core/worker/fixtures";
 
 const exists = (path: string) =>
@@ -39,6 +42,8 @@ describe("prepareReviewInput", () => {
   let warnSpy: ReturnType<typeof spyOn>;
   /** The diff GitHub answers each `base...head` comparison with. */
   let diffs: Record<string, string>;
+  /** The merge base GitHub names for a comparison, when not its base. */
+  let mergeBases: Record<string, string>;
 
   const inputPath = () =>
     join(dir, "runner", "droid-prompts", "review_input.json");
@@ -69,7 +74,11 @@ describe("prepareReviewInput", () => {
           return {
             data: mediaType
               ? diffs[basehead]
-              : { merge_base_commit: { sha: basehead.split("...")[0] } },
+              : {
+                  merge_base_commit: {
+                    sha: mergeBases[basehead] ?? basehead.split("...")[0],
+                  },
+                },
           };
         },
       },
@@ -109,13 +118,22 @@ describe("prepareReviewInput", () => {
   beforeEach(async () => {
     dir = await realpath(await mkdtemp(join(tmpdir(), "review-input-test-")));
     repo = await checkoutWithPullRequest(dir);
-    // A clone takes the branches, and a pull request's head is not one.
+    // What actions/checkout leaves: one branch, which is neither the pull
+    // request's head nor the tip of its base.
     checkoutDir = join(dir, "clone");
-    await git(dir, "clone", "-q", `file://${repo.originDir}`, checkoutDir);
+    await git(
+      dir,
+      "clone",
+      "-q",
+      "--single-branch",
+      `file://${repo.originDir}`,
+      checkoutDir,
+    );
     for (const key of [
       "GITHUB_WORKSPACE",
       "RUNNER_TEMP",
       "REVIEW_MODEL",
+      "SECURITY_MODEL",
       "REASONING_EFFORT",
       "SECURITY_REVIEW_ENABLED",
       "INCLUDE_SUGGESTIONS",
@@ -126,6 +144,7 @@ describe("prepareReviewInput", () => {
     process.env.GITHUB_WORKSPACE = checkoutDir;
     process.env.RUNNER_TEMP = join(dir, "runner");
     diffs = {};
+    mergeBases = {};
     finishSpy = spyOn(lifecycle, "finishReviewLifecycle").mockResolvedValue();
     saveSpy = spyOn(lifecycle, "saveReviewLifecycle").mockResolvedValue();
     warnSpy = spyOn(console, "warn").mockImplementation(() => {});
@@ -143,13 +162,17 @@ describe("prepareReviewInput", () => {
   });
 
   it("fetches the pull request's commits and leaves the worker's input, readable only by the job", async () => {
-    await expect(
-      git(checkoutDir, "cat-file", "-e", `${repo.headSha}^{commit}`),
-    ).rejects.toThrow();
+    for (const sha of [repo.headSha, repo.baseSha]) {
+      await expect(
+        git(checkoutDir, "cat-file", "-e", `${sha}^{commit}`),
+      ).rejects.toThrow();
+    }
 
     expect(await prepare(runFor(), "the migration")).toEqual({});
 
-    await git(checkoutDir, "cat-file", "-e", `${repo.headSha}^{commit}`);
+    for (const sha of [repo.headSha, repo.baseSha]) {
+      await git(checkoutDir, "cat-file", "-e", `${sha}^{commit}`);
+    }
     expect(await writtenInput()).toMatchObject({
       repo: "acme/app",
       prNumber: 123,
@@ -175,19 +198,77 @@ describe("prepareReviewInput", () => {
     expect(finishSpy).not.toHaveBeenCalled();
   });
 
-  it("fetches the head the last review was of, so the worker can review what changed since", async () => {
+  it("fetches the head the last review was of, so the worker can review what changed since, and hands on its findings", async () => {
+    const known = normalizeFinding({
+      id: "f-known",
+      severity: "P1",
+      title: "Known issue",
+      path: "app.ts",
+      line: 1,
+      body: "Known issue",
+    });
+
     await prepare(
       runFor({
-        state: { head: repo.priorHeadSha, findings: [] },
+        state: {
+          head: repo.priorHeadSha,
+          findings: [
+            { id: known.id, sev: "P1", state: "open", finding: known },
+          ],
+        },
         incrementalBaseSha: repo.priorHeadSha,
       }),
     );
 
     await git(checkoutDir, "cat-file", "-e", `${repo.priorHeadSha}^{commit}`);
     expect((await writtenInput()).prior).toEqual({
-      findings: [],
+      findings: [{ ...known, state: "open" }],
       reviewed: { head: repo.priorHeadSha, incremental: true },
     });
+  });
+
+  it("fetches with the token it was given", async () => {
+    // A git that notes the request header each command carries, then runs.
+    const bin = join(dir, "bin");
+    const seen = join(dir, "headers");
+    await mkdir(bin);
+    await writeFile(
+      join(bin, "git"),
+      [
+        "#!/bin/sh",
+        `printf '%s\\n' "$GIT_CONFIG_VALUE_1" >> '${seen}'`,
+        `exec '${Bun.which("git")}' "$@"`,
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    const path = process.env.PATH;
+    process.env.PATH = `${bin}:${path}`;
+    try {
+      await prepare(runFor());
+    } finally {
+      process.env.PATH = path;
+    }
+
+    expect(await readFile(seen, "utf8")).toContain(
+      `AUTHORIZATION: basic ${Buffer.from("x-access-token:test-token").toString("base64")}`,
+    );
+  });
+
+  it("takes the reviewed head only from a commit ID", async () => {
+    // A name the remote resolves, where the stored state should hold an ID.
+    await prepare(runFor({ state: { head: "HEAD", findings: [] } }));
+
+    expect(await writtenInput()).not.toHaveProperty("prior");
+  });
+
+  it("prepares a security-only review on the security model", async () => {
+    process.env.REVIEW_MODEL = "review-model";
+    process.env.SECURITY_MODEL = "security-model";
+
+    await prepare(runFor({ securityOnly: true }));
+
+    expect((await writtenInput()).model).toBe("security-model");
   });
 
   it("reviews the whole change when the remote no longer has the reviewed head", async () => {
@@ -256,6 +337,53 @@ describe("prepareReviewInput", () => {
     expect(await exists(inputPath())).toBe(true);
   });
 
+  it.each([
+    ["skips", "is an ancestor of the new one", undefined],
+    ["does not skip", "was rebased away", "fork"],
+  ] as const)(
+    "%s an incremental review of an unchanged tree when the reviewed head %s",
+    async (_verb, _name, mergeBase) => {
+      const comparison = `${repo.priorHeadSha}...${repo.headSha}`;
+      diffs[comparison] = "";
+      // GitHub compares from the merge base, so its diff says what changed
+      // since the reviewed head only when that head is the merge base.
+      if (mergeBase) mergeBases[comparison] = repo.forkSha;
+
+      const prepared = await prepare(
+        runFor({
+          state: { head: repo.priorHeadSha, findings: [] },
+          incrementalBaseSha: repo.priorHeadSha,
+        }),
+      );
+
+      expect(prepared).toEqual(
+        mergeBase
+          ? {}
+          : {
+              skipReason: `No new changes since ${repo.priorHeadSha.slice(0, 7)}`,
+            },
+      );
+    },
+  );
+
+  it("compares the whole change when the remote no longer has the reviewed head", async () => {
+    const gone = "f".repeat(40);
+    diffs[`${repo.baseSha}...${repo.headSha}`] = DIFF;
+
+    const prepared = await prepare(
+      runFor({
+        state: {
+          head: gone,
+          findings: [],
+          diffHash: createHash("sha256").update(DIFF).digest("hex"),
+        },
+        incrementalBaseSha: gone,
+      }),
+    );
+
+    expect(prepared.skipReason).toBe("No new changes since fffffff");
+  });
+
   it("does not skip a review whose diff GitHub would not give", async () => {
     const prepared = await prepare(
       runFor({
@@ -267,10 +395,16 @@ describe("prepareReviewInput", () => {
     expect(await exists(inputPath())).toBe(true);
   });
 
-  it("refuses to prepare a review of commits it could not fetch", async () => {
-    await expect(prepare(runFor({ head: "e".repeat(40) }))).rejects.toThrow(
-      "Droid could not fetch the pull request's commits.",
-    );
-    expect(await exists(inputPath())).toBe(false);
-  });
+  it.each(["head", "base"] as const)(
+    "refuses to prepare a review whose %s it could not fetch",
+    async (missing) => {
+      // The other commit is already there, as after a checkout of the head.
+      await git(checkoutDir, "fetch", "-q", "origin", "refs/pull/123/head");
+
+      await expect(
+        prepare(runFor({ [missing]: "e".repeat(40) })),
+      ).rejects.toThrow("Droid could not fetch the pull request's commits.");
+      expect(await exists(inputPath())).toBe(false);
+    },
+  );
 });

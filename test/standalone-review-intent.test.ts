@@ -23,6 +23,7 @@ let saved: NodeJS.ProcessEnv;
 let context: ReturnType<typeof createMockContext>;
 let prepareSpy: ReturnType<typeof spyOn>;
 let inputSpy: ReturnType<typeof spyOn>;
+let outputSpy: ReturnType<typeof spyOn>;
 beforeEach(() => {
   saved = { ...process.env };
   for (const key of Object.keys(process.env))
@@ -42,7 +43,7 @@ beforeEach(() => {
     } as any,
     inputs: { reviewConfig: resolveReviewUxConfig() },
   });
-  spyOn(core, "setOutput").mockImplementation(() => {});
+  outputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
   spyOn(core, "exportVariable").mockImplementation(() => {});
   spyOn(core, "setFailed").mockImplementation((message) => {
     throw new Error(String(message));
@@ -138,5 +139,16 @@ describe("standalone adapter preserves submitted review focus without granting a
     process.env.REVIEW_TYPE = "security";
     await run();
     expect(prepareSpy.mock.calls[0]?.[0].full).toBe(true);
+  });
+});
+describe("standalone adapter tells the steps after it when no review runs", () => {
+  it("skips a head that holds nothing the last review did not see", async () => {
+    inputSpy.mockResolvedValue({ skipReason: "No new changes since aaaaaaa" });
+    await run();
+    expect(outputSpy).toHaveBeenCalledWith("review_skipped", "true");
+  });
+  it("does not skip a review it prepared", async () => {
+    await run();
+    expect(outputSpy).not.toHaveBeenCalledWith("review_skipped", "true");
   });
 });

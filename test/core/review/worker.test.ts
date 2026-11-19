@@ -4,7 +4,12 @@ import {
   buildReviewInput,
   modelFallbackNote,
   reviewOutcome,
+  reviewWorkerBounds,
 } from "../../../src/core/review/worker";
+import {
+  EVIDENCE_SECONDS,
+  SESSION_STOP_SECONDS,
+} from "../../../src/core/worker/run";
 import type { ReviewPromptSettings } from "../../../src/core/review/prompts/types";
 import { normalizeFinding } from "../../../src/core/review/validated/finding";
 import type { ReviewFinding } from "../../../src/core/review/validated/types";
@@ -178,6 +183,13 @@ describe("buildReviewInput", () => {
       incremental: true,
     });
     expect(
+      inputFor({
+        reviewedHead: REVIEWED,
+        reviewedHeadFetched: true,
+        incremental: false,
+      }).prior?.reviewed,
+    ).toEqual({ head: REVIEWED, incremental: false });
+    expect(
       input.prior?.findings.map(({ id, title, old_path }) => ({
         id,
         title,
@@ -304,6 +316,29 @@ describe("reviewOutcome", () => {
       reasoningEffort: "high",
       error: "The validator pass was stopped (`deadline`).",
     });
+    expect(
+      reviewOutcome(
+        {
+          status: "invalid",
+          revision,
+          sessions: [
+            { ...started, status: "answered" },
+            {
+              id: "s2",
+              model: "model-a",
+              status: "invalid",
+              issues: [
+                { path: ["results", 0, "status"], code: "invalid_enum" },
+              ],
+            },
+          ],
+        },
+        prepared,
+      ),
+    ).toMatchObject({
+      error:
+        "The validator pass's answer broke its contract: results.0.status: invalid_enum.",
+    });
   });
 
   it("names the rules an answer broke, never the answer, and at most ten", () => {
@@ -332,6 +367,19 @@ describe("reviewOutcome", () => {
         ).join(", ") +
         ".",
     });
+  });
+});
+
+describe("reviewWorkerBounds", () => {
+  it("asks the worker to stop only after every bound it sets itself, and kills it only once it had the time to stop a session", () => {
+    const { stopAfterMs, killAfterMs } = reviewWorkerBounds();
+
+    expect(stopAfterMs / 1000).toBeGreaterThanOrEqual(
+      REVIEW_SECONDS + SESSION_STOP_SECONDS + EVIDENCE_SECONDS,
+    );
+    expect((killAfterMs - stopAfterMs) / 1000).toBeGreaterThanOrEqual(
+      SESSION_STOP_SECONDS,
+    );
   });
 });
 

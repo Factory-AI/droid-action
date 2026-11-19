@@ -1,9 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { z } from "zod";
-import { runWorker, type WorkerBounds } from "../../../src/core/worker/run";
+import {
+  readDownloaded,
+  runWorker,
+  type WorkerBounds,
+} from "../../../src/core/worker/run";
 import {
   git,
   standInWorker,
@@ -62,4 +69,32 @@ describe("runWorker", () => {
     const ran: WorkerRun = JSON.parse(await readFile(recordPath, "utf8"));
     expect(ran.args[0]).toBe("review");
   }, 30_000);
+});
+
+describe("readDownloaded", () => {
+  let dir = "";
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "droid-worker-read-test-"));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("returns the bytes it checked, from one read of the file", async () => {
+    const bytes = Buffer.from("the pinned bytes");
+    const pin = {
+      name: "pinned",
+      url: "",
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    };
+    // A pipe gives what was written to it to one read, and nothing to a
+    // second.
+    await promisify(execFile)("mkfifo", [join(dir, pin.name)]);
+    const written = writeFile(join(dir, pin.name), bytes);
+
+    expect(await readDownloaded(pin, { WORKER_DIR: dir })).toEqual(bytes);
+    await written;
+  });
 });
