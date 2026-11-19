@@ -32,13 +32,22 @@ export async function prepareReviewGuidelines(opts: {
   ref: string;
   promptsDir: string;
   read: (filePath: string, ref: string) => Promise<string | null>;
+  /** Another skill to read the same way, such as one a command names. */
+  skillPath?: string;
+  artifact?: string;
 }): Promise<RepoReviewGuidelines | undefined> {
-  const { ref, promptsDir, read } = opts;
-  const source = `${REVIEW_GUIDELINES_SKILL_PATH}@${ref}`;
+  const {
+    ref,
+    promptsDir,
+    read,
+    skillPath = REVIEW_GUIDELINES_SKILL_PATH,
+    artifact = REVIEW_GUIDELINES_ARTIFACT,
+  } = opts;
+  const source = `${skillPath}@${ref}`;
 
   let raw: string | null;
   try {
-    raw = await read(REVIEW_GUIDELINES_SKILL_PATH, ref);
+    raw = await read(skillPath, ref);
   } catch (error) {
     console.warn(
       `Could not read review guidelines from ${source}: ${
@@ -59,7 +68,7 @@ export async function prepareReviewGuidelines(opts: {
   }
 
   await mkdir(promptsDir, { recursive: true });
-  const path = `${promptsDir}/${REVIEW_GUIDELINES_ARTIFACT}`;
+  const path = `${promptsDir}/${artifact}`;
   await writeFile(path, body);
   console.log(
     `Stored review guidelines (${body.length} chars, from ${source}) at ${path}`,
