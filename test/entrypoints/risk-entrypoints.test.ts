@@ -664,6 +664,45 @@ describe("risk action entrypoints", () => {
       });
     }, 30_000);
 
+    it("judges by level alone a judge Factory serves without a verdict, from begin to settle", async () => {
+      const { plan, workspace, ended } = await planned();
+      const levelOnly = { ...judge, verdictField: "omitted" };
+      const { verdict: _verdict, ...levels } = validVerdict;
+      serve({
+        action: "judge",
+        headSha: plan.headSha,
+        baseSha: plan.baseSha,
+        pullRequest: plan.pullRequest,
+        priorDeclines: plan.priorDeclines,
+        judge: levelOnly,
+      });
+      await begin(
+        jobEnv({
+          GITHUB_EVENT_PATH: await eventFile({
+            pull_request: { number: 123, head: { sha: plan.headSha } },
+          }),
+          TRUSTED_TAIL_PREFROZEN: "true",
+        }),
+      );
+      await factory?.stop();
+
+      const { ran } = await assessWith(workspace, {
+        exitCode: 0,
+        report: {
+          ...ended,
+          ...answeredBy("session-0"),
+          answer: { ...answer, verdict: levels },
+        },
+      });
+      const { received } = serve({ status: "published", outcome: "approve" });
+      await settle(jobEnv());
+
+      expect((ran?.input as { judge: unknown }).judge).toEqual(levelOnly);
+      expect(
+        (received[0]?.body as { result: { verdict: unknown } }).result.verdict,
+      ).toEqual(levels);
+    }, 30_000);
+
     it("hands the worker an earlier verdict to re-check, with its commits fetched, and settles the re-check it reports", async () => {
       const { plan, workspace, ended } = await planned({ mode: "enforce" });
       const incremental = plan.incremental!;

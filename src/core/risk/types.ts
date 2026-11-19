@@ -19,8 +19,6 @@ export type RiskFetch = (url: string, init: RequestInit) => Promise<Response>;
 export const CommitShaSchema = z.string().regex(/^[0-9a-f]{40}$/);
 const Sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
 
-export const RISK_VERDICT_FIELD_MODES = ["required", "omitted"] as const;
-
 export const RiskRunSchema = z.object({
   runner: z.string().min(1),
   trigger: z.string().min(1).optional(),
@@ -67,10 +65,8 @@ export type RiskBeginRequest = {
 /**
  * The judge as Factory serves it. It is handed to the worker unchanged, and
  * `sha256` comes back with the verdict so Factory can tell which judge
- * answered. `verdictField` is sent only as `omitted`, for a judge decided by
- * risk level alone; absent, or a value this version does not know, it is
- * `required`, so an unknown mode can only fail a run, never let an answer
- * skip the verdict.
+ * answered. `verdictField` is served only as `omitted`, for a judge decided
+ * by risk level alone, whose answer carries no `verdict`.
  */
 const RiskJudgeSchema = z.object({
   group: z.string().min(1),
@@ -79,7 +75,7 @@ const RiskJudgeSchema = z.object({
   settings: z.record(z.unknown()),
   scores: z.record(z.tuple([z.number().int(), z.number().int()])),
   timeoutSeconds: z.number().int().positive(),
-  verdictField: z.enum(RISK_VERDICT_FIELD_MODES).optional().catch("required"),
+  verdictField: z.literal("omitted").optional(),
   sha256: Sha256Schema,
 });
 export type RiskJudge = z.infer<typeof RiskJudgeSchema>;
