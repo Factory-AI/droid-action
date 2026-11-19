@@ -26,7 +26,7 @@ jobs:
           persist-credentials: false
 
       - name: Run Droid Auto Review
-        uses: Factory-AI/droid-action@dev
+        uses: Factory-AI/droid-action@droid/aut-3012-builtin-security-review
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
