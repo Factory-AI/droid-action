@@ -29,7 +29,10 @@ and are never printed to the job log.
    judge in one Droid session, checks the answer against the judge's
    contract, and gives an answer that breaks it one more session.
 3. **Settle.** The action reports the judged head and the judge's answer to
-   Factory. A run that produced no answer is reported too, with a short
+   Factory. The answer is JSON with `verdict`, `brief`, `details`, and the
+   judge's declared `scores`; a judge Factory serves with
+   `"verdictField": "omitted"` is decided by risk level alone, so its
+   answer carries no `verdict`. A run that produced no answer is reported too, with a short
    reason, so the head is marked unavailable instead of keeping a stale
    result.
 
