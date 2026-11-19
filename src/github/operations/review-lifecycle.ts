@@ -1048,7 +1048,10 @@ export async function finishReviewLifecycle(options: {
     input = {
       state: "failed",
       head: run.head,
+      base: run.base,
+      repositoryUrl: input.repositoryUrl,
       reviewState: run.state,
+      findings: input.findings,
       error: redactCredentials(
         error instanceof Error
           ? error.message

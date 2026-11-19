@@ -46,6 +46,7 @@ export {
   truncateReviewText,
 } from "./budget";
 import {
+  contextShortened,
   fitInlineOutput,
   fitReviewOutput,
   NOTICE,
@@ -366,6 +367,12 @@ export function friendlyReviewError(
       retry:
         "Check the actor and workflow token permissions, then comment `@droid review` to retry.",
     };
+  if (/output limit/.test(value))
+    return {
+      message: `The review summary is larger than ${platform === "gitlab" ? "GitLab" : "GitHub"} allows in one comment.`,
+      retry:
+        "Findings that have no inline comment are listed below. Comment `@droid review` to retry.",
+    };
   if (/too large|context.*limit|token.*limit/.test(value))
     return {
       message: "This change is too large to review in one run.",
@@ -430,6 +437,40 @@ function previousReview(input: ReviewRenderInput): string {
     ? `#### Previous review${input.previousHead ? ` of ${sha(input.previousHead)}` : ""}\n\n${redactSecrets(previous)}`
     : "";
 }
+const MAX_UNPOSTED_ROWS = 50;
+/**
+ * A failed summary is the only place findings without an inline comment
+ * would appear, so list them, most severe first, instead of losing them.
+ */
+function unpostedFindings(input: ReviewRenderInput): string {
+  const rank = { P0: 0, P1: 1, P2: 2 };
+  const unposted = (input.findings ?? [])
+    .filter((f) => (!f.state || f.state === "open") && f.outside_diff)
+    .sort(
+      (a, b) =>
+        Number(b.security) - Number(a.security) ||
+        rank[a.severity] - rank[b.severity],
+    );
+  if (!unposted.length) return "";
+  const shown = unposted.slice(0, MAX_UNPOSTED_ROWS);
+  const count = (severity: keyof typeof rank) =>
+    unposted.filter((f) => f.severity === severity).length;
+  return [
+    `#### ${pluralize(unposted.length, "finding")} without an inline comment`,
+    `P0: ${count("P0")} · P1: ${count("P1")} · P2: ${count("P2")}${unposted.some((f) => f.security) ? ` · security: ${unposted.filter((f) => f.security).length}` : ""}`,
+    shown
+      .map(
+        (f) =>
+          `- **${f.severity}**${f.security ? " 🔒" : ""} ${title({ ...f, title: truncateReviewText(f.title, 120) })} · ${findingReference(f, input)}`,
+      )
+      .join("\n"),
+    unposted.length > shown.length
+      ? `${unposted.length - shown.length} more not listed. Comment \`@droid review\` to retry.`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
 function reviewSummaryBody(
   input: ReviewRenderInput,
   factoryFixEnabled: boolean,
@@ -455,6 +496,7 @@ function reviewSummaryBody(
     return [
       markers,
       `> [!WARNING]\n> **Droid couldn't finish this review.** ${error.message}\n>\n> ${error.retry}${input.jobUrl ? ` ${link("View job", input.jobUrl)}` : ""}`,
+      unpostedFindings(input),
       input.error ? details("Error details", fenced(input.error)) : "",
       previousReview(input),
       compactionNotice,
@@ -638,7 +680,7 @@ export function renderStepSummary(input: ReviewRenderInput): string {
       `## Droid Review\n\n${reviewSummaryBody(
         compact,
         input.includeAgentPrompts !== false,
-        compact === input ? "" : NOTICE,
+        contextShortened(compact, input) ? NOTICE : "",
       )}`,
     "",
   );
@@ -684,7 +726,7 @@ export function renderReviewSummary(input: ReviewRenderInput): string {
       reviewSummaryBody(
         compact,
         input.includeAgentPrompts !== false,
-        compact === input ? "" : NOTICE,
+        contextShortened(compact, input) ? NOTICE : "",
       ),
     "",
   );
