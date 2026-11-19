@@ -235,7 +235,6 @@ export async function prepareTagExecution({
     if (runAutomaticSecurityReview) {
       // Signal to the code review prompt to spawn a security-reviewer subagent
       core.exportVariable("SECURITY_REVIEW_ENABLED", "true");
-      core.setOutput("install_security_skills", "true");
     }
 
     core.setOutput("run_code_review", "true");

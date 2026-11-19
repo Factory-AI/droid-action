@@ -717,6 +717,10 @@ describe("review command integration", () => {
       expectStickyLifecycle(context);
       expect(setOutputSpy).toHaveBeenCalledWith("run_code_review", "true");
       expect(setOutputSpy).toHaveBeenCalledWith("run_security_review", "true");
+      expect(setOutputSpy).not.toHaveBeenCalledWith(
+        "install_security_skills",
+        "true",
+      );
       expect(exportVarSpy).toHaveBeenCalledWith(
         "SECURITY_REVIEW_ENABLED",
         "true",
