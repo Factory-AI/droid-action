@@ -61,7 +61,6 @@ export async function run() {
             process.env.DROID_SUCCESS === "false" ||
             process.env.PREPARE_SUCCESS === "false"
               ? process.env.DROID_POST_ERROR_MESSAGE ||
-                process.env.DROID_VALIDATOR_ERROR_MESSAGE ||
                 process.env.DROID_ERROR_MESSAGE ||
                 process.env.PREPARE_ERROR ||
                 "The review failed. Check the job log and retry with @droid review."
@@ -136,67 +135,19 @@ export async function run() {
     const branchLink = "";
     const prLink = "";
 
-    // Check if action failed and read output file for execution details
-    let executionDetails: {
-      cost_usd?: number;
-      duration_ms?: number;
-      duration_api_ms?: number;
-    } | null = null;
     let actionFailed = false;
     let errorDetails: string | undefined;
 
-    // First check if prepare step failed
-    const prepareSuccess = process.env.PREPARE_SUCCESS !== "false";
     const prepareError = process.env.PREPARE_ERROR;
-
-    if (!prepareSuccess && prepareError) {
+    if (process.env.PREPARE_SUCCESS === "false" && prepareError) {
       actionFailed = true;
       errorDetails = prepareError;
     } else {
+      actionFailed = process.env.DROID_SUCCESS === "false";
       const droidErrorMessage =
         process.env.DROID_POST_ERROR_MESSAGE?.trim() ||
-        process.env.DROID_VALIDATOR_ERROR_MESSAGE?.trim() ||
         process.env.DROID_ERROR_MESSAGE?.trim();
-      if (process.env.DROID_SUCCESS === "false" && droidErrorMessage) {
-        errorDetails = droidErrorMessage;
-      }
-      // Check for existence of output file and parse it if available
-      try {
-        const outputFile = process.env.OUTPUT_FILE;
-        if (outputFile) {
-          const fileContent = await fs.readFile(outputFile, "utf8");
-          const outputData = JSON.parse(fileContent);
-
-          // Output file is an array, get the last element which contains execution details
-          if (Array.isArray(outputData) && outputData.length > 0) {
-            const lastElement = outputData[outputData.length - 1];
-            if (
-              lastElement.type === "result" &&
-              "cost_usd" in lastElement &&
-              "duration_ms" in lastElement
-            ) {
-              executionDetails = {
-                cost_usd: lastElement.cost_usd,
-                duration_ms: lastElement.duration_ms,
-                duration_api_ms: lastElement.duration_api_ms,
-              };
-            }
-          }
-        }
-
-        // Check if the Droid action failed
-        const droidSuccess = process.env.DROID_SUCCESS !== "false";
-        actionFailed = !droidSuccess;
-      } catch (error) {
-        console.error(
-          "Error reading output file:",
-          redactCredentials(
-            error instanceof Error ? error.message : String(error),
-          ),
-        );
-        // If we can't read the file, check for any failure markers
-        actionFailed = process.env.DROID_SUCCESS === "false";
-      }
+      if (actionFailed && droidErrorMessage) errorDetails = droidErrorMessage;
     }
 
     const review = await readReviewPostResults();
@@ -205,7 +156,6 @@ export async function run() {
     const commentInput: CommentUpdateInput = {
       currentBody,
       actionFailed,
-      executionDetails,
       jobUrl,
       branchLink,
       prLink,

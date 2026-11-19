@@ -1,9 +1,8 @@
 /**
  * Platform-agnostic Pass 1 (candidate generation) prompt.
  *
- * Both `src/create-prompt/templates/review-candidates-prompt.ts` (GitHub)
- * and `src/gitlab/prompts/candidates.ts` (GitLab) delegate to this builder
- * via thin adapters that supply a `ReviewTerminology` object plus the
+ * `src/gitlab/prompts/candidates.ts` delegates to this builder through a
+ * thin adapter that supplies a `ReviewTerminology` object plus the
  * runtime context (entity number, SHAs, artifact paths). The /review skill
  * itself is platform-agnostic; this builder produces the runtime harness
  * (where to read inputs, where to write the candidates JSON, what NOT to

@@ -3,11 +3,11 @@ import { reviewPromptSettingsFromEnvironment } from "../../../src/core/review/pr
 import { generateValidatorPrompt } from "../../../src/core/review/prompts/validator";
 import { generateCandidatesPrompt } from "../../../src/core/review/prompts/candidates";
 import type { ReviewPromptContext } from "../../../src/core/review/prompts/types";
-import { GITHUB_TERMINOLOGY } from "../../../src/create-prompt/terminology";
+import { GITLAB_TERMINOLOGY } from "../../../src/gitlab/prompts/terminology";
 
 function context(): ReviewPromptContext {
   return {
-    terminology: GITHUB_TERMINOLOGY,
+    terminology: GITLAB_TERMINOLOGY,
     postingMode: "file",
     entityNumber: 42,
     repoOrProject: "example/repo",

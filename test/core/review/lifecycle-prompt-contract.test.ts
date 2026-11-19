@@ -1,8 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import { createHash } from "node:crypto";
-import { generateReviewCandidatesPrompt } from "../../../src/create-prompt/templates/review-candidates-prompt";
-import { generateReviewValidatorPrompt } from "../../../src/create-prompt/templates/review-validator-prompt";
-import type { PreparedContext } from "../../../src/create-prompt/types";
 import {
   generateBitbucketCandidatesPrompt,
   generateBitbucketValidatorPrompt,
@@ -14,96 +11,6 @@ import {
 import { parseValidatedReview } from "../../../src/core/review/validated/parse";
 import { reconcileFindings } from "../../../src/core/review/incremental";
 import { reviewCheckConclusion } from "../../../src/github/operations/review-checks";
-
-const context: PreparedContext = {
-  repository: "owner/repo",
-  triggerPhrase: "@droid",
-  eventData: {
-    eventName: "pull_request",
-    isPR: true,
-    prNumber: "42",
-    baseBranch: "main",
-  },
-  prBranchData: { headRefName: "feature", headRefOid: "abcdef1234567890" },
-  reviewArtifacts: {
-    diffPath: "/tmp/review/pr.diff",
-    commentsPath: "/tmp/review/comments.json",
-    descriptionPath: "/tmp/review/description.txt",
-  },
-};
-
-function withSettings(run: () => void, priorPath?: string): void {
-  const changes = {
-    REVIEW_PRIOR_FINDINGS_PATH: priorPath,
-    REVIEW_SEVERITY_THRESHOLD: "P1",
-    SECURITY_SEVERITY_THRESHOLD: "high",
-    SECURITY_BLOCK_ON_CRITICAL: "false",
-    SECURITY_BLOCK_ON_HIGH: "true",
-  };
-  const before = new Map(
-    Object.keys(changes).map((key) => [key, process.env[key]]),
-  );
-  try {
-    for (const [key, value] of Object.entries(changes)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-    run();
-  } finally {
-    for (const [key, value] of before) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-  }
-}
-
-describe("GitHub lifecycle prompt protocol", () => {
-  for (const [pass, generate] of [
-    ["candidate", generateReviewCandidatesPrompt],
-    ["validator", generateReviewValidatorPrompt],
-  ] as const) {
-    it(`${pass} hands off history, stable IDs and independent security policy`, () => {
-      withSettings(() => {
-        const prompt = generate(context);
-        expect(prompt).toContain("/tmp/review/custom-prior.json");
-        for (const field of [
-          "id",
-          "severity",
-          "security",
-          "securitySeverity",
-        ]) {
-          expect(prompt).toContain(field);
-        }
-        expect(prompt).toMatch(/critical[\s\S]*high[\s\S]*medium[\s\S]*low/);
-        expect(prompt).toContain('"severityThreshold": "P1"');
-        expect(prompt).toContain('"securitySeverityThreshold": "high"');
-        expect(prompt).toContain('"securityBlockOnCritical": false');
-        expect(prompt).toContain('"securityBlockOnHigh": true');
-        expect(prompt).toMatch(/dismissed/i);
-        expect(prompt).toMatch(/untrusted/i);
-      }, "/tmp/review/custom-prior.json");
-    });
-
-    it(`${pass} tolerates a missing first-run history manifest`, () => {
-      withSettings(() => {
-        const prompt = generate(context);
-        expect(prompt).toContain("review_prior_findings.json");
-        expect(prompt).toMatch(/absence is valid|absent on the first run/i);
-      });
-    });
-  }
-
-  it("keeps fix evidence separate from one-result-per-candidate validation", () => {
-    withSettings(() => {
-      const prompt = generateReviewValidatorPrompt(context);
-      expect(prompt).toContain("findingResolutions");
-      expect(prompt).toContain("evidence");
-      expect(prompt).toContain("eligibleFixedIds");
-      expect(prompt).toMatch(/absence is not|absent candidate.*not/i);
-      expect(prompt).toMatch(/one (entry|result) per candidate/i);
-    });
-  });
-});
 
 describe("lifecycle fields through existing parser and deterministic policy", () => {
   function parse(

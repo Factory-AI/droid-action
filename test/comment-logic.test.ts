@@ -13,7 +13,6 @@ describe("updateCommentBody", () => {
   const baseInput = {
     currentBody: "Initial comment body",
     actionFailed: false,
-    executionDetails: null,
     jobUrl: "https://github.com/owner/repo/actions/runs/123",
     branchName: undefined,
     triggerUsername: undefined,
@@ -135,29 +134,27 @@ describe("updateCommentBody", () => {
   });
 
   describe("working message replacement", () => {
-    it("includes success message header with duration", () => {
+    it("includes success message header", () => {
       const input = {
         ...baseInput,
         currentBody: "Droid is working…",
-        executionDetails: { duration_ms: 74000 }, // 1m 14s
         triggerUsername: "trigger-user",
       };
 
       const result = updateCommentBody(input);
-      expect(result).toContain("**Droid finished in 1m 14s**");
+      expect(result).toContain("**Droid finished**");
       expect(result).not.toContain("Droid is working");
     });
 
-    it("includes error message header with duration", () => {
+    it("includes error message header", () => {
       const input = {
         ...baseInput,
         currentBody: "Droid is working...",
         actionFailed: true,
-        executionDetails: { duration_ms: 45000 }, // 45s
       };
 
       const result = updateCommentBody(input);
-      expect(result).toContain("**Droid encountered an error after 45s**");
+      expect(result).toContain("**Droid encountered an error**");
     });
 
     it("strips the review/security progress message on failure", () => {
@@ -178,7 +175,6 @@ describe("updateCommentBody", () => {
       const input = {
         ...baseInput,
         currentBody: "Droid is running a security check…",
-        executionDetails: { duration_ms: 60000 },
       };
 
       const result = updateCommentBody(input);
@@ -204,12 +200,11 @@ describe("updateCommentBody", () => {
         ...baseInput,
         currentBody: "Droid is working...",
         actionFailed: true,
-        executionDetails: { duration_ms: 45000 },
         errorDetails: "Failed to fetch issue data",
       };
 
       const result = updateCommentBody(input);
-      expect(result).toContain("**Droid encountered an error after 45s**");
+      expect(result).toContain("**Droid encountered an error**");
       expect(result).toContain("[View job]");
       expect(result).toContain("~~~text\nFailed to fetch issue data\n~~~");
       // Ensure error details come after the header/links
@@ -410,63 +405,6 @@ describe("updateCommentBody", () => {
     });
   });
 
-  describe("execution details", () => {
-    it("includes duration in header for success", () => {
-      const input = {
-        ...baseInput,
-        executionDetails: {
-          cost_usd: 0.13382595,
-          duration_ms: 31033,
-          duration_api_ms: 31034,
-        },
-        triggerUsername: "testuser",
-      };
-
-      const result = updateCommentBody(input);
-      expect(result).toContain("**Droid finished in 31s**");
-    });
-
-    it("formats duration in minutes and seconds in header", () => {
-      const input = {
-        ...baseInput,
-        executionDetails: {
-          duration_ms: 75000, // 1 minute 15 seconds
-        },
-        triggerUsername: "testuser",
-      };
-
-      const result = updateCommentBody(input);
-      expect(result).toContain("**Droid finished in 1m 15s**");
-    });
-
-    it("includes duration in error header", () => {
-      const input = {
-        ...baseInput,
-        actionFailed: true,
-        executionDetails: {
-          duration_ms: 45000, // 45 seconds
-        },
-      };
-
-      const result = updateCommentBody(input);
-      expect(result).toContain("**Droid encountered an error after 45s**");
-    });
-
-    it("handles missing duration gracefully", () => {
-      const input = {
-        ...baseInput,
-        executionDetails: {
-          cost_usd: 0.25,
-        },
-        triggerUsername: "testuser",
-      };
-
-      const result = updateCommentBody(input);
-      expect(result).toContain("**Droid finished**");
-      expect(result).not.toContain(" in ");
-    });
-  });
-
   describe("combined updates", () => {
     it("combines all updates in correct order", () => {
       const input = {
@@ -476,17 +414,13 @@ describe("updateCommentBody", () => {
         actionFailed: false,
         branchName: "droid-branch-123",
         prLink: "\n[Create a PR](https://github.com/owner/repo/pr-url)",
-        executionDetails: {
-          cost_usd: 0.01,
-          duration_ms: 65000, // 1 minute 5 seconds
-        },
         triggerUsername: "trigger-user",
       };
 
       const result = updateCommentBody(input);
 
       // Check the header structure
-      expect(result).toContain("**Droid finished in 1m 5s**");
+      expect(result).toContain("**Droid finished**");
       expect(result).toContain("· [View job]");
       expect(result).toContain(
         "· [`droid-branch-123`](https://github.com/owner/repo/tree/droid-branch-123)",
@@ -578,7 +512,6 @@ describe("updateCommentBody", () => {
       const input: CommentUpdateInput = {
         currentBody: "@droid can you help with this?",
         actionFailed: false,
-        executionDetails: { duration_ms: 90000 },
         jobUrl: "https://github.com/owner/repo/actions/runs/123",
         branchLink: "", // Empty branch link means branch doesn't exist remotely
         branchName: undefined, // Should be undefined when branchLink is empty
@@ -588,7 +521,7 @@ describe("updateCommentBody", () => {
 
       const result = updateCommentBody(input);
 
-      expect(result).toContain("Droid finished in 1m 30s");
+      expect(result).toContain("**Droid finished**");
       expect(result).toContain(
         "[View job](https://github.com/owner/repo/actions/runs/123)",
       );
@@ -604,7 +537,6 @@ describe("updateCommentBody", () => {
       const input: CommentUpdateInput = {
         ...baseInput,
         currentBody: "Droid is reviewing code and running a security check…",
-        executionDetails: { duration_ms: 60000 },
         securityReviewRan: true,
       };
 
@@ -617,7 +549,6 @@ describe("updateCommentBody", () => {
       const input: CommentUpdateInput = {
         ...baseInput,
         currentBody: "Droid is working…",
-        executionDetails: { duration_ms: 60000 },
         securityReviewRan: false,
       };
 
@@ -629,7 +560,6 @@ describe("updateCommentBody", () => {
       const input: CommentUpdateInput = {
         ...baseInput,
         currentBody: "Droid is working…",
-        executionDetails: { duration_ms: 60000 },
       };
 
       const result = updateCommentBody(input);
@@ -643,7 +573,6 @@ describe("updateCommentBody", () => {
           "Droid is reviewing code and running a security check…\n\n" +
           "![Security Review](https://img.shields.io/badge/security%20review-ran-blue)\n\n" +
           "Validator approved 2 findings.",
-        executionDetails: { duration_ms: 60000 },
         securityReviewRan: true,
       };
 

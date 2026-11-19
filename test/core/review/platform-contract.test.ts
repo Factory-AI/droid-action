@@ -10,16 +10,12 @@ import {
   generateAzureDevopsValidatorPrompt,
   AZURE_DEVOPS_TERMINOLOGY,
 } from "../../../src/azure-devops/prompts";
-import { generateReviewCandidatesPrompt } from "../../../src/create-prompt/templates/review-candidates-prompt";
-import { generateReviewValidatorPrompt } from "../../../src/create-prompt/templates/review-validator-prompt";
 import { generateGitlabReviewCandidatesPrompt } from "../../../src/gitlab/prompts/candidates";
 import { generateGitlabReviewValidatorPrompt } from "../../../src/gitlab/prompts/validator";
 import { generateCandidatesPrompt as legacyCandidates } from "../../../src/core/review/prompts/legacy-candidates";
 import { generateValidatorPrompt as legacyValidator } from "../../../src/core/review/prompts/legacy-validator";
 import { reviewPromptSettingsFromEnvironment } from "../../../src/core/review/prompts/settings";
 import type { ReviewPromptContext } from "../../../src/core/review/prompts/types";
-import { GITHUB_TERMINOLOGY } from "../../../src/create-prompt/terminology";
-import type { PreparedContext } from "../../../src/create-prompt/types";
 import { parseValidatedReview } from "../../../src/core/review/validated/parse";
 import { renderReviewSummary } from "../../../src/core/review/render";
 import {
@@ -45,25 +41,6 @@ function common(includeSuggestions = true) {
     headSha: HEAD,
     includeSuggestions,
     securityReviewEnabled: true,
-  };
-}
-
-function github(
-  includeSuggestions = true,
-  repo = "example/repo",
-): PreparedContext {
-  return {
-    repository: repo,
-    triggerPhrase: "@droid",
-    eventData: {
-      eventName: "pull_request",
-      isPR: true,
-      prNumber: "42",
-      baseBranch: "main",
-    },
-    prBranchData: { headRefName: "feature", headRefOid: HEAD },
-    reviewArtifacts: paths,
-    includeSuggestions,
   };
 }
 
@@ -102,14 +79,6 @@ const legacyPlatforms = [
 
 const richPlatforms = [
   {
-    name: "GitHub",
-    platform: "github",
-    candidates: (suggestions: boolean, repo?: string) =>
-      generateReviewCandidatesPrompt(github(suggestions, repo)),
-    validator: (suggestions: boolean, repo?: string) =>
-      generateReviewValidatorPrompt(github(suggestions, repo)),
-  },
-  {
     name: "GitLab",
     platform: "gitlab",
     candidates: (suggestions: boolean, repo = "example/repo") =>
@@ -129,7 +98,7 @@ const richPlatforms = [
   },
 ] satisfies Array<{
   name: string;
-  platform: "github" | "gitlab";
+  platform: "gitlab";
   candidates: (suggestions: boolean, repo?: string) => string;
   validator: (suggestions: boolean, repo?: string) => string;
 }>;
@@ -240,7 +209,7 @@ describe("platform-specific review output contracts", () => {
 
 describe("unchanged legacy builder mode semantics", () => {
   const context: ReviewPromptContext = {
-    terminology: GITHUB_TERMINOLOGY,
+    terminology: BITBUCKET_TERMINOLOGY,
     entityNumber: 42,
     repoOrProject: "example/repo",
     headRef: "feature",

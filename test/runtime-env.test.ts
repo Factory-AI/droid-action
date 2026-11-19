@@ -87,8 +87,6 @@ try {
         payload: { pull_request: { number: 1, title: "Fixture", body: "", user: { login: "fixture-author" } } },
       },
       commentId: 1, baseBranch: "dev", droidBranch: "fixture",
-      prBranchData: { headRefName: "fixture", headRefOid: "b".repeat(40), isFork: false, headRevision: "HEAD" },
-      reviewArtifacts: { diffPath: "fixture.diff", commentsPath: "fixture-comments.json", descriptionPath: "fixture-description.txt" },
       generatePrompt: () => "Synthetic prompt fixture",
     });
   } else {

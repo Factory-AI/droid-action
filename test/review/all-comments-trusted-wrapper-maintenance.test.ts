@@ -7,10 +7,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse } from "yaml";
 import { DroidRunType, setDroidRunType } from "../../src/run-type";
-import * as context from "../../src/github/context";
-import * as client from "../../src/github/api/client";
-import * as validator from "../../src/tag/commands/review-validator";
-import prepareValidator from "../../src/entrypoints/prepare-validator";
 
 type Step = {
   name: string;
@@ -271,30 +267,5 @@ describe("QA75 semantic role preparation", () => {
       setDroidRunType(role);
       expect(output).toHaveBeenCalledWith("droid_exec_run_type", role);
     }
-  });
-  it("rejects a non-review role before creating validator API clients", async () => {
-    spyOn(context, "parseGitHubContext").mockReturnValue({
-      isPR: true,
-      entityNumber: 42,
-      eventName: "issue_comment",
-    } as any);
-    const octokit = spyOn(client, "createOctokit").mockReturnValue({} as any);
-    const prepare = spyOn(
-      validator,
-      "prepareReviewValidatorMode",
-    ).mockResolvedValue({} as any);
-    spyOn(core, "setFailed").mockImplementation(() => {});
-    spyOn(core, "setOutput").mockImplementation(() => {});
-    spyOn(core, "setSecret").mockImplementation(() => {});
-    spyOn(process, "exit").mockImplementation((() => {
-      throw new Error("fixture process.exit");
-    }) as any);
-    process.env.DROID_EXEC_RUN_TYPE = DroidRunType.Fill;
-    process.env.GITHUB_TOKEN = "synthetic-test-token";
-    process.env.DROID_COMMENT_ID = "12";
-    delete process.env.REVIEW_CANDIDATES_PATH;
-    await expect(prepareValidator()).rejects.toThrow("fixture process.exit");
-    expect(octokit).not.toHaveBeenCalled();
-    expect(prepare).not.toHaveBeenCalled();
   });
 });

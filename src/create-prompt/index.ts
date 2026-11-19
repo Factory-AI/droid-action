@@ -16,16 +16,9 @@ import {
 } from "../github/context";
 import type { ParsedGitHubContext } from "../github/context";
 import { exportRuntimeVariable } from "../utils/runtime-env";
-import type {
-  CommonFields,
-  PreparedContext,
-  EventData,
-  PrBranchPromptData,
-  ReviewArtifacts,
-} from "./types";
-import type { RepoReviewGuidelines } from "../core/review/prompts/types";
+import type { CommonFields, PreparedContext, EventData } from "./types";
 
-export type { CommonFields, PreparedContext, ReviewArtifacts } from "./types";
+export type { CommonFields, PreparedContext } from "./types";
 
 const BASE_ALLOWED_TOOLS = [
   "Execute",
@@ -78,8 +71,6 @@ export function prepareContext(
   droidCommentId?: string,
   baseBranch?: string,
   droidBranch?: string,
-  prBranchData?: PrBranchPromptData,
-  reviewArtifacts?: ReviewArtifacts,
 ): PreparedContext {
   const repository = context.repository.full_name;
   const triggerPhrase = context.inputs.triggerPhrase || "@droid";
@@ -125,21 +116,7 @@ export function prepareContext(
     droidBranch,
   });
 
-  const result: PreparedContext = {
-    ...commonFields,
-    eventData,
-    githubContext: context,
-  };
-
-  if (prBranchData) {
-    result.prBranchData = prBranchData;
-  }
-
-  if (reviewArtifacts) {
-    result.reviewArtifacts = reviewArtifacts;
-  }
-
-  return result;
+  return { ...commonFields, eventData, githubContext: context };
 }
 
 type EventBuilderExtras = {
@@ -300,15 +277,10 @@ export type PromptCreationOptions = {
   commentId?: number;
   baseBranch?: string;
   droidBranch?: string;
-  prBranchData?: PrBranchPromptData;
   generatePrompt: PromptGenerator;
   allowedTools?: string[];
   disallowedTools?: string[];
   includeActionsTools?: boolean;
-  reviewArtifacts?: ReviewArtifacts;
-  reviewGuidelines?: RepoReviewGuidelines;
-  outputFilePath?: string;
-  includeSuggestions?: boolean;
 };
 
 export async function createPrompt({
@@ -316,15 +288,10 @@ export async function createPrompt({
   commentId,
   baseBranch,
   droidBranch,
-  prBranchData,
   generatePrompt,
   allowedTools = [],
   disallowedTools = [],
   includeActionsTools = false,
-  reviewArtifacts,
-  reviewGuidelines,
-  outputFilePath,
-  includeSuggestions,
 }: PromptCreationOptions) {
   try {
     const droidCommentId = commentId?.toString();
@@ -333,21 +300,7 @@ export async function createPrompt({
       droidCommentId,
       baseBranch,
       droidBranch,
-      prBranchData,
-      reviewArtifacts,
     );
-
-    if (outputFilePath) {
-      preparedContext.outputFilePath = outputFilePath;
-    }
-
-    if (includeSuggestions !== undefined) {
-      preparedContext.includeSuggestions = includeSuggestions;
-    }
-
-    if (reviewGuidelines) {
-      preparedContext.reviewGuidelines = reviewGuidelines;
-    }
 
     await mkdir(`${process.env.RUNNER_TEMP || "/tmp"}/droid-prompts`, {
       recursive: true,

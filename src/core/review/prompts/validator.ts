@@ -6,13 +6,12 @@
  * on `postingMode`:
  *
  *   - "tool": the agent posts approved findings through an MCP tool.
- *   - "file" (GitHub and GitLab): the validated JSON is the deliverable,
- *     and a deterministic CI step posts it through the platform API. The
- *     agent holds no PR/MR mutation tools.
+ *   - "file" (GitLab): the validated JSON is the deliverable, and a
+ *     deterministic CI step posts it through the platform API. The agent
+ *     holds no MR mutation tools.
  *
- * Both `src/create-prompt/templates/review-validator-prompt.ts` (GitHub)
- * and `src/gitlab/prompts/validator.ts` (GitLab) delegate to this builder
- * via thin adapters that supply a `ReviewTerminology` shape.
+ * `src/gitlab/prompts/validator.ts` delegates to this builder through a
+ * thin adapter that supplies a `ReviewTerminology` shape.
  */
 
 import { buildRepoGuidelinesSection } from "./guidelines";

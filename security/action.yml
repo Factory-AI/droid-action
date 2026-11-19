@@ -165,8 +165,6 @@ runs:
       run: |
         cd ${{ github.action_path }}/..
         bun install
-        cd ${{ github.action_path }}/../base-action
-        bun install
 
     - name: Install Droid CLI
       shell: bash
