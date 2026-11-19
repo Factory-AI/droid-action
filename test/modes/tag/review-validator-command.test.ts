@@ -88,6 +88,55 @@ describe("prepareReviewValidatorMode", () => {
     exportSpy.mockRestore();
   });
 
+  it("passes the stored follow-up round context to the validator prompt and ignores a tampered one", async () => {
+    const directory = await fsPromises.mkdtemp("/tmp/validator-iteration-");
+    process.env.RUNNER_TEMP = directory;
+    await fsPromises.mkdir(`${directory}/droid-prompts`);
+    const iteration = {
+      round: 2,
+      reviewedHeads: 1,
+      full: true,
+      skill: false,
+      followupThreshold: "P1",
+      followupBar: false,
+      priorFindings: [],
+    };
+    const fetchSpy = spyOn(prFetcher, "fetchPRBranchData").mockResolvedValue({
+      baseRefName: "main",
+      headRefName: "feature",
+      headRefOid: "abc123",
+      isFork: false,
+      title: "PR",
+      body: "",
+    });
+    const promptSpy = spyOn(promptModule, "createPrompt").mockResolvedValue();
+    const setOutputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
+    try {
+      for (const [stored, expected] of [
+        [iteration, iteration],
+        [{ ...iteration, round: "2" }, undefined],
+      ] as const) {
+        await fsPromises.writeFile(
+          `${directory}/droid-prompts/review_prior_findings.json`,
+          JSON.stringify({ iteration: stored }),
+        );
+        await prepareReviewValidatorMode({
+          context: createMockContext({ isPR: true, entityNumber: 24 }),
+          octokit: {} as any,
+          githubToken: "token",
+          trackingCommentId: 555,
+        });
+        const received: unknown =
+          promptSpy.mock.calls.at(-1)?.[0].reviewArtifacts?.iteration;
+        expect(received).toEqual(expected);
+      }
+    } finally {
+      fetchSpy.mockRestore();
+      promptSpy.mockRestore();
+      setOutputSpy.mockRestore();
+      await fsPromises.rm(directory, { recursive: true, force: true });
+    }
+  });
   it("hands the validator the guidelines Pass 1 stored, without refetching", async () => {
     const fetchSpy = spyOn(prFetcher, "fetchPRBranchData").mockResolvedValue({
       baseRefName: "main",

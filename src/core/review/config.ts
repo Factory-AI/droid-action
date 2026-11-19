@@ -39,6 +39,9 @@ const configSchema = z
     fix_mode: z.enum(["commit", "pr", "off"]).default("commit"),
     review_diagram: z.enum(["auto", "off"]).default("auto"),
     review_severity_threshold: z.enum(["P0", "P1", "P2"]).default("P2"),
+    review_followup_severity_threshold: z
+      .enum(["P0", "P1", "P2"])
+      .default("P1"),
     review_ignore_paths: list.default([
       "**/*.lock",
       "**/*.lockb",
@@ -102,6 +105,7 @@ const RULES_KEY = "rules";
 const aliases: Record<string, string> = {
   depth: "review_depth",
   severity_threshold: "review_severity_threshold",
+  followup_severity_threshold: "review_followup_severity_threshold",
   ignore_paths: "review_ignore_paths",
   summary_sections: "review_summary_sections",
   badges: "review_badges",

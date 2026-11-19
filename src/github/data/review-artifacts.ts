@@ -25,6 +25,11 @@ import {
   normalizePatchPath,
   pathsFromDiffHeader,
 } from "../../core/review/validated/diff";
+import {
+  reviewIterationContext,
+  type ReviewIterationContext,
+  type ReviewThreadComment,
+} from "../../core/review/iteration";
 
 const DIFF_MAX_BUFFER = 50 * 1024 * 1024; // 50MB buffer for large diffs
 
@@ -315,6 +320,7 @@ export async function computeReviewArtifacts(opts: {
     JSON.stringify({ reviewed, skipped }),
   );
   const lifecycle = await readReviewLifecycle();
+  let iteration: ReviewIterationContext | undefined;
   if (lifecycle) {
     lifecycle.base = actualBase || lifecycle.base;
     if (!incrementalUsed) lifecycle.incrementalBaseSha = undefined;
@@ -341,6 +347,26 @@ export async function computeReviewArtifacts(opts: {
         ? []
         : changedFindingCandidates(previous, priorDiff);
     lifecycle.eligibleFixedIds = changedFindings.map((finding) => finding.id);
+    let reviewComments: ReviewThreadComment[] = [];
+    try {
+      const stored: unknown = JSON.parse(await readFile(commentsPath, "utf8"));
+      if (
+        stored &&
+        typeof stored === "object" &&
+        "reviewComments" in stored &&
+        Array.isArray(stored.reviewComments)
+      )
+        reviewComments = stored.reviewComments;
+    } catch {
+      /* Without comments, prior findings are reported without replies. */
+    }
+    iteration = reviewIterationContext({
+      state: lifecycle.state,
+      head: lifecycle.head,
+      full: lifecycle.full,
+      threshold: config.review_followup_severity_threshold,
+      comments: reviewComments,
+    });
     await writeFile(
       `${opts.tempDir}/droid-prompts/review_prior_findings.json`,
       redactCredentials(
@@ -354,6 +380,7 @@ export async function computeReviewArtifacts(opts: {
             ),
             changedFindings,
             eligibleFixedIds: lifecycle.eligibleFixedIds,
+            iteration,
           },
           null,
           2,
@@ -385,5 +412,5 @@ export async function computeReviewArtifacts(opts: {
       });
     }
   }
-  return { diffPath, commentsPath, descriptionPath };
+  return { diffPath, commentsPath, descriptionPath, iteration };
 }

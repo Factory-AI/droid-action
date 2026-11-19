@@ -188,6 +188,18 @@ function footer(input: ReviewRenderInput): string {
     .filter(Boolean)
     .join(" · ")}</sub>`;
 }
+function iterationNote(input: ReviewRenderInput): string {
+  const iteration = input.iteration;
+  if (!iteration) return "";
+  const reported = iteration.followupThreshold === "P0" ? "P0" : "P0/P1";
+  const bar =
+    iteration.round < 2 || iteration.followupThreshold === "P2"
+      ? ""
+      : iteration.full || iteration.skill
+        ? ` This ${iteration.full ? "full" : "skill"} review used the first-round bar; other reviews after the first round report only ${reported} and security findings (${inlineCode("review_followup_severity_threshold")}).`
+        : ` After the first round, Droid reports only ${reported} and security findings (${inlineCode("review_followup_severity_threshold")}).`;
+  return `<sub>Review round ${iteration.round}.${bar}</sub>`;
+}
 function selected(input: ReviewRenderInput, section: string): boolean {
   return !input.sections || input.sections.includes(section);
 }
@@ -559,6 +571,7 @@ function reviewSummaryBody(
       : "",
     !selected(input, "details") ? transparency(input, findings) : "",
     !selected(input, "details") ? footer(input) : "",
+    iterationNote(input),
     findings.length
       ? "<sub>Reply to a finding with a question, or comment `@droid fix` to apply valid fixes.</sub>"
       : "",

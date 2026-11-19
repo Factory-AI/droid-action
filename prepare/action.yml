@@ -78,6 +78,10 @@ inputs:
     description: "Minimum reported finding priority: P0, P1, or P2 (effective default). Empty inherits base config."
     required: false
     default: ""
+  review_followup_severity_threshold:
+    description: "Minimum priority reported after the first review round (security findings are always reported): P0, P1 (effective default), or P2 to report the same as the first round. Empty inherits base config."
+    required: false
+    default: ""
   review_ignore_paths:
     description: "Comma/newline-separated ignored globs. Effective default generated files, dist/build/coverage and lock files; [] disables ignores. Empty inherits base config."
     required: false
@@ -184,6 +188,9 @@ outputs:
   review_security_only:
     description: "Trusted preparation metadata for downstream review steps"
     value: ${{ steps.prepare.outputs.review_security_only }}
+  review_full:
+    description: "Trusted preparation metadata for downstream review steps"
+    value: ${{ steps.prepare.outputs.review_full }}
   review_automatic:
     description: "Trusted preparation metadata for downstream review steps"
     value: ${{ steps.prepare.outputs.review_automatic }}
@@ -310,6 +317,7 @@ runs:
         FIX_MODE: ${{ inputs.fix_mode }}
         REVIEW_DIAGRAM: ${{ inputs.review_diagram }}
         REVIEW_SEVERITY_THRESHOLD: ${{ inputs.review_severity_threshold }}
+        REVIEW_FOLLOWUP_SEVERITY_THRESHOLD: ${{ inputs.review_followup_severity_threshold }}
         REVIEW_IGNORE_PATHS: ${{ inputs.review_ignore_paths }}
         REVIEW_AUTO_TRIGGERS: ${{ inputs.review_auto_triggers }}
         REVIEW_DRAFTS: ${{ inputs.review_drafts }}

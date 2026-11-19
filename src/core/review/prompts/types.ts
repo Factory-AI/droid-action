@@ -1,4 +1,5 @@
 import type { ReviewUxConfig } from "../config";
+import type { ReviewIterationContext } from "../iteration";
 
 /**
  * Shared types for the platform-agnostic review prompts.
@@ -124,6 +125,8 @@ export interface ReviewPromptContext {
   reviewSettings?: ReviewPromptSettings;
   /** Optional trusted prior-review manifest; absence is valid on the first run. */
   priorFindingsPath?: string;
+  /** Follow-up round context; its section renders only from round 2 on. */
+  reviewIteration?: ReviewIterationContext;
   /** The repository's own review guidelines, when it has any */
   repoGuidelines?: RepoReviewGuidelines;
 }

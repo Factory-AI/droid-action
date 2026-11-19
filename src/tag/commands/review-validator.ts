@@ -1,4 +1,9 @@
 import * as core from "@actions/core";
+import { readFile } from "fs/promises";
+import {
+  parseReviewIterationContext,
+  type ReviewIterationContext,
+} from "../../core/review/iteration";
 import type { GitHubContext } from "../../github/context";
 import { isEntityContext } from "../../github/context";
 import type { Octokits } from "../../github/api/client";
@@ -17,6 +22,19 @@ import { resolveReviewConfig } from "../../utils/review-depth";
 import { applyModelPolicyFallback } from "../../utils/model-policy";
 import { assertDroidRunType, DroidRunType } from "../../run-type";
 import { githubReviewSessionTagArg } from "../../utils/review-session-tag";
+
+async function storedReviewIteration(
+  file: string,
+): Promise<ReviewIterationContext | undefined> {
+  try {
+    const manifest: unknown = JSON.parse(await readFile(file, "utf8"));
+    return manifest && typeof manifest === "object" && "iteration" in manifest
+      ? parseReviewIterationContext(manifest.iteration)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export async function prepareReviewValidatorMode(options: {
   context: GitHubContext;
@@ -58,6 +76,10 @@ export async function prepareReviewValidatorMode(options: {
     diffPath: `${promptsDir}/pr.diff`,
     commentsPath: `${promptsDir}/existing_comments.json`,
     descriptionPath: `${promptsDir}/pr_description.txt`,
+    iteration: await storedReviewIteration(
+      process.env.REVIEW_PRIOR_FINDINGS_PATH ||
+        `${promptsDir}/review_prior_findings.json`,
+    ),
   };
 
   const reviewGuidelines = await loadReviewGuidelinesStoredForValidator({

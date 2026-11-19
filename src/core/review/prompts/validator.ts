@@ -18,6 +18,7 @@
 import { buildRepoGuidelinesSection } from "./guidelines";
 import type { ReviewPromptContext, ReviewTerminology } from "./types";
 import { fenced, redactSecrets } from "../render/helpers";
+import { renderReviewIterationSection } from "../iteration";
 
 function requireToolField(
   value: string | undefined,
@@ -120,6 +121,10 @@ export function generateValidatorPrompt(ctx: ReviewPromptContext): string {
     repoGuidelines,
     "validator",
   );
+  const iterationSection = renderReviewIterationSection(
+    ctx.reviewIteration,
+    "validator",
+  );
 
   return redactSecrets(`You are validating candidate review comments for ${t.entityNoun} ${t.entityNumberSigil}${entityNumber} in ${repoOrProject}.
 
@@ -146,7 +151,7 @@ Read these files before validating:
 * Prior findings (read if present; absence is valid on the first run): \`${ctx.priorFindingsPath ?? "$RUNNER_TEMP/droid-prompts/review_prior_findings.json"}\`
 
 If the diff is large, read in chunks (offset/limit). **Do not proceed until you have read the ENTIRE diff.**
-${sourceNote ? `\n${sourceNote}\n` : ""}
+${iterationSection ? `\n${iterationSection}\n` : ""}${sourceNote ? `\n${sourceNote}\n` : ""}
 ### Critical Requirements
 
 1. You MUST read and validate **every** candidate before ${postingMode === "file" ? `writing \`${validatedPath}\`` : "posting anything"}.

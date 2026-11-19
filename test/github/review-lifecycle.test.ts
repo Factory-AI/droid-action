@@ -17,6 +17,7 @@ import { createMockContext } from "../mockContext";
 import { expectFactoryFixAction } from "../helpers/factory-fix";
 import { normalizeFinding } from "../../src/core/review/validated/finding";
 import {
+  decodeFindingMarker,
   decodeReviewState,
   encodeFindingMarker,
   encodeReviewState,
@@ -1256,6 +1257,120 @@ describe("review lifecycle production boundaries", () => {
       ).toBe(threadResolved);
     });
   }
+  describe("follow-up review rounds", () => {
+    const roundTwoBody = () =>
+      `${SUMMARY_MARKER}\n${encodeReviewState({
+        head: OLD,
+        reviewed: [OLD],
+        findings: [
+          {
+            id: "f-known",
+            sev: "P2",
+            state: "open",
+            finding: finding({ severity: "P2" }),
+            commentId: 81,
+            threadId: "T81",
+            url: "https://github.com/o/r/pull/7#discussion_r81",
+          },
+        ],
+      })}`;
+    const candidates = () => [
+      // Tracked from an earlier round: keeps its state at any priority.
+      { status: "approved", comment: finding({ severity: "P2" }) },
+      {
+        status: "approved",
+        comment: finding({ id: "f-p2", severity: "P2", line: 2 }),
+      },
+      {
+        status: "approved",
+        comment: finding({
+          id: "f-sec",
+          severity: "P2",
+          security: true,
+          securitySeverity: "high",
+          category: "security",
+          line: 2,
+        }),
+      },
+      {
+        status: "approved",
+        comment: finding({
+          id: "f-maint",
+          category: "maintainability",
+          line: 1,
+        }),
+      },
+      { status: "approved", comment: finding({ id: "f-p1", line: 2 }) },
+    ];
+    const postedIds = (f: ReturnType<typeof fixture>) =>
+      f.calls
+        .filter((call) => call.method === "createReview")
+        .flatMap((call) => call.input.comments)
+        .map(
+          (comment: { body: string }) => decodeFindingMarker(comment.body)?.id,
+        )
+        .sort();
+
+    it("drops new low-priority and maintainability findings after the first round", async () => {
+      const f = fixture();
+      f.setSummary(roundTwoBody());
+      await f.prepare();
+      await f.post(candidates());
+      expect(postedIds(f)).toEqual(["f-p1", "f-sec"]);
+      const state = decodeReviewState(f.body());
+      expect(state?.findings.map((item) => item.id).sort()).toEqual([
+        "f-known",
+        "f-p1",
+        "f-sec",
+      ]);
+      expect(state?.findings.find((item) => item.id === "f-known")?.state).toBe(
+        "open",
+      );
+      expect(
+        (await readReviewLifecycle())?.renderInput?.dropped?.map((d) => [
+          d.title,
+          d.reason,
+        ]),
+      ).toEqual([
+        [finding().title, "Below the follow-up round threshold"],
+        [
+          finding().title,
+          "Maintainability finding on code added since the last review",
+        ],
+        [finding().title, "Already tracked or dismissed in an earlier review"],
+      ]);
+      expect(f.body()).toContain(
+        "Review round 2. After the first round, Droid reports only P0/P1 and security findings",
+      );
+    });
+
+    it("uses the first-round bar for a --full run without resetting the round", async () => {
+      const f = fixture();
+      f.setSummary(roundTwoBody());
+      await f.prepare(undefined, true);
+      expect(process.env.REVIEW_FULL).toBe("true");
+      await f.post(candidates());
+      expect(postedIds(f)).toEqual(["f-maint", "f-p1", "f-p2", "f-sec"]);
+      expect(f.body()).toContain(
+        "Review round 2. This full review used the first-round bar",
+      );
+      expect(decodeReviewState(f.body())?.reviewed).toEqual([OLD, HEAD]);
+    });
+
+    it("keeps the first-round bar on round 1 and when the threshold is P2", async () => {
+      for (const threshold of [undefined, "P2"]) {
+        const f = fixture();
+        if (threshold) {
+          f.setSummary(roundTwoBody());
+          process.env.REVIEW_FOLLOWUP_SEVERITY_THRESHOLD = threshold;
+        }
+        await f.prepare();
+        await f.post(candidates().slice(1));
+        expect(postedIds(f)).toEqual(["f-maint", "f-p1", "f-p2", "f-sec"]);
+        delete process.env.REVIEW_FOLLOWUP_SEVERITY_THRESHOLD;
+      }
+    });
+  });
   it("incremental safety: does not reopen human dismissals or repost unchanged open IDs", async () => {
     for (const status of ["dismissed", "open"] as const) {
       const f = fixture();
