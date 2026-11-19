@@ -29,6 +29,7 @@ jobs:
         uses: Factory-AI/droid-action@droid/aut-3012-builtin-security-review
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          github_token: ${{ github.token }}
           automatic_review: true
           automatic_security_review: true
           allowed_bots: "dependabot,factory-droid"
