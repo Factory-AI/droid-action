@@ -282,10 +282,13 @@ describe("github-post-review entrypoint", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("reads validated output and diff, posts once, and writes result counts", async () => {
+  it("places no finding against a diff file on the runner, and writes result counts", async () => {
     const HEAD_SHA = "0123456789abcdef0123456789abcdef01234567";
     const prompts = path.join(tmpDir, "droid-prompts");
-    await fs.writeFile(path.join(prompts, "pr.diff"), DIFF);
+    // Where a diff used to be read from. Both passes ran pull request code
+    // on this runner, so only GitHub's diff of a bound lifecycle places one.
+    process.env.REVIEW_DIFF_PATH = path.join(prompts, "pr.diff");
+    await fs.writeFile(process.env.REVIEW_DIFF_PATH, DIFF);
     await fs.writeFile(
       path.join(prompts, "review_validated.json"),
       JSON.stringify({
@@ -321,11 +324,10 @@ describe("github-post-review entrypoint", () => {
       },
     });
 
-    expect(createReview).toHaveBeenCalledTimes(1);
-    expect((createReview.mock.calls[0]![0] as any).commit_id).toBe(HEAD_SHA);
+    expect(createReview).not.toHaveBeenCalled();
     expect(results).toEqual({
-      posted: 1,
-      fallbackPosted: 0,
+      posted: 0,
+      fallbackPosted: 1,
       approved: 1,
       rejected: 1,
       failed: 0,
@@ -343,7 +345,7 @@ describe("github-post-review entrypoint", () => {
     ).toEqual(results);
   });
 
-  it("does not require a diff, token, or client when nothing is approved", async () => {
+  it("does not require a token or client when nothing is approved", async () => {
     const prompts = path.join(tmpDir, "droid-prompts");
     await fs.writeFile(
       path.join(prompts, "review_validated.json"),

@@ -404,7 +404,6 @@ const envNames = [
   "RUNNER_TEMP",
   "REVIEW_LIFECYCLE_PATH",
   "REVIEW_VALIDATED_PATH",
-  "REVIEW_DIFF_PATH",
   "REVIEW_POST_RESULTS_PATH",
   "GITHUB_STEP_SUMMARY",
   "DROID_BOT_LOGIN",
@@ -453,7 +452,6 @@ beforeEach(async () => {
   process.env.RUNNER_TEMP = directory;
   process.env.REVIEW_LIFECYCLE_PATH = path.join(directory, "lifecycle.json");
   process.env.REVIEW_VALIDATED_PATH = path.join(directory, "validated.json");
-  process.env.REVIEW_DIFF_PATH = path.join(directory, "pr.diff");
   process.env.REVIEW_POST_RESULTS_PATH = path.join(directory, "posted.json");
   process.env.GITHUB_STEP_SUMMARY = path.join(directory, "summary.md");
   process.env.DROID_BOT_LOGIN = BOT;
@@ -679,10 +677,6 @@ describe("review UX production boundaries", () => {
         process.env.REVIEW_VALIDATED_PATH!,
         JSON.stringify({ meta: { headSha: HEAD }, results }),
       );
-      await writeFile(
-        process.env.REVIEW_DIFF_PATH!,
-        "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -2 +2 @@\n-before\n+after\n",
-      );
       await postReview({
         octokit: api.octokit,
         context: createMockContext({
@@ -824,7 +818,6 @@ describe("review UX production boundaries", () => {
         results: [{ status: "approved", comment: { ...finding(), id: "new" } }],
       }),
     );
-    await writeFile(process.env.REVIEW_DIFF_PATH!, DIFF);
     await expect(
       postReview({
         octokit: api.octokit,
@@ -932,7 +925,6 @@ describe("review UX production boundaries", () => {
         results: [{ status: "approved", comment: { ...finding(), id: "new" } }],
       }),
     );
-    await writeFile(process.env.REVIEW_DIFF_PATH!, DIFF);
     await postReview({
       octokit: api.octokit,
       context: createMockContext({
@@ -975,7 +967,6 @@ describe("review UX production boundaries", () => {
         ],
       }),
     );
-    await writeFile(process.env.REVIEW_DIFF_PATH!, DIFF);
     await postReview({
       octokit: api.octokit,
       context: createMockContext({

@@ -5,7 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import type { Pin } from "./pins";
-import { StepError, requiredEnv, writePrivateJson } from "./step";
+import {
+  StepError,
+  requiredEnv,
+  writePrivateFile,
+  writePrivateJson,
+} from "./step";
 
 const MAX_QUOTED_STDERR_CHARS = 1000;
 /** How long the worker can take to stop a droid that ignores a stop. */
@@ -76,6 +81,32 @@ export const sessionSchema = <Started extends z.ZodRawShape>(
     z.object({ ...started, status: z.literal("answered") }),
   ]);
 
+/**
+ * The four ways a run on pinned commits ends, each beside `fields`: it could
+ * not run, it was stopped, its answer broke the contract, or it answered.
+ */
+export const endingsSchema = <
+  Fields extends z.ZodRawShape,
+  Answer extends z.ZodTypeAny,
+>(
+  fields: Fields,
+  answer: Answer,
+) =>
+  [
+    z.object({
+      ...fields,
+      status: z.literal("failed"),
+      problem: z.enum(["start", "execution", "permission"]),
+    }),
+    z.object({
+      ...fields,
+      status: z.literal("interrupted"),
+      by: z.enum(["deadline", "turns", "signal"]),
+    }),
+    z.object({ ...fields, status: z.literal("invalid") }),
+    z.object({ ...fields, status: z.literal("answered"), answer }),
+  ] as const;
+
 /** A place in a JSON value, as a failure names it. */
 export const pathName = (path: ReadonlyArray<string | number>) =>
   path.join(".") || "<root>";
@@ -88,7 +119,8 @@ export const pathName = (path: ReadonlyArray<string | number>) =>
  * Exit 0 and 1 are a report; anything else is a worker that left none,
  * whatever file may sit at the report's path. A worker that outlives every
  * bound it sets itself is asked to stop, which it answers with an
- * `interrupted` report, and then killed.
+ * `interrupted` report, and then killed. With `keepReportAt` the report's
+ * bytes are also left there, in a file only the job's user can read.
  */
 export async function runWorker<Report>(options: {
   product: "risk" | "review";
@@ -98,6 +130,7 @@ export async function runWorker<Report>(options: {
   env: NodeJS.ProcessEnv;
   bounds: WorkerBounds;
   report: z.ZodType<Report, z.ZodTypeDef, unknown>;
+  keepReportAt?: string;
 }): Promise<Report> {
   const dir = await mkdtemp(join(tmpdir(), "droid-review-worker-"));
   try {
@@ -148,12 +181,22 @@ export async function runWorker<Report>(options: {
     }
     // The report holds a model's answer, so a failure to read it names
     // paths and codes, never the parser's own message, which can quote it.
-    const report = await readFile(reportPath, "utf8").then(JSON.parse, () => {
+    const unreadable = () => {
       throw new StepError(
         "worker_report_unreadable",
         "The droid-review worker's report could not be read",
       );
-    });
+    };
+    const written = await readFile(reportPath, "utf8").catch(unreadable);
+    if (options.keepReportAt) {
+      await writePrivateFile(options.keepReportAt, written);
+    }
+    let report: unknown;
+    try {
+      report = JSON.parse(written);
+    } catch {
+      unreadable();
+    }
     const parsed = options.report.safeParse(report);
     if (!parsed.success) {
       const issues = parsed.error.issues

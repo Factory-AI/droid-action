@@ -1,11 +1,12 @@
 #!/usr/bin/env bun
 
 /**
- * Deterministic GitHub posting step for the two-pass review pipeline.
+ * Deterministic GitHub posting step for a review.
  *
- * Pass 2 writes `review_validated.json` and has no GitHub mutation tools.
- * This step validates the model-written file, checks every anchor against
- * the precomputed PR diff, and creates one batched GitHub review.
+ * The review step leaves the worker's answer in `review_validated.json` and
+ * holds no GitHub credential. This step validates that model-written file,
+ * checks every anchor against GitHub's diff of the prepared commits, and
+ * creates one batched GitHub review.
  */
 
 import * as fs from "fs/promises";
@@ -91,6 +92,7 @@ import {
   shouldIgnoreReviewPath,
 } from "../core/review/config";
 import { enrichReviewSummary } from "../core/review/validated/metadata";
+import { validatedReviewPath } from "../core/review/worker";
 
 export const MAX_GITHUB_REVIEW_COMMENTS = 30;
 
@@ -116,17 +118,6 @@ export type GitHubPostReviewResult = {
 
 function promptsDir(): string {
   return path.join(process.env.RUNNER_TEMP || "/tmp", "droid-prompts");
-}
-
-export function validatedReviewFilePath(): string {
-  return (
-    process.env.REVIEW_VALIDATED_PATH ||
-    path.join(promptsDir(), "review_validated.json")
-  );
-}
-
-export function reviewDiffFilePath(): string {
-  return process.env.REVIEW_DIFF_PATH || path.join(promptsDir(), "pr.diff");
 }
 
 export function githubPostResultsFilePath(): string {
@@ -394,7 +385,7 @@ export async function run(
     throw new Error("github-post-review requires a pull request context");
   }
 
-  const validatedPath = validatedReviewFilePath();
+  const validatedPath = validatedReviewPath();
   let validatedRaw: string;
   try {
     validatedRaw = await fs.readFile(validatedPath, "utf8");
@@ -440,17 +431,9 @@ export async function run(
       "Validated review head does not match the prepared immutable PR head.",
     );
   const commitId = expectedHead || parsed.commitId;
+  // Findings are placed against GitHub's own diff of the prepared commits,
+  // never a file on a runner that ran pull request code.
   let diff = "";
-  if (parsed.findings.length > 0 || lifecycle) {
-    const diffPath = reviewDiffFilePath();
-    try {
-      diff = await fs.readFile(diffPath, "utf8");
-    } catch (error) {
-      throw new Error(
-        `github-post-review could not read PR diff: ${errorMessage(error)}`,
-      );
-    }
-  }
   let findings = parsed.findings;
   const config = reviewConfigFromEnvironment();
   const priority = { P0: 0, P1: 1, P2: 2 };
@@ -485,6 +468,7 @@ export async function run(
       octokit,
       run: lifecycle,
       name: "Posting review",
+      completedName: `Reviewed, kept ${parsed.approvedCount} of ${parsed.approvedCount + parsed.rejectedCount} candidates`,
     });
     threads =
       (await optionalGitHubOperation(

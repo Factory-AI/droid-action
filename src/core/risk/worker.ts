@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   EVIDENCE_SECONDS,
   SESSION_STOP_SECONDS,
+  endingsSchema,
   pathName,
   sessionSchema,
   type WorkerBounds,
@@ -73,26 +74,11 @@ const SessionSchema = sessionSchema({
   id: z.string().min(1),
   durationMs: z.number().int().nonnegative(),
 });
-/** The four ways a judgment ends, each beside `fields`. */
-const endings = <Fields extends z.ZodRawShape>(fields: Fields) =>
-  [
-    z.object({ ...fields, status: z.literal("failed") }),
-    z.object({
-      ...fields,
-      status: z.literal("interrupted"),
-      by: z.enum(["deadline", "turns", "signal"]),
-    }),
-    z.object({ ...fields, status: z.literal("invalid") }),
-    z.object({
-      ...fields,
-      status: z.literal("answered"),
-      answer: RiskAnswerSchema,
-    }),
-  ] as const;
-
 const judgment = { sessions: z.array(SessionSchema) };
 /** One judgment: the sessions it ran, in order, and how it ended. */
-const JudgmentSchema = z.discriminatedUnion("status", [...endings(judgment)]);
+const JudgmentSchema = z.discriminatedUnion("status", [
+  ...endingsSchema(judgment, RiskAnswerSchema),
+]);
 type Judgment = z.infer<typeof JudgmentSchema>;
 
 const worker = { worker: z.object({ droid: z.string() }) };
@@ -104,12 +90,15 @@ const worker = { worker: z.object({ droid: z.string() }) };
  */
 export const RiskReportSchema = z.discriminatedUnion("status", [
   z.object({ ...worker, status: z.literal("unpinned") }),
-  ...endings({
-    ...worker,
-    ...judgment,
-    revision: z.object({ base: CommitShaSchema, head: CommitShaSchema }),
-    shadow: JudgmentSchema.optional(),
-  }),
+  ...endingsSchema(
+    {
+      ...worker,
+      ...judgment,
+      revision: z.object({ base: CommitShaSchema, head: CommitShaSchema }),
+      shadow: JudgmentSchema.optional(),
+    },
+    RiskAnswerSchema,
+  ),
 ]);
 type RiskReport = z.infer<typeof RiskReportSchema>;
 /** One attempt record per session that started, in the order they ran. */
