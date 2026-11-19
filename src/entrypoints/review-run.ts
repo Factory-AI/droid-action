@@ -110,7 +110,6 @@ export async function run(
     core.setOutput("error_message", ending.error);
   }
   core.setOutput("conclusion", "answer" in ending ? "success" : "failure");
-
   // What ran, which is what the summary names.
   core.setOutput("review_model", ending.model ?? "");
   core.setOutput("review_reasoning_effort", ending.reasoningEffort ?? "");
