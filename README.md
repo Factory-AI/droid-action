@@ -627,14 +627,13 @@ The step that writes guidelines reads untrusted comment text. It runs with file 
 
 ## Security Skills
 
-The security review uses specialized Factory skills installed from the public `Factory-AI/skills` repository:
+PR security reviews use the `security-review` skill built into the Droid CLI. No plugin is installed, so reviews always run the skill version that ships with the CLI.
+
+Full-repository security scans (`@droid security --full` and scheduled scans) also install the `security-engineer` plugin from the public `Factory-AI/factory-plugins` repository, because these skills are not built into the CLI:
 
 - **threat-model-generation** – Generates STRIDE-based threat models for repositories
 - **commit-security-scan** – Scans code changes for security vulnerabilities
 - **vulnerability-validation** – Validates findings and filters false positives
-- **security-review** – Comprehensive security review and patch generation
-
-These skills are automatically installed when running security reviews.
 
 ## Advanced: Model Overrides
 

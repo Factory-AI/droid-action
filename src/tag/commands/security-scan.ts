@@ -71,7 +71,7 @@ export async function prepareSecurityScanMode({
     generatePrompt: (ctx) =>
       generateSecurityReportPrompt(ctx, scanScope, branchName, sourceRevision),
   });
-  // Signal that security skills should be installed
+  // The scan prompt uses skills that only the security-engineer plugin provides.
   core.setOutput("install_security_skills", "true");
 
   const rawUserArgs = process.env.DROID_ARGS || "";
