@@ -452,10 +452,8 @@ runs:
       env:
         EXPERIMENTAL_ALLOWED_DOMAINS: ${{ inputs.experimental_allowed_domains }}
 
-    # Only full-repository scans set install_security_skills. PR security
-    # reviews must not install this plugin: its security-review skill has the
-    # same name as the CLI's built-in one and a user-scope plugin skill wins,
-    # so the review would run the plugin's older copy.
+    # Only full-repository scans set install_security_skills. A PR security
+    # review runs in the droid-review worker and asks for no plugin.
     - name: Install Security Scan Plugin
       if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true' && steps.prepare.outputs.install_security_skills == 'true'
       shell: bash

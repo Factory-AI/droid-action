@@ -627,7 +627,7 @@ The step that writes guidelines reads untrusted comment text. It runs with file 
 
 ## Security Skills
 
-PR security reviews use the `security-review` skill built into the Droid CLI. No plugin is installed, so reviews always run the skill version that ships with the CLI.
+On GitHub, a PR security review runs in the `droid-review` worker, with the `security-review` skill that worker's release carries. On GitLab, Bitbucket and Azure DevOps, PR security reviews use the `security-review` skill built into the Droid CLI. No plugin is installed for either.
 
 Full-repository security scans (`@droid security --full` and scheduled scans) also install the `security-engineer` plugin from the public `Factory-AI/factory-plugins` repository, because these skills are not built into the CLI:
 
