@@ -39,6 +39,7 @@ export function renderCommandHelp(context: ParsedGitHubContext): string {
 | \`@droid resolve\` | Resolve all Droid finding threads |
 | \`@droid pause\` / \`@droid resume\` | Pause / resume automatic reviews |
 | \`@droid fill\` | Update only Droid's generated description block |
+| \`@droid risk\` | Assess this PR's risk now, when the workflow runs risk assessment |
 | \`@droid help\` | Show this table and current configuration |
 
 <sub>Depth: ${config.review_depth} · Incremental: ${config.review_incremental} · Auto-resolve: ${config.review_auto_resolve} · Auto-run limit: ${config.review_max_auto_runs || "unlimited"} · Fix mode: ${config.fix_mode}</sub>`;
@@ -84,6 +85,38 @@ export async function selectedCommandThreads(
   );
 }
 
+/** Best effort: the run goes ahead whether or not the reaction lands. */
+async function acknowledgeCommand(
+  octokit: Octokits,
+  context: ParsedGitHubContext,
+): Promise<void> {
+  const { owner, repo } = context.repository;
+  try {
+    if (isPullRequestReviewCommentEvent(context)) {
+      await octokit.rest.reactions.createForPullRequestReviewComment({
+        owner,
+        repo,
+        comment_id: context.payload.comment.id,
+        content: "eyes",
+      });
+    } else if (
+      context.eventName === "issue_comment" &&
+      "comment" in context.payload
+    ) {
+      await octokit.rest.reactions.createForIssueComment({
+        owner,
+        repo,
+        comment_id: context.payload.comment.id,
+        content: "eyes",
+      });
+    }
+  } catch (error) {
+    core.warning(
+      `Could not react to the command: ${redactCredentials(error instanceof Error ? error.message : String(error))}`,
+    );
+  }
+}
+
 function completed(reason: string): PrepareResult {
   core.setOutput("run_code_review", "false");
   core.setOutput("run_security_review", "false");
@@ -106,6 +139,21 @@ export async function prepareConversationCommand(options: {
   if (["help", "unknown"].includes(command.command) || !context.isPR) {
     await replyToCommand(octokit, context, renderCommandHelp(context));
     return completed("command_help");
+  }
+  if (command.command === "risk") {
+    // The action's risk steps read risk_requested and make the run manual.
+    // Without them nothing would assess the pull request, so say so.
+    if (process.env.RISK_ASSESSMENT !== "true") {
+      await replyToCommand(
+        octokit,
+        context,
+        "Risk assessment is not enabled in the workflow that answered this comment, so `@droid risk` did nothing.",
+      );
+      return completed("risk_not_enabled");
+    }
+    await acknowledgeCommand(octokit, context);
+    core.setOutput("risk_requested", "true");
+    return completed("risk_requested");
   }
   if (command.command === "pause" || command.command === "resume") {
     await setReviewPaused({

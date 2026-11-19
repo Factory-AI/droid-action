@@ -243,7 +243,13 @@ describe("risk assessment inside the full action", () => {
 
   it("tells Factory how the review ended, or that there was none", () => {
     expect(begin.env?.RISK_REVIEW_OUTCOME).toBe(
-      "${{ github.action_status == 'success' && steps.prepare.outputs.contains_trigger != 'true' && 'skipped' || github.action_status }}",
+      "${{ github.action_status == 'success' && (steps.prepare.outputs.contains_trigger != 'true' || steps.prepare.outputs.risk_requested == 'true') && 'skipped' || github.action_status }}",
+    );
+  });
+
+  it("makes an `@droid risk` comment an explicit request, and leaves risk_manual to the caller otherwise", () => {
+    expect(begin.env?.RISK_MANUAL).toBe(
+      "${{ steps.prepare.outputs.risk_requested == 'true' && 'true' || inputs.risk_manual }}",
     );
   });
 

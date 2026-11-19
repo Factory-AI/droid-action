@@ -29,6 +29,9 @@ describe("review UX command grammar", () => {
     ["@droid resolve.", "resolve"],
     ["@droid pause", "pause"],
     ["@droid resume", "resume"],
+    ["@droid risk", "risk"],
+    ["@DROID: RISK!", "risk"],
+    ["@droid risky change", "unknown"],
     ["@droid remember this", "unknown"],
     ["@droid reviewer", "unknown"],
   ])("%s routes to %s", (text, command) =>
@@ -79,6 +82,20 @@ describe("review UX command grammar", () => {
     });
     expect(extractCommandFromContext(context)?.command).toBe("unknown");
     expect(appTokenPermissionsFor(context).contents).toBe("read");
+    // A risk request in the description would make every push a manual run.
+    for (const eventName of ["pull_request", "issues"] as const)
+      expect(
+        extractCommandFromContext(
+          createMockContext({
+            eventName,
+            isPR: eventName === "pull_request",
+            payload: {
+              pull_request: { body: "@droid risk" },
+              issue: { body: "@droid risk" },
+            } as any,
+          }),
+        )?.command,
+      ).toBe("unknown");
     const comment = createMockContext({
       eventName: "issue_comment",
       isPR: true,

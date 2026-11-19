@@ -168,6 +168,111 @@ describe("command execution isolation and replies", () => {
     expect(reviewSpy).not.toHaveBeenCalled();
     expect(issueComments[0].body).toContain("### Droid commands");
   });
+  describe("@droid risk", () => {
+    let previousRisk: string | undefined;
+    let reactions: any[];
+    beforeEach(() => {
+      previousRisk = process.env.RISK_ASSESSMENT;
+      reactions = [];
+      (client.rest as any).reactions = {
+        createForIssueComment: async (value: any) => {
+          reactions.push({ kind: "issue_comment", ...value });
+          return { status: 201, data: {} };
+        },
+        createForPullRequestReviewComment: async (value: any) => {
+          reactions.push({ kind: "review_comment", ...value });
+          return { status: 201, data: {} };
+        },
+      };
+    });
+    afterEach(() => {
+      if (previousRisk === undefined) delete process.env.RISK_ASSESSMENT;
+      else process.env.RISK_ASSESSMENT = previousRisk;
+    });
+    const risk = { command: "risk", raw: "@droid risk", location: "comment" };
+
+    test("with risk assessment on, reacts and asks the risk steps for a manual run, without a review", async () => {
+      process.env.RISK_ASSESSMENT = "true";
+      const automatic = context();
+      automatic.inputs.automaticReview = true;
+      automatic.inputs.automaticSecurityReview = true;
+      automatic.payload = { comment: { id: 101, body: "@droid risk" } } as any;
+      const result = await prepareTagExecution({
+        context: automatic,
+        octokit: client,
+        githubToken: "unused",
+      });
+      expect(result.skipped).toBe(true);
+      expect(reviewSpy).not.toHaveBeenCalled();
+      expect(output("risk_requested")).toBe("true");
+      expect(output("run_code_review")).toBe("false");
+      expect(output("run_security_review")).toBe("false");
+      expect(reactions).toEqual([
+        {
+          kind: "issue_comment",
+          owner: "test-owner",
+          repo: "test-repo",
+          comment_id: 101,
+          content: "eyes",
+        },
+      ]);
+      expect(issueComments).toHaveLength(0);
+      expect(replies).toHaveLength(0);
+    });
+
+    test("reacts on the inline comment it was left in", async () => {
+      process.env.RISK_ASSESSMENT = "true";
+      await prepareConversationCommand({
+        context: context(true),
+        octokit: client,
+        command: risk as any,
+      });
+      expect(reactions.map((reaction) => reaction.kind)).toEqual([
+        "review_comment",
+      ]);
+      expect(output("risk_requested")).toBe("true");
+    });
+
+    test("a failed reaction does not stop the request", async () => {
+      process.env.RISK_ASSESSMENT = "true";
+      (client.rest as any).reactions.createForIssueComment = async () => {
+        throw new Error("forbidden");
+      };
+      const warning = spyOn(core, "warning").mockImplementation(() => {});
+      try {
+        await prepareConversationCommand({
+          context: context(),
+          octokit: client,
+          command: risk as any,
+        });
+      } finally {
+        warning.mockRestore();
+      }
+      expect(output("risk_requested")).toBe("true");
+    });
+
+    test("with risk assessment off, says so and requests nothing", async () => {
+      delete process.env.RISK_ASSESSMENT;
+      const result = await prepareConversationCommand({
+        context: context(),
+        octokit: client,
+        command: risk as any,
+      });
+      expect(result.skipped).toBe(true);
+      expect(output("risk_requested")).toBe("");
+      expect(reactions).toHaveLength(0);
+      expect(issueComments[0].body).toContain("Risk assessment is not enabled");
+    });
+
+    test("is listed in help", async () => {
+      await prepareConversationCommand({
+        context: context(),
+        octokit: client,
+        command: { command: "help", raw: "@droid help", location: "comment" },
+      });
+      expect(issueComments[0].body).toContain("`@droid risk`");
+    });
+  });
   test("disabled fixes never start Exec or fetch source snapshots", async () => {
     const disabled = context();
     disabled.inputs.reviewConfig = resolveReviewUxConfig({
