@@ -351,7 +351,7 @@ describe("prepareSecurityReviewMode", () => {
     );
   });
 
-  it("outputs install_security_skills flag", async () => {
+  it("does not request the security plugin install", async () => {
     const context = createMockContext({
       eventName: "issue_comment",
       isPR: true,
@@ -375,8 +375,8 @@ describe("prepareSecurityReviewMode", () => {
 
     const installSkillsCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "install_security_skills",
-    ) as [string, string] | undefined;
-    expect(installSkillsCall?.[1]).toBe("true");
+    );
+    expect(installSkillsCall).toBeUndefined();
   });
 
   it("prefers SECURITY_MODEL over REVIEW_MODEL", async () => {
