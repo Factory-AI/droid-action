@@ -25,7 +25,10 @@ and are never printed to the job log.
    changed-file list and its counts are computed from the same two commits
    as the diff; it names at most 3,000 files and counts the rest.
 3. **Settle.** The action reports the judged head and the judge's answer to
-   Factory. A run that produced no answer is reported too, with a short
+   Factory. The answer is JSON with `verdict`, `brief`, `details`, and the
+   judge's declared `scores`; a judge Factory serves with
+   `"verdictField": "omitted"` is decided by risk level alone, so its
+   answer carries no `verdict`. A run that produced no answer is reported too, with a short
    reason, so the head is marked unavailable instead of keeping a stale
    result.
 
@@ -287,7 +290,8 @@ file is JSON with `skill` (the judge's instructions; the pull request
 snapshot replaces `{{PR_SNAPSHOT_JSON}}` in it, or is appended when the
 placeholder is absent), `enabledTools`, `settings` (written as the session's
 settings file), `scores` (each score's name with its `[min, max]` range), and
-optionally `group` and `timeoutSeconds`. The result is written to
+optionally `group`, `timeoutSeconds`, and `verdictField` (`"omitted"` for a
+judge that answers without a verdict). The result is written to
 `<out>/pr-risk-result.json`, and the command exits non-zero when no verdict
 was produced. `--droid-binary` selects a Droid CLI other than the one on
 `PATH`; a relative path is taken from the directory the command is run in.

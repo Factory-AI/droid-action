@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { MAX_CITED_CHECKS, type RiskScoreRanges } from "./types";
+import {
+  MAX_CITED_CHECKS,
+  type RiskScoreRanges,
+  type RiskVerdictField,
+} from "./types";
 
 // A model cannot count characters, so an overrun of prose is cut with a
 // marker rather than rejected, and the verdict it carries still lands.
@@ -28,10 +32,11 @@ function truncatedMarkdown(max: number) {
  * headline and `details` the longer body beneath it. `scores` is present only
  * when the judge declares any. An incremental re-check adds the `checks` it
  * ran and, after a decline, `resolvedConcerns`: for a served concern id, the
- * code at this head that resolves it. Factory decides from both.
+ * code at this head that resolves it. Factory decides from both. `verdict`
+ * is absent only for a judge served with `verdictField: "omitted"`.
  */
 export type PrRiskVerdict = {
-  verdict: boolean;
+  verdict?: boolean;
   brief: string;
   details: string;
   scores?: Record<string, number>;
@@ -69,44 +74,59 @@ const RECHECK_KEYS = {
  * length of prose is forgiven, by truncation, and an extra key inside one
  * listed concern or check, which is dropped. A full judgment keeps the
  * narrower contract because a Factory that serves no re-check rejects a
- * verdict with either key.
+ * verdict with either key. For a judge that omits the verdict, one the
+ * model gives anyway, of any value, is accepted and dropped, as Factory
+ * drops it.
  */
 export function compilePrRiskVerdictSchema(
   scores: RiskScoreRanges,
-  { incremental = false }: { incremental?: boolean } = {},
+  {
+    incremental = false,
+    verdictField = "required",
+  }: { incremental?: boolean; verdictField?: RiskVerdictField } = {},
 ): z.ZodType<PrRiskVerdict, z.ZodTypeDef, unknown> {
   const full = z.object({
-    verdict: z.boolean(),
+    verdict:
+      verdictField === "omitted"
+        ? z.unknown().transform(() => undefined)
+        : z.boolean(),
     brief: truncatedMarkdown(BRIEF_MAX_CHARS),
     details: truncatedMarkdown(DETAILS_MAX_CHARS),
   });
   const core = incremental ? full.extend(RECHECK_KEYS) : full;
   const entries = Object.entries(scores);
-  if (entries.length === 0) return core.strict();
-  return core
-    .extend({
-      scores: z
-        .object(
-          Object.fromEntries(
-            entries.map(([name, [min, max]]) => [
-              name,
-              z.number().int().min(min).max(max),
-            ]),
-          ),
-        )
-        .strict(),
-    })
-    .strict();
+  const answer =
+    entries.length === 0
+      ? core.strict()
+      : core
+          .extend({
+            scores: z
+              .object(
+                Object.fromEntries(
+                  entries.map(([name, [min, max]]) => [
+                    name,
+                    z.number().int().min(min).max(max),
+                  ]),
+                ),
+              )
+              .strict(),
+          })
+          .strict();
+  if (verdictField !== "omitted") return answer;
+  return answer.transform(({ verdict: _dropped, ...rest }) => rest);
 }
 
 /** The exact keys a retry must return, stated from the compiled contract. */
 export function describePrRiskContract(
   scores: RiskScoreRanges,
-  { incremental = false }: { incremental?: boolean } = {},
+  {
+    incremental = false,
+    verdictField = "required",
+  }: { incremental?: boolean; verdictField?: RiskVerdictField } = {},
 ): string {
   const names = Object.entries(scores);
   return [
-    "verdict (boolean)",
+    ...(verdictField === "omitted" ? [] : ["verdict (boolean)"]),
     `brief (string; one to three Markdown bullets shown under the headline, cut at ${BRIEF_MAX_CHARS} characters)`,
     `details (string; the Markdown body of the "Why this decision" drawer, cut at ${DETAILS_MAX_CHARS} characters)`,
     ...(names.length > 0
