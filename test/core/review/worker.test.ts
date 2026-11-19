@@ -235,7 +235,6 @@ describe("reviewOutcome", () => {
         prepared,
       ),
     ).toEqual({
-      status: "answered",
       model: "model-a",
       reasoningEffort: "high",
       answer,
@@ -269,7 +268,6 @@ describe("reviewOutcome", () => {
         prepared,
       ),
     ).toEqual({
-      status: "unpinned",
       error: `The pull request's commits could not be pinned (\`unresolved: ${HEAD}\`).`,
     });
     expect(
@@ -294,7 +292,6 @@ describe("reviewOutcome", () => {
         prepared,
       ),
     ).toEqual({
-      status: "failed",
       error: "The candidates pass could not run (`start`).",
     });
     expect(
@@ -311,7 +308,6 @@ describe("reviewOutcome", () => {
         prepared,
       ),
     ).toEqual({
-      status: "interrupted",
       model: "model-a",
       reasoningEffort: "high",
       error: "The validator pass was stopped (`deadline`).",
@@ -357,7 +353,6 @@ describe("reviewOutcome", () => {
     );
 
     expect(outcome).toEqual({
-      status: "invalid",
       model: "model-a",
       error:
         "The candidates pass's answer broke its contract: " +

@@ -100,7 +100,7 @@ export async function run(
   try {
     ending = await review(env, pins);
   } catch (error) {
-    ending = { status: "no_report", error: describeFailure(error) };
+    ending = { error: describeFailure(error) };
   }
   if ("answer" in ending) {
     await writePrivateJson(validatedReviewPath(env), ending.answer);
@@ -110,7 +110,7 @@ export async function run(
     core.setOutput("error_message", ending.error);
   }
   core.setOutput("conclusion", "answer" in ending ? "success" : "failure");
-  core.setOutput("status", ending.status);
+
   // What ran, which is what the summary names.
   core.setOutput("review_model", ending.model ?? "");
   core.setOutput("review_reasoning_effort", ending.reasoningEffort ?? "");

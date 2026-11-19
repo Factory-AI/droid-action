@@ -211,8 +211,6 @@ type ReviewReport = z.infer<typeof ReviewReportSchema>;
 
 /** How a review ended, as the steps after it are told. */
 export type ReviewOutcome = {
-  /** The report's status, or that the worker left none. */
-  status: ReviewReport["status"] | "no_report";
   /** The model and effort the first session reported, when one started. */
   model?: string;
   reasoningEffort?: string;
@@ -234,7 +232,6 @@ export function reviewOutcome(
         ? `unresolved: ${problem.ref}`
         : problem.kind;
     return {
-      status: report.status,
       error: `The pull request's commits could not be pinned (\`${why}\`).`,
     };
   }
@@ -247,7 +244,6 @@ export function reviewOutcome(
   }
   const first = sessions.find((session) => "id" in session);
   const started = {
-    status: report.status,
     ...(first ? { model: first.model } : {}),
     ...(first?.reasoningEffort
       ? { reasoningEffort: first.reasoningEffort }

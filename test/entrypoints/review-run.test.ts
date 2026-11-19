@@ -217,7 +217,6 @@ describe("review-run entrypoint", () => {
     expect((await stat(reportPath)).mode & 0o777).toBe(0o600);
     expect(outputs).toEqual({
       conclusion: "success",
-      status: "answered",
       review_model: "model-a",
       review_reasoning_effort: "high",
       model_fallback_note: "",
@@ -271,7 +270,6 @@ describe("review-run entrypoint", () => {
 
     expect(outputs).toEqual({
       conclusion: "failure",
-      status: "interrupted",
       error_message: "The candidates pass was stopped (`deadline`).",
       review_model: "model-a",
       review_reasoning_effort: "",
@@ -291,7 +289,6 @@ describe("review-run entrypoint", () => {
 
     expect(outputs).toMatchObject({
       conclusion: "failure",
-      status: "no_report",
       error_message:
         "The review worker's report is not about the prepared commits",
     });
@@ -306,7 +303,6 @@ describe("review-run entrypoint", () => {
 
     expect(outputs).toMatchObject({
       conclusion: "failure",
-      status: "no_report",
       error_message:
         "The droid-review worker left no report (exit 2): input.settings: unrecognized_keys",
     });
@@ -342,7 +338,6 @@ describe("review-run entrypoint", () => {
       expect(ran).toBeUndefined();
       expect(outputs).toMatchObject({
         conclusion: "failure",
-        status: "no_report",
         error_message: message,
       });
     },
@@ -356,7 +351,6 @@ describe("review-run entrypoint", () => {
     expect(ran).toBeUndefined();
     expect(outputs).toMatchObject({
       conclusion: "failure",
-      status: "no_report",
       error_message:
         "The review's input from the prepare step could not be read",
     });
@@ -375,7 +369,6 @@ describe("review-run entrypoint", () => {
     expect(ran).toBeUndefined();
     expect(outputs).toMatchObject({
       conclusion: "failure",
-      status: "no_report",
     });
     expect(String(outputs.error_message)).not.toContain("deploy-key");
   });
