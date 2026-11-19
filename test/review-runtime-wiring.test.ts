@@ -22,7 +22,7 @@ describe("frozen review executable workflow boundary", () => {
       output.review_cli_sha256,
     );
   });
-  it("runs the actual publisher shell with allowlisted env and refuses altered validator CLI bytes", async () => {
+  it("runs the actual publisher shell with allowlisted env, gives the review step no GitHub token, and refuses altered Droid CLI bytes", async () => {
     const directory = await mkdtemp(join(tmpdir(), "review-runtime-guard-"));
     try {
       const capture = join(directory, "captured.json");
@@ -39,8 +39,8 @@ describe("frozen review executable workflow boundary", () => {
       const post = manifest.runs.steps.find(
         (step: { id?: string }) => step.id === "post_review",
       );
-      const validator = manifest.runs.steps.find(
-        (step: { id?: string }) => step.id === "droid_validator",
+      const review = manifest.runs.steps.find(
+        (step: { id?: string }) => step.id === "review",
       );
       const execute = async (step: {
         run: string;
@@ -59,6 +59,11 @@ describe("frozen review executable workflow boundary", () => {
                 Object.entries(step.env).filter(([, value]) => value === ""),
               ),
               GITHUB_TOKEN: "synthetic-only",
+              FACTORY_API_KEY: "synthetic-factory-key",
+              TRUSTED_TAIL_PATH: publisher,
+              TRUSTED_TAIL_SHA256: digest(source),
+              TRUSTED_RUNTIME_PATH: runtime.review_cli_path,
+              TRUSTED_RUNTIME_SHA256: runtime.review_cli_sha256,
               REVIEW_PUBLISHER_PATH: publisher,
               REVIEW_PUBLISHER_SHA256: digest(source),
               REVIEW_RUNTIME_PATH: runtime.review_cli_path,
@@ -84,8 +89,14 @@ describe("frozen review executable workflow boundary", () => {
       expect(env.HTTPS_PROXY).toBeUndefined();
       expect(env.NODE_EXTRA_CA_CERTS).toBeUndefined();
       await rm(capture);
+      expect((await execute(review)).exit).toBe(0);
+      const reviewEnv = JSON.parse(await readFile(capture, "utf8"));
+      expect(reviewEnv.GITHUB_TOKEN).toBeUndefined();
+      expect(reviewEnv.FACTORY_API_KEY).toBe("synthetic-factory-key");
+      expect(reviewEnv.DROID_BIN).toBe(cli);
+      await rm(capture);
       await writeFile(cli, "altered cli");
-      const denied = await execute(validator);
+      const denied = await execute(review);
       expect(denied.exit).toBe(1);
       expect(denied.stdout).toContain("Droid executable changed");
       await expect(readFile(capture)).rejects.toThrow();

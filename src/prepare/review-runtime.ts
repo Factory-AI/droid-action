@@ -9,8 +9,7 @@ const entrypoints = {
   lifecycle: "../entrypoints/github-review-lifecycle.ts",
   post: "../entrypoints/github-post-review.ts",
   tracking: "../entrypoints/update-comment-link.ts",
-  validator: "../entrypoints/prepare-validator.ts",
-  runner: "../../base-action/src/index.ts",
+  run: "../entrypoints/review-run.ts",
   debug: "../entrypoints/collect-debug-artifacts.ts",
   revoke: "../entrypoints/revoke-github-token.ts",
   steward: "../steward/postrun.ts",
@@ -19,7 +18,6 @@ const entrypoints = {
   // The full action's risk steps, which run after its review.
   risk_begin: "../entrypoints/risk-begin.ts",
   risk_token: "../entrypoints/get-token.ts",
-  risk_download: "../entrypoints/worker-download.ts",
   risk_assess: "../entrypoints/risk-assess.ts",
 };
 type RuntimeKind = keyof typeof entrypoints;
@@ -29,14 +27,13 @@ export const RISK_RUNTIME_KINDS = [
   "settle",
   "risk_begin",
   "risk_token",
-  "risk_download",
   "risk_assess",
 ] as const satisfies readonly RuntimeKind[];
 const sha256 = (value: Uint8Array) =>
   createHash("sha256").update(value).digest("hex");
 
 /**
- * Freeze executable code before either review pass can edit action files.
+ * Freeze executable code before a review can edit action files.
  * Without `kinds`, every review entrypoint is frozen and no risk one is.
  */
 export async function freezeReviewRuntime(

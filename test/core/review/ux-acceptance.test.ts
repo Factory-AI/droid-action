@@ -6,6 +6,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import {
   createControlledRuntime,
   privateStartupEnvironment,
@@ -35,7 +36,6 @@ import { run as postReview } from "../../../src/entrypoints/github-post-review";
 import { postCommand } from "../../../src/entrypoints/github-post-command";
 import { run as runLifecycle } from "../../../src/entrypoints/github-review-lifecycle";
 import { freezeReviewCli } from "../../../src/entrypoints/freeze-review-cli";
-import { freezeReviewRuntime } from "../../../src/prepare/review-runtime";
 import { withRequestRedaction } from "../../../src/github/api/client";
 import {
   findReviewSummary,
@@ -438,7 +438,6 @@ const envNames = [
   "REVIEW_SUMMARY",
 ];
 let directory: string;
-let extraDirectories: string[];
 let originalEnv: Map<string, string | undefined>;
 let warningSpy: ReturnType<typeof spyOn>;
 let outputSpy: ReturnType<typeof spyOn>;
@@ -446,7 +445,6 @@ let logSpy: ReturnType<typeof spyOn>;
 let errorSpy: ReturnType<typeof spyOn>;
 
 beforeEach(async () => {
-  extraDirectories = [];
   originalEnv = new Map(envNames.map((name) => [name, process.env[name]]));
   directory = await mkdtemp(path.join(tmpdir(), "droid-ux-acceptance-"));
   process.env.RUNNER_TEMP = directory;
@@ -496,8 +494,6 @@ afterEach(async () => {
     else process.env[name] = value;
   }
   if (directory) await rm(directory, { recursive: true, force: true });
-  for (const extra of extraDirectories)
-    await rm(extra, { recursive: true, force: true });
 });
 
 describe("review UX production boundaries", () => {
@@ -1147,40 +1143,24 @@ describe("review UX production boundaries", () => {
   for (const wrapper of [
     {
       file: "../../../action.yml",
-      preparation: "prepare",
-      validator: "Run Droid Exec (validator)",
       steps: [
-        ["Review lifecycle validated", "lifecycle"],
-        ["Prepare validator", "validator"],
-        ["Run Droid Exec (validator)", "runner"],
+        ["Review lifecycle reviewing", "lifecycle"],
+        ["Run review", "run"],
         ["Post review", "post"],
         ["Update comment with job link", "tracking"],
       ],
     },
-    {
-      file: "../../../review/action.yml",
-      preparation: "prompt",
-      validator: "Run Validator",
-      steps: [
-        ["Review lifecycle validated", "lifecycle"],
-        ["Prepare Validator", "validator"],
-        ["Run Validator", "runner"],
-        ["Post Review", "post"],
-        ["Update tracking comment", "tracking"],
-      ],
-    },
-    {
-      file: "../../../security/action.yml",
-      preparation: "prompt",
-      validator: "Run Validator",
-      steps: [
-        ["Review lifecycle validated", "lifecycle"],
-        ["Prepare Validator", "validator"],
-        ["Run Validator", "runner"],
-        ["Post Review", "post"],
-        ["Update tracking comment", "tracking"],
-      ],
-    },
+    ...["../../../review/action.yml", "../../../security/action.yml"].map(
+      (file) => ({
+        file,
+        steps: [
+          ["Review lifecycle reviewing", "lifecycle"],
+          ["Run review", "run"],
+          ["Post Review", "post"],
+          ["Update tracking comment", "tracking"],
+        ],
+      }),
+    ),
   ]) {
     it(`executes actual ${wrapper.file} frozen guards and refuses publisher, runtime, and CLI tampering`, async () => {
       const source = await readFile(
@@ -1212,6 +1192,11 @@ describe("review UX production boundaries", () => {
         "LD_AUDIT",
       ];
       for (const [name, kind] of wrapper.steps) {
+        // The step that runs the review is no publisher: it is bound to its
+        // script under the names the other non-publishing steps use.
+        const review = kind === "run";
+        const script = review ? "TRUSTED_TAIL" : "REVIEW_PUBLISHER";
+        const runner = review ? "TRUSTED_RUNTIME" : "REVIEW_RUNTIME";
         const step = source
           .split(`    - name: ${name}\n`)[1]
           ?.split("\n    - name:")[0];
@@ -1220,21 +1205,16 @@ describe("review UX production boundaries", () => {
           "shell: /bin/bash --noprofile --norc -p -eo pipefail {0}",
         );
         expect(step).toContain(
-          `REVIEW_PUBLISHER_PATH: \${{ steps.${wrapper.preparation}.outputs.review_${kind}_publisher_path }}`,
+          `${script}_PATH: \${{ steps.prepare.outputs.review_${kind}_publisher_path }}`,
         );
         expect(step).toContain(
-          `REVIEW_PUBLISHER_SHA256: \${{ steps.${wrapper.preparation}.outputs.review_${kind}_publisher_sha256 }}`,
+          `${script}_SHA256: \${{ steps.prepare.outputs.review_${kind}_publisher_sha256 }}`,
         );
-        expect(step).toContain(
-          `REVIEW_CONFIG_JSON: \${{ steps.${wrapper.preparation}.outputs.review_config_json }}`,
-        );
-        for (const key of startupNames) expect(step).toContain(`${key}: ""`);
-        if (name === wrapper.validator) {
+        if (!review)
           expect(step).toContain(
-            "INPUT_PATH_TO_DROID_EXECUTABLE: ${{ steps.review_cli.outputs.review_cli_path }}",
+            "REVIEW_CONFIG_JSON: ${{ steps.prepare.outputs.review_config_json }}",
           );
-          expect(step).toContain('FACTORY_DROID_AUTO_UPDATE_ENABLED: "false"');
-        }
+        for (const key of startupNames) expect(step).toContain(`${key}: ""`);
         const run = step?.split("      run: |\n")[1]?.split("\n      env:")[0];
         if (!run) throw new Error("Missing actual workflow script");
         const scriptPath = path.join(directory, `${kind}.sh`);
@@ -1248,12 +1228,12 @@ describe("review UX production boundaries", () => {
         const env: Record<string, string> = {
           ...runtime.env,
           PATH: process.env.PATH ?? "/usr/bin:/bin",
-          REVIEW_PUBLISHER_PATH: bundlePath,
-          REVIEW_PUBLISHER_SHA256: createHash("sha256")
+          [`${script}_PATH`]: bundlePath,
+          [`${script}_SHA256`]: createHash("sha256")
             .update(bundle)
             .digest("hex"),
-          REVIEW_RUNTIME_PATH: runtime.path,
-          REVIEW_RUNTIME_SHA256: runtimeDigest,
+          [`${runner}_PATH`]: runtime.path,
+          [`${runner}_SHA256`]: runtimeDigest,
           REVIEW_CLI_PATH: cli.review_cli_path,
           REVIEW_CLI_SHA256: cli.review_cli_sha256,
           REVIEW_CONFIG_JSON: config,
@@ -1298,7 +1278,7 @@ describe("review UX production boundaries", () => {
         const captured = object(
           JSON.parse(await readFile(capturePath, "utf8")),
         );
-        expect(captured.REVIEW_CONFIG_JSON).toBe(config);
+        if (!review) expect(captured.REVIEW_CONFIG_JSON).toBe(config);
         for (const key of [
           "HTTPS_PROXY",
           "NODE_EXTRA_CA_CERTS",
@@ -1306,20 +1286,22 @@ describe("review UX production boundaries", () => {
           "SSLKEYLOGFILE",
         ])
           expect(captured[key]).toBeUndefined();
-        if (name === wrapper.validator) {
+        if (review) {
           expect(captured.GITHUB_TOKEN).toBeUndefined();
           expect(captured.WORKFLOW_GITHUB_TOKEN).toBeUndefined();
+          expect(captured.FACTORY_API_KEY).toBe("fixture-factory-key");
+          expect(captured.DROID_BIN).toBe(cli.review_cli_path);
           await writeFile(cliPath, "#!/bin/sh\nexit 99\n", { mode: 0o700 });
           const rejectedCli = await execute();
           expect(rejectedCli.exitCode).not.toBe(0);
           expect(rejectedCli.stdout).toContain("Droid executable changed");
           await writeFile(cliPath, "#!/bin/sh\nexit 0\n", { mode: 0o700 });
         }
-        env.REVIEW_RUNTIME_SHA256 = "0".repeat(64);
+        env[`${runner}_SHA256`] = "0".repeat(64);
         const rejectedRuntime = await execute();
         expect(rejectedRuntime.exitCode).not.toBe(0);
         expect(rejectedRuntime.stdout).toContain("changed during execution");
-        env.REVIEW_RUNTIME_SHA256 = runtimeDigest;
+        env[`${runner}_SHA256`] = runtimeDigest;
         await writeFile(
           bundlePath,
           "throw new Error('untrusted modified publisher');\n",
@@ -1446,27 +1428,9 @@ exec ${quote(process.execPath)} ${quote(fakeSource)} "$@"
 `,
       { mode: 0o700 },
     );
-    const frozen = await freezeReviewRuntime();
-    const runnerPath = frozen.review_runner_publisher_path;
-    if (!runnerPath) throw new Error("Missing frozen runner");
-    extraDirectories.push(path.dirname(runnerPath));
-    for (const kind of [
-      "lifecycle",
-      "post",
-      "tracking",
-      "validator",
-      "runner",
-    ]) {
-      const publisherPath = frozen[`review_${kind}_publisher_path`];
-      const publisherDigest = frozen[`review_${kind}_publisher_sha256`];
-      if (!publisherPath || !publisherDigest)
-        throw new Error(`Missing frozen ${kind} publisher`);
-      expect(
-        createHash("sha256")
-          .update(await readFile(publisherPath))
-          .digest("hex"),
-      ).toBe(publisherDigest);
-    }
+    const runnerPath = fileURLToPath(
+      new URL("../../../base-action/src/index.ts", import.meta.url),
+    );
     const child = Bun.spawn(
       [
         process.execPath,

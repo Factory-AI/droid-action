@@ -15,7 +15,7 @@ import * as reviewInput from "../src/github/data/review-input";
 import * as lifecycle from "../src/github/operations/review-lifecycle";
 import * as config from "../src/prepare/review-config";
 import * as runtime from "../src/prepare/review-runtime";
-import { run } from "../src/entrypoints/generate-review-prompt";
+import { run } from "../src/entrypoints/prepare-review";
 import { resolveReviewUxConfig } from "../src/core/review/config";
 import { createMockContext } from "./mockContext";
 

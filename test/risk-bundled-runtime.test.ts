@@ -172,13 +172,7 @@ describe("full action risk steps before the judge", () => {
   }
 
   it("freezes a bundle for every script the risk steps run", () => {
-    for (const kind of [
-      "risk_begin",
-      "risk_token",
-      "risk_download",
-      "risk_assess",
-      "settle",
-    ]) {
+    for (const kind of ["risk_begin", "risk_token", "risk_assess", "settle"]) {
       expect(frozen[`review_${kind}_publisher_path`]).toMatch(/^\//);
       expect(frozen[`review_${kind}_publisher_sha256`]).toMatch(
         /^[a-f0-9]{64}$/,
@@ -216,34 +210,7 @@ describe("full action risk steps before the judge", () => {
     expect(await exists(sentinel)).toBe(false);
   });
 
-  it("ends a download that has no token with a warning, through the frozen bundle and runtime", async () => {
-    const work = await mkdtemp(join(dir, "work-"));
-    const workerDir = join(work, "droid-worker");
-
-    const result = await runStep(step("risk_download"), {
-      ...bindingsFor("risk_download"),
-      WORKER_TOKEN: "",
-      WORKER_DIR: workerDir,
-    });
-
-    // The assess step reports a run that has no worker; this one passes.
-    expect({ exit: result.exit, stderr: result.stderr }).toEqual({
-      exit: 0,
-      stderr: "",
-    });
-    expect(result.stdout).toContain(
-      "::warning::droid-review.mjs was not downloaded with the worker token (WORKER_TOKEN is empty).",
-    );
-    expect(await exists(workerDir)).toBe(false);
-    expect(await exists(sentinel)).toBe(false);
-  });
-
-  for (const id of [
-    "risk_begin",
-    "risk_token",
-    "risk_download",
-    "risk_assess",
-  ]) {
+  for (const id of ["risk_begin", "risk_token", "risk_assess"]) {
     it(`refuses to run ${id} from a script that changed after it was frozen`, async () => {
       const changed = join(await mkdtemp(join(dir, "copy-")), "tail.mjs");
       await writeFile(

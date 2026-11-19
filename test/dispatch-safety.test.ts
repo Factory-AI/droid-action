@@ -19,7 +19,7 @@ import * as actor from "../src/github/validation/actor";
 import * as review from "../src/tag/commands/review";
 import * as security from "../src/tag/commands/security-review";
 import { prepareTagExecution } from "../src/tag";
-import { run } from "../src/entrypoints/generate-review-prompt";
+import { run } from "../src/entrypoints/prepare-review";
 import { resolveReviewUxConfig } from "../src/core/review/config";
 import {
   decodeReviewState,

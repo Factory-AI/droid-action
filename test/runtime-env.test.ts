@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { createHash } from "node:crypto";
 import {
   mkdtempSync,
   readFileSync,
@@ -10,8 +9,6 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parse } from "yaml";
-import { DroidRunType } from "../src/run-type";
 import { createControlledRuntime } from "./helpers/controlled-runtime";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -24,8 +21,6 @@ const values = {
   DISALLOWED_TOOLS: "WebSearch,FetchUrl",
 };
 let sequence = 0;
-let validator = "";
-let validatorWithNetworkFixtures = "";
 let controlledRuntime: Awaited<ReturnType<typeof createControlledRuntime>>;
 
 function file(name: string, contents = ""): string {
@@ -146,156 +141,8 @@ function child(
   };
 }
 
-async function bundleValidator(mockNetwork: boolean): Promise<string> {
-  const output = join(
-    temporary,
-    mockNetwork ? "validator-fixtures" : "validator-real",
-  );
-  const githubFixture = `export function createOctokit() {
-                  return { graphql: async () => ({ repository: { pullRequest: {
-                    baseRefName: "dev", headRefName: "fixture", headRefOid: "b".repeat(40),
-                    isCrossRepository: false, title: "Fixture", body: "Synthetic fixture",
-                    headRepository: { nameWithOwner: "fixture/fixture" },
-                    baseRepository: { nameWithOwner: "fixture/fixture" }
-                  } } }) };
-                }`;
-  const source = `
-const built = await Bun.build({
-  entrypoints: [${JSON.stringify(join(root, "src/entrypoints/prepare-validator.ts"))}],
-  outdir: ${JSON.stringify(output)}, target: "bun",
-  plugins: ${mockNetwork} ? [{
-    name: "only-github-and-model-policy-fixtures",
-    setup(build) {
-      build.onLoad({ filter: new RegExp("/src/github/api/client\\\\.ts$") }, () => ({
-        loader: "ts", contents: ${JSON.stringify(githubFixture)}
-      }));
-      build.onLoad({ filter: new RegExp("/src/utils/model-policy\\\\.ts$") }, () => ({
-        loader: "ts", contents: "export async function applyModelPolicyFallback(config) { return config; }"
-      }));
-    }
-  }] : []
-});
-if (!built.success) throw new Error(built.logs.map(String).join("\\n"));
-console.log("FROZEN_VALIDATOR_PATH:" + built.outputs[0].path);
-`;
-  const built = Bun.spawnSync({
-    cmd: [runtime, "--config=/dev/null", "--env-file=/dev/null", "-e", source],
-    cwd: root,
-    env: { PATH: "/usr/bin:/bin", ...controlledRuntime.env },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  if (built.exitCode !== 0) {
-    throw new Error(built.stderr.toString());
-  }
-  const path = built.stdout
-    .toString()
-    .split("\n")
-    .find((line) => line.startsWith("FROZEN_VALIDATOR_PATH:"))
-    ?.slice("FROZEN_VALIDATOR_PATH:".length);
-  if (!path) throw new Error("Missing frozen validator fixture");
-  return path;
-}
-
-function wrapper(action: string, fullPath: boolean) {
-  const document: unknown = parse(readFileSync(join(root, action), "utf8"));
-  const steps = record(record(document).runs).steps;
-  if (!Array.isArray(steps)) throw new Error("Missing composite steps");
-  const step = steps.find((item) => record(item).id === "prepare_validator");
-  const source = record(step).run;
-  if (typeof source !== "string") throw new Error("Missing validator script");
-  const output = file("github-output");
-  const outerEnv = file("outer-github-env");
-  const event = file(
-    "event.json",
-    JSON.stringify({
-      action: "opened",
-      number: 1,
-      repository: {
-        name: "fixture",
-        full_name: "fixture/fixture",
-        owner: { login: "fixture" },
-        default_branch: "dev",
-      },
-      sender: { login: "fixture-author", type: "User" },
-      pull_request: {
-        number: 1,
-        title: "Fixture",
-        body: "Synthetic fixture",
-        user: { login: "fixture-author" },
-        head: {
-          ref: "fixture",
-          sha: "b".repeat(40),
-          repo: { full_name: "fixture/fixture" },
-        },
-        base: {
-          ref: "dev",
-          sha: "a".repeat(40),
-          repo: { full_name: "fixture/fixture" },
-        },
-      },
-    }),
-  );
-  const candidates = fullPath
-    ? file("candidates.json", JSON.stringify({ comments: [] }))
-    : join(temporary, `missing-candidates-${sequence++}.json`);
-  const publisher = fullPath ? validatorWithNetworkFixtures : validator;
-  const env: Record<string, string> = {
-    PATH: "/usr/bin:/bin",
-    ...controlledRuntime.env,
-    GITHUB_ENV: outerEnv,
-    GITHUB_OUTPUT: output,
-    GITHUB_EVENT_PATH: event,
-    GITHUB_EVENT_NAME: "pull_request",
-    GITHUB_ACTOR: "fixture-author",
-    GITHUB_RUN_ID: "1",
-    GITHUB_REPOSITORY: "fixture/fixture",
-    GITHUB_SERVER_URL: "https://github.com",
-    GITHUB_API_URL: "https://api.github.com",
-    GITHUB_TOKEN: "fixture-token-not-a-real-credential",
-    REVIEW_PUBLISHER_PATH: publisher,
-    REVIEW_PUBLISHER_SHA256: createHash("sha256")
-      .update(readFileSync(publisher))
-      .digest("hex"),
-    REVIEW_RUNTIME_PATH: controlledRuntime.path,
-    REVIEW_RUNTIME_SHA256: controlledRuntime.sha256,
-    REVIEW_CANDIDATES_PATH: candidates,
-    REVIEW_VALIDATED_PATH: join(temporary, "validated.json"),
-    DROID_COMMENT_ID: "7",
-    DROID_EXEC_RUN_TYPE:
-      action === "security/action.yml"
-        ? DroidRunType.SecurityReview
-        : DroidRunType.Review,
-  };
-  const result = Bun.spawnSync({
-    cmd: [
-      "/bin/bash",
-      "--noprofile",
-      "--norc",
-      "-p",
-      "-eo",
-      "pipefail",
-      "-c",
-      source,
-    ],
-    cwd: root,
-    env,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  return {
-    exitCode: result.exitCode,
-    stdout: result.stdout.toString(),
-    stderr: result.stderr.toString(),
-    output,
-    outerEnv,
-  };
-}
-
 beforeAll(async () => {
   controlledRuntime = await createControlledRuntime(temporary);
-  validator = await bundleValidator(false);
-  validatorWithNetworkFixtures = await bundleValidator(true);
 });
 
 afterAll(() => {
@@ -358,46 +205,6 @@ describe("existing callers use real core", () => {
       expect(result.stdout).not.toContain("::set-env");
     },
   );
-
-  it.each(["action.yml", "review/action.yml", "security/action.yml"])(
-    "runs the unchanged %s validator allowlist without GITHUB_ENV",
-    (action) => {
-      const result = wrapper(action, false);
-      expect(result.exitCode).toBe(0);
-      expect(commandFile(result.output).validator_should_run).toBe("false");
-      expect(commandFile(result.output).droid_exec_run_type).toBe(
-        action === "security/action.yml"
-          ? DroidRunType.SecurityReview
-          : DroidRunType.Review,
-      );
-      expect(readFileSync(result.outerEnv, "utf8")).toBe("");
-      expect(result.stdout).not.toContain("::set-env");
-    },
-  );
-
-  it("hands actual validator role and MCP outputs onward without job-env persistence", () => {
-    const result = wrapper("action.yml", true);
-    expect(result.exitCode).toBe(0);
-    const output = commandFile(result.output);
-    expect(output.validator_should_run).toBe("true");
-    expect(output.droid_exec_run_type).toBe(DroidRunType.Review);
-    expect(output.droid_args).toContain(
-      '--enabled-tools "Read,Grep,Glob,LS,Execute,ApplyPatch,Create,Edit,Skill"',
-    );
-    expect(output.droid_args).not.toContain("github_comment");
-    expect(output.droid_args).toContain('--model "openai-latest-balanced"');
-    expect(output.droid_args).toContain('--reasoning-effort "medium"');
-    expect(output.mcp_tools).toBe('{"mcpServers":{}}');
-    expect(output.review_pr_number).toBe("1");
-    expect(output.droid_comment_id).toBe("7");
-    expect(Object.keys(output)).not.toContain("GITHUB_TOKEN");
-    expect(JSON.stringify(output)).not.toContain(
-      "fixture-token-not-a-real-credential",
-    );
-    expect(JSON.stringify(output)).not.toContain(result.outerEnv);
-    expect(readFileSync(result.outerEnv, "utf8")).toBe("");
-    expect(result.stdout).not.toContain("::set-env");
-  });
 });
 
 describe("runtime variable export boundary", () => {

@@ -242,7 +242,6 @@ export async function prepareTagExecution({
       runAutomaticSecurityReview.toString(),
     );
 
-    // Prepare the code review (security review runs as a subagent within pass 1)
     return prepareReviewMode({
       context,
       octokit,
@@ -269,7 +268,6 @@ export async function prepareTagExecution({
   }
 
   if (context.inputs.automaticSecurityReview) {
-    // Standalone security review uses the two-pass pipeline (candidates + validator)
     core.setOutput("run_code_review", "true");
     core.setOutput("run_security_review", "true");
     return prepareSecurityReviewMode({
@@ -292,7 +290,6 @@ export async function prepareTagExecution({
   }
 
   if (commandContext?.command === "security") {
-    // Standalone security review uses the two-pass pipeline (candidates + validator)
     core.setOutput("run_code_review", "true");
     core.setOutput("run_security_review", "true");
     return prepareSecurityReviewMode({

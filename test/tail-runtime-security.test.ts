@@ -78,8 +78,7 @@ const roles = [
   "lifecycle",
   "post",
   "tracking",
-  "validator",
-  "runner",
+  "run",
   "debug",
   "revoke",
   "steward",
@@ -171,9 +170,7 @@ beforeAll(async () => {
     .split("\n")
     .find((line) => line.startsWith("__TAIL_OUTPUTS__"));
   if (!line)
-    throw new Error(
-      `Real eight-role freeze did not complete: ${result.stderr}`,
-    );
+    throw new Error(`The real freeze did not complete: ${result.stderr}`);
   frozen = JSON.parse(line.slice("__TAIL_OUTPUTS__".length));
   cleanup.add(dirname(frozen.review_debug_publisher_path!));
 });
@@ -294,7 +291,7 @@ async function capture(file: Fixture): Promise<Record<string, string>> {
 }
 
 describe("all privileged executable roles are frozen before model execution", () => {
-  it("compiles, hashes and imports all eight real bundles without running entrypoints", async () => {
+  it("compiles, hashes and imports every real bundle without running entrypoints", async () => {
     for (const role of roles) {
       const path = frozen[`review_${role}_publisher_path`]!;
       expect(path.startsWith("/")).toBe(true);
@@ -312,13 +309,13 @@ describe("all privileged executable roles are frozen before model execution", ()
         "--config=/dev/null",
         "--env-file=/dev/null",
         "--eval",
-        `globalThis.fetch=()=>{throw Error("NETWORK_FORBIDDEN")};for(const path of ${JSON.stringify(roles.map((role) => frozen[`review_${role}_publisher_path`]))})await import(path);console.log("all-eight-imported");`,
+        `globalThis.fetch=()=>{throw Error("NETWORK_FORBIDDEN")};for(const path of ${JSON.stringify(roles.map((role) => frozen[`review_${role}_publisher_path`]))})await import(path);console.log("all-imported");`,
       ],
       directory,
       { PATH: "/usr/bin:/bin" },
     );
     expect(result.exit).toBe(0);
-    expect(result.stdout).toContain("all-eight-imported");
+    expect(result.stdout).toContain("all-imported");
     expect(result.stderr).not.toContain("NETWORK_FORBIDDEN");
   }, 120000);
 });
@@ -733,7 +730,7 @@ describe("cleanup survives no-trigger and failed-prompt paths", () => {
       );
       expect(stepFor(tail).if).toContain("inputs.github_token == ''");
       expect(Object.values(stepFor(tail).env).join("\n")).not.toContain(
-        "steps.prompt.outputs",
+        "steps.prepare.outputs",
       );
       const result = await runTail(tail, file, {
         ...bindings(tail, token.state),

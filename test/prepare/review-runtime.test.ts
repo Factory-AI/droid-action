@@ -7,7 +7,7 @@ import { pathToFileURL } from "url";
 import { privateStartupEnvironment } from "../helpers/controlled-runtime";
 
 describe("trusted review publisher artifacts", () => {
-  it("bundles all eight real entrypoints and binds their exact executable bytes", async () => {
+  it("bundles every real review entrypoint and binds its exact executable bytes", async () => {
     const fixture = await mkdtemp(join(tmpdir(), "review-runtime-test-"));
     try {
       // The real action runs outside Bun's test-module/mock resolver.
@@ -45,13 +45,7 @@ describe("trusted review publisher artifacts", () => {
         line!.slice("__OUTPUTS__".length),
       );
       // The risk steps' scripts are frozen only when asked for by name.
-      for (const kind of [
-        "settle",
-        "risk_begin",
-        "risk_token",
-        "risk_download",
-        "risk_assess",
-      ])
+      for (const kind of ["settle", "risk_begin", "risk_token", "risk_assess"])
         expect(outputs[`review_${kind}_publisher_path`]).toBeUndefined();
       const directory = dirname(outputs.review_lifecycle_publisher_path!);
       try {
@@ -59,8 +53,7 @@ describe("trusted review publisher artifacts", () => {
           "lifecycle",
           "post",
           "tracking",
-          "validator",
-          "runner",
+          "run",
           "debug",
           "revoke",
           "steward",
@@ -72,7 +65,7 @@ describe("trusted review publisher artifacts", () => {
           );
           // Importing the frozen artifact must not execute its CLI entrypoint.
           const module = await import(pathToFileURL(file).href);
-          if (["lifecycle", "post", "tracking"].includes(kind))
+          if (["lifecycle", "post", "tracking", "run"].includes(kind))
             expect(typeof module.run).toBe("function");
         }
         expect(

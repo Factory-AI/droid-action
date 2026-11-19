@@ -142,7 +142,7 @@ is `true`, so one step does both:
     factory_api_key: ${{ secrets.FACTORY_API_KEY }}
     automatic_review: true
     risk_assessment: true
-    risk_worker_token: ${{ secrets.DROID_REVIEW_READ_TOKEN }}
+    worker_token: ${{ secrets.DROID_REVIEW_READ_TOKEN }}
 ```
 
 The assessment starts once the review's steps have ended and its GitHub App
@@ -164,14 +164,15 @@ nothing when the file has no rules. The full action also has both as
 outputs, `review_base_sha` and `review_has_rules`, for a workflow that runs
 this sub-action as its own step.
 
-The inputs are this sub-action's with a `risk_` prefix: `risk_worker_token`,
-`risk_pr_number`, `risk_api_base_url`, `risk_judge_api_base_url`,
-`risk_dry_run` and `risk_manual`. `factory_api_key` is shared with the review
-and there is no `review_outcome`, `review_base_sha` or `review_has_rules`. The
-outputs are `risk_action`, `risk_outcome` and `risk_head_sha`. The full
-action's prepare step is handed every input at once, `risk_worker_token`
-among them, and ends before the review starts. Everything else on this page
-applies unchanged.
+The inputs are this sub-action's with a `risk_` prefix: `risk_pr_number`,
+`risk_api_base_url`, `risk_judge_api_base_url`, `risk_dry_run` and
+`risk_manual`. `factory_api_key` and `worker_token` are shared with the
+review, which runs in the same worker, and there is no `review_outcome`,
+`review_base_sha` or `review_has_rules`. The outputs are `risk_action`,
+`risk_outcome` and `risk_head_sha`. The full action downloads the worker once,
+before its first model session starts. Its prepare step is handed every input
+at once, `worker_token` among them, and also ends before that session starts.
+Everything else on this page applies unchanged.
 
 The pull request is taken from the `pull_request` event, from the pull
 request of a `workflow_run` event, or from `pr_number`.
@@ -287,8 +288,7 @@ GitHub token and whatever the job sets for every step. It does not hold
 `worker_token`: the one step given that token has ended before the session
 starts. Two things stay out of this action's hands. A process already
 running as the job's user when the download step starts, left behind by an
-earlier step of the job or by the full action's review, can read that step's
-environment while it runs. And the runner holds every secret of the job in
+earlier step of the job, can read that step's environment while it runs. And the runner holds every secret of the job in
 its own memory, as it does for any action. Run this action only for pull
 requests whose authors you would let run code in that job, the same as for
 any workflow that builds a pull request with secrets present.

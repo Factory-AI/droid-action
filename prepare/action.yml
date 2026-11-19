@@ -214,18 +214,6 @@ outputs:
   review_skipped:
     description: "Trusted preparation metadata for downstream review steps"
     value: ${{ steps.prepare.outputs.review_skipped }}
-  review_validator_publisher_path:
-    description: "Trusted preparation metadata for downstream review steps"
-    value: ${{ steps.prepare.outputs.review_validator_publisher_path }}
-  review_validator_publisher_sha256:
-    description: "Trusted preparation metadata for downstream review steps"
-    value: ${{ steps.prepare.outputs.review_validator_publisher_sha256 }}
-  review_runner_publisher_path:
-    description: "Trusted preparation metadata for downstream review steps"
-    value: ${{ steps.prepare.outputs.review_runner_publisher_path }}
-  review_runner_publisher_sha256:
-    description: "Trusted preparation metadata for downstream review steps"
-    value: ${{ steps.prepare.outputs.review_runner_publisher_sha256 }}
   review_debug_publisher_path:
     description: "Debug collector frozen before credentials are minted"
     value: ${{ steps.prepare.outputs.review_debug_publisher_path }}

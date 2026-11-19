@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 
 /**
- * Stages Droid's logs, session transcripts and review prompts for the
- * opt-in debug artifact, with every credential the job holds redacted.
+ * Stages Droid's logs and session transcripts, and a review's input, report
+ * and answer, for the opt-in debug artifact, with every credential the job
+ * holds redacted.
  */
 
 import * as core from "@actions/core";

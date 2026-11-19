@@ -22,6 +22,7 @@ function load(relativePath: string): Step[] {
 }
 
 const rootSteps = load("action.yml");
+const standaloneSteps = load("risk/action.yml");
 const rootRiskStart = rootSteps.findIndex(
   (candidate) => candidate.id === "risk_begin",
 );
@@ -33,12 +34,18 @@ const variants = [
     file: "risk/action.yml",
     p: "",
     report: "Report to Factory",
-    steps: load("risk/action.yml"),
+    download: "Download the risk worker",
+    all: standaloneSteps,
+    steps: standaloneSteps,
   },
   {
     file: "action.yml",
     p: "risk_",
     report: "Report risk result to Factory",
+    // The full action downloads once for the review and the judge, before
+    // either starts.
+    download: "Download the worker",
+    all: rootSteps,
     steps: rootSteps.slice(rootRiskStart),
   },
 ];
@@ -54,7 +61,7 @@ const HARDENED_SHELL = "/bin/bash --noprofile --norc -p -eo pipefail {0}";
 // security boundary of this action.
 describe.each(variants)(
   "risk wiring of $file",
-  ({ file, p, report, steps }) => {
+  ({ file, p, report, download: downloadName, all, steps }) => {
     function step(id: string): Step {
       const found = steps.find((candidate) => candidate.id === p + id);
       if (!found) throw new Error(`${file} has no step with id ${p}${id}`);
@@ -115,17 +122,15 @@ describe.each(variants)(
     });
 
     it("gives the token the worker is downloaded with to one step, which ends before the judge step starts", () => {
-      const download = step("download");
-      if (!p)
-        expect(download.run).toContain("src/entrypoints/worker-download.ts");
-      expect(download.env?.WORKER_TOKEN).toBe(
-        `\${{ inputs.${p}worker_token }}`,
-      );
-      for (const candidate of steps) {
+      const download = all.find((candidate) => candidate.name === downloadName);
+      if (!download) throw new Error(`${file} has no step ${downloadName}`);
+      expect(download.run).toContain("src/entrypoints/worker-download.ts");
+      expect(download.env?.WORKER_TOKEN).toBe("${{ inputs.worker_token }}");
+      for (const candidate of all) {
         if (candidate === download) continue;
         expect(JSON.stringify(candidate)).not.toMatch(/worker_token/i);
       }
-      expect(steps.indexOf(download)).toBe(steps.indexOf(step("assess")) - 1);
+      expect(all.indexOf(download)).toBeLessThan(all.indexOf(step("assess")));
       // The judge step reads the worker from where that step left it.
       for (const { env } of [download, step("assess")]) {
         expect(env?.WORKER_DIR).toBe("${{ runner.temp }}/droid-worker");
@@ -133,7 +138,9 @@ describe.each(variants)(
     });
 
     it("reports a failed judge run, and leaves a cancelled one to the run that replaced it", () => {
-      for (const id of ["download", "assess", "settle"]) {
+      for (const id of p
+        ? ["assess", "settle"]
+        : ["download", "assess", "settle"]) {
         expect(step(id).if).toBe(
           `\${{ !cancelled() && steps.${p}begin.outputs.action == 'judge' }}`,
         );
@@ -193,7 +200,7 @@ describe.each(variants)(
       ).toEqual([
         `${p}begin`,
         `${p}token`,
-        `${p}download`,
+        ...(p ? [] : ["download"]),
         `${p}assess`,
         "Revoke judge read token",
         `${p}settle`,
@@ -240,8 +247,9 @@ describe("risk assessment inside the full action", () => {
     );
     for (const candidate of before) {
       const text = JSON.stringify(candidate);
-      // The prepare step is told only so it can freeze the risk scripts.
-      expect(text.replace("${{ inputs.risk_assessment }}", "")).not.toContain(
+      // The prepare step is told so it can freeze the risk scripts, and the
+      // download step so it fetches the worker the judge runs in.
+      expect(text.replaceAll("inputs.risk_assessment", "")).not.toContain(
         "inputs.risk_",
       );
     }
@@ -281,7 +289,6 @@ describe("risk assessment inside the full action", () => {
     for (const [id, kind] of [
       ["risk_begin", "risk_begin"],
       ["risk_token", "risk_token"],
-      ["risk_download", "risk_download"],
       ["risk_assess", "risk_assess"],
       ["risk_settle", "settle"],
     ] as const) {
@@ -305,26 +312,23 @@ describe("risk assessment inside the full action", () => {
     }
   });
 
-  // The review ran before this step, and whatever it left in the job's
-  // environment would otherwise reach the one process that holds the token.
-  it("starts the download from an empty environment, given only the token and where to leave the worker", () => {
-    const launch = risk
-      .find((found) => found.id === "risk_download")
-      ?.run?.replace(/\\\n/g, " ")
-      .split("\n")
-      .find((line) => line.includes('run "$TRUSTED_TAIL_PATH"'));
-    expect(launch?.trim().split(/\s+/)).toEqual([
-      "/usr/bin/env",
-      "-i",
-      "PATH=/usr/bin:/bin",
-      'WORKER_TOKEN="${WORKER_TOKEN:-}"',
-      'WORKER_DIR="${WORKER_DIR:-}"',
-      '"$TRUSTED_RUNTIME_PATH"',
-      "--config=/dev/null",
-      "--env-file=/dev/null",
-      "run",
-      '"$TRUSTED_TAIL_PATH"',
-    ]);
+  // Every session runs pull request code, so the one process that holds
+  // the worker token has to be gone before the first of them starts.
+  it("downloads the worker before any step that starts a session, for a review or for the judge", () => {
+    const download = rootSteps.find(
+      (candidate) => candidate.name === "Download the worker",
+    );
+    const sessions = ["droid", "review", "risk_assess"].map((id) =>
+      rootSteps.findIndex((candidate) => candidate.id === id),
+    );
+    expect(Math.min(...sessions)).toBeGreaterThan(rootSteps.indexOf(download!));
+    expect(download?.if).toMatch(
+      /^\$\{\{ !cancelled\(\) && \(inputs\.risk_assessment == 'true' \|\| \(.*steps\.prepare\.outputs\.run_code_review == 'true'\)\) \}\}$/,
+    );
+    // The judge a review runs with is downloaded only when one will run.
+    expect(download?.env?.REVIEW_JUDGE).toMatch(
+      /run_code_review == 'true' && \(steps\.prepare\.outputs\.review_security_only == 'true' && 'security' \|\| 'code'\) \|\| '' \}\}$/,
+    );
   });
 
   it("assesses the pull request a comment was left on", () => {
