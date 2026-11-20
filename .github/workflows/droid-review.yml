@@ -7,8 +7,8 @@ name: Droid Auto Review
 # GitHub App. This workflow holds no credential that can approve.
 #
 # Factory accepts risk reports only from this file as it is on the default
-# branch, so edits to it take effect after merge. While .factory/review.yaml
-# sets approve_pr: false (shadow mode), assessments comment and never approve.
+# branch, so edits to it take effect after merge. .factory/review.yaml caps
+# the Droid App's approvals at low overall risk (approve_risk_level: low).
 #
 # Every push runs the risk step, which reassesses the new head once every
 # Droid review thread is resolved. Drafts run only the risk step, which

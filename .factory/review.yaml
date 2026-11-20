@@ -2,9 +2,9 @@
 # into, never from the pull request itself. Factory's PR risk assessment
 # reads `rules`; Droid Auto Review leaves that key to Factory.
 rules:
-  # Shadow mode: every pull request is assessed and gets a risk comment, and
-  # the assessment never approves. To let it approve, set approve_pr to true,
-  # optionally with approve_risk_level (minimal, low, medium or high) to cap
-  # the highest overall risk level it may approve.
+  # Every pull request is assessed and gets a risk comment. The Droid App may
+  # approve a pull request whose overall risk is minimal or low; one rated
+  # medium or high waits for a human. Setting approve_pr: false stops every
+  # approval and keeps the comments (shadow mode).
   - risk_assessment:
-      approve_pr: false
+      approve_risk_level: low
