@@ -1,0 +1,35 @@
+# factory-automation: b37d94fc-22f0-41c3-9359-931721c0351a
+name: Code Walkthrough
+"on":
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+permissions:
+  contents: read
+concurrency:
+  group: droid-code-walkthrough-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  code-walkthrough:
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Factory Droid
+        run: |
+          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Generate code walkthrough
+        timeout-minutes: 15
+        env:
+          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          droid pull-request walkthrough -m code-walkthrough --url "$PR_URL"
