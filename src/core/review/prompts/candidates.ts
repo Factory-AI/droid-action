@@ -14,6 +14,7 @@
  * additionally enforced at the `droid exec` level via `--enabled-tools`.
  */
 
+import { buildFindingTextSection } from "./finding-text";
 import { buildRepoGuidelinesSection } from "./guidelines";
 import type { ReviewPromptContext } from "./types";
 import { fenced, redactSecrets } from "../render/helpers";
@@ -116,7 +117,9 @@ Write output to \`${candidatesPath}\` using this exact schema:
       "category": "correctness",
       "security": false,
       "path": "src/index.ts",
-      "body": "One short paragraph explaining what breaks, when, and what to do.",
+      "body": "One short paragraph explaining what breaks, when, and why.",
+      "fix_markdown": "Optional outline of the fix; see <finding_text>.",
+      "fix_lines": 2,
       "line": 42,
       "startLine": null,
       "side": "RIGHT",
@@ -146,6 +149,7 @@ ${bodyFieldDescription}
   - \`startLine\`: \`null\` for single-line comments, or start line number for multi-line comments
 ${sideFieldDescription}
   - \`commit_id\`: "${headSha}"
+  - \`fix_markdown\` and \`fix_lines\`: optional fix outline and its size, as described in <finding_text>.
   - Preserve a stable \`id\` for each distinct finding and emit \`title\`,
     \`severity\`, \`category\`, \`security\`, \`why\`, \`verification\`, and \`agent_prompt\`
     as layout-free factual fields for the validator. Optional \`also_at\` combines
@@ -169,6 +173,8 @@ ${sideFieldDescription}
     does well, a general recommendation), append them as up to three short
     bullets. These observations belong only here, never in \`comments\`.
 </schema_details>
+
+${buildFindingTextSection(includeSuggestions)}
 </output_spec>
 
 <critical_constraints>

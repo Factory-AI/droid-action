@@ -284,13 +284,12 @@ function fixSection(finding: ReviewFinding): string {
   const outline = finding.fix_markdown
     ? fixMarkdown(finding.fix_markdown)
     : null;
-  if (!outline && !finding.fix_lines) return "";
+  // A size estimate with nothing to size is noise, so it needs an outline.
+  if (!outline) return "";
   const size = finding.fix_lines
-    ? ` · ~${pluralize(finding.fix_lines, "line")}`
+    ? `Estimated fix: ~${pluralize(finding.fix_lines, "line")}`
     : "";
-  return [`**Proposed fix**${size}`, outline ?? ""]
-    .filter(Boolean)
-    .join("\n\n");
+  return ["**Proposed fix**", outline, size].filter(Boolean).join("\n\n");
 }
 function inlineCommentBody(
   finding: ReviewFinding,

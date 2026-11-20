@@ -333,6 +333,22 @@ describe("automatic renderer output budgets", () => {
     expect(decodeFindingMarker(body)?.id).toBe("f-real");
     expect(validateRenderedMarkdown(body)).toEqual([]);
   });
+  it("drops an oversized fix outline whole instead of cutting it", () => {
+    const input = oversizedReview();
+    const finding = input.findings![0]!;
+    const outline = `\`\`\`diff\n${Array.from({ length: 30 }, (_, i) => `+OUTLINE_${i} ${"y".repeat(1000)}`).join("\n")}\n\`\`\``;
+    const body = renderInlineComment({
+      ...finding,
+      fix_markdown: outline,
+      fix_lines: 30,
+    });
+    expect(outputBytes(body)).toBeLessThanOrEqual(MAX_INLINE_OUTPUT_BYTES);
+    expect(body).not.toContain("OUTLINE_");
+    expect(body).not.toContain("Proposed fix");
+    expect(body).not.toContain("Estimated fix");
+    expect(decodeFindingMarker(body)?.id).toBe("f-real");
+    expect(validateRenderedMarkdown(body)).toEqual([]);
+  });
   it("bounds check output and preserves its machine counts", () => {
     const output = renderCheckRun({
       ...oversizedReview(),

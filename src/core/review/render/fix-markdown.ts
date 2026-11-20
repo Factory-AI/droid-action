@@ -6,23 +6,37 @@ const FIX_LANGUAGES = new Set([
   "diff",
   "mermaid",
   "ts",
+  "typescript",
   "tsx",
   "js",
+  "javascript",
   "jsx",
   "py",
+  "python",
   "go",
   "rust",
   "java",
   "kotlin",
   "swift",
   "rb",
+  "ruby",
+  "php",
+  "c",
+  "cpp",
+  "cs",
+  "csharp",
   "sh",
+  "bash",
+  "shell",
   "sql",
   "json",
   "yaml",
+  "toml",
 ]);
 
-const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})[ \t]*([^\s`~]*)/;
+// CommonMark: a backtick fence's info string cannot contain a backtick, so
+// "```js```" is inline code, not a fence opener.
+const FENCE_OPEN = /^ {0,3}(`{3,}(?=[^`]*$)|~{3,})[ \t]*([^\s`~]*)/;
 const LIST_ITEM = /^( {0,6})([-*+]|\d{1,3}[.)])[ \t]+(.*)$/;
 
 function closesFence(line: string, marker: string): boolean {

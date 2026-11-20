@@ -26,6 +26,24 @@ function createBaseContext(
 }
 
 describe("generateReviewCandidatesPrompt", () => {
+  it("asks for prose findings and an optional fix outline", () => {
+    for (const includeSuggestions of [true, false]) {
+      const prompt = generateReviewCandidatesPrompt(
+        createBaseContext({ includeSuggestions }),
+      );
+      expect(prompt).toContain('"fix_markdown":');
+      expect(prompt).toContain('"fix_lines":');
+      expect(prompt).toContain("<finding_text>");
+      expect(prompt).toContain("Put the direct claim first");
+      expect(prompt).toContain("smallest view");
+      expect(prompt).toContain('"Estimated fix: ~N lines".');
+      expect(prompt).toContain("a wrong outline costs more than none");
+      expect(prompt).toContain("under 30 seconds");
+      expect(prompt.includes("other than a `suggestion` block")).toBe(
+        includeSuggestions,
+      );
+    }
+  });
   it("references PR description artifact in precomputed data files", () => {
     const context = createBaseContext({
       reviewArtifacts: {
