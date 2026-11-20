@@ -331,6 +331,10 @@ inputs:
     description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). What Factory does with a pull request over risk_max_changed_lines or risk_max_changed_files."
     required: false
     default: ""
+  risk_skip_when_human_approved:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). Whether Factory skips assessing a pull request a human has already approved: auto (the default when unset), always or never."
+    required: false
+    default: ""
   risk_rules:
     description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). Path rules in the format of the `rules` key of .factory/review.yaml, for settings the inputs above cannot express."
     required: false

@@ -362,6 +362,7 @@ describe("risk settings Factory reads from the workflow file", () => {
     "max_changed_lines",
     "max_changed_files",
     "over_size",
+    "skip_when_human_approved",
     "rules",
   ];
 

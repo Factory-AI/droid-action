@@ -206,26 +206,27 @@ request of a `workflow_run` event, or from `pr_number`.
 
 ## Inputs
 
-| Input                | Required | Default                       | Description                                                                                             |
-| -------------------- | -------- | ----------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `factory_api_key`    | yes      |                               | Factory API key. Used for the begin and settle requests and by the judge session.                       |
-| `pr_number`          | no       | the event's pull request      | Pull request to assess.                                                                                 |
-| `review_outcome`     | no       |                               | Conclusion of the review step that ran before this one: `success`, `failure`, `cancelled` or `skipped`. |
-| `review_base_sha`    | no       |                               | Deprecated; Factory no longer reads it.                                                                 |
-| `review_has_rules`   | no       |                               | Deprecated; Factory no longer reads it.                                                                 |
-| `enabled`            | no       |                               | Risk setting. `false` turns the assessment off.                                                         |
-| `approve_pr`         | no       |                               | Risk setting. Whether Factory may approve.                                                              |
-| `approve_risk_level` | no       |                               | Risk setting. Highest risk level Factory approves: `low` or `medium`.                                   |
-| `disabled_paths`     | no       |                               | Risk setting. Globs, one per line, that turn the assessment off.                                        |
-| `shadow_paths`       | no       |                               | Risk setting. Globs, one per line, that are assessed but never approved.                                |
-| `max_changed_lines`  | no       |                               | Risk setting. Most changed lines an approved pull request may have.                                     |
-| `max_changed_files`  | no       |                               | Risk setting. Most changed files an approved pull request may have.                                     |
-| `over_size`          | no       |                               | Risk setting. What Factory does with a pull request over either size cap.                               |
-| `rules`              | no       |                               | Risk setting. Path rules in the format of `.factory/review.yaml`'s `rules` key.                         |
-| `api_base_url`       | no       | `https://app.factory.ai`      | Factory API host that answers the begin and settle requests.                                            |
-| `judge_api_base_url` | no       | the Droid CLI's default       | Factory API host for the judge session only.                                                            |
-| `dry_run`            | no       | `false`                       | Tells Factory this is a dry run. A dry run can also run without `id-token: write`.                      |
-| `manual`             | no       | `true` on `workflow_dispatch` | Marks the run as an explicit request to assess.                                                         |
+| Input                      | Required | Default                       | Description                                                                                                     |
+| -------------------------- | -------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `factory_api_key`          | yes      |                               | Factory API key. Used for the begin and settle requests and by the judge session.                               |
+| `pr_number`                | no       | the event's pull request      | Pull request to assess.                                                                                         |
+| `review_outcome`           | no       |                               | Conclusion of the review step that ran before this one: `success`, `failure`, `cancelled` or `skipped`.         |
+| `review_base_sha`          | no       |                               | Deprecated; Factory no longer reads it.                                                                         |
+| `review_has_rules`         | no       |                               | Deprecated; Factory no longer reads it.                                                                         |
+| `enabled`                  | no       |                               | Risk setting. `false` turns the assessment off.                                                                 |
+| `approve_pr`               | no       |                               | Risk setting. Whether Factory may approve.                                                                      |
+| `approve_risk_level`       | no       |                               | Risk setting. Highest risk level Factory approves: `low` or `medium`.                                           |
+| `disabled_paths`           | no       |                               | Risk setting. Globs, one per line, that turn the assessment off.                                                |
+| `shadow_paths`             | no       |                               | Risk setting. Globs, one per line, that are assessed but never approved.                                        |
+| `max_changed_lines`        | no       |                               | Risk setting. Most changed lines an approved pull request may have.                                             |
+| `max_changed_files`        | no       |                               | Risk setting. Most changed files an approved pull request may have.                                             |
+| `over_size`                | no       |                               | Risk setting. What Factory does with a pull request over either size cap.                                       |
+| `skip_when_human_approved` | no       |                               | Risk setting. Whether Factory skips assessing a pull request a human has approved: `auto`, `always` or `never`. |
+| `rules`                    | no       |                               | Risk setting. Path rules in the format of `.factory/review.yaml`'s `rules` key.                                 |
+| `api_base_url`             | no       | `https://app.factory.ai`      | Factory API host that answers the begin and settle requests.                                                    |
+| `judge_api_base_url`       | no       | the Droid CLI's default       | Factory API host for the judge session only.                                                                    |
+| `dry_run`                  | no       | `false`                       | Tells Factory this is a dry run. A dry run can also run without `id-token: write`.                              |
+| `manual`                   | no       | `true` on `workflow_dispatch` | Marks the run as an explicit request to assess.                                                                 |
 
 ## Outputs
 
