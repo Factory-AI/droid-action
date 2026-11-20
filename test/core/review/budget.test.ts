@@ -333,17 +333,27 @@ describe("automatic renderer output budgets", () => {
     expect(decodeFindingMarker(body)?.id).toBe("f-real");
     expect(validateRenderedMarkdown(body)).toEqual([]);
   });
-  it("drops an oversized fix outline whole instead of cutting it", () => {
-    const input = oversizedReview();
-    const finding = input.findings![0]!;
-    const outline = `\`\`\`diff\n${Array.from({ length: 30 }, (_, i) => `+OUTLINE_${i} ${"y".repeat(1000)}`).join("\n")}\n\`\`\``;
+  it("drops the fix outline first when a comment is over budget, keeping the whole suggestion", () => {
+    const finding = normalizeFinding({
+      id: "f-real",
+      title: "A verified defect",
+      path: "src/a.ts",
+      line: 10,
+      severity: "P1",
+      body: "body ".repeat(2000),
+      agent_prompt: "prompt ".repeat(2000),
+    });
+    const suggestion = `    // FULL_SUGGESTION\n${"x".repeat(7900)}\n`;
     const body = renderInlineComment({
       ...finding,
-      fix_markdown: outline,
-      fix_lines: 30,
+      suggestion,
+      // Each "&" renders as "&amp;", so this short outline grows fivefold.
+      fix_markdown: `OUTLINE ${"&".repeat(4000)}`,
+      fix_lines: 3,
     });
     expect(outputBytes(body)).toBeLessThanOrEqual(MAX_INLINE_OUTPUT_BYTES);
-    expect(body).not.toContain("OUTLINE_");
+    expect(body).toContain(`~~~suggestion\n${suggestion}\n~~~`);
+    expect(body).not.toContain("OUTLINE");
     expect(body).not.toContain("Proposed fix");
     expect(body).not.toContain("Estimated fix");
     expect(decodeFindingMarker(body)?.id).toBe("f-real");

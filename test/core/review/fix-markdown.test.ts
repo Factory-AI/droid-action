@@ -60,10 +60,13 @@ describe("fixMarkdown", () => {
     expect(fixMarkdown("```html-evil\nx\n```")).toBe("~~~text\nx\n~~~");
   });
 
-  it("reads a backtick line with a backtick info string as text, not a fence", () => {
-    const out = fixMarkdown("```js```\nafter")!;
-    expect(out).not.toContain("~~~");
-    expect(out).toEndWith("\nafter");
+  it("reads a backtick line with a backtick info string as inline code, not a fence", () => {
+    expect(fixMarkdown("```js```\nafter")).toBe("<code>js</code>\nafter");
+  });
+
+  it("escapes a spaced thematic break instead of reading it as a list item", () => {
+    expect(fixMarkdown("- - -")).toBe("\\- - -");
+    expect(fixMarkdown("* * *")).toBe("\\* \\* \\*");
   });
 
   it("keeps inline code as code and escapes HTML inside it", () => {

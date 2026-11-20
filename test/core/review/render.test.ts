@@ -204,8 +204,10 @@ describe("review render templates", () => {
     expect(body).toContain(
       "**Proposed fix**\n\n~~~diff\n saveDraft\n-  cache.write(draft)\n   validate(draft)\n+  cache.write(draft)\n~~~\n\nEstimated fix: ~2 lines\n\n",
     );
+    const bodyText = escapeMarkdown(finding.body.replace(/\s+/g, " ").trim());
+    expect(body).toContain(bodyText);
     expect(body.indexOf("**Proposed fix**")).toBeGreaterThan(
-      body.indexOf(escapeMarkdown(finding.body.split(" ")[0]!)),
+      body.indexOf(bodyText),
     );
     expect(validateRenderedMarkdown(body)).toEqual([]);
   });

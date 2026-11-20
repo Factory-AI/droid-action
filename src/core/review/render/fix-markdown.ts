@@ -56,18 +56,24 @@ function renderFence(language: string, body: string): string {
   return fenced(body, FIX_LANGUAGES.has(lang) ? lang : "text");
 }
 
+// A code span opens and closes with backtick runs of the same length.
+const CODE_SPAN = /(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)/g;
+const THEMATIC_BREAK = /^ {0,6}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+
 /** Escapes text but keeps `inline code` spans as code. */
 function renderInline(text: string): string {
-  return text
-    .split(/(`[^`\n]+`)/)
-    .map((part, i) =>
-      i % 2 === 1 ? inlineCode(part.slice(1, -1)) : escapeMarkdown(part),
-    )
-    .join("");
+  let out = "";
+  let last = 0;
+  for (const span of text.matchAll(CODE_SPAN)) {
+    if (span.index > last) out += escapeMarkdown(text.slice(last, span.index));
+    out += inlineCode(span[2]!);
+    last = span.index + span[0].length;
+  }
+  return last < text.length ? out + escapeMarkdown(text.slice(last)) : out;
 }
 
 function renderTextLine(line: string): string {
-  const item = LIST_ITEM.exec(line);
+  const item = THEMATIC_BREAK.test(line) ? null : LIST_ITEM.exec(line);
   if (item) {
     const marker = /^\d/.test(item[2]!) ? item[2]! : "-";
     return `${item[1]}${marker} ${renderInline(item[3]!.trim())}`;

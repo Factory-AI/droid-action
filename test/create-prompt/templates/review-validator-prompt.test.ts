@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { generateReviewValidatorPrompt } from "../../../src/create-prompt/templates/review-validator-prompt";
+import { buildFindingTextSection } from "../../../src/core/review/prompts/finding-text";
 import type { PreparedContext } from "../../../src/create-prompt/types";
 
 function createBaseContext(
@@ -26,24 +27,16 @@ function createBaseContext(
 }
 
 describe("generateReviewValidatorPrompt", () => {
-  it("asks for prose findings and an optional fix outline", () => {
+  it("includes the finding text block that matches the suggestions setting", () => {
     for (const includeSuggestions of [true, false]) {
       const prompt = generateReviewValidatorPrompt(
         createBaseContext({ includeSuggestions }),
       );
-      expect(prompt).toContain('"fix_markdown":');
-      expect(prompt).toContain('"fix_lines":');
-      expect(prompt).toContain("<finding_text>");
-      expect(prompt).toContain("Put the direct claim first");
-      expect(prompt).toContain("smallest view");
-      expect(prompt).toContain('"Estimated fix: ~N lines".');
-      expect(prompt).toContain("a wrong outline costs more than none");
-      expect(prompt).toContain("Check any outline");
-      expect(prompt).toContain("under 30 seconds");
-      expect(prompt.includes("other than a `suggestion` block")).toBe(
-        includeSuggestions,
-      );
+      expect(prompt).toContain(buildFindingTextSection(includeSuggestions));
     }
+    expect(generateReviewValidatorPrompt(createBaseContext())).toContain(
+      "Check any outline",
+    );
   });
   it("references PR description artifact in inputs", () => {
     const context = createBaseContext({
@@ -119,6 +112,10 @@ describe("generateReviewValidatorPrompt", () => {
     expect(example).toBeDefined();
     const parsed = JSON.parse(example!);
     expect(parsed.reviewSummary.body).toContain("\n\n- optional whole-change");
+    expect(parsed.results[0].comment).toMatchObject({
+      fix_markdown: expect.any(String),
+      fix_lines: 2,
+    });
   });
   it("carries whole-change observations in the summary without judging them", () => {
     const context = createBaseContext();

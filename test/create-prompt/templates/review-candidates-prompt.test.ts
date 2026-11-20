@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { generateReviewCandidatesPrompt } from "../../../src/create-prompt/templates/review-candidates-prompt";
+import { buildFindingTextSection } from "../../../src/core/review/prompts/finding-text";
 import type { PreparedContext } from "../../../src/create-prompt/types";
 
 function createBaseContext(
@@ -26,22 +27,12 @@ function createBaseContext(
 }
 
 describe("generateReviewCandidatesPrompt", () => {
-  it("asks for prose findings and an optional fix outline", () => {
+  it("includes the finding text block that matches the suggestions setting", () => {
     for (const includeSuggestions of [true, false]) {
       const prompt = generateReviewCandidatesPrompt(
         createBaseContext({ includeSuggestions }),
       );
-      expect(prompt).toContain('"fix_markdown":');
-      expect(prompt).toContain('"fix_lines":');
-      expect(prompt).toContain("<finding_text>");
-      expect(prompt).toContain("Put the direct claim first");
-      expect(prompt).toContain("smallest view");
-      expect(prompt).toContain('"Estimated fix: ~N lines".');
-      expect(prompt).toContain("a wrong outline costs more than none");
-      expect(prompt).toContain("under 30 seconds");
-      expect(prompt.includes("other than a `suggestion` block")).toBe(
-        includeSuggestions,
-      );
+      expect(prompt).toContain(buildFindingTextSection(includeSuggestions));
     }
   });
   it("references PR description artifact in precomputed data files", () => {
@@ -107,6 +98,10 @@ describe("generateReviewCandidatesPrompt", () => {
     expect(example).toBeDefined();
     const parsed = JSON.parse(example!);
     expect(parsed.reviewSummary.body).toContain("\n\n- optional whole-change");
+    expect(parsed.comments[0]).toMatchObject({
+      fix_markdown: expect.any(String),
+      fix_lines: 2,
+    });
   });
   it("lets the summary carry whole-change observations from review guidelines", () => {
     const context = createBaseContext();

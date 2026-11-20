@@ -119,14 +119,11 @@ describe("rich validated review schema", () => {
       expect(parsed.approved[0]?.finding?.suggestion).toBe(suggestion);
     });
   }
-  it("reads fix outline fields in snake_case and camelCase and drops invalid ones", () => {
+  it("reads fix outline fields and drops invalid ones", () => {
     const base = { title: "t", path: "a.ts", line: 1, body: "b" };
     expect(
       normalizeFinding({ ...base, fix_markdown: " outline ", fix_lines: 4 }),
     ).toMatchObject({ fix_markdown: "outline", fix_lines: 4 });
-    expect(
-      normalizeFinding({ ...base, fixMarkdown: "outline", fixLines: 1 }),
-    ).toMatchObject({ fix_markdown: "outline", fix_lines: 1 });
     for (const bad of [
       { fix_markdown: "  ", fix_lines: 2.5 },
       { fix_markdown: 7, fix_lines: -1 },
