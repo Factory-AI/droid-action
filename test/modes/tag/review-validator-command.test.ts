@@ -3,6 +3,7 @@ import * as core from "@actions/core";
 import * as fsPromises from "fs/promises";
 import * as promptModule from "../../../src/create-prompt";
 import * as prFetcher from "../../../src/github/data/pr-fetcher";
+import * as lifecycle from "../../../src/github/operations/review-lifecycle";
 import { prepareReviewValidatorMode } from "../../../src/tag/commands/review-validator";
 import { createMockContext } from "../../mockContext";
 import { parseSessionTagFromDroidArgs } from "../../utils/session-tag-helpers";
@@ -88,6 +89,46 @@ describe("prepareReviewValidatorMode", () => {
     exportSpy.mockRestore();
   });
 
+  it("asks the validator for fix outlines when Pass 1 recorded a showme-review", async () => {
+    const fetchSpy = spyOn(prFetcher, "fetchPRBranchData").mockResolvedValue({
+      baseRefName: "main",
+      headRefName: "feature",
+      headRefOid: "abc123",
+      isFork: false,
+      title: "PR",
+      body: "",
+    });
+    const promptSpy = spyOn(promptModule, "createPrompt").mockResolvedValue();
+    const setOutputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
+    const lifecycleSpy = spyOn(
+      lifecycle,
+      "readReviewLifecycle",
+    ).mockResolvedValue({ fixOutline: true } as lifecycle.ReviewLifecycleRun);
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: { comment: { id: 101, body: "@droid showme-review" } } as any,
+      entityNumber: 24,
+    });
+
+    await prepareReviewValidatorMode({
+      context,
+      octokit: {} as any,
+      githubToken: "token",
+      trackingCommentId: 555,
+    });
+
+    const prompt = promptSpy.mock.calls[0]?.[0]?.generatePrompt(
+      promptModule.prepareContext(context),
+    );
+    expect(prompt).toContain("<finding_text>");
+    expect(prompt).toContain("Check any outline");
+    fetchSpy.mockRestore();
+    promptSpy.mockRestore();
+    setOutputSpy.mockRestore();
+    lifecycleSpy.mockRestore();
+  });
+
   it("hands the validator the guidelines Pass 1 stored, without refetching", async () => {
     const fetchSpy = spyOn(prFetcher, "fetchPRBranchData").mockResolvedValue({
       baseRefName: "main",
@@ -102,8 +143,13 @@ describe("prepareReviewValidatorMode", () => {
     const exportSpy = spyOn(core, "exportVariable").mockImplementation(
       () => {},
     );
-    const readFileSpy = spyOn(fsPromises, "readFile").mockResolvedValue(
-      "# Rules\n- Be terse.",
+    const readFileSpy = spyOn(fsPromises, "readFile").mockImplementation(
+      (async (file: unknown) => {
+        // No review lifecycle file: a plain `@droid review` run.
+        if (String(file).endsWith("review_lifecycle.json"))
+          throw Object.assign(new Error("missing"), { code: "ENOENT" });
+        return "# Rules\n- Be terse.";
+      }) as typeof fsPromises.readFile,
     );
     const getContent = spyOn(
       { getContent: async () => ({}) },

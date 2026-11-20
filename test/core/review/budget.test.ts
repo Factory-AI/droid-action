@@ -344,13 +344,16 @@ describe("automatic renderer output budgets", () => {
       agent_prompt: "prompt ".repeat(2000),
     });
     const suggestion = `    // FULL_SUGGESTION\n${"x".repeat(7900)}\n`;
-    const body = renderInlineComment({
-      ...finding,
-      suggestion,
-      // Each "&" renders as "&amp;", so this short outline grows fivefold.
-      fix_markdown: `OUTLINE ${"&".repeat(4000)}`,
-      fix_lines: 3,
-    });
+    const body = renderInlineComment(
+      {
+        ...finding,
+        suggestion,
+        // Each "&" renders as "&amp;", so this short outline grows fivefold.
+        fix_markdown: `OUTLINE ${"&".repeat(4000)}`,
+        fix_lines: 3,
+      },
+      { fixOutline: true },
+    );
     expect(outputBytes(body)).toBeLessThanOrEqual(MAX_INLINE_OUTPUT_BYTES);
     expect(body).toContain(`~~~suggestion\n${suggestion}\n~~~`);
     expect(body).not.toContain("OUTLINE");

@@ -19,6 +19,8 @@ export interface ParsedCommand {
   location: "body" | "comment";
   timestamp?: string | null;
   fullReview?: boolean;
+  /** `@droid showme-review`: a review with prose findings and fix outlines. */
+  showme?: boolean;
   focus?: string;
   text?: string;
 }
@@ -136,13 +138,14 @@ export function parseDroidCommand(text: string): ParsedCommand | null {
       fallback ??= { ...base, command: "default" };
       continue;
     }
-    const word = /^([a-z]+)(?=$|[\s,:;.!?])/i.exec(tail);
+    const word = /^([a-z]+(?:-[a-z]+)*)(?=$|[\s,:;.!?])/i.exec(tail);
     const name = word?.[1]?.toLowerCase();
     if (
       !name ||
       ![
         "fill",
         "review",
+        "showme-review",
         "security",
         "help",
         "fix",
@@ -169,7 +172,7 @@ export function parseDroidCommand(text: string): ParsedCommand | null {
         command: full ? "security-full" : "security",
       };
     }
-    if (name === "review") {
+    if (name === "review" || name === "showme-review") {
       const fullReview = /(?:^|\s)--full(?:$|[\s.!?,;:])/i.test(args);
       const fullFlags = /(?:^|\s)--full(?=$|[\s.!?,;:])(?:[.!?,;:](?=$))?/gi;
       if (/(?:^|\s)--\S+/.test(args.replace(fullFlags, " ")))
@@ -186,6 +189,7 @@ export function parseDroidCommand(text: string): ParsedCommand | null {
         ...base,
         raw,
         command: "review",
+        ...(name === "showme-review" ? { showme: true } : {}),
         ...(fullReview ? { fullReview: true } : {}),
         ...(focus ? { focus } : {}),
       };

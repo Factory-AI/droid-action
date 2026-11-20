@@ -151,6 +151,52 @@ describe("prepareReviewMode", () => {
     }
   });
 
+  it("asks a showme-review for a fix outline and records it for the later passes", async () => {
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: {
+        comment: { id: 101, body: "@droid showme-review" },
+      } as any,
+      entityNumber: 24,
+    });
+    const octokit = {
+      rest: {
+        issues: { listComments: () => Promise.resolve({ data: [] }) },
+        pulls: { listReviewComments: () => Promise.resolve({ data: [] }) },
+      },
+      graphql: () =>
+        Promise.resolve({
+          repository: {
+            pullRequest: {
+              baseRefName: MOCK_PR_DATA.baseRefName,
+              headRefName: MOCK_PR_DATA.headRefName,
+              headRefOid: MOCK_PR_DATA.headRefOid,
+              isCrossRepository: false,
+              title: MOCK_PR_DATA.title,
+              body: MOCK_PR_DATA.body,
+            },
+          },
+        }),
+    } as any;
+
+    await prepareReviewMode({
+      context,
+      octokit,
+      githubToken: "token",
+      trackingCommentId: 555,
+      showme: true,
+    });
+
+    expect(lifecycleSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ fixOutline: true }),
+    );
+    const generated = promptSpy.mock.calls[0]?.[0]?.generatePrompt(
+      promptModule.prepareContext(context),
+    );
+    expect(generated).toContain("<finding_text>");
+    expect(generated).toContain('"fix_markdown":');
+  });
   it("prepares review flow with limited toolset when tracking comment exists", async () => {
     const context = createMockContext({
       eventName: "issue_comment",

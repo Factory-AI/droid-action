@@ -251,6 +251,7 @@ export async function prepareTagExecution({
       runType,
       fullReview: commandContext?.fullReview,
       focus: commandContext?.focus,
+      showme: commandContext?.showme,
     });
   }
 
@@ -265,6 +266,7 @@ export async function prepareTagExecution({
       runType,
       fullReview: commandContext?.fullReview,
       focus: commandContext?.focus,
+      showme: commandContext?.showme,
     });
   }
 
@@ -330,6 +332,7 @@ export async function prepareTagExecution({
       runType,
       fullReview: commandContext?.fullReview,
       focus: commandContext?.focus,
+      showme: commandContext?.showme,
     });
   }
 

@@ -306,7 +306,7 @@ function inlineCommentBody(
   return [
     `${badges(finding, options)} **${title(finding)}**${options.includeCategories && finding.category ? ` · ${inlineCode(finding.category)}` : ""}`,
     prose(finding.body),
-    fixSection(finding),
+    options.fixOutline ? fixSection(finding) : "",
     securityContext ? `<sub>${securityContext}</sub>` : "",
     finding.suggestion !== undefined &&
     finding.side === "RIGHT" &&

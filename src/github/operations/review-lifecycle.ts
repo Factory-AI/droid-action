@@ -76,6 +76,8 @@ export type ReviewLifecycleRun = {
   skipReason?: string;
   incrementalBaseSha?: string;
   eligibleFixedIds?: string[];
+  /** Set by `@droid showme-review`; the validator and publisher read it. */
+  fixOutline?: boolean;
   reaction?: {
     id: number;
     targetId: number;
@@ -805,6 +807,7 @@ export async function prepareReviewLifecycle(options: {
   baseSha?: string;
   securityOnly?: boolean;
   full?: boolean;
+  fixOutline?: boolean;
   trackingCommentId?: number;
   skipReason?: string | null;
 }): Promise<{
@@ -865,6 +868,7 @@ export async function prepareReviewLifecycle(options: {
     automatic,
     securityOnly: !!options.securityOnly,
     full: options.full,
+    ...(options.fixOutline ? { fixOutline: true } : {}),
     startedAt: new Date().toISOString(),
     steps: [],
     ...plan,

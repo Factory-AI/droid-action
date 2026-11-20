@@ -27,12 +27,20 @@ function createBaseContext(
 }
 
 describe("generateReviewCandidatesPrompt", () => {
-  it("includes the finding text block that matches the suggestions setting", () => {
+  it("asks for a fix outline when the review is a showme-review", () => {
     for (const includeSuggestions of [true, false]) {
       const prompt = generateReviewCandidatesPrompt(
         createBaseContext({ includeSuggestions }),
+        {
+          fixOutline: true,
+        },
       );
       expect(prompt).toContain(buildFindingTextSection(includeSuggestions));
+      const example = /```json\n([\s\S]*?)\n```/.exec(prompt)?.[1];
+      expect(JSON.parse(example!).comments[0]).toMatchObject({
+        fix_markdown: expect.any(String),
+        fix_lines: 2,
+      });
     }
   });
   it("references PR description artifact in precomputed data files", () => {
@@ -98,10 +106,6 @@ describe("generateReviewCandidatesPrompt", () => {
     expect(example).toBeDefined();
     const parsed = JSON.parse(example!);
     expect(parsed.reviewSummary.body).toContain("\n\n- optional whole-change");
-    expect(parsed.comments[0]).toMatchObject({
-      fix_markdown: expect.any(String),
-      fix_lines: 2,
-    });
   });
   it("lets the summary carry whole-change observations from review guidelines", () => {
     const context = createBaseContext();

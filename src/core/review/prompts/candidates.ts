@@ -35,6 +35,7 @@ export function generateCandidatesPrompt(ctx: ReviewPromptContext): string {
     securityReviewEnabled,
     sourceNote,
     repoGuidelines,
+    fixOutline = false,
   } = ctx;
 
   const guidelinesSection = buildRepoGuidelinesSection(
@@ -117,9 +118,7 @@ Write output to \`${candidatesPath}\` using this exact schema:
       "category": "correctness",
       "security": false,
       "path": "src/index.ts",
-      "body": "One short paragraph explaining what breaks, when, and why.",
-      "fix_markdown": "Optional outline of the fix; see <finding_text>.",
-      "fix_lines": 2,
+      "body": "${fixOutline ? "One short paragraph explaining what breaks, when, and why." : "One short paragraph explaining what breaks, when, and what to do."}",${fixOutline ? `\n      "fix_markdown": "Optional outline of the fix; see <finding_text>.",\n      "fix_lines": 2,` : ""}
       "line": 42,
       "startLine": null,
       "side": "RIGHT",
@@ -148,8 +147,7 @@ ${bodyFieldDescription}
   - \`line\`: ${t.lineFieldDescription}
   - \`startLine\`: \`null\` for single-line comments, or start line number for multi-line comments
 ${sideFieldDescription}
-  - \`commit_id\`: "${headSha}"
-  - \`fix_markdown\` and \`fix_lines\`: optional fix outline and its size, as described in <finding_text>.
+  - \`commit_id\`: "${headSha}"${fixOutline ? "\n  - `fix_markdown` and `fix_lines`: optional fix outline and its size, as described in <finding_text>." : ""}
   - Preserve a stable \`id\` for each distinct finding and emit \`title\`,
     \`severity\`, \`category\`, \`security\`, \`why\`, \`verification\`, and \`agent_prompt\`
     as layout-free factual fields for the validator. Optional \`also_at\` combines
@@ -173,9 +171,7 @@ ${sideFieldDescription}
     does well, a general recommendation), append them as up to three short
     bullets. These observations belong only here, never in \`comments\`.
 </schema_details>
-
-${buildFindingTextSection(includeSuggestions)}
-</output_spec>
+${fixOutline ? `\n${buildFindingTextSection(includeSuggestions)}\n` : ""}</output_spec>
 
 <critical_constraints>
 **DO NOT** post to ${t.platformName}.

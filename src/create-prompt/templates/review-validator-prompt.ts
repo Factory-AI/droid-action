@@ -16,6 +16,7 @@ import type { PreparedContext } from "../types";
 
 export function generateReviewValidatorPrompt(
   context: PreparedContext,
+  options: { fixOutline?: boolean } = {},
 ): string {
   const prNumber = context.eventData.isPR
     ? context.eventData.prNumber
@@ -54,5 +55,6 @@ export function generateReviewValidatorPrompt(
       context.eventData.baseBranch ?? "base",
     ),
     repoGuidelines: context.reviewGuidelines,
+    fixOutline: options.fixOutline,
   });
 }

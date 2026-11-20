@@ -27,16 +27,24 @@ function createBaseContext(
 }
 
 describe("generateReviewValidatorPrompt", () => {
-  it("includes the finding text block that matches the suggestions setting", () => {
+  it("asks for a fix outline when the review is a showme-review", () => {
     for (const includeSuggestions of [true, false]) {
       const prompt = generateReviewValidatorPrompt(
         createBaseContext({ includeSuggestions }),
+        {
+          fixOutline: true,
+        },
       );
       expect(prompt).toContain(buildFindingTextSection(includeSuggestions));
+      const example = /```json\n([\s\S]*?)\n```/.exec(prompt)?.[1];
+      expect(JSON.parse(example!).results[0].comment).toMatchObject({
+        fix_markdown: expect.any(String),
+        fix_lines: 2,
+      });
     }
-    expect(generateReviewValidatorPrompt(createBaseContext())).toContain(
-      "Check any outline",
-    );
+    expect(
+      generateReviewValidatorPrompt(createBaseContext(), { fixOutline: true }),
+    ).toContain("Check any outline");
   });
   it("references PR description artifact in inputs", () => {
     const context = createBaseContext({
@@ -112,10 +120,6 @@ describe("generateReviewValidatorPrompt", () => {
     expect(example).toBeDefined();
     const parsed = JSON.parse(example!);
     expect(parsed.reviewSummary.body).toContain("\n\n- optional whole-change");
-    expect(parsed.results[0].comment).toMatchObject({
-      fix_markdown: expect.any(String),
-      fix_lines: 2,
-    });
   });
   it("carries whole-change observations in the summary without judging them", () => {
     const context = createBaseContext();

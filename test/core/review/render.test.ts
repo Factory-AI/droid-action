@@ -195,12 +195,15 @@ describe("review render templates", () => {
   });
   it("renders a fix outline with its size line after the body", () => {
     const finding = parseValidatedReview(raw).findings[0]!;
-    const body = renderInlineComment({
-      ...finding,
-      fix_markdown:
-        "```diff\n saveDraft\n-  cache.write(draft)\n   validate(draft)\n+  cache.write(draft)\n```",
-      fix_lines: 2,
-    });
+    const body = renderInlineComment(
+      {
+        ...finding,
+        fix_markdown:
+          "```diff\n saveDraft\n-  cache.write(draft)\n   validate(draft)\n+  cache.write(draft)\n```",
+        fix_lines: 2,
+      },
+      { fixOutline: true },
+    );
     expect(body).toContain(
       "**Proposed fix**\n\n~~~diff\n saveDraft\n-  cache.write(draft)\n   validate(draft)\n+  cache.write(draft)\n~~~\n\nEstimated fix: ~2 lines\n\n",
     );
@@ -214,21 +217,20 @@ describe("review render templates", () => {
   it("renders no fix section for a size estimate without an outline", () => {
     const finding = parseValidatedReview(raw).findings[0]!;
     for (const fix_markdown of [undefined, "```diff\n\n```"]) {
-      const body = renderInlineComment({
-        ...finding,
-        fix_markdown,
-        fix_lines: 3,
-      });
+      const body = renderInlineComment(
+        { ...finding, fix_markdown, fix_lines: 3 },
+        { fixOutline: true },
+      );
       expect(body).not.toContain("Proposed fix");
       expect(body).not.toContain("Estimated fix");
     }
   });
   it("renders an outline without a size line when the estimate is missing", () => {
     const finding = parseValidatedReview(raw).findings[0]!;
-    const body = renderInlineComment({
-      ...finding,
-      fix_markdown: "Call `validate` before `cache.write`.",
-    });
+    const body = renderInlineComment(
+      { ...finding, fix_markdown: "Call `validate` before `cache.write`." },
+      { fixOutline: true },
+    );
     expect(body).toContain("**Proposed fix**");
     expect(body).not.toContain("Estimated fix");
   });

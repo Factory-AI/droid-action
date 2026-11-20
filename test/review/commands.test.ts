@@ -35,6 +35,24 @@ describe("review UX command grammar", () => {
     expect(String(parseDroidCommand(text)?.command)).toBe(command),
   );
 
+  test("parses showme-review as a review that asks for fix outlines", () => {
+    expect(parseDroidCommand("@droid showme-review")).toMatchObject({
+      command: "review",
+      showme: true,
+    });
+    expect(
+      parseDroidCommand("@DROID SHOWME-REVIEW --full the migration"),
+    ).toMatchObject({
+      command: "review",
+      showme: true,
+      fullReview: true,
+      focus: "the migration",
+    });
+    expect(parseDroidCommand("@droid review")?.showme).toBeUndefined();
+    expect(parseDroidCommand("@droid showme-reviews")).toMatchObject({
+      command: "unknown",
+    });
+  });
   test("preserves focus independently of full override", () => {
     expect(
       parseDroidCommand("@droid review --full the migration"),
