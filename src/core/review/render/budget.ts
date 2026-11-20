@@ -39,6 +39,10 @@ function compactFinding(
   const oversizedSuggestion =
     finding.suggestion !== undefined &&
     outputBytes(finding.suggestion) > suggestionLimit;
+  // An outline is optional context, so it goes whole or not at all.
+  const oversizedOutline =
+    finding.fix_markdown !== undefined &&
+    outputBytes(finding.fix_markdown) > suggestionLimit / 2;
   return {
     ...finding,
     body: [
@@ -57,6 +61,7 @@ function compactFinding(
     also_at: finding.also_at.slice(0, contextLimit),
     source_guideline: contextLimit ? finding.source_guideline : undefined,
     ...(oversizedSuggestion ? { suggestion: undefined } : {}),
+    ...(oversizedOutline ? { fix_markdown: undefined } : {}),
   };
 }
 function compactSummary(
@@ -170,6 +175,7 @@ function compactInput(
                   agent_prompt: "",
                   also_at: [],
                   suggestion: undefined,
+                  fix_markdown: undefined,
                   body: truncateReviewText(
                     finding.finding.body,
                     stage === 3 ? 0 : Math.min(quota, 300),

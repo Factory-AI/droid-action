@@ -20,11 +20,13 @@ import {
   prose,
   redactSecrets,
   relativeTime,
+  safeDiagram,
   safeUrl,
   shortSha,
   stripSummaryMarkers,
   tablePath,
 } from "./helpers";
+import { fixMarkdown } from "./fix-markdown";
 import type {
   BadgeMode,
   CheckRunInput,
@@ -250,17 +252,6 @@ function transparency(
   const dropped = input.droppedCount ?? input.dropped?.length ?? 0;
   return `Candidates: ${input.candidatesConsidered ?? findings.length + dropped + (input.skippedCount ?? 0)} considered → ${input.postedCount ?? findings.length} posted · ${dropped} dropped by validation${input.skippedCount ? ` · ${input.skippedCount} skipped` : ""}.`;
 }
-/** Restrict diagrams to passive graph syntax; no HTML, links, init directives, or click handlers. */
-export function safeDiagram(value: string): string | null {
-  if (
-    !/^(?:flowchart|graph|sequenceDiagram)\b/.test(value.trim()) ||
-    /<\/?[a-z][^>]*>|[&`~]|%%|(?:^|[\n;])\s*(?:click|linkStyle|style|classDef|accTitle|accDescr)\b|https?:|javascript:/i.test(
-      value,
-    )
-  )
-    return null;
-  return redactSecrets(value.trim());
-}
 function whatChanged(input: ReviewRenderInput): string {
   const summary = input.summary;
   const blocks = [
@@ -289,6 +280,18 @@ function whatChanged(input: ReviewRenderInput): string {
     );
   return details("What changed", blocks.filter(Boolean).join("\n\n"));
 }
+function fixSection(finding: ReviewFinding): string {
+  const outline = finding.fix_markdown
+    ? fixMarkdown(finding.fix_markdown)
+    : null;
+  if (!outline && !finding.fix_lines) return "";
+  const size = finding.fix_lines
+    ? ` · ~${pluralize(finding.fix_lines, "line")}`
+    : "";
+  return [`**Proposed fix**${size}`, outline ?? ""]
+    .filter(Boolean)
+    .join("\n\n");
+}
 function inlineCommentBody(
   finding: ReviewFinding,
   options: RenderOptions = {},
@@ -304,6 +307,7 @@ function inlineCommentBody(
   return [
     `${badges(finding, options)} **${title(finding)}**${options.includeCategories && finding.category ? ` · ${inlineCode(finding.category)}` : ""}`,
     prose(finding.body),
+    fixSection(finding),
     securityContext ? `<sub>${securityContext}</sub>` : "",
     finding.suggestion !== undefined &&
     finding.side === "RIGHT" &&

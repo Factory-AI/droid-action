@@ -106,6 +106,12 @@ export function normalizeFinding(data: Record<string, unknown>): ReviewFinding {
     why: nonempty(data.why) ?? "",
     verification: nonempty(data.verification) ?? "",
     ...(suggestion !== undefined ? { suggestion } : {}),
+    ...(nonempty(data.fix_markdown ?? data.fixMarkdown)
+      ? { fix_markdown: nonempty(data.fix_markdown ?? data.fixMarkdown) }
+      : {}),
+    ...(positive(data.fix_lines ?? data.fixLines)
+      ? { fix_lines: positive(data.fix_lines ?? data.fixLines) }
+      : {}),
     agent_prompt:
       nonempty(data.agent_prompt) ??
       `Verify ${side === "LEFT" ? (oldPath ?? path) : path}${line ? `:${line}` : ""}: ${title}. ${body}`,
