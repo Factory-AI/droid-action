@@ -117,9 +117,7 @@ judge runs when it finds it there (see
 [What the judge can reach](#what-the-judge-can-reach)).
 
 When the action runs after a review step in the same job, pass that step's
-conclusion so Factory can tell whether the pull request is ready to assess,
-and what it read of `.factory/review.yaml`, so Factory reads the pull
-request's rules at the same commit and reads nothing when the file has none:
+conclusion so Factory can tell whether the pull request is ready to assess:
 
 ```yaml
 - uses: Factory-AI/droid-action/risk@dev-internal
@@ -127,12 +125,48 @@ request's rules at the same commit and reads nothing when the file has none:
   with:
     factory_api_key: ${{ secrets.FACTORY_API_KEY }}
     review_outcome: ${{ steps.review.outcome }}
-    review_base_sha: ${{ steps.review.outputs.review_base_sha }}
-    review_has_rules: ${{ steps.review.outputs.review_has_rules }}
 ```
 
-Without both of the last two, Factory reads the rules from the tip of the
-base branch.
+`review_base_sha` and `review_has_rules` are deprecated. Factory no longer
+reads them, and ignores them when they are passed.
+
+## Risk settings
+
+The step's own inputs say whether Factory assesses and approves:
+
+```yaml
+- uses: Factory-AI/droid-action/risk@dev-internal
+  with:
+    factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+    approve_pr: true
+    approve_risk_level: medium
+    disabled_paths: |
+      infra/**
+      **/*.sql
+    shadow_paths: |
+      docs/**
+```
+
+Factory reads these from the workflow file itself, at the commit that
+GitHub's OIDC token names for the run, and never from what the runner passes
+in. A pull request that edits the workflow therefore cannot change the
+settings that judge it; the base branch's copy of the file governs. The
+action does not read the inputs, and they have no defaults: an input not
+written in the file is not set.
+
+- Write each value as a literal. A value holding an expression (`${{ }}`)
+  makes the settings invalid, and Factory does not approve the pull request.
+- Factory also refuses to approve when it cannot read the workflow file, when
+  the file has no risk step, or when the run came from a reusable workflow in
+  another repository.
+- `disabled_paths` and `shadow_paths` take one glob per line. A pull request
+  touching a disabled path is not assessed; one touching a shadow path is
+  assessed but never approved.
+- `rules` takes path rules in the format of the `rules` key of
+  `.factory/review.yaml`, for anything the other inputs cannot express.
+- While a repository still has risk rules in `.factory/review.yaml`, Factory
+  combines them with these inputs and the stricter setting wins. The pull
+  request comment then notes that the `review.yaml` rules are deprecated.
 
 ## Bundled with the review
 
@@ -158,18 +192,12 @@ the action nothing to review, as on a `workflow_dispatch` that only asks for
 an assessment. A cancelled run assesses nothing. On a comment left on a pull
 request, that pull request is the one assessed.
 
-Factory is also told what the review read of `.factory/review.yaml` before
-it started: the pull request's base commit, and whether the file there has
-a `rules` key. Factory reads the pull request's rules at that commit, so
-one version of the file configures the review and the assessment, and reads
-nothing when the file has no rules. The full action also has both as
-outputs, `review_base_sha` and `review_has_rules`, for a workflow that runs
-this sub-action as its own step.
-
 The inputs are this sub-action's with a `risk_` prefix: `risk_pr_number`,
-`risk_api_base_url`, `risk_judge_api_base_url`, `risk_dry_run` and
-`risk_manual`. `factory_api_key` is shared with the review and there is no
-`review_outcome`, `review_base_sha` or `review_has_rules`. The outputs are
+`risk_api_base_url`, `risk_judge_api_base_url`, `risk_dry_run`,
+`risk_manual`, and the [risk settings](#risk-settings) (`risk_approve_pr`,
+`risk_disabled_paths` and so on), which Factory reads from the full action's
+step in the same way. `factory_api_key` is shared with the review and there
+is no `review_outcome`, `review_base_sha` or `review_has_rules`. The outputs are
 `risk_action`, `risk_outcome` and `risk_head_sha`. Everything else on this
 page applies unchanged.
 
@@ -183,8 +211,17 @@ request of a `workflow_run` event, or from `pr_number`.
 | `factory_api_key`    | yes      |                               | Factory API key. Used for the begin and settle requests and by the judge session.                       |
 | `pr_number`          | no       | the event's pull request      | Pull request to assess.                                                                                 |
 | `review_outcome`     | no       |                               | Conclusion of the review step that ran before this one: `success`, `failure`, `cancelled` or `skipped`. |
-| `review_base_sha`    | no       |                               | The review step's `review_base_sha` output: the base commit it read `.factory/review.yaml` at.          |
-| `review_has_rules`   | no       |                               | The review step's `review_has_rules` output: whether that file has a `rules` key.                       |
+| `review_base_sha`    | no       |                               | Deprecated; Factory no longer reads it.                                                                 |
+| `review_has_rules`   | no       |                               | Deprecated; Factory no longer reads it.                                                                 |
+| `enabled`            | no       |                               | Risk setting. `false` turns the assessment off.                                                         |
+| `approve_pr`         | no       |                               | Risk setting. Whether Factory may approve.                                                              |
+| `approve_risk_level` | no       |                               | Risk setting. Highest risk level Factory approves: `low` or `medium`.                                   |
+| `disabled_paths`     | no       |                               | Risk setting. Globs, one per line, that turn the assessment off.                                        |
+| `shadow_paths`       | no       |                               | Risk setting. Globs, one per line, that are assessed but never approved.                                |
+| `max_changed_lines`  | no       |                               | Risk setting. Most changed lines an approved pull request may have.                                     |
+| `max_changed_files`  | no       |                               | Risk setting. Most changed files an approved pull request may have.                                     |
+| `over_size`          | no       |                               | Risk setting. What Factory does with a pull request over either size cap.                               |
+| `rules`              | no       |                               | Risk setting. Path rules in the format of `.factory/review.yaml`'s `rules` key.                         |
 | `api_base_url`       | no       | `https://app.factory.ai`      | Factory API host that answers the begin and settle requests.                                            |
 | `judge_api_base_url` | no       | the Droid CLI's default       | Factory API host for the judge session only.                                                            |
 | `dry_run`            | no       | `false`                       | Tells Factory this is a dry run. A dry run can also run without `id-token: write`.                      |
