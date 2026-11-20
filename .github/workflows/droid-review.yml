@@ -26,11 +26,17 @@ on:
         type: number
 
 concurrency:
-  # A risk dispatch has its own group so it never cancels a review in flight.
-  # Draft events have theirs because GitHub starts queued runs in arbitrary
-  # order: a delayed draft run must not cancel the ready_for_review run.
+  # One run per pull request. A review event (opened, reopened,
+  # ready_for_review) cancels the run in progress, because its own risk step
+  # covers the new head. A push never cancels: it waits for the run in
+  # progress, so a review still running posts its threads before the push's
+  # risk step reads them, and a newer push replaces one that is still
+  # waiting. A risk dispatch has its own group so it never cancels a review
+  # in flight. Draft events have theirs because GitHub starts queued runs in
+  # arbitrary order: a delayed draft run must not cancel the ready_for_review
+  # run.
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || (inputs.pr_number && format('risk-{0}', inputs.pr_number)) || github.ref }}${{ github.event.pull_request.draft && '-draft' || '' }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event.action != 'synchronize' }}
 
 jobs:
   droid-review:
