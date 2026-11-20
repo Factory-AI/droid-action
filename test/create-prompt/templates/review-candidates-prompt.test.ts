@@ -27,7 +27,7 @@ function createBaseContext(
 }
 
 describe("generateReviewCandidatesPrompt", () => {
-  it("asks for a fix outline when the review is a showme-review", () => {
+  it("asks for a fix outline for a --showme review", () => {
     for (const includeSuggestions of [true, false]) {
       const prompt = generateReviewCandidatesPrompt(
         createBaseContext({ includeSuggestions }),

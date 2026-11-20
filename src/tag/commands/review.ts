@@ -34,7 +34,7 @@ type ReviewCommandOptions = {
   runType?: DroidRunType | null;
   fullReview?: boolean;
   focus?: string;
-  /** `@droid showme-review`: prose findings with an optional fix outline. */
+  /** `@droid review --showme`: prose findings with an optional fix outline. */
   showme?: boolean;
 };
 

@@ -12,7 +12,7 @@ export type RenderOptions = {
   badges?: BadgeMode;
   includeCategories?: boolean;
   includeAgentPrompts?: boolean;
-  /** Render `fix_markdown` as a "Proposed fix" section (`@droid showme-review`). */
+  /** Render `fix_markdown` as a "Proposed fix" section (`@droid review --showme`). */
   fixOutline?: boolean;
   head?: string;
   /** Trusted, platform-generated repository URL, without trailing slash. */

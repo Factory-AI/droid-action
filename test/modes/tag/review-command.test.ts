@@ -151,12 +151,12 @@ describe("prepareReviewMode", () => {
     }
   });
 
-  it("asks a showme-review for a fix outline and records it for the later passes", async () => {
+  it("asks a --showme review for a fix outline and records it for the later passes", async () => {
     const context = createMockContext({
       eventName: "issue_comment",
       isPR: true,
       payload: {
-        comment: { id: 101, body: "@droid showme-review" },
+        comment: { id: 101, body: "@droid review --showme" },
       } as any,
       entityNumber: 24,
     });

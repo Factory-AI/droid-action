@@ -126,7 +126,7 @@ export interface ReviewPromptContext {
   priorFindingsPath?: string;
   /** The repository's own review guidelines, when it has any */
   repoGuidelines?: RepoReviewGuidelines;
-  /** Ask for prose findings with an optional fix outline (`@droid showme-review`). */
+  /** Ask for prose findings with an optional fix outline (`@droid review --showme`). */
   fixOutline?: boolean;
 }
 

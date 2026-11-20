@@ -89,7 +89,7 @@ describe("prepareReviewValidatorMode", () => {
     exportSpy.mockRestore();
   });
 
-  it("asks the validator for fix outlines when Pass 1 recorded a showme-review", async () => {
+  it("asks the validator for fix outlines when Pass 1 recorded a --showme review", async () => {
     const fetchSpy = spyOn(prFetcher, "fetchPRBranchData").mockResolvedValue({
       baseRefName: "main",
       headRefName: "feature",
@@ -107,7 +107,7 @@ describe("prepareReviewValidatorMode", () => {
     const context = createMockContext({
       eventName: "issue_comment",
       isPR: true,
-      payload: { comment: { id: 101, body: "@droid showme-review" } } as any,
+      payload: { comment: { id: 101, body: "@droid review --showme" } } as any,
       entityNumber: 24,
     });
 

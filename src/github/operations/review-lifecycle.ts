@@ -76,7 +76,7 @@ export type ReviewLifecycleRun = {
   skipReason?: string;
   incrementalBaseSha?: string;
   eligibleFixedIds?: string[];
-  /** Set by `@droid showme-review`; the validator and publisher read it. */
+  /** Set by `@droid review --showme`; the validator and publisher read it. */
   fixOutline?: boolean;
   reaction?: {
     id: number;
