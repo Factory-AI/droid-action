@@ -1,21 +1,53 @@
 name: Droid Auto Review
 
+# Reviews each ready pull request once, then runs Factory's PR risk
+# assessment in the same job, so the assessment sees how the review ended
+# and the review threads it left. Factory decides whether each run skips,
+# holds, or judges, and writes the risk comment and any approval as the Droid
+# GitHub App. This workflow holds no credential that can approve.
+#
+# Factory accepts risk reports only from this file as it is on the default
+# branch, so edits to it take effect after merge. .factory/review.yaml caps
+# the Droid App's approvals at low overall risk (approve_risk_level: low).
+#
+# Every push runs the risk step, which reassesses the new head once every
+# Droid review thread is resolved. Drafts run only the risk step, which
+# withdraws approvals of older commits. Reassess a pull request by hand with
+# `gh workflow run droid-review.yml -f pr_number=<n>`; a dispatch from a branch
+# other than the default one is a dry run that never approves.
 on:
   pull_request:
-    types: [opened, ready_for_review, reopened]
+    types: [opened, synchronize, ready_for_review, reopened]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to reassess
+        required: true
+        type: number
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # One run per pull request. A review event (opened, reopened,
+  # ready_for_review) cancels the run in progress, because its own risk step
+  # covers the new head. A push never cancels: it waits for the run in
+  # progress, so a review still running posts its threads before the push's
+  # risk step reads them, and a newer push replaces one that is still
+  # waiting. A risk dispatch has its own group so it never cancels a review
+  # in flight. Draft events have theirs because GitHub starts queued runs in
+  # arbitrary order: a delayed draft run must not cancel the ready_for_review
+  # run.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || (inputs.pr_number && format('risk-{0}', inputs.pr_number)) || github.ref }}${{ github.event.pull_request.draft && '-draft' || '' }}
+  cancel-in-progress: ${{ github.event.action != 'synchronize' }}
 
 jobs:
   droid-review:
-    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     permissions:
       contents: write
       pull-requests: write
       issues: write
+      # Proves to Factory which repository and workflow file is asking, and
+      # is exchanged for the Droid App token the review and the judge use.
       id-token: write
       actions: read
     steps:
@@ -26,9 +58,37 @@ jobs:
           persist-credentials: false
 
       - name: Run Droid Auto Review
-        uses: Factory-AI/droid-action@dev
+        id: review
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.action != 'synchronize' &&
+          github.event.pull_request.draft == false
+        # dev-internal is dev plus the risk code, kept in sync by
+        # sync-dev-internal.yml. dev's review rejects the `rules` key in
+        # .factory/review.yaml, which dev-internal leaves to Factory.
+        uses: Factory-AI/droid-action@dev-internal
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
           automatic_security_review: true
           allowed_bots: "dependabot,factory-droid"
+      # Runs after a failed or skipped review too, so Factory can hold the
+      # assessment and still withdraw approvals of older commits. A cancelled
+      # run leaves the pull request to the run that replaced it.
+      # The risk sub-action exists only on droid-action's dev-internal branch
+      # and tracks the backend deployed at staging.api.factory.ai (Factory's
+      # production deployment of factory-mono's dev branch), so it is left
+      # unpinned; a frozen SHA would drift out of that contract.
+      - name: Run Risk Assessment
+        if: ${{ !cancelled() }}
+        uses: Factory-AI/droid-action/risk@dev-internal
+        with:
+          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          pr_number: ${{ inputs.pr_number }}
+          review_outcome: ${{ steps.review.outcome }}
+          # What the review read of .factory/review.yaml, so Factory reads the
+          # rules at the same commit.
+          review_base_sha: ${{ steps.review.outputs.review_base_sha }}
+          review_has_rules: ${{ steps.review.outputs.review_has_rules }}
+          api_base_url: https://staging.api.factory.ai
+          dry_run: ${{ github.event_name == 'workflow_dispatch' && github.ref_name != github.event.repository.default_branch }}
