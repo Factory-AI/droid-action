@@ -226,6 +226,21 @@ describe("risk action tail steps", () => {
     expect(await exists(sentinel)).toBe(false);
   });
 
+  it("passes the lease token through the cleared environment to Factory", async () => {
+    answer = () => Response.json({ status: "published", outcome: "approve" });
+    const { env } = await settleEnv(settleBindings);
+
+    const result = await runStep(settleStep(), {
+      ...env,
+      RISK_LEASE_TOKEN: "test-lease-placeholder",
+    });
+
+    expect(result.exit).toBe(0);
+    expect(JSON.parse(received[0]?.body ?? "")).toMatchObject({
+      leaseToken: "test-lease-placeholder",
+    });
+  });
+
   it("fails the step when Factory could not be given a verdict", async () => {
     answer = () =>
       Response.json({ status: "published", outcome: "unavailable" });

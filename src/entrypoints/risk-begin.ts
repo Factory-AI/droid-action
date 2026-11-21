@@ -4,7 +4,8 @@
  * First step of the risk action: asks Factory what to do with this run's
  * pull request. When the answer is to judge it, the settle step is frozen
  * and what Factory served is written to an owner-only plan file for the
- * assess and settle steps. Nothing from that answer is printed.
+ * assess and settle steps. Nothing from that answer is printed; the lease
+ * token, if any, leaves only as a masked step output for the settle step.
  */
 
 import * as core from "@actions/core";
@@ -117,9 +118,13 @@ export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
     await freezeReviewRuntime(["settle"]);
   }
 
-  const { action: _action, ...assignment } = response;
+  const { action: _action, leaseToken, ...assignment } = response;
   const plan: RiskPlan = { repo, pr: target.pr, run: riskRun, ...assignment };
   await writePrivateJson(riskPlanPath(env), plan);
+  if (leaseToken) {
+    core.setSecret(leaseToken);
+    core.setOutput("lease_token", leaseToken);
+  }
   console.log(
     `Factory asked for a PR risk assessment of #${target.pr} at ${response.headSha}.`,
   );

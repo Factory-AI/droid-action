@@ -168,6 +168,14 @@ describe.each(variants)(
       });
     });
 
+    it("hands the settle step the lease token begin was given", () => {
+      const settle = step("settle");
+      expect(settle.env?.RISK_LEASE_TOKEN).toBe(
+        `\${{ steps.${p}begin.outputs.lease_token }}`,
+      );
+      expect(settle.run).toContain('RISK_LEASE_TOKEN="${RISK_LEASE_TOKEN:-}"');
+    });
+
     it("runs every script without the caller's Bun configuration, in a shell that loads no profile", () => {
       const scripted = steps.filter((candidate) =>
         candidate.run?.includes("--config=/dev/null"),

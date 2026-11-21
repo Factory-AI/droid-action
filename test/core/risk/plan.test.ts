@@ -278,6 +278,42 @@ describe("buildSettleRequest", () => {
     });
   });
 
+  it("hands back a lease token, and sends the field only when there is one", () => {
+    const file: RiskResultFile = {
+      result: { status: "failed", reason: "runner_died" },
+    };
+
+    expect(
+      buildSettleRequest(plan, file, "test-lease-placeholder").leaseToken,
+    ).toBe("test-lease-placeholder");
+    expect(buildSettleRequest(plan, file)).not.toHaveProperty("leaseToken");
+  });
+
+  it("keeps the lease token when a result too large is settled as a failure", () => {
+    const request = buildSettleRequest(
+      plan,
+      {
+        result: {
+          status: "judged",
+          baseSha: plan.baseSha,
+          judgeSha256: judge.sha256,
+          snapshotHash: "f".repeat(64),
+          listedFiles: 1,
+          attempts: [{ sessionId: "s1", valid: true }],
+          durationMs: 34,
+          verdict: { ...validVerdict, details: "x".repeat(300 * 1024) },
+        },
+      },
+      "test-lease-placeholder",
+    );
+
+    expect(request.result).toEqual({
+      status: "failed",
+      reason: "result_too_large",
+    });
+    expect(request.leaseToken).toBe("test-lease-placeholder");
+  });
+
   it("reports a failure as it was recorded, without naming the judge", () => {
     expect(
       buildSettleRequest(plan, {
