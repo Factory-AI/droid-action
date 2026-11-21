@@ -14,11 +14,56 @@ inputs:
     required: false
     default: ""
   review_base_sha:
-    description: "The review_base_sha output of the review step that ran before this one: the base commit it read .factory/review.yaml at. Factory reads the pull request's rules at the same commit. Needs review_has_rules."
+    description: "Deprecated: Factory no longer reads it. Risk settings come from this step's inputs below. Kept so existing workflows keep working."
     required: false
     default: ""
   review_has_rules:
-    description: "The review_has_rules output of the review step that ran before this one: whether the file at review_base_sha has a `rules` key. Factory reads nothing when it has none. Needs review_base_sha."
+    description: "Deprecated: Factory no longer reads it. Risk settings come from this step's inputs below. Kept so existing workflows keep working."
+    required: false
+    default: ""
+  # Risk settings. Factory reads these from the workflow file, at the commit
+  # GitHub's OIDC token names for this run, never from the values the runner
+  # passes in. The action does not read them, and they have no defaults: an
+  # input that is not written in the file is not set. A value holding an
+  # expression is refused and the pull request is not approved.
+  enabled:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). 'false' turns the assessment off for every changed path."
+    required: false
+    default: ""
+  approve_pr:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). 'true' lets Factory approve a pull request the judge rates at or below approve_risk_level; 'false' only comments."
+    required: false
+    default: ""
+  approve_risk_level:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). Highest risk level Factory approves: low or medium."
+    required: false
+    default: ""
+  disabled_paths:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). Globs, one per line. A pull request touching any of them is not assessed."
+    required: false
+    default: ""
+  shadow_paths:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). Globs, one per line. A pull request touching any of them is assessed but never approved."
+    required: false
+    default: ""
+  max_changed_lines:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). Most changed lines a pull request may have and still be approved."
+    required: false
+    default: ""
+  max_changed_files:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). Most changed files a pull request may have and still be approved."
+    required: false
+    default: ""
+  over_size:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). What Factory does with a pull request over max_changed_lines or max_changed_files."
+    required: false
+    default: ""
+  skip_when_human_approved:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). Whether Factory skips assessing a pull request a human has already approved: auto (the default when unset), always or never."
+    required: false
+    default: ""
+  rules:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). Path rules in the format of the `rules` key of .factory/review.yaml, for settings the inputs above cannot express."
     required: false
     default: ""
   api_base_url:

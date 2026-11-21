@@ -410,6 +410,49 @@ describe("what the review read, passed between two steps", () => {
   );
 });
 
+// Factory reads the risk settings from the workflow file at the commit the
+// OIDC token names, so a default here or a step that reads one would look
+// like it configures the assessment while Factory never sees it.
+describe("risk settings Factory reads from the workflow file", () => {
+  type Declared = {
+    inputs?: Record<string, { required?: boolean; default?: string }>;
+  };
+  const declared = (relativePath: string): Declared =>
+    parse(readFileSync(join(import.meta.dir, "..", relativePath), "utf8"));
+  const settings = [
+    "enabled",
+    "approve_pr",
+    "approve_risk_level",
+    "disabled_paths",
+    "shadow_paths",
+    "max_changed_lines",
+    "max_changed_files",
+    "over_size",
+    "skip_when_human_approved",
+    "rules",
+  ];
+
+  it.each([
+    { file: "risk/action.yml", prefix: "" },
+    { file: "action.yml", prefix: "risk_" },
+  ])(
+    "$file declares each one without a default and never reads it",
+    ({ file, prefix }) => {
+      const action = declared(file);
+      const steps = JSON.stringify(load(file));
+      for (const setting of settings) {
+        const name = prefix + setting;
+        expect(action.inputs?.[name]).toMatchObject({
+          required: false,
+          default: "",
+        });
+        expect(steps).not.toContain(`inputs.${name} `);
+        expect(steps).not.toContain(`inputs.${name}}`);
+      }
+    },
+  );
+});
+
 describe("inputs that choose what runs", () => {
   const inputs: Record<
     string,

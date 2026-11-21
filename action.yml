@@ -303,16 +303,59 @@ inputs:
     description: "Set to 'true' to make the run an explicit request to risk-assess. Defaults to true for workflow_dispatch."
     required: false
     default: ${{ github.event_name == 'workflow_dispatch' }}
-
+  # Risk settings, the risk sub-action's with a risk_ prefix. Factory reads
+  # them from the workflow file, at the commit GitHub's OIDC token names for
+  # this run; no step reads them. An expression in one is refused and the pull
+  # request is not approved.
+  risk_enabled:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). 'false' turns the assessment off for every changed path."
+    required: false
+    default: ""
+  risk_approve_pr:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). 'true' lets Factory approve a pull request the judge rates at or below risk_approve_risk_level; 'false' only comments."
+    required: false
+    default: ""
+  risk_approve_risk_level:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). Highest risk level Factory approves: low or medium."
+    required: false
+    default: ""
+  risk_disabled_paths:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). Globs, one per line. A pull request touching any of them is not assessed."
+    required: false
+    default: ""
+  risk_shadow_paths:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). Globs, one per line. A pull request touching any of them is assessed but never approved."
+    required: false
+    default: ""
+  risk_max_changed_lines:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). Most changed lines a pull request may have and still be approved."
+    required: false
+    default: ""
+  risk_max_changed_files:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). Most changed files a pull request may have and still be approved."
+    required: false
+    default: ""
+  risk_over_size:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). What Factory does with a pull request over risk_max_changed_lines or risk_max_changed_files."
+    required: false
+    default: ""
+  risk_skip_when_human_approved:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). Whether Factory skips assessing a pull request a human has already approved: auto (the default when unset), always or never."
+    required: false
+    default: ""
+  risk_rules:
+    description: "Risk settings, read by Factory from the workflow file (write a literal; an expression means no approval). Path rules in the format of the `rules` key of .factory/review.yaml, for settings the inputs above cannot express."
+    required: false
+    default: ""
 outputs:
   github_token:
     description: "The GitHub token used by the action. A Factory Droid App token the action minted is revoked when the action finishes, so later steps that need a token should pass their own github_token."
     value: ${{ steps.prepare.outputs.github_token }}
   review_base_sha:
-    description: "The pull request's base commit, which the review read .factory/review.yaml at. Empty when the event names no pull request. Pass it to the risk sub-action when that runs as a separate step."
+    description: "The pull request's base commit, which the review read .factory/review.yaml at. Empty when the event names no pull request. The risk sub-action no longer needs it: Factory reads risk settings from the risk step's inputs."
     value: ${{ steps.prepare.outputs.review_base_sha }}
   review_has_rules:
-    description: "Whether .factory/review.yaml at review_base_sha has a `rules` key: true or false, and empty when the file was not read. Pass it to the risk sub-action when that runs as a separate step."
+    description: "Whether .factory/review.yaml at review_base_sha has a `rules` key: true or false, and empty when the file was not read. The risk sub-action no longer needs it: Factory reads risk settings from the risk step's inputs."
     value: ${{ steps.prepare.outputs.review_has_rules }}
 
   risk_action:
