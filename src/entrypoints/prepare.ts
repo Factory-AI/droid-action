@@ -29,6 +29,7 @@ import {
   planRun,
   publishRunPlan,
   readRiskRunInputs,
+  replyRiskNeedsIdToken,
   riskRuntimeNeeded,
   type RiskRunInputs,
 } from "../prepare/risk-run";
@@ -94,8 +95,11 @@ export async function run() {
     if (plan.review === "off") {
       // The same exit as a run with no trigger, so every review step skips.
       core.setOutput("contains_trigger", "false");
-      if (published.riskManual && isEntityContext(context)) {
-        await acknowledgeRiskRequest(octokit, context);
+      if (isEntityContext(context) && context.eventName === "issue_comment") {
+        if (published.riskManual)
+          await acknowledgeRiskRequest(octokit, context);
+        else if (plan.riskManual && published.idTokenMissing)
+          await replyRiskNeedsIdToken(octokit, context);
       }
       console.log("This run does not review, skipping the review steps");
       return;

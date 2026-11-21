@@ -12,6 +12,7 @@ import { isEntityContext, type GitHubContext } from "../github/context";
 import type { ParsedGitHubContext } from "../github/context";
 import { addEyesReaction } from "../github/operations/review-lifecycle";
 import { extractCommandFromContext } from "../github/utils/command-parser";
+import { replyToPullRequestComment } from "../github/operations/comments/reply";
 
 export type RiskRunInputs = {
   /** Only the full action has risk steps; the prepare sub-action has none. */
@@ -21,7 +22,10 @@ export type RiskRunInputs = {
   riskPrNumber: string;
 };
 
-export const ID_TOKEN_ERROR_TITLE = "Risk assessment needs id-token: write";
+export const ID_TOKEN_WARNING_TITLE =
+  "Risk assessment skipped: needs id-token: write";
+export const ID_TOKEN_REPLY =
+  "The risk assessment couldn't start: the workflow job needs `permissions: id-token: write`.";
 
 /** Reads the inputs that decide what runs. An unknown `run` value throws. */
 export function readRiskRunInputs(
@@ -88,35 +92,59 @@ export function planRun(
   });
 }
 
+export type PublishedRunPlan = RunPlan & {
+  /** The plan asked for an assessment the job cannot authenticate. */
+  idTokenMissing: boolean;
+};
+
 /**
  * Writes the plan as step outputs and returns the plan the risk steps will
  * follow. Without an OIDC token, begin would refuse after the review has
- * finished, so the assessment is dropped here and a later step fails the job.
+ * finished, so the assessment is skipped here with a warning; the review and
+ * the job are unaffected.
  */
 export function publishRunPlan(
   plan: RunPlan,
   env: NodeJS.ProcessEnv = process.env,
-): RunPlan {
-  let risk = plan.risk;
-  let setupError = "";
-  if (
-    risk &&
+): PublishedRunPlan {
+  const idTokenMissing =
+    plan.risk &&
     !env.ACTIONS_ID_TOKEN_REQUEST_URL?.trim() &&
-    !parseFlag(env.RISK_DRY_RUN)
-  ) {
-    setupError =
-      'Add "id-token: write" under the job\'s permissions so Factory can verify this run, or stop requesting a risk assessment.';
-    core.error(setupError, { title: ID_TOKEN_ERROR_TITLE });
-    risk = false;
-  }
+    !parseFlag(env.RISK_DRY_RUN);
+  if (idTokenMissing)
+    core.warning(
+      'Add "id-token: write" under the job\'s permissions so Factory can verify this run. The review is not affected.',
+      { title: ID_TOKEN_WARNING_TITLE },
+    );
+  const risk = plan.risk && !idTokenMissing;
   const riskManual = risk && plan.riskManual;
   core.setOutput("run_review", plan.review);
   core.setOutput("run_risk", String(risk));
   core.setOutput("risk_manual", String(riskManual));
   core.setOutput("run_reason", plan.reason);
-  core.setOutput("risk_setup_error", setupError);
   console.log(`Run plan: ${plan.reason}`);
-  return { ...plan, risk, riskManual };
+  return { ...plan, risk, riskManual, idTokenMissing };
+}
+
+/** Tells the requester why their PR comment's assessment did not start. */
+export async function replyRiskNeedsIdToken(
+  octokit: Octokits,
+  context: ParsedGitHubContext,
+): Promise<void> {
+  try {
+    await replyToPullRequestComment({
+      octokit,
+      ...context.repository,
+      prNumber: context.entityNumber,
+      commentId: 0,
+      body: ID_TOKEN_REPLY,
+      type: "issue",
+    });
+  } catch (error) {
+    core.warning(
+      `Could not reply to the risk request: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 /** The eyes reaction tag mode gives a command, for a comment's risk request. */

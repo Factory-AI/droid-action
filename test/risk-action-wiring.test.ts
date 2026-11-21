@@ -25,7 +25,6 @@ const rootSteps = load("action.yml");
 const rootRiskStart = rootSteps.findIndex(
   (candidate) => candidate.id === "risk_begin",
 );
-// The step after settle only reports that prepare dropped the assessment.
 const rootRiskEnd =
   rootSteps.findIndex((candidate) => candidate.id === "risk_settle") + 1;
 
@@ -270,7 +269,6 @@ describe("risk assessment inside the full action", () => {
         "run_risk",
         "risk_manual",
         "run_reason",
-        "risk_setup_error",
       ])
         expect(candidate.if).not.toContain(`steps.prepare.outputs.${output}`);
     }
@@ -282,19 +280,13 @@ describe("risk assessment inside the full action", () => {
     );
   });
 
-  it("fails the job after the review when prepare dropped the assessment", () => {
-    const last = rootSteps.at(-1)!;
-    expect(rootSteps.length).toBe(rootRiskEnd + 1);
-    expect(last.if).toBe(
-      "${{ !cancelled() && steps.prepare.outputs.risk_setup_error != '' }}",
-    );
-    expect(last.shell).toBe(HARDENED_SHELL);
-    expect(last.run).toContain("exit 1");
-    expect(last.env).toEqual({
-      ENV: "",
-      BASH_ENV: "",
-      RISK_SETUP_ERROR: "${{ steps.prepare.outputs.risk_setup_error }}",
-    });
+  // A missing id-token: write skips the assessment in prepare; it must not
+  // turn the review's job red.
+  it("ends with the report step, and has no step that fails the job when the assessment is skipped", () => {
+    expect(rootSteps.at(-1)?.id).toBe("risk_settle");
+    expect(rootSteps.length).toBe(rootRiskEnd);
+    for (const candidate of rootSteps)
+      expect(JSON.stringify(candidate)).not.toContain("risk_setup_error");
   });
 
   it("starts only after the review's App token is revoked, and never reads it", () => {

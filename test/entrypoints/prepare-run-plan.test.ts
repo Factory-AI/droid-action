@@ -64,6 +64,7 @@ describe("prepare's run plan", () => {
   let outputs: Record<string, string>;
   let frozen: Array<readonly string[] | undefined>;
   let reactions: unknown[];
+  let comments: Array<{ issue_number: number; body: string }>;
   let context: GitHubContext;
   let reviewInputs: Record<string, string>;
   let hasWrite: boolean;
@@ -77,6 +78,7 @@ describe("prepare's run plan", () => {
     outputs = {};
     frozen = [];
     reactions = [];
+    comments = [];
     reviewInputs = {};
     hasWrite = true;
     configFailure = undefined;
@@ -93,6 +95,16 @@ describe("prepare's run plan", () => {
             events.push("reaction");
             reactions.push(request);
             return { status: 201, data: { id: 1 } };
+          },
+        },
+        issues: {
+          createComment: async (request: {
+            issue_number: number;
+            body: string;
+          }) => {
+            events.push("comment");
+            comments.push(request);
+            return { data: {} };
           },
         },
       },
@@ -150,8 +162,10 @@ describe("prepare's run plan", () => {
       spyOn(core, "error").mockImplementation((message, properties) => {
         events.push(`error:${properties?.title ?? ""}:${String(message)}`);
       }),
-      spyOn(core, "warning").mockImplementation((message) => {
-        events.push(`warning:${String(message)}`);
+      spyOn(core, "warning").mockImplementation((message, properties) => {
+        events.push(
+          `warning:${properties?.title ? `${properties.title}:` : ""}${String(message)}`,
+        );
       }),
       spyOn(core, "setFailed").mockImplementation((message) => {
         events.push(`failed:${String(message)}`);
@@ -301,21 +315,58 @@ describe("prepare's run plan", () => {
     expect(isManualReviewRequest(preparedContext!)).toBe(false);
   });
 
-  it("drops the assessment with an error when the job cannot mint an OIDC token", async () => {
+  // Either signal would turn the job red.
+  const jobFailed = () =>
+    events.some(
+      (event) =>
+        event === "exit" ||
+        event.startsWith("failed:") ||
+        event.startsWith("error:"),
+    );
+
+  it("skips the assessment with a warning, and still reviews, when the job cannot mint an OIDC token", async () => {
     delete process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
     process.env.AUTOMATIC_RISK_ASSESSMENT = "true";
     context = pullRequest("opened");
     await run();
-    expect(outputs.run_risk).toBe("false");
-    expect(outputs.risk_setup_error).toContain("id-token: write");
+    expect(outputs).toMatchObject({
+      run_review: "auto",
+      run_risk: "false",
+      risk_manual: "false",
+      contains_trigger: "true",
+    });
     expect(
       events.some((event) =>
-        event.startsWith("error:Risk assessment needs id-token: write:"),
+        event.startsWith(
+          "warning:Risk assessment skipped: needs id-token: write:",
+        ),
       ),
     ).toBe(true);
-    // The review still runs.
+    expect(events).toContain("trigger");
     expect(events).toContain("tag");
-    expect(events).not.toContain("exit");
+    expect(jobFailed()).toBe(false);
+    expect(comments).toHaveLength(0);
+  });
+
+  it("answers an @droid risk comment that cannot start for lack of an OIDC token", async () => {
+    delete process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
+    context = prComment("@droid risk");
+    await run();
+    expect(outputs).toMatchObject({
+      run_risk: "false",
+      risk_manual: "false",
+      contains_trigger: "false",
+    });
+    expect(comments).toEqual([
+      {
+        owner: "test-owner",
+        repo: "test-repo",
+        issue_number: 7,
+        body: "The risk assessment couldn't start: the workflow job needs `permissions: id-token: write`.",
+      } as any,
+    ]);
+    expect(reactions).toHaveLength(0);
+    expect(jobFailed()).toBe(false);
   });
 
   it("needs no OIDC token for a dry run", async () => {
@@ -324,8 +375,8 @@ describe("prepare's run plan", () => {
     process.env.RISK_DRY_RUN = "true";
     context = pullRequest("opened");
     await run();
-    expect(outputs).toMatchObject({ run_risk: "true", risk_setup_error: "" });
-    expect(events.some((event) => event.startsWith("error:"))).toBe(false);
+    expect(outputs.run_risk).toBe("true");
+    expect(events.some((event) => event.includes("id-token"))).toBe(false);
   });
 
   it.each([

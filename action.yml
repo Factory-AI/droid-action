@@ -272,11 +272,11 @@ inputs:
     default: ""
 
   automatic_risk_assessment:
-    description: "Internal and experimental. Set to 'true' to assess the pull request's risk automatically, after the review, on the events `run` selects: the action asks Factory whether to assess, runs the judge Factory serves against the exact head, and reports the answer back for Factory to publish. Factory's risk settings can still skip the assessment. An `@droid risk` comment on a pull request, or a workflow_dispatch with risk_pr_number, runs a manual assessment whatever this says. Needs the id-token: write permission."
+    description: "Internal and experimental. Set to 'true' to assess the pull request's risk automatically, after the review, on the events `run` selects: the action asks Factory whether to assess, runs the judge Factory serves against the exact head, and reports the answer back for Factory to publish. Factory's risk settings can still skip the assessment. An `@droid risk` comment on a pull request, or a workflow_dispatch with risk_pr_number, runs a manual assessment whatever this says. Needs the id-token: write permission; without it the assessment is skipped with a warning and the review still runs."
     required: false
     default: "false"
   run:
-    description: "What runs when automatic_risk_assessment is 'true': auto (decide from the event), review (no automatic risk assessment), risk (no review; assess on opened, reopened, ready_for_review and synchronize) or both (review as a manual request, then assess). Ignored otherwise. Use this instead of an if: on the step, which also stops the assessment."
+    description: "What runs when automatic_risk_assessment is 'true': auto (decide from the event), review (no automatic risk assessment), risk (no review; assess on opened, reopened, ready_for_review and synchronize) or both (review as a manual request, then assess on those events and on an @droid review comment). Ignored otherwise. Use this instead of an if: on the step, which also stops the assessment."
     required: false
     default: "auto"
   risk_assessment:
@@ -2151,17 +2151,3 @@ runs:
         RISK_API_BASE_URL: ${{ inputs.risk_api_base_url }}
         RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
         RISK_RESULT_PATH: ${{ runner.temp }}/pr-risk/result.json
-
-    # Prepare drops an assessment that could not start (no id-token: write)
-    # so the review still runs. Failing here, after the review, keeps that a
-    # visible failure instead of a silent skip.
-    - name: Fail when the risk assessment could not start
-      if: ${{ !cancelled() && steps.prepare.outputs.risk_setup_error != '' }}
-      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
-      run: |
-        echo "::error::Risk assessment did not run: $RISK_SETUP_ERROR"
-        exit 1
-      env:
-        ENV: ""
-        BASH_ENV: ""
-        RISK_SETUP_ERROR: ${{ steps.prepare.outputs.risk_setup_error }}

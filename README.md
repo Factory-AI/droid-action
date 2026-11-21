@@ -374,7 +374,7 @@ jobs:
 
 ## Risk assessment and run modes
 
-On `Factory-AI/droid-action@dev-internal`, the same step can assess the pull request's risk after its review. Factory decides whether to assess, and publishes the result. The assessment needs `id-token: write` in the job's permissions, except for a dry run (`risk_dry_run: true`).
+On `Factory-AI/droid-action@dev-internal`, the same step can assess the pull request's risk after its review. Factory decides whether to assess, and publishes the result. The assessment needs `id-token: write` in the job's permissions, except for a dry run (`risk_dry_run: true`). Without it, the step skips the assessment with a warning, still reviews, and the job stays green; an `@droid risk` comment gets a one-line reply saying the job needs `permissions: id-token: write`.
 
 Set `automatic_risk_assessment: true` to assess automatically. The `run` input then chooses what the step does on each event. It defaults to `auto`:
 
@@ -391,12 +391,12 @@ Factory does not score drafts on an automatic run, whatever `review_drafts` says
 
 The other values of `run` apply only when `automatic_risk_assessment` is `true`:
 
-| `run`    | Review                                                          | Automatic risk assessment                             |
-| -------- | --------------------------------------------------------------- | ----------------------------------------------------- |
-| `auto`   | see the table above                                             | see the table above                                   |
-| `review` | by the usual rules                                              | never                                                 |
-| `risk`   | never                                                           | on opened, reopened, ready_for_review and synchronize |
-| `both`   | as a manual review, past the event allowlist and the draft gate | on every pull request event, after the review         |
+| `run`    | Review                                                          | Automatic risk assessment                                                                                                   |
+| -------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `auto`   | see the table above                                             | see the table above                                                                                                         |
+| `review` | by the usual rules                                              | never                                                                                                                       |
+| `risk`   | never                                                           | on opened, reopened, ready_for_review and synchronize                                                                       |
+| `both`   | as a manual review, past the event allowlist and the draft gate | after the review, on opened, reopened, ready_for_review and synchronize (drafts included) and on an `@droid review` comment |
 
 Without `automatic_risk_assessment`, the step reviews exactly as it always has and assesses nothing on its own.
 

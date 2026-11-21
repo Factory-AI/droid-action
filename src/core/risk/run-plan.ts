@@ -103,13 +103,17 @@ export function resolveRunPlan(input: RunPlanInput): RunPlan {
         riskManual: false,
         reason: `run: risk, ${event}: ${scored ? "risk only" : "nothing to do"}`,
       };
-    case "both":
+    case "both": {
+      // A conversation doesn't change the code, so only a push-like event or
+      // an @droid review comment is assessed.
+      const assessed = scored || command === "review" || command === "default";
       return {
         review: "manual",
-        risk: input.isPR,
+        risk: assessed,
         riskManual: false,
-        reason: `run: both, ${event}: ${input.isPR ? "review, then risk" : "review, no pull request to assess"}`,
+        reason: `run: both, ${event}: ${assessed ? "review, then risk" : "review, no risk"}`,
       };
+    }
     case "auto":
       break;
   }
