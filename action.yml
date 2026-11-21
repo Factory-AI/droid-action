@@ -270,6 +270,14 @@ inputs:
     description: "Opt-in checks: title,description,linked_issue. Effective default none; [] explicitly clears base checks."
     required: false
     default: ""
+  automatic_risk_assessment:
+    description: "Risk assessment is available only on Factory-AI/droid-action@dev-internal for now. On this ref, setting it to 'true' only prints a warning."
+    required: false
+    default: "false"
+  risk_assessment:
+    description: "Deprecated name of automatic_risk_assessment. Available only on Factory-AI/droid-action@dev-internal for now; on this ref, setting it to 'true' only prints a warning."
+    required: false
+    default: ""
 
 outputs:
   github_token:
@@ -279,6 +287,13 @@ outputs:
 runs:
   using: "composite"
   steps:
+    # Without this, a workflow copied from a dev-internal install would get
+    # GitHub's generic unexpected-input warning and silently run no risk steps.
+    - name: Warn that risk assessment is not on this ref
+      if: inputs.automatic_risk_assessment == 'true' || inputs.risk_assessment == 'true'
+      shell: bash
+      run: echo "::warning title=Risk assessment not available::This droid-action ref has no risk assessment, so no assessment runs. Use Factory-AI/droid-action@dev-internal."
+
     - name: Install Bun
       if: inputs.path_to_bun_executable == ''
       uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # https://github.com/oven-sh/setup-bun/releases/tag/v2.0.2
