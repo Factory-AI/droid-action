@@ -153,6 +153,26 @@ describe("versioned review markers", () => {
       ).toBe("real");
     });
   }
+  it("keeps the fix outline out of persisted review state", () => {
+    const finding = normalizeFinding({
+      id: "f-outline",
+      title: "A defect",
+      path: "src/a.ts",
+      line: 3,
+      body: "Body.",
+      fix_markdown: "```diff\n+fix\n```",
+      fix_lines: 1,
+    });
+    const encoded = encodeReviewState({
+      head: "abcdef0",
+      findings: [{ id: finding.id, sev: "P2", state: "open", finding }],
+    });
+    expect(encoded).not.toContain("fix_markdown");
+    expect(encoded).not.toContain("fix_lines");
+    const decoded = decodeReviewState(encoded)?.findings[0]?.finding;
+    expect(decoded?.id).toBe("f-outline");
+    expect(decoded?.body).toBe("Body.");
+  });
   it("accepts hand-edited multiline top-level JSON and skips truncated examples", () => {
     expect(
       decodeReviewState(

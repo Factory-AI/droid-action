@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { generateReviewValidatorPrompt } from "../../../src/create-prompt/templates/review-validator-prompt";
+import { buildFindingTextSection } from "../../../src/core/review/prompts/finding-text";
 import type { PreparedContext } from "../../../src/create-prompt/types";
 
 function createBaseContext(
@@ -26,6 +27,25 @@ function createBaseContext(
 }
 
 describe("generateReviewValidatorPrompt", () => {
+  it("asks for a fix outline for a --showme review", () => {
+    for (const includeSuggestions of [true, false]) {
+      const prompt = generateReviewValidatorPrompt(
+        createBaseContext({ includeSuggestions }),
+        {
+          fixOutline: true,
+        },
+      );
+      expect(prompt).toContain(buildFindingTextSection(includeSuggestions));
+      const example = /```json\n([\s\S]*?)\n```/.exec(prompt)?.[1];
+      expect(JSON.parse(example!).results[0].comment).toMatchObject({
+        fix_markdown: expect.any(String),
+        fix_lines: 2,
+      });
+    }
+    expect(
+      generateReviewValidatorPrompt(createBaseContext(), { fixOutline: true }),
+    ).toContain("Check any outline");
+  });
   it("references PR description artifact in inputs", () => {
     const context = createBaseContext({
       reviewArtifacts: {

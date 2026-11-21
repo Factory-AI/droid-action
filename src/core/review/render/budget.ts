@@ -57,6 +57,10 @@ function compactFinding(
     also_at: finding.also_at.slice(0, contextLimit),
     source_guideline: contextLimit ? finding.source_guideline : undefined,
     ...(oversizedSuggestion ? { suggestion: undefined } : {}),
+    // The fix outline is optional context; an over-budget comment drops it
+    // whole before cutting anything else, and never cuts it partway.
+    fix_markdown: undefined,
+    fix_lines: undefined,
   };
 }
 function compactSummary(

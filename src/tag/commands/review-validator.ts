@@ -17,6 +17,7 @@ import { resolveReviewConfig } from "../../utils/review-depth";
 import { applyModelPolicyFallback } from "../../utils/model-policy";
 import { assertDroidRunType, DroidRunType } from "../../run-type";
 import { githubReviewSessionTagArg } from "../../utils/review-session-tag";
+import { readReviewLifecycle } from "../../github/operations/review-lifecycle";
 
 export async function prepareReviewValidatorMode(options: {
   context: GitHubContext;
@@ -66,6 +67,7 @@ export async function prepareReviewValidatorMode(options: {
   });
 
   const includeSuggestions = process.env.INCLUDE_SUGGESTIONS !== "false";
+  const fixOutline = (await readReviewLifecycle())?.fixOutline === true;
 
   await createPrompt({
     githubContext: context,
@@ -80,7 +82,8 @@ export async function prepareReviewValidatorMode(options: {
         ? fetchedForkHeadRef(context.entityNumber)
         : "HEAD",
     },
-    generatePrompt: generateReviewValidatorPrompt,
+    generatePrompt: (prepared) =>
+      generateReviewValidatorPrompt(prepared, { fixOutline }),
     reviewArtifacts,
     reviewGuidelines,
     includeSuggestions,

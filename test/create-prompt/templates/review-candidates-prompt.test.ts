@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { generateReviewCandidatesPrompt } from "../../../src/create-prompt/templates/review-candidates-prompt";
+import { buildFindingTextSection } from "../../../src/core/review/prompts/finding-text";
 import type { PreparedContext } from "../../../src/create-prompt/types";
 
 function createBaseContext(
@@ -26,6 +27,22 @@ function createBaseContext(
 }
 
 describe("generateReviewCandidatesPrompt", () => {
+  it("asks for a fix outline for a --showme review", () => {
+    for (const includeSuggestions of [true, false]) {
+      const prompt = generateReviewCandidatesPrompt(
+        createBaseContext({ includeSuggestions }),
+        {
+          fixOutline: true,
+        },
+      );
+      expect(prompt).toContain(buildFindingTextSection(includeSuggestions));
+      const example = /```json\n([\s\S]*?)\n```/.exec(prompt)?.[1];
+      expect(JSON.parse(example!).comments[0]).toMatchObject({
+        fix_markdown: expect.any(String),
+        fix_lines: 2,
+      });
+    }
+  });
   it("references PR description artifact in precomputed data files", () => {
     const context = createBaseContext({
       reviewArtifacts: {

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { parseValidatedReview } from "../../../src/core/review/validated/parse";
-import { SECURITY_SEVERITY_RANK } from "../../../src/core/review/validated/finding";
+import {
+  SECURITY_SEVERITY_RANK,
+  normalizeFinding,
+} from "../../../src/core/review/validated/finding";
 const approved = (comment: Record<string, unknown>) => ({
   status: "approved",
   comment,
@@ -116,6 +119,21 @@ describe("rich validated review schema", () => {
       expect(parsed.approved[0]?.finding?.suggestion).toBe(suggestion);
     });
   }
+  it("reads fix outline fields and drops invalid ones", () => {
+    const base = { title: "t", path: "a.ts", line: 1, body: "b" };
+    expect(
+      normalizeFinding({ ...base, fix_markdown: " outline ", fix_lines: 4 }),
+    ).toMatchObject({ fix_markdown: "outline", fix_lines: 4 });
+    for (const bad of [
+      { fix_markdown: "  ", fix_lines: 2.5 },
+      { fix_markdown: 7, fix_lines: -1 },
+      { fix_lines: "3" },
+    ]) {
+      const finding = normalizeFinding({ ...base, ...bad });
+      expect(finding.fix_markdown).toBeUndefined();
+      expect(finding.fix_lines).toBeUndefined();
+    }
+  });
   it("preserves legacy comments and infers structured fields", () => {
     const parsed = parseValidatedReview(
       JSON.stringify({

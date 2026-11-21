@@ -20,6 +20,8 @@ export interface ParsedCommand {
   location: "body" | "comment";
   timestamp?: string | null;
   fullReview?: boolean;
+  /** `@droid review --showme`: a review with prose findings and fix outlines. */
+  showme?: boolean;
   focus?: string;
   text?: string;
 }
@@ -173,11 +175,13 @@ export function parseDroidCommand(text: string): ParsedCommand | null {
     }
     if (name === "review") {
       const fullReview = /(?:^|\s)--full(?:$|[\s.!?,;:])/i.test(args);
-      const fullFlags = /(?:^|\s)--full(?=$|[\s.!?,;:])(?:[.!?,;:](?=$))?/gi;
-      if (/(?:^|\s)--\S+/.test(args.replace(fullFlags, " ")))
+      const showme = /(?:^|\s)--showme(?:$|[\s.!?,;:])/i.test(args);
+      const reviewFlags =
+        /(?:^|\s)--(?:full|showme)(?=$|[\s.!?,;:])(?:[.!?,;:](?=$))?/gi;
+      if (/(?:^|\s)--\S+/.test(args.replace(reviewFlags, " ")))
         return { ...base, command: "unknown", text: originalTail };
       let originalArgs = text.slice(mentionEnd + prefixLength, end);
-      for (const flag of [...args.matchAll(fullFlags)].reverse()) {
+      for (const flag of [...args.matchAll(reviewFlags)].reverse()) {
         originalArgs =
           originalArgs.slice(0, flag.index) +
           " " +
@@ -188,6 +192,7 @@ export function parseDroidCommand(text: string): ParsedCommand | null {
         ...base,
         raw,
         command: "review",
+        ...(showme ? { showme: true } : {}),
         ...(fullReview ? { fullReview: true } : {}),
         ...(focus ? { focus } : {}),
       };
