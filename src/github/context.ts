@@ -112,6 +112,8 @@ type BaseContext = {
     instructions?: string;
     configPath?: string;
     reviewConfig?: ReviewUxConfig;
+    /** Set by prepare when the run plan reviews despite the event allowlist and draft gate. */
+    manualReview?: boolean;
   };
 };
 

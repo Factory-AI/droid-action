@@ -25,6 +25,9 @@ const rootSteps = load("action.yml");
 const rootRiskStart = rootSteps.findIndex(
   (candidate) => candidate.id === "risk_begin",
 );
+// The step after settle only reports that prepare dropped the assessment.
+const rootRiskEnd =
+  rootSteps.findIndex((candidate) => candidate.id === "risk_settle") + 1;
 
 // The same steps ship twice: as the standalone sub-action and as the tail of
 // the full action. `p` is the prefix the full action gives their ids.
@@ -39,7 +42,7 @@ const variants = [
     file: "action.yml",
     p: "risk_",
     report: "Report risk result to Factory",
-    steps: rootSteps.slice(rootRiskStart),
+    steps: rootSteps.slice(rootRiskStart, rootRiskEnd),
   },
 ];
 
@@ -211,24 +214,87 @@ describe.each(variants)(
 
 describe("risk assessment inside the full action", () => {
   const before = rootSteps.slice(0, rootRiskStart);
-  const risk = rootSteps.slice(rootRiskStart);
+  const risk = rootSteps.slice(rootRiskStart, rootRiskEnd);
   const begin = risk[0]!;
+  const prepareStep = before.find((candidate) => candidate.id === "prepare")!;
+  // What prepare reads to decide whether this run reviews, assesses, or both.
+  const PLAN_INPUTS = {
+    RISK_STEPS_AVAILABLE: "true",
+    AUTOMATIC_RISK_ASSESSMENT: "${{ inputs.automatic_risk_assessment }}",
+    RISK_ASSESSMENT: "${{ inputs.risk_assessment }}",
+    RUN_MODE: "${{ inputs.run }}",
+    RISK_PR_NUMBER: "${{ inputs.risk_pr_number }}",
+    RISK_DRY_RUN: "${{ inputs.risk_dry_run }}",
+  };
 
-  it("is off unless the caller asks for it", () => {
+  it("runs only when prepare's run plan asks for an assessment", () => {
     expect(rootRiskStart).toBeGreaterThan(0);
     expect(begin.if).toBe(
-      "${{ !cancelled() && inputs.risk_assessment == 'true' }}",
+      "${{ !cancelled() && steps.prepare.outputs.run_risk == 'true' }}",
     );
+    expect(JSON.stringify(risk)).not.toContain("inputs.risk_assessment");
+    expect(JSON.stringify(risk)).not.toContain(
+      "inputs.automatic_risk_assessment",
+    );
+  });
+
+  it("tells prepare what decides the plan, and no review step anything else of the risk inputs", () => {
+    expect(prepareStep.env).toMatchObject(PLAN_INPUTS);
     for (const candidate of before) {
-      const text = JSON.stringify(candidate);
-      // The prepare step is told only so it can freeze the risk scripts.
-      expect(text.replace("${{ inputs.risk_assessment }}", "")).not.toContain(
-        "inputs.risk_",
-      );
+      let text = JSON.stringify(candidate);
+      if (candidate === prepareStep)
+        for (const expression of Object.values(PLAN_INPUTS))
+          text = text.replace(expression, "");
+      expect(text).not.toContain("inputs.risk_");
+      expect(text).not.toContain("inputs.automatic_risk_assessment");
+      expect(text).not.toContain("inputs.run ");
     }
-    expect(
-      before.find((candidate) => candidate.id === "prepare")?.env,
-    ).toMatchObject({ RISK_ASSESSMENT: "${{ inputs.risk_assessment }}" });
+  });
+
+  // run_review: off exits prepare with contains_trigger=false, which every
+  // review step already skips on, so no review step reads the plan.
+  it("is the only prepare step that has risk steps to plan for", () => {
+    const subAction = load("prepare/action.yml").find((candidate) =>
+      candidate.run?.includes("src/entrypoints/prepare.ts"),
+    );
+    expect(subAction).toBeDefined();
+    expect(subAction?.env?.RISK_STEPS_AVAILABLE).toBeUndefined();
+  });
+
+  it("leaves every review step gated on prepare's existing outputs only", () => {
+    const gated = before.filter((candidate) => candidate.if);
+    expect(gated.length).toBeGreaterThan(0);
+    for (const candidate of gated) {
+      for (const output of [
+        "run_review",
+        "run_risk",
+        "risk_manual",
+        "run_reason",
+        "risk_setup_error",
+      ])
+        expect(candidate.if).not.toContain(`steps.prepare.outputs.${output}`);
+    }
+  });
+
+  it("asks for a manual assessment when the plan or the caller says so", () => {
+    expect(begin.env?.RISK_MANUAL).toBe(
+      "${{ steps.prepare.outputs.risk_manual == 'true' || inputs.risk_manual == 'true' }}",
+    );
+  });
+
+  it("fails the job after the review when prepare dropped the assessment", () => {
+    const last = rootSteps.at(-1)!;
+    expect(rootSteps.length).toBe(rootRiskEnd + 1);
+    expect(last.if).toBe(
+      "${{ !cancelled() && steps.prepare.outputs.risk_setup_error != '' }}",
+    );
+    expect(last.shell).toBe(HARDENED_SHELL);
+    expect(last.run).toContain("exit 1");
+    expect(last.env).toEqual({
+      ENV: "",
+      BASH_ENV: "",
+      RISK_SETUP_ERROR: "${{ steps.prepare.outputs.risk_setup_error }}",
+    });
   });
 
   it("starts only after the review's App token is revoked, and never reads it", () => {
@@ -243,7 +309,7 @@ describe("risk assessment inside the full action", () => {
 
   it("tells Factory how the review ended, or that there was none", () => {
     expect(begin.env?.RISK_REVIEW_OUTCOME).toBe(
-      "${{ github.action_status == 'success' && steps.prepare.outputs.contains_trigger != 'true' && 'skipped' || github.action_status }}",
+      "${{ (steps.prepare.outputs.run_review == 'off' || steps.prepare.outputs.contains_trigger != 'true' || steps.prepare.outputs.steward_skipped == 'true') && github.action_status == 'success' && 'skipped' || github.action_status }}",
     );
   });
 
@@ -342,4 +408,33 @@ describe("what the review read, passed between two steps", () => {
       expect(begin?.env?.[variable]).toBe(`\${{ inputs.${name} }}`);
     },
   );
+});
+
+describe("inputs that choose what runs", () => {
+  const inputs: Record<
+    string,
+    { description?: string; required?: boolean; default?: string }
+  > = parse(
+    readFileSync(join(import.meta.dir, "..", "action.yml"), "utf8"),
+  ).inputs;
+
+  it("declares automatic_risk_assessment and run with review-only defaults", () => {
+    expect(inputs.automatic_risk_assessment).toMatchObject({
+      required: false,
+      default: "false",
+    });
+    expect(inputs.run).toMatchObject({ required: false, default: "auto" });
+  });
+
+  // An empty default is how prepare tells an unset alias from an explicit one.
+  it("keeps risk_assessment as a deprecated alias that defaults to unset", () => {
+    expect(inputs.risk_assessment).toMatchObject({
+      required: false,
+      default: "",
+    });
+    expect(inputs.risk_assessment?.description).toMatch(/^Deprecated/);
+    expect(inputs.risk_assessment?.description).toContain(
+      "automatic_risk_assessment",
+    );
+  });
 });

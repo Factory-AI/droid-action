@@ -136,16 +136,22 @@ base branch.
 
 ## Bundled with the review
 
-The full action runs the same steps after its review when `risk_assessment`
-is `true`, so one step does both:
+The full action runs the same steps after its review when
+`automatic_risk_assessment` is `true`, so one step does both:
 
 ```yaml
 - uses: Factory-AI/droid-action@dev-internal
   with:
     factory_api_key: ${{ secrets.FACTORY_API_KEY }}
     automatic_review: true
-    risk_assessment: true
+    automatic_risk_assessment: true
 ```
+
+Its `run` input chooses, per event, whether the step reviews, assesses or
+both, and an `@droid risk` comment or a dispatch with `risk_pr_number`
+always runs a manual assessment. The root README's "Risk assessment and run
+modes" section has the table. `risk_assessment` is the deprecated name of
+`automatic_risk_assessment`.
 
 The assessment starts once the review's steps have ended and its GitHub App
 token is revoked. The review's model session has run with the pull request
@@ -153,9 +159,9 @@ checked out by then, so every risk script runs from a copy bundled before
 the review started, with the Bun that bundled it, after checking that
 neither changed; nothing is run from the action's checkout or found on
 `PATH`. It still runs when the review failed, and Factory is told
-how the review ended: `success`, `failure`, or `skipped` when the event gave
-the action nothing to review, as on a `workflow_dispatch` that only asks for
-an assessment. A cancelled run assesses nothing. On a comment left on a pull
+how the review ended: `success`, `failure`, or `skipped` when the step
+reviewed nothing, as on a `workflow_dispatch` that only asks for an
+assessment, a run with the review turned off, or a draft. A cancelled run assesses nothing. On a comment left on a pull
 request, that pull request is the one assessed.
 
 Factory is also told what the review read of `.factory/review.yaml` before

@@ -98,7 +98,7 @@ inputs:
     required: false
     default: ""
   review_model:
-    description: "Advanced. Leave empty to use the review_depth preset (recommended). If set, use a provider tier alias such as 'openai-latest-premium' or 'anthropic-latest-balanced'; overrides the preset model."
+    description: "Advanced. Leave empty to use the review_depth preset (recommended). If set, use a provider tier alias such as 'openai-latest-premium' or 'anthropic-latest-balanced'; overrides the preset model. Applies to the review only: the risk judge uses the model Factory serves."
     required: false
     default: ""
   reasoning_effort:
@@ -251,7 +251,7 @@ inputs:
     required: false
     default: ""
   review_drafts:
-    description: "Review draft PRs automatically. Effective default false; manual review commands still run."
+    description: "Review draft PRs automatically. Effective default false; manual review commands still run. Does not apply to risk assessment: Factory never scores a draft on an automatic run."
     required: false
     default: ""
   review_effort:
@@ -271,10 +271,18 @@ inputs:
     required: false
     default: ""
 
-  risk_assessment:
-    description: "Internal and experimental. Set to 'true' to assess the pull request's risk after the review: the action asks Factory whether to assess, runs the judge Factory serves against the exact head, and reports the answer back for Factory to publish. Needs the id-token: write permission."
+  automatic_risk_assessment:
+    description: "Internal and experimental. Set to 'true' to assess the pull request's risk automatically, after the review, on the events `run` selects: the action asks Factory whether to assess, runs the judge Factory serves against the exact head, and reports the answer back for Factory to publish. Factory's risk settings can still skip the assessment. An `@droid risk` comment on a pull request, or a workflow_dispatch with risk_pr_number, runs a manual assessment whatever this says. Needs the id-token: write permission."
     required: false
     default: "false"
+  run:
+    description: "What runs when automatic_risk_assessment is 'true': auto (decide from the event), review (no automatic risk assessment), risk (no review; assess on opened, reopened, ready_for_review and synchronize) or both (review as a manual request, then assess). Ignored otherwise. Use this instead of an if: on the step, which also stops the assessment."
+    required: false
+    default: "auto"
+  risk_assessment:
+    description: "Deprecated: use automatic_risk_assessment. 'true' is read as automatic_risk_assessment: 'true' for one more release."
+    required: false
+    default: ""
   risk_pr_number:
     description: "Pull request to risk-assess. Empty uses the pull request of the triggering event."
     required: false
@@ -308,7 +316,7 @@ outputs:
     value: ${{ steps.prepare.outputs.review_has_rules }}
 
   risk_action:
-    description: "What Factory asked the risk assessment to do: skip, hold or judge. Empty when risk_assessment is off."
+    description: "What Factory asked the risk assessment to do: skip, hold or judge. Empty when no risk assessment ran."
     value: ${{ steps.risk_begin.outputs.action }}
   risk_outcome:
     description: "Set after a risk judge run: approve, doNotApprove, unavailable, stale_head, skipped when Factory took the report and published nothing, unknown when Factory answered in a way this version does not know, or failed when the result could not be reported."
@@ -402,7 +410,15 @@ runs:
         DROID_ARGS: ${{ inputs.droid_args }}
         INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}
         ALL_INPUTS: ${{ toJson(inputs) }}
+        # What runs: prepare decides once, and writes run_review, run_risk,
+        # risk_manual and run_reason. The prepare sub-action, which has no
+        # risk steps, does not set RISK_STEPS_AVAILABLE.
+        RISK_STEPS_AVAILABLE: "true"
+        AUTOMATIC_RISK_ASSESSMENT: ${{ inputs.automatic_risk_assessment }}
         RISK_ASSESSMENT: ${{ inputs.risk_assessment }}
+        RUN_MODE: ${{ inputs.run }}
+        RISK_PR_NUMBER: ${{ inputs.risk_pr_number }}
+        RISK_DRY_RUN: ${{ inputs.risk_dry_run }}
 
         REVIEW_SUMMARY: ${{ inputs.review_summary }}
         REVIEW_SUMMARY_SECTIONS: ${{ inputs.review_summary_sections }}
@@ -1769,8 +1785,9 @@ runs:
         GITHUB_TOKEN: ${{ steps.prepare.outputs.github_token }}
         OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
 
-    # PR risk assessment (inputs.risk_assessment). These steps are the last of
-    # the action so the review's App token is already revoked, and they run
+    # PR risk assessment, when prepare's run plan asks for one
+    # (steps.prepare.outputs.run_risk). These steps are the last of the action
+    # so the review's App token is already revoked, and they run
     # after a failed review too: Factory is told how the steps above ended
     # (github.action_status) and holds the assessment instead of leaving an
     # approval of an older commit standing. A cancelled run leaves the pull
@@ -1783,7 +1800,7 @@ runs:
     # changed. A run whose prepare step froze nothing assesses nothing.
     - name: Ask Factory whether to assess risk
       id: risk_begin
-      if: ${{ !cancelled() && inputs.risk_assessment == 'true' }}
+      if: ${{ !cancelled() && steps.prepare.outputs.run_risk == 'true' }}
       shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
         set -euo pipefail
@@ -1844,11 +1861,13 @@ runs:
         # A comment on a pull request is an issue_comment event, which names
         # the pull request as an issue.
         RISK_PR_NUMBER: ${{ inputs.risk_pr_number || (github.event.issue.pull_request && github.event.issue.number) || '' }}
-        # How the steps above ended. `skipped` when they found nothing to do,
-        # as on a workflow_dispatch that only asks for the assessment.
-        RISK_REVIEW_OUTCOME: ${{ github.action_status == 'success' && steps.prepare.outputs.contains_trigger != 'true' && 'skipped' || github.action_status }}
+        # How the steps above ended. `skipped` when they reviewed nothing:
+        # the plan turned the review off, nothing triggered it, or review
+        # preparation skipped it (a draft, or an event not in
+        # review_auto_triggers). Any failure is still `failure`.
+        RISK_REVIEW_OUTCOME: ${{ (steps.prepare.outputs.run_review == 'off' || steps.prepare.outputs.contains_trigger != 'true' || steps.prepare.outputs.steward_skipped == 'true') && github.action_status == 'success' && 'skipped' || github.action_status }}
         RISK_DRY_RUN: ${{ inputs.risk_dry_run }}
-        RISK_MANUAL: ${{ inputs.risk_manual }}
+        RISK_MANUAL: ${{ steps.prepare.outputs.risk_manual == 'true' || inputs.risk_manual == 'true' }}
         # What the prepare step read of .factory/review.yaml, before the
         # review ran: Factory reads the rules at the same commit, and reads
         # nothing when the file has none.
@@ -2132,3 +2151,17 @@ runs:
         RISK_API_BASE_URL: ${{ inputs.risk_api_base_url }}
         RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
         RISK_RESULT_PATH: ${{ runner.temp }}/pr-risk/result.json
+
+    # Prepare drops an assessment that could not start (no id-token: write)
+    # so the review still runs. Failing here, after the review, keeps that a
+    # visible failure instead of a silent skip.
+    - name: Fail when the risk assessment could not start
+      if: ${{ !cancelled() && steps.prepare.outputs.risk_setup_error != '' }}
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
+      run: |
+        echo "::error::Risk assessment did not run: $RISK_SETUP_ERROR"
+        exit 1
+      env:
+        ENV: ""
+        BASH_ENV: ""
+        RISK_SETUP_ERROR: ${{ steps.prepare.outputs.risk_setup_error }}

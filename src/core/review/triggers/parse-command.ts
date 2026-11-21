@@ -9,6 +9,7 @@ export type DroidCommand =
   | "resolve"
   | "pause"
   | "resume"
+  | "risk"
   | "question"
   | "unknown"
   | "default";
@@ -149,6 +150,7 @@ export function parseDroidCommand(text: string): ParsedCommand | null {
         "resolve",
         "pause",
         "resume",
+        "risk",
       ].includes(name)
     ) {
       fallback ??= { ...base, command: "unknown", text: originalTail };
