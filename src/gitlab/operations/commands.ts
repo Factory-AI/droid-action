@@ -168,6 +168,10 @@ export async function dispatchGitlabCommand(options: {
         parsed.command === "security" || parsed.command === "security-full",
       securityFull: parsed.command === "security-full",
     };
+  if (parsed.command === "risk") {
+    await respond("Risk assessment isn't available in this workflow.");
+    return { handled: true };
+  }
   if (parsed.command === "help" || (parsed.command === "unknown" && !thread)) {
     await respond(
       `${GITLAB_COMMAND_HELP}\n\n<details><summary>Effective settings</summary>\n\n${fenced(JSON.stringify(config, null, 2), "json")}\n</details>`,

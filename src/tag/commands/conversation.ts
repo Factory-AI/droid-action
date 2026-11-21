@@ -23,6 +23,9 @@ import { redactCredentials } from "../../utils/redact-credentials";
 import { retryWithBackoff } from "../../utils/retry";
 import { replyToPullRequestComment } from "../../github/operations/comments/reply";
 
+export const RISK_UNAVAILABLE_REPLY =
+  "Risk assessment isn't available in this workflow.";
+
 export function renderCommandHelp(context: ParsedGitHubContext): string {
   const config = context.inputs.reviewConfig ?? reviewConfigFromEnvironment();
   return `### Droid commands
@@ -104,6 +107,12 @@ export async function prepareConversationCommand(options: {
   command: ParsedCommand;
 }): Promise<PrepareResult> {
   const { context, octokit, command } = options;
+  // A risk request on a pull request comment is answered by prepare, before
+  // tag mode. One that gets here came where no assessment can run.
+  if (command.command === "risk") {
+    await replyToCommand(octokit, context, RISK_UNAVAILABLE_REPLY);
+    return completed("risk_unavailable");
+  }
   if (["help", "unknown"].includes(command.command) || !context.isPR) {
     await replyToCommand(octokit, context, renderCommandHelp(context));
     return completed("command_help");

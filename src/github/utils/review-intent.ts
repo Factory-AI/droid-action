@@ -1,8 +1,22 @@
 import type { GitHubContext } from "../context";
 import { extractCommandFromContext, parseDroidCommand } from "./command-parser";
 
-/** A persistent description hint is not a new request on every push. */
+/** Whether this run reviews as a manual request, including when its run plan says so. */
 export function isManualReviewRequest(
+  context: GitHubContext,
+  mode: "code" | "security" = "code",
+): boolean {
+  return (
+    context.inputs.manualReview === true ||
+    isRequestedManualReview(context, mode)
+  );
+}
+
+/**
+ * Whether the event itself asks for a review. A persistent description hint
+ * is not a new request on every push.
+ */
+export function isRequestedManualReview(
   context: GitHubContext,
   mode: "code" | "security" = "code",
 ): boolean {

@@ -25,6 +25,7 @@ export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
   const request = buildSettleRequest(
     plan,
     await readRiskResult(riskResultPath(env)),
+    env.RISK_LEASE_TOKEN?.trim() || undefined,
   );
   const response = await settleRisk(request, {
     baseUrl: env.RISK_API_BASE_URL?.trim() || RISK_DEFAULT_API_BASE_URL,

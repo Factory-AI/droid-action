@@ -4,7 +4,7 @@ import { checkHumanActor } from "../github/validation/actor";
 import { createInitialComment } from "../github/operations/comments/create-initial";
 import { isEntityContext, type ParsedGitHubContext } from "../github/context";
 import { extractCommandFromContext } from "../github/utils/command-parser";
-import { isManualReviewRequest } from "../github/utils/review-intent";
+import { isRequestedManualReview } from "../github/utils/review-intent";
 import { prepareFillMode } from "./commands/fill";
 import { prepareReviewMode } from "./commands/review";
 import { prepareSecurityReviewMode } from "./commands/security-review";
@@ -133,7 +133,9 @@ export async function prepareTagExecution({
     commandContext?.command === "security-full"
       ? "security"
       : "code";
-  const manualReview = isManualReviewRequest(context, requestedMode);
+  // Only the event decides which command runs. A run plan's manual review
+  // must not promote a pull request description's command on every push.
+  const manualReview = isRequestedManualReview(context, requestedMode);
   if (
     !manualReview &&
     commandContext?.location === "body" &&
@@ -169,6 +171,7 @@ export async function prepareTagExecution({
       "resolve",
       "pause",
       "resume",
+      "risk",
     ].includes(commandContext.command)
   ) {
     return prepareConversationCommand({

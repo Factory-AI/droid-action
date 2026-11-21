@@ -204,6 +204,34 @@ describe("Command Parser", () => {
       expect(result?.location).toBe("body");
     });
 
+    // A risk request in a description would repeat on every push, and the
+    // description's author need not be able to write.
+    it("reads @droid risk in a PR or issue body as unknown, and in a comment as risk", () => {
+      const body = createContext("pull_request", {
+        action: "opened",
+        pull_request: { body: "@droid risk", number: 1, title: "PR" },
+      } as unknown as PullRequestEvent);
+      expect(extractCommandFromContext(body)?.command).toBe("unknown");
+      const issue = createContext(
+        "issues",
+        {
+          action: "opened",
+          issue: { body: "@droid risk", title: "Issue", number: 1 },
+        } as unknown as IssuesEvent,
+        { isPR: false },
+      );
+      expect(extractCommandFromContext(issue)?.command).toBe("unknown");
+      const comment = createContext("issue_comment", {
+        action: "created",
+        comment: { body: "@droid risk", created_at: "2024-01-01T00:00:00Z" },
+        issue: { number: 1, pull_request: { url: "" } },
+      } as unknown as IssueCommentEvent);
+      expect(extractCommandFromContext(comment)).toMatchObject({
+        command: "risk",
+        location: "comment",
+      });
+    });
+
     it("should extract from issue body", () => {
       const context = createContext(
         "issues",
