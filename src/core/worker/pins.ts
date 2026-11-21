@@ -12,8 +12,8 @@ const asset = (id: number) =>
 /** The built `droid-review` worker, which runs both `risk` and `review`. */
 export const WORKER: Pin = {
   name: "droid-review.mjs",
-  url: asset(766467962),
-  sha256: "8df9bfbb8615d1d6f6ad1515eb273b403bb8d2009e7c53194741e2b04ef91a1c",
+  url: asset(774140751),
+  sha256: "c8ef33bc22b9013ba885ab4cc0543d1a7312884aa284aa42dc12dea47a39424c",
 };
 
 /**
@@ -23,12 +23,12 @@ export const WORKER: Pin = {
 export const REVIEW_JUDGES: Record<"code" | "security", Pin> = {
   code: {
     name: "review-judge.json",
-    url: asset(766467964),
+    url: asset(774140752),
     sha256: "3e3104dc4f4337f1ef6599839307b7e0144f7472d390e0c898780999507de281",
   },
   security: {
     name: "security-review-judge.json",
-    url: asset(766467965),
+    url: asset(774140750),
     sha256: "918cca199490dd2d741b7db419f8a1c2647b7f2622fe39ccfa103eb9d20b3fed",
   },
 };
