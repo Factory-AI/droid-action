@@ -752,13 +752,13 @@ export async function setReviewPaused(options: {
       body,
     });
 }
-async function createEyes(
+/** Acknowledges the triggering comment, or the issue/PR when there is none. */
+export async function addEyesReaction(
   octokit: Octokits,
   context: ParsedGitHubContext,
-  run: ReviewLifecycleRun,
-  enabled: boolean,
-): Promise<void> {
-  if (!enabled) return;
+  warn: (message: string) => void,
+): Promise<NonNullable<ReviewLifecycleRun["reaction"]> | undefined> {
+  const { owner, repo } = context.repository;
   const target =
     "comment" in context.payload
       ? context.payload.comment.id
@@ -773,29 +773,44 @@ async function createEyes(
     () =>
       kind === "review_comment"
         ? octokit.rest.reactions.createForPullRequestReviewComment({
-            owner: run.owner,
-            repo: run.repo,
+            owner,
+            repo,
             comment_id: target,
             content: "eyes",
           })
         : kind === "issue_comment"
           ? octokit.rest.reactions.createForIssueComment({
-              owner: run.owner,
-              repo: run.repo,
+              owner,
+              repo,
               comment_id: target,
               content: "eyes",
             })
           : octokit.rest.reactions.createForIssue({
-              owner: run.owner,
-              repo: run.repo,
+              owner,
+              repo,
               issue_number: target,
               content: "eyes",
             }),
-    lifecycleWarning(run),
+    warn,
   );
   // 200 means the token user already had this shared reaction, not a new run-owned award.
-  if (response?.status === 201)
-    run.reaction = { id: response.data.id, kind, targetId: target };
+  return response?.status === 201
+    ? { id: response.data.id, kind, targetId: target }
+    : undefined;
+}
+async function createEyes(
+  octokit: Octokits,
+  context: ParsedGitHubContext,
+  run: ReviewLifecycleRun,
+  enabled: boolean,
+): Promise<void> {
+  if (!enabled) return;
+  const reaction = await addEyesReaction(
+    octokit,
+    context,
+    lifecycleWarning(run),
+  );
+  if (reaction) run.reaction = reaction;
 }
 export async function prepareReviewLifecycle(options: {
   octokit: Octokits;

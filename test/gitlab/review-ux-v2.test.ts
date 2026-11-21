@@ -732,6 +732,26 @@ describe("GitLab command bridge", () => {
     );
   });
 
+  it("answers @droid risk with one line and runs nothing", async () => {
+    const t = setup({ command: "@droid risk" });
+    const execute = mock(async () => "");
+    const result = await dispatchGitlabCommand({
+      client: t.client,
+      projectId: 42,
+      mr,
+      config: config(),
+      noteId: 20,
+      execute,
+    });
+    expect(result.handled).toBe(true);
+    expect(execute).not.toHaveBeenCalled();
+    const posted = t.requests.filter((r) => r.method === "POST");
+    expect(posted).toHaveLength(1);
+    expect(posted[0]?.body.body).toStartWith(
+      "Risk assessment isn't available in this workflow.",
+    );
+  });
+
   it("pause persists a versioned state marker without deleting previous review", async () => {
     const t = setup({ command: "@droid pause" });
     await dispatchGitlabCommand({

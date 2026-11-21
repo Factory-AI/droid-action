@@ -185,6 +185,36 @@ describe("risk action entrypoints", () => {
       expect((await stat(planPath)).mode % 0o1000).toBe(0o600);
     });
 
+    it("hands the settle step Factory's lease token as a masked output, and keeps it out of the plan", async () => {
+      const masked: string[] = [];
+      spyOn(core, "setSecret").mockImplementation((secret) => {
+        masked.push(secret);
+      });
+      const leaseToken = "test-lease-placeholder";
+      serve({ action: "judge", ...assignment, leaseToken });
+
+      await begin(
+        jobEnv({ GITHUB_EVENT_PATH: await eventFile(pullRequestEvent) }),
+      );
+
+      frozen.push(dirname(String(outputs.review_settle_publisher_path)));
+      expect(outputs.lease_token).toBe(leaseToken);
+      expect(masked).toEqual([leaseToken]);
+      const written = await readFile(planPath, "utf8");
+      expect(JSON.parse(written)).toEqual(plan);
+      expect(written).not.toContain(leaseToken);
+    });
+
+    it("fails rather than pass on a lease token that would not survive a step output", async () => {
+      serve({ action: "judge", ...assignment, leaseToken: "a\nb=c" });
+
+      await expect(
+        begin(jobEnv({ GITHUB_EVENT_PATH: await eventFile(pullRequestEvent) })),
+      ).rejects.toThrow();
+      expect(outputs.lease_token).toBeUndefined();
+      expect(await exists(planPath)).toBe(false);
+    });
+
     it("tells Factory what the review read of the review configuration", async () => {
       const { received } = serve({ action: "skip", reason: "draft" });
 
@@ -257,6 +287,22 @@ describe("risk action entrypoints", () => {
       expect(outputs).toEqual({ action: "skip" });
       expect(await exists(planPath)).toBe(false);
       expect(await exists(resultPath)).toBe(false);
+    });
+
+    it("skips quietly while another run holds the head", async () => {
+      const notice = spyOn(core, "notice").mockImplementation(() => {});
+      serve({ action: "skip", reason: "in_progress" });
+
+      await begin(
+        jobEnv({ GITHUB_EVENT_PATH: await eventFile(pullRequestEvent) }),
+      );
+
+      expect(outputs).toEqual({ action: "skip" });
+      expect(notice).toHaveBeenCalledWith(
+        "PR risk assessment skipped for #123 (in_progress).",
+      );
+      expect(await exists(planPath)).toBe(false);
+      expect(failed).toEqual([]);
     });
 
     it("judges nothing when Factory asks for something this version does not know", async () => {
@@ -577,6 +623,31 @@ describe("risk action entrypoints", () => {
       });
       expect(outputs).toEqual({ outcome: "approve" });
       expect(failed).toEqual([]);
+    });
+
+    it("hands back the lease token begin passed on", async () => {
+      const { received } = serve({ status: "published", outcome: "approve" });
+      await writeFile(resultPath, JSON.stringify(judged));
+
+      await settle(jobEnv({ RISK_LEASE_TOKEN: "test-lease-placeholder" }));
+
+      expect(received[0]?.body).toEqual({
+        repo: "acme/app",
+        pr: 123,
+        headSha: plan.headSha,
+        leaseToken: "test-lease-placeholder",
+        run: { ...plan.run, droidCliVersion: "1.2.3" },
+        result: judged.result,
+      });
+    });
+
+    it("sends no lease token when begin passed none on", async () => {
+      const { received } = serve({ status: "published", outcome: "approve" });
+      await writeFile(resultPath, JSON.stringify(judged));
+
+      await settle(jobEnv({ RISK_LEASE_TOKEN: "" }));
+
+      expect(received[0]?.body).not.toHaveProperty("leaseToken");
     });
 
     it("settles a run that left no result as a failure, and fails the step", async () => {

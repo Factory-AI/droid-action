@@ -29,6 +29,11 @@ describe("review UX command grammar", () => {
     ["@droid resolve.", "resolve"],
     ["@droid pause", "pause"],
     ["@droid resume", "resume"],
+    ["@droid risk", "risk"],
+    ["@DROID: RISK.", "risk"],
+    ["@droid risk please", "risk"],
+    ["@droid riskx", "unknown"],
+    ["@droid risky change?", "unknown"],
     ["@droid remember this", "unknown"],
     ["@droid reviewer", "unknown"],
   ])("%s routes to %s", (text, command) =>

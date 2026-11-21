@@ -277,6 +277,7 @@ runs:
           PATH=/usr/bin:/bin \
           FACTORY_API_KEY="${FACTORY_API_KEY:-}" RISK_API_BASE_URL="${RISK_API_BASE_URL:-}" \
           RISK_PLAN_PATH="${RISK_PLAN_PATH:-}" RISK_RESULT_PATH="${RISK_RESULT_PATH:-}" \
+          RISK_LEASE_TOKEN="${RISK_LEASE_TOKEN:-}" \
           ACTIONS_ID_TOKEN_REQUEST_URL="${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ACTIONS_ID_TOKEN_REQUEST_TOKEN="${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" \
           GITHUB_OUTPUT="${GITHUB_OUTPUT:-}" \
           "$TRUSTED_RUNTIME_PATH" --config=/dev/null --env-file=/dev/null run "$TRUSTED_TAIL_PATH"
@@ -297,3 +298,4 @@ runs:
         RISK_API_BASE_URL: ${{ inputs.api_base_url }}
         RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
         RISK_RESULT_PATH: ${{ runner.temp }}/pr-risk/result.json
+        RISK_LEASE_TOKEN: ${{ steps.begin.outputs.lease_token }}

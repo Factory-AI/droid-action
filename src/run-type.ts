@@ -86,6 +86,7 @@ export function resolveTagRunType({
       return DroidRunType.Question;
     case "help":
     case "unknown":
+    case "risk":
       return DroidRunType.Help;
     case "resolve":
     case "pause":

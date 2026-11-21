@@ -222,11 +222,13 @@ export function buildRiskRun(
 export function buildSettleRequest(
   plan: RiskPlan,
   file: RiskResultFile,
+  leaseToken?: string,
 ): RiskSettleRequest {
   const request: RiskSettleRequest = {
     repo: plan.repo,
     pr: plan.pr,
     headSha: plan.headSha,
+    ...(leaseToken ? { leaseToken } : {}),
     run: {
       ...plan.run,
       ...(file.droidCliVersion
