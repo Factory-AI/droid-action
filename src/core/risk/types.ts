@@ -168,6 +168,14 @@ const RiskJudgeAssignmentSchema = z.object({
   incremental: RiskIncrementalSchema.optional(),
 });
 
+/**
+ * Factory's lease on the head it asked this run to judge, handed back at
+ * settle so Factory takes the answer only from the run holding the lease.
+ * Limited to characters that pass through a step output and an environment
+ * variable unchanged. Absent from servers that issue none.
+ */
+const RiskLeaseTokenSchema = z.string().regex(/^[A-Za-z0-9-]{1,128}$/);
+
 // Reasons stay open strings and unknown keys are dropped, so Factory can add
 // either without breaking a pinned action. An action added later is read as
 // a skip, and a settle status added later as unknown, by the client.
@@ -178,7 +186,10 @@ export const RiskBeginResponseSchema = z.discriminatedUnion("action", [
     reason: z.string(),
     headSha: z.string(),
   }),
-  RiskJudgeAssignmentSchema.extend({ action: z.literal("judge") }),
+  RiskJudgeAssignmentSchema.extend({
+    action: z.literal("judge"),
+    leaseToken: RiskLeaseTokenSchema.optional(),
+  }),
 ]);
 export type RiskBeginResponse = z.infer<typeof RiskBeginResponseSchema>;
 
@@ -272,6 +283,8 @@ export type RiskSettleRequest = {
   repo: string;
   pr: number;
   headSha: string;
+  /** Sent only when begin returned one. */
+  leaseToken?: string;
   run: RiskRun;
   result: RiskSettleResult;
   shadow?: RiskSettleResult;

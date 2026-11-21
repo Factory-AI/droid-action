@@ -273,6 +273,7 @@ Pull requests from forks are reviewed without checking out their code. The actio
 | `@droid resolve`                              | Resolve open Droid threads as dismissed, without claiming the code was fixed.                    |
 | `@droid pause`, `@droid resume`               | Pause automatic reviews; resume resets the automatic-run budget.                                 |
 | `@droid fill`                                 | Replace only Droid's marked description block, preserving author text.                           |
+| `@droid risk`                                 | Assess the PR's risk, where the workflow runs risk assessment (see Run modes below).             |
 | `@droid <question>` in a Droid finding thread | Answer in that thread, without starting a review.                                                |
 
 Unknown top-level commands show help. Mentions inside fenced or inline code do not trigger commands.
@@ -370,6 +371,47 @@ jobs:
           security_scan_schedule: true
           security_scan_days: 7
 ```
+
+## Risk assessment and run modes
+
+On `Factory-AI/droid-action@dev-internal`, the same step can assess the pull request's risk after its review. Factory decides whether to assess, and publishes the result. The assessment needs `id-token: write` in the job's permissions, except for a dry run (`risk_dry_run: true`). Without it, the step skips the assessment with a warning, still reviews, and the job stays green; an `@droid risk` comment gets a one-line reply saying the job needs `permissions: id-token: write`.
+
+Set `automatic_risk_assessment: true` to assess automatically. The `run` input then chooses what the step does on each event. It defaults to `auto`:
+
+| Event                                                                    | Review                                              | Risk assessment       |
+| ------------------------------------------------------------------------ | --------------------------------------------------- | --------------------- |
+| `pull_request` opened, reopened, ready_for_review, synchronize           | by the usual rules (`review_auto_triggers`, drafts) | yes                   |
+| a draft pull request, on any of those actions                            | no, unless `review_drafts` is on                    | yes                   |
+| `pull_request` closed, edited or another action                          | by the usual rules                                  | no                    |
+| `@droid review` or `@droid` comment on a pull request                    | yes, as a manual review                             | yes, after the review |
+| other `@droid` comments (`fix`, `pause`, questions, ...)                 | the usual command handling                          | no                    |
+| `workflow_dispatch` without `risk_pr_number`, `schedule`, `workflow_run` | by the usual rules                                  | no                    |
+
+Factory does not score drafts on an automatic run, whatever `review_drafts` says, but assessing a draft lets it withdraw approvals of older commits.
+
+The other values of `run` apply only when `automatic_risk_assessment` is `true`:
+
+| `run`    | Review                                                          | Automatic risk assessment                                                                                                   |
+| -------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `auto`   | see the table above                                             | see the table above                                                                                                         |
+| `review` | by the usual rules                                              | never                                                                                                                       |
+| `risk`   | never                                                           | on opened, reopened, ready_for_review and synchronize                                                                       |
+| `both`   | as a manual review, past the event allowlist and the draft gate | after the review, on opened, reopened, ready_for_review and synchronize (drafts included) and on an `@droid review` comment |
+
+Without `automatic_risk_assessment`, the step reviews exactly as it always has and assesses nothing on its own.
+
+**Manual requests always run.** Two requests run a risk assessment, and nothing else, whatever `automatic_risk_assessment` and `run` say:
+
+- an `@droid risk` comment on a pull request, from someone with write access;
+- a `workflow_dispatch` that sets `risk_pr_number`.
+
+Factory treats both as explicit requests to assess. `@droid risk` in a pull request description is not a request.
+
+**Use `run`, not `if:`.** Don't put an `if:` on the step that skips pushes or drafts, such as `github.event.action != 'synchronize'` or `github.event.pull_request.draft == false`. It stops the risk assessment too, and approvals of older commits are then not withdrawn after a push. Set `run` instead.
+
+`risk_assessment` is the deprecated name of `automatic_risk_assessment`. `risk_assessment: true` still turns automatic assessment on, with a warning, for one more release.
+
+The step's outputs report what Factory decided: `risk_action`, `risk_outcome` and `risk_head_sha`. [`risk/README.md`](risk/README.md) describes the assessment itself and its standalone sub-action.
 
 ## Authentication
 

@@ -35,8 +35,13 @@ export function extractCommandFromContext(
     if (body) {
       const command = parseDroidCommand(body);
       if (command) {
-        // PR prose is reviewed data, not authorization to mutate branches or state.
-        if (["fix", "resolve", "pause", "resume"].includes(command.command)) {
+        // PR prose is reviewed data, not authorization to mutate branches or
+        // state, or to request a manual risk assessment.
+        if (
+          ["fix", "resolve", "pause", "resume", "risk"].includes(
+            command.command,
+          )
+        ) {
           return { ...command, command: "unknown", location: "body" };
         }
         return { ...command, location: "body" };
@@ -49,7 +54,11 @@ export function extractCommandFromContext(
     if (body) {
       const command = parseDroidCommand(body);
       if (command) {
-        if (["fix", "resolve", "pause", "resume"].includes(command.command)) {
+        if (
+          ["fix", "resolve", "pause", "resume", "risk"].includes(
+            command.command,
+          )
+        ) {
           return { ...command, command: "unknown", location: "body" };
         }
         return { ...command, location: "body" };

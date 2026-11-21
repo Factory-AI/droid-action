@@ -168,6 +168,48 @@ describe("command execution isolation and replies", () => {
     expect(reviewSpy).not.toHaveBeenCalled();
     expect(issueComments[0].body).toContain("### Droid commands");
   });
+  test("a risk request that reaches tag mode gets one line, not the command help", async () => {
+    const comment = context();
+    comment.payload = { comment: { id: 101, body: "@droid risk" } } as any;
+    const result = await prepareTagExecution({
+      context: comment,
+      octokit: client,
+      githubToken: "unused",
+    });
+    expect(result.skipped).toBe(true);
+    expect(reviewSpy).not.toHaveBeenCalled();
+    expect(issueComments.map((comment) => comment.body)).toEqual([
+      "Risk assessment isn't available in this workflow.",
+    ]);
+    expect(output("run_code_review")).toBe("false");
+  });
+  test("a run plan's manual review does not run a command from the PR description", async () => {
+    const push = createMockContext({
+      eventName: "pull_request",
+      eventAction: "synchronize",
+      isPR: true,
+      entityNumber: 12,
+      inputs: {
+        ...createMockContext().inputs,
+        automaticReview: true,
+        manualReview: true,
+        reviewConfig: resolveReviewUxConfig({
+          inputs: { automatic_review: "true" },
+        }),
+      },
+      payload: {
+        action: "synchronize",
+        pull_request: { number: 12, body: "@droid fill", draft: false },
+      } as any,
+    });
+    await prepareTagExecution({
+      context: push,
+      octokit: client,
+      githubToken: "unused",
+    });
+    expect(reviewSpy).toHaveBeenCalledTimes(1);
+    expect(issueComments).toHaveLength(0);
+  });
   test("disabled fixes never start Exec or fetch source snapshots", async () => {
     const disabled = context();
     disabled.inputs.reviewConfig = resolveReviewUxConfig({

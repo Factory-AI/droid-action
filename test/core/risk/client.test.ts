@@ -166,6 +166,27 @@ describe("beginRisk", () => {
     });
   });
 
+  it("keeps the lease token of a judge answer", async () => {
+    const leased = {
+      ...judgeAnswer,
+      leaseToken: "test-lease-placeholder",
+    };
+    const { fetch } = stubFetch([json(200, leased)]);
+
+    expect(await beginRisk(beginRequest, clientOptions(fetch))).toEqual(leased);
+  });
+
+  it("reads a skip reason it has never heard of as a plain skip", async () => {
+    const { fetch } = stubFetch([
+      json(200, { action: "skip", reason: "in_progress" }),
+    ]);
+
+    expect(await beginRisk(beginRequest, clientOptions(fetch))).toEqual({
+      action: "skip",
+      reason: "in_progress",
+    });
+  });
+
   it("reads an action added after this version as a skip", async () => {
     const { fetch } = stubFetch([
       json(200, { action: "an_action_added_later", headSha: plan.headSha }),
