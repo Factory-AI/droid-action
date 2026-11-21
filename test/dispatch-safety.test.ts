@@ -11,19 +11,15 @@ import * as core from "@actions/core";
 import * as contextModule from "../src/github/context";
 import * as client from "../src/github/api/client";
 import * as pr from "../src/github/data/pr-fetcher";
-import * as checkout from "../src/github/data/pr-checkout";
-import * as artifacts from "../src/github/data/review-artifacts";
-import * as prompt from "../src/create-prompt";
-import * as mcp from "../src/mcp/install-mcp-server";
+import * as reviewInput from "../src/github/data/review-input";
 import * as lifecycle from "../src/github/operations/review-lifecycle";
 import * as config from "../src/prepare/review-config";
 import * as runtime from "../src/prepare/review-runtime";
-import * as policy from "../src/utils/model-policy";
 import * as actor from "../src/github/validation/actor";
 import * as review from "../src/tag/commands/review";
 import * as security from "../src/tag/commands/security-review";
 import { prepareTagExecution } from "../src/tag";
-import { run } from "../src/entrypoints/generate-review-prompt";
+import { run } from "../src/entrypoints/prepare-review";
 import { resolveReviewUxConfig } from "../src/core/review/config";
 import {
   decodeReviewState,
@@ -38,7 +34,7 @@ let saved: NodeJS.ProcessEnv;
 let context: ReturnType<typeof createMockContext>;
 let kit: any;
 let lifecycleSpy: ReturnType<typeof spyOn>;
-let promptSpy: ReturnType<typeof spyOn>;
+let inputSpy: ReturnType<typeof spyOn>;
 beforeEach(() => {
   saved = { ...process.env };
   for (const key of Object.keys(process.env))
@@ -79,12 +75,7 @@ beforeEach(() => {
     title: "test",
     body: "",
   } as any);
-  spyOn(checkout, "preparePullRequestHead").mockResolvedValue("HEAD");
-  spyOn(artifacts, "computeReviewArtifacts").mockResolvedValue({
-    diffPath: "/tmp/diff",
-    commentsPath: "/tmp/comments",
-    descriptionPath: "/tmp/description",
-  });
+  inputSpy = spyOn(reviewInput, "prepareReviewInput").mockResolvedValue({});
   lifecycleSpy = spyOn(lifecycle, "prepareReviewLifecycle").mockImplementation(
     async (options) => ({
       commentId: 55,
@@ -94,13 +85,8 @@ beforeEach(() => {
     }),
   );
   spyOn(lifecycle, "readReviewLifecycle").mockResolvedValue(null);
-  promptSpy = spyOn(prompt, "createPrompt").mockResolvedValue();
-  spyOn(mcp, "prepareMcpTools").mockResolvedValue("{}");
   spyOn(config, "initializeReviewConfig").mockResolvedValue();
   spyOn(runtime, "freezeReviewRuntime").mockResolvedValue({});
-  spyOn(policy, "applyModelPolicyFallback").mockResolvedValue({
-    model: "test-model",
-  });
   spyOn(actor, "checkHumanActor").mockResolvedValue();
 });
 afterEach(() => {
@@ -139,7 +125,7 @@ describe("real preparation adapters distinguish manual PR-body requests", () => 
         });
       }
       expect(lifecycleSpy.mock.calls[0]?.[0].skipReason).toBeUndefined();
-      expect(promptSpy).toHaveBeenCalledTimes(1);
+      expect(inputSpy).toHaveBeenCalledTimes(1);
     });
   }
   it("does not exempt an automatic edited draft because its description contains a command", async () => {
@@ -150,7 +136,7 @@ describe("real preparation adapters distinguish manual PR-body requests", () => 
       githubToken: "test-only",
     });
     expect(lifecycleSpy.mock.calls[0]?.[0].skipReason).toBeDefined();
-    expect(promptSpy).not.toHaveBeenCalled();
+    expect(inputSpy).not.toHaveBeenCalled();
   });
   it("does not treat an unmentioned draft event as an explicit request", async () => {
     (context.payload as any).pull_request.body = "ordinary PR description";
@@ -244,7 +230,7 @@ describe("mode-specific manual requests do not inherit unrelated automatic flags
       githubToken: "test-only",
     });
     expect(lifecycleSpy.mock.calls[0]?.[0].skipReason).toBeUndefined();
-    expect(promptSpy).toHaveBeenCalledTimes(1);
+    expect(inputSpy).toHaveBeenCalledTimes(1);
   });
   for (const eventAction of ["synchronize", "reopened"]) {
     it(`${eventAction} does not refresh a persistent body request`, async () => {

@@ -1,271 +1,115 @@
 #!/usr/bin/env bun
 
 /**
- * Judges one pull request head and writes what came of it.
- *
- * In the risk action it takes no arguments: it reads the plan the begin step
- * left, always writes a result for the settle step, and always exits 0, so a
- * failed judge is still reported to Factory.
- *
- * Offline it runs a judge file against a pull request without calling
- * Factory's risk endpoints:
- *
- *   bun run src/entrypoints/risk-assess.ts --judge <file> --repo <owner/name> \
- *     --pr <number> --repo-dir <checkout> [--out <dir>] [--droid-binary <path>]
- *     [--head <sha> --base <sha>] [--prior <file>]
- *
- * `--head` and `--base` judge an earlier revision of the pull request
- * instead of its live head; both commits must already be in the checkout.
- * `--prior` makes it an incremental judgment against an earlier verdict, a
- * JSON file with `headSha`, `baseSha`, `verdict`, `brief`, `details`, and
- * optionally `outcome`, `concerns` (`[{ id, text }]`, after a decline) and
- * `reason`.
- *
- * Both modes build a plan and hand it to the same assessment.
+ * The judge step of the risk action. It reads the plan the begin step left,
+ * fetches the plan's commits into the job's checkout, and runs on them the
+ * `droid-review risk` worker the download step left, when its bytes are the
+ * ones this version pins. This step is never given the token the worker
+ * was downloaded with: the judge runs pull request code beneath it. The
+ * worker builds the evidence and runs the judge Factory served: on the whole
+ * change, as a re-check of an earlier verdict, or both, as the plan asks.
+ * What the worker reports becomes the result the settle step reads. It
+ * always writes a result and always exits 0, so a run without a verdict is
+ * still reported to Factory.
  */
 
 import * as core from "@actions/core";
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
-import { parseArgs } from "node:util";
-import { assessPullRequest, readDroidCliVersion } from "../core/risk/assess";
+import { fetchRiskRevisions } from "../core/risk/checkout";
+import { readRiskPlan, riskPlanPath, riskResultPath } from "../core/risk/plan";
+import { type RiskResultFile } from "../core/risk/types";
 import {
+  RiskReportSchema,
+  buildWorkerInput,
+  resultFileOf,
+  riskWorkerBounds,
+} from "../core/risk/worker";
+import { removeCheckoutCredentials } from "../core/worker/checkout";
+import { WORKER, type Pin } from "../core/worker/pins";
+import { readDownloaded, runWorker } from "../core/worker/run";
+import {
+  StepError,
+  ambientEnvironment,
   describeFailure,
-  readRiskPlan,
-  requiredEnv,
-  riskPlanPath,
-  riskResultPath,
-  writePrivateJson,
-} from "../core/risk/plan";
-import {
-  CommitShaSchema,
-  RISK_RUNNER,
-  RiskError,
-  RiskIncrementalSchema,
-  RiskJudgeSchema,
   failureReason,
-  type RiskIncremental,
-  type RiskPlan,
-  type RiskResultFile,
-} from "../core/risk/types";
-import { createOctokit } from "../github/api/client";
-import { fetchPullRequestRiskSummary } from "../github/data/pr-risk";
-import { z } from "zod";
+  requiredEnv,
+  writePrivateJson,
+} from "../core/worker/step";
 
-const OFFLINE_USAGE =
-  "Usage: risk-assess.ts --judge <file> --repo <owner/name> --pr <number> --repo-dir <checkout> [--out <dir>] [--droid-binary <path>] [--head <sha> --base <sha>] [--prior <file>]";
-
-const OfflinePriorSchema = RiskIncrementalSchema.shape.prior.extend({
-  headSha: CommitShaSchema,
-  baseSha: CommitShaSchema,
-  reason: z.string().default("local"),
-});
-const OFFLINE_RESULT_FILE = "pr-risk-result.json";
-const OFFLINE_TIMEOUT_SECONDS = 1800;
-
-const OfflineJudgeSchema = RiskJudgeSchema.omit({ sha256: true }).extend({
-  group: RiskJudgeSchema.shape.group.default("local"),
-  timeoutSeconds: RiskJudgeSchema.shape.timeoutSeconds.default(
-    OFFLINE_TIMEOUT_SECONDS,
-  ),
-});
-
-type AssessInputs = {
-  plan: RiskPlan;
-  repoDir: string;
-  resultPath: string;
-  githubToken: string | undefined;
-  keepCheckoutCredentials?: boolean;
-  droidBinary?: string;
-  judgeApiBaseUrl?: string;
-};
-
-async function actionInputs(env: NodeJS.ProcessEnv): Promise<AssessInputs> {
-  return {
-    plan: await readRiskPlan(riskPlanPath(env)),
-    repoDir: requiredEnv("GITHUB_WORKSPACE", env),
-    resultPath: riskResultPath(env),
-    // Only the token the action passes in. The judge is handed whatever is
-    // read here, and a `GITHUB_TOKEN` in the job's environment is the
-    // caller's, which may write.
-    githubToken: env.GH_TOKEN?.trim() || undefined,
-    droidBinary: env.DROID_BIN?.trim() || undefined,
-    judgeApiBaseUrl: env.RISK_JUDGE_API_BASE_URL?.trim() || undefined,
-  };
-}
-
-async function offlineInputs(
-  argv: readonly string[],
+async function assess(
   env: NodeJS.ProcessEnv,
-): Promise<AssessInputs> {
-  let values: Record<string, string | undefined>;
-  try {
-    ({ values } = parseArgs({
-      args: [...argv],
-      options: {
-        judge: { type: "string" },
-        repo: { type: "string" },
-        pr: { type: "string" },
-        "repo-dir": { type: "string" },
-        out: { type: "string" },
-        "droid-binary": { type: "string" },
-        head: { type: "string" },
-        base: { type: "string" },
-        prior: { type: "string" },
-      },
-    }));
-  } catch {
-    throw new RiskError("usage", OFFLINE_USAGE);
-  }
-  const { judge: judgePath, repo, pr } = values;
-  const repoDir = values["repo-dir"];
-  const droidBinary = values["droid-binary"];
-  const [owner, name, ...rest] = repo?.split("/") ?? [];
-  if (
-    !judgePath ||
-    !repo ||
-    !owner ||
-    !name ||
-    rest.length > 0 ||
-    !repoDir ||
-    !pr ||
-    !/^[1-9][0-9]*$/.test(pr) ||
-    (values.head === undefined) !== (values.base === undefined) ||
-    (values.head !== undefined &&
-      !CommitShaSchema.safeParse(values.head).success) ||
-    (values.base !== undefined &&
-      !CommitShaSchema.safeParse(values.base).success)
-  ) {
-    throw new RiskError("usage", OFFLINE_USAGE);
-  }
-  const token = env.GH_TOKEN?.trim() || env.GITHUB_TOKEN?.trim();
-  if (!token) {
-    throw new RiskError(
+  worker: Pin,
+  startedAt: number,
+): Promise<RiskResultFile> {
+  const plan = await readRiskPlan(riskPlanPath(env));
+  const repoDir = requiredEnv("GITHUB_WORKSPACE", env);
+  // Only the token the action passes in. The judge is handed whatever is
+  // read here, and a `GITHUB_TOKEN` in the job's environment is the
+  // caller's, which may write.
+  const githubToken = env.GH_TOKEN?.trim();
+  if (!githubToken) {
+    throw new StepError(
       "github_token_missing",
-      "Set GH_TOKEN or GITHUB_TOKEN to a token that can read the pull request",
+      "No GitHub token is available to read the pull request",
     );
   }
-
-  const judgeBytes = await readFile(judgePath);
-  let judge;
-  try {
-    judge = OfflineJudgeSchema.parse(JSON.parse(judgeBytes.toString("utf8")));
-  } catch {
-    throw new RiskError(
-      "judge_file_invalid",
-      "The judge file must be JSON with skill, enabledTools, settings and scores",
-    );
-  }
-  let incremental: RiskIncremental | undefined;
-  if (values.prior) {
-    try {
-      const { headSha, baseSha, reason, ...prior } = OfflinePriorSchema.parse(
-        JSON.parse(await readFile(values.prior, "utf8")),
-      );
-      incremental = {
-        mode: "enforce",
-        reason,
-        priorHeadSha: headSha,
-        priorBaseSha: baseSha,
-        prior,
-      };
-    } catch {
-      throw new RiskError(
-        "prior_file_invalid",
-        "The prior file must be JSON with headSha, baseSha, verdict, brief and details",
-      );
-    }
-  }
-  const prNumber = Number(pr);
-  const live = await fetchPullRequestRiskSummary({
-    octokits: createOctokit(token),
-    repository: { owner, repo: name },
-    prNumber,
-  });
-  return {
-    plan: {
-      repo,
-      pr: prNumber,
-      run: { runner: RISK_RUNNER, trigger: "local", dryRun: true },
-      ...live,
-      ...(values.head && values.base
-        ? { headSha: values.head, baseSha: values.base }
-        : {}),
-      ...(incremental ? { incremental } : {}),
-      priorDeclines: [],
-      judge: {
-        ...judge,
-        sha256: createHash("sha256").update(judgeBytes).digest("hex"),
-      },
+  const policySha = await fetchRiskRevisions(plan, { repoDir, githubToken });
+  await removeCheckoutCredentials(repoDir);
+  const judgeApiBaseUrl = env.RISK_JUDGE_API_BASE_URL?.trim();
+  const report = await runWorker({
+    product: "risk",
+    worker: await readDownloaded(worker, env),
+    repoDir,
+    input: buildWorkerInput(plan, policySha),
+    // The worker's whole environment. Its judge session runs pull request
+    // code, so of the job's credentials it gets the Factory one, the
+    // read-only GitHub token, and no other. The judge's own address, when
+    // the workflow names one, replaces the job's.
+    env: {
+      ...ambientEnvironment(env),
+      DROID_BIN: env.DROID_BIN?.trim() || "droid",
+      FACTORY_API_KEY: requiredEnv("FACTORY_API_KEY", env),
+      GH_TOKEN: githubToken,
+      ...(judgeApiBaseUrl ? { FACTORY_API_BASE_URL: judgeApiBaseUrl } : {}),
     },
-    repoDir: resolve(repoDir),
-    resultPath: join(resolve(values.out ?? "."), OFFLINE_RESULT_FILE),
-    githubToken: token,
-    // The clone is the caller's own, not a job's checkout to be cleaned.
-    keepCheckoutCredentials: true,
-    // The judge runs from its evidence workspace, so a path is pinned to the
-    // directory this command was run in. A bare name is left for PATH.
-    droidBinary: droidBinary?.includes("/")
-      ? resolve(droidBinary)
-      : droidBinary,
-    judgeApiBaseUrl: env.FACTORY_API_BASE_URL?.trim() || undefined,
-  };
+    bounds: riskWorkerBounds(plan.judge.timeoutSeconds),
+    report: RiskReportSchema,
+  });
+  return resultFileOf(report, plan, Date.now() - startedAt);
 }
 
 export async function run(
-  argv: readonly string[] = process.argv.slice(2),
   env: NodeJS.ProcessEnv = process.env,
+  worker: Pin = WORKER,
 ): Promise<void> {
-  const offline = argv.length > 0;
-  let inputs: AssessInputs;
+  const startedAt = Date.now();
+  let file: RiskResultFile;
   try {
-    inputs = offline ? await offlineInputs(argv, env) : await actionInputs(env);
+    file = await assess(env, worker, startedAt);
   } catch (error) {
-    if (offline) throw error;
     const reason = failureReason(error);
     core.warning(
       `PR risk assessment failed (${reason}): ${describeFailure(error)}`,
     );
-    await writePrivateJson(riskResultPath(env), {
-      result: { status: "failed", reason },
-    } satisfies RiskResultFile);
-    return;
+    file = {
+      result: { status: "failed", reason, durationMs: Date.now() - startedAt },
+    };
   }
-
-  const { result, shadow } = await assessPullRequest({
-    plan: inputs.plan,
-    repoDir: inputs.repoDir,
-    githubToken: inputs.githubToken,
-    keepCheckoutCredentials: inputs.keepCheckoutCredentials,
-    judgeApiBaseUrl: inputs.judgeApiBaseUrl,
-    droidBinary: inputs.droidBinary,
-    env,
-  });
-  const droidCliVersion = await readDroidCliVersion(inputs.droidBinary, env);
-  await writePrivateJson(inputs.resultPath, {
-    ...(droidCliVersion ? { droidCliVersion } : {}),
-    result,
-    ...(shadow ? { shadow } : {}),
-  } satisfies RiskResultFile);
+  await writePrivateJson(riskResultPath(env), file);
 
   // The verdict itself stays in the result file; the log only says whether
   // there is one.
+  const { result, shadow } = file;
   console.log(
     result.status === "judged"
-      ? `The PR risk judge answered for ${inputs.plan.headSha} after ${result.attempts.length} attempt(s).`
-      : `No PR risk verdict for ${inputs.plan.headSha} (${result.reason}).`,
+      ? `The PR risk judge answered after ${result.attempts.length} attempt(s).`
+      : `No PR risk verdict (${result.reason}).`,
   );
   if (shadow) {
     console.log(
       shadow.status === "judged"
-        ? `The shadow incremental re-check answered (${shadow.mode ?? "full"}).`
-        : `The shadow incremental re-check produced no verdict (${shadow.reason}).`,
+        ? `The shadow re-check answered after ${shadow.attempts.length} attempt(s).`
+        : `No shadow re-check verdict (${shadow.reason}).`,
     );
-  }
-  if (offline) {
-    console.log(`Result written to ${inputs.resultPath}`);
-    if (result.status === "failed") process.exitCode = 1;
   }
 }
 

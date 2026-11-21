@@ -7,10 +7,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse } from "yaml";
 import { DroidRunType, setDroidRunType } from "../../src/run-type";
-import * as context from "../../src/github/context";
-import * as client from "../../src/github/api/client";
-import * as validator from "../../src/tag/commands/review-validator";
-import prepareValidator from "../../src/entrypoints/prepare-validator";
 
 type Step = {
   name: string;
@@ -55,7 +51,6 @@ async function execute(
   options: {
     verifier?: "native" | "shasum" | "missing";
     changed?: "publisher" | "runtime" | "cli";
-    reasoning?: string;
   } = {},
 ) {
   const dir = await mkdtemp(join(tmpdir(), "qa75-native-wrapper-"));
@@ -80,7 +75,7 @@ async function execute(
     const outputs: Record<string, string> = {
       droid_exec_run_type: role,
       review_model: selectedModel,
-      review_reasoning_effort: options.reasoning ?? "high",
+      review_reasoning_effort: "high",
       review_security_only: String(role === DroidRunType.SecurityReview),
     };
     const env: Record<string, string> = {
@@ -92,17 +87,11 @@ async function execute(
     };
     for (const [key, value] of Object.entries(step.env ?? {})) {
       env[key] = value.replace(/\$\{\{\s*(.*?)\s*\}\}/g, (_, expression) => {
-        const output = /^steps\.(?:prepare|prompt)\.outputs\.(\w+)$/.exec(
+        // What the prepare step decided, and what the review step ran with.
+        const output = /^steps\.(?:prepare|review)\.outputs\.(\w+)$/.exec(
           expression,
         );
         if (output) return outputs[output[1]!] ?? "";
-        if (
-          expression ===
-          "steps.prepare.outputs.review_reasoning_effort != 'default' && steps.prepare.outputs.review_reasoning_effort || ''"
-        )
-          return outputs.review_reasoning_effort === "default"
-            ? ""
-            : outputs.review_reasoning_effort!;
         if (expression === "github.run_id") return "123";
         if (expression === "github.run_attempt") return "2";
         if (expression === "inputs.review_model") return "raw-main-input";
@@ -235,32 +224,11 @@ describe("QA75 trusted native wrapper behavior", () => {
           expect(result.captured?.GITHUB_RUN_ATTEMPT).toBe("2");
           expect(result.captured?.UNTRUSTED_MODEL_VALUE).toBe("");
           expect(step.env?.DROID_EXEC_RUN_TYPE).toBe(
-            file === "action.yml"
-              ? "${{ steps.prepare.outputs.droid_exec_run_type }}"
-              : "${{ steps.prompt.outputs.droid_exec_run_type }}",
+            "${{ steps.prepare.outputs.droid_exec_run_type }}",
           );
         });
       }
     }
-    const prepare = steps.find((step) => step.id === "prepare_validator")!;
-    it(`${file}: validator uses the trusted selected main/security model`, async () => {
-      const role =
-        file === "security/action.yml"
-          ? DroidRunType.SecurityReview
-          : DroidRunType.Review;
-      const result = await execute(prepare, role);
-      expect(result.exit).toBe(0);
-      expect(result.captured?.REVIEW_MODEL).toBe(result.selectedModel);
-      expect(result.captured?.REASONING_EFFORT).toBe("high");
-    });
-    if (file === "action.yml")
-      it("root shallow validator does not turn the unset display sentinel into a CLI reasoning override", async () => {
-        const result = await execute(prepare, DroidRunType.Review, {
-          reasoning: "default",
-        });
-        expect(result.exit).toBe(0);
-        expect(result.captured?.REASONING_EFFORT).toBe("");
-      });
     for (const changed of ["publisher", "runtime"] as const) {
       it(`${file}: still refuses altered ${changed} bytes`, async () => {
         const result = await execute(post, DroidRunType.Review, { changed });
@@ -275,11 +243,9 @@ describe("QA75 trusted native wrapper behavior", () => {
       expect(result.exit).not.toBe(0);
       expect(result.captured).toBeUndefined();
     });
-    const runValidator = steps.find(
-      (step) => step.id === "droid_validator" || step.id === "validator",
-    )!;
-    it(`${file}: still refuses an altered frozen validator CLI`, async () => {
-      const result = await execute(runValidator, DroidRunType.Review, {
+    const review = steps.find((step) => step.id === "review")!;
+    it(`${file}: refuses to start the review with an altered frozen Droid CLI`, async () => {
+      const result = await execute(review, DroidRunType.Review, {
         changed: "cli",
       });
       expect(result.exit).not.toBe(0);
@@ -301,30 +267,5 @@ describe("QA75 semantic role preparation", () => {
       setDroidRunType(role);
       expect(output).toHaveBeenCalledWith("droid_exec_run_type", role);
     }
-  });
-  it("rejects a non-review role before creating validator API clients", async () => {
-    spyOn(context, "parseGitHubContext").mockReturnValue({
-      isPR: true,
-      entityNumber: 42,
-      eventName: "issue_comment",
-    } as any);
-    const octokit = spyOn(client, "createOctokit").mockReturnValue({} as any);
-    const prepare = spyOn(
-      validator,
-      "prepareReviewValidatorMode",
-    ).mockResolvedValue({} as any);
-    spyOn(core, "setFailed").mockImplementation(() => {});
-    spyOn(core, "setOutput").mockImplementation(() => {});
-    spyOn(core, "setSecret").mockImplementation(() => {});
-    spyOn(process, "exit").mockImplementation((() => {
-      throw new Error("fixture process.exit");
-    }) as any);
-    process.env.DROID_EXEC_RUN_TYPE = DroidRunType.Fill;
-    process.env.GITHUB_TOKEN = "synthetic-test-token";
-    process.env.DROID_COMMENT_ID = "12";
-    delete process.env.REVIEW_CANDIDATES_PATH;
-    await expect(prepareValidator()).rejects.toThrow("fixture process.exit");
-    expect(octokit).not.toHaveBeenCalled();
-    expect(prepare).not.toHaveBeenCalled();
   });
 });

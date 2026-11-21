@@ -5,6 +5,9 @@ inputs:
   factory_api_key:
     description: "Factory API key"
     required: true
+  worker_token:
+    description: "GitHub token that can read the droid-review release the judge's worker is downloaded from. Given only to the step that downloads it, which ends before the judge starts."
+    required: true
   pr_number:
     description: "Pull request to assess. Empty uses the pull request of the triggering event."
     required: false
@@ -150,12 +153,36 @@ runs:
         APP_TOKEN_PERMISSIONS: '{"contents":"read","pull_requests":"read","issues":"read","checks":"read","statuses":"read"}'
         RISK_DRY_RUN: ${{ inputs.dry_run }}
 
+    # The one step that is given the worker token. It downloads the
+    # droid-review worker to a file only the job's user can read and exits
+    # before the judge starts, so no process that runs pull request code is
+    # given the token. A failed download writes nothing and is a warning
+    # here: the next step finds no worker to run and reports that.
+    - name: Download the risk worker
+      id: download
+      if: ${{ !cancelled() && steps.begin.outputs.action == 'judge' }}
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
+      run: |
+        bun --config=/dev/null --env-file=/dev/null run ${{ github.action_path }}/../src/entrypoints/worker-download.ts
+      env:
+        LD_AUDIT: ""
+        LD_LIBRARY_PATH: ""
+        LD_PRELOAD: ""
+        NODE_PATH: ""
+        BUN_OPTIONS: ""
+        NODE_OPTIONS: ""
+        ENV: ""
+        BASH_ENV: ""
+        WORKER_TOKEN: ${{ inputs.worker_token }}
+        WORKER_DIR: ${{ runner.temp }}/droid-worker
+
     # The judge runs pull request code. This step therefore drops the OIDC
     # request credentials (which could mint a token that writes) before
-    # anything else starts, and the judge session's own environment is an
-    # allow-list. It runs even when an earlier step failed, and always leaves
-    # a result, so the failure is reported instead of leaving the pull request
-    # looking unassessed.
+    # anything else starts. It runs the worker the step above left only when
+    # its bytes have the digest this version of the action names, and gives
+    # it an allow-listed environment to run the judge in. It runs even when
+    # an earlier step failed, and always leaves a result, so the failure is
+    # reported instead of leaving the pull request looking unassessed.
     - name: Assess PR risk
       id: assess
       if: ${{ !cancelled() && steps.begin.outputs.action == 'judge' }}
@@ -175,6 +202,7 @@ runs:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         GH_TOKEN: ${{ steps.token.outputs.github_token || (steps.token.outputs.use_workflow_token == 'true' && github.token) || '' }}
         RISK_JUDGE_API_BASE_URL: ${{ inputs.judge_api_base_url }}
+        WORKER_DIR: ${{ runner.temp }}/droid-worker
         RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
         RISK_RESULT_PATH: ${{ runner.temp }}/pr-risk/result.json
 

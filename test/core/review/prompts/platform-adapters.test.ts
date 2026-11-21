@@ -10,9 +10,6 @@ import {
 } from "../../../../src/bitbucket/prompts";
 import { generateGitlabReviewCandidatesPrompt } from "../../../../src/gitlab/prompts/candidates";
 import { generateGitlabReviewValidatorPrompt } from "../../../../src/gitlab/prompts/validator";
-import { generateReviewCandidatesPrompt } from "../../../../src/create-prompt/templates/review-candidates-prompt";
-import { generateReviewValidatorPrompt } from "../../../../src/create-prompt/templates/review-validator-prompt";
-import type { PreparedContext } from "../../../../src/create-prompt/types";
 import { promptOutput } from "../../../helpers/legacy-review-contract";
 
 const repoGuidelines = {
@@ -32,27 +29,9 @@ const paths = {
 };
 
 const block = `<review-guidelines source="${repoGuidelines.source}">\n${repoGuidelines.body}\n</review-guidelines>`;
-const github: PreparedContext = {
-  repository: "owner/repo",
-  triggerPhrase: "@droid",
-  eventData: {
-    eventName: "pull_request",
-    isPR: true,
-    prNumber: "4",
-    baseBranch: "main",
-  },
-  prBranchData: { headRefName: "feat", headRefOid: "abc" },
-  reviewArtifacts: paths,
-  reviewGuidelines: repoGuidelines,
-};
 
 describe("platform prompt adapters carry repository review guidelines", () => {
   it.each([
-    [
-      "GitHub",
-      () => generateReviewCandidatesPrompt(github),
-      () => generateReviewValidatorPrompt(github),
-    ],
     [
       "GitLab",
       () =>
@@ -150,10 +129,7 @@ describe("platform prompt adapters carry repository review guidelines", () => {
       expect(prompt.replace(/\s+/g, " ")).toContain(
         pass === "comments" ? "up to three short bullets" : "through unchanged",
       );
-      if (
-        pass === "results" &&
-        (_platform === "GitHub" || _platform === "GitLab")
-      ) {
+      if (pass === "results" && _platform === "GitLab") {
         expect(output.reviewSummary).toHaveProperty("whatChanged");
         expect(output.reviewSummary).toHaveProperty("changes");
         expect(output.reviewSummary).toHaveProperty("risk");

@@ -7,7 +7,7 @@ import { pathToFileURL } from "url";
 import { privateStartupEnvironment } from "../helpers/controlled-runtime";
 
 describe("trusted review publisher artifacts", () => {
-  it("bundles all eight real entrypoints and binds their exact executable bytes", async () => {
+  it("bundles every real review entrypoint and binds its exact executable bytes", async () => {
     const fixture = await mkdtemp(join(tmpdir(), "review-runtime-test-"));
     try {
       // The real action runs outside Bun's test-module/mock resolver.
@@ -49,24 +49,30 @@ describe("trusted review publisher artifacts", () => {
         expect(outputs[`review_${kind}_publisher_path`]).toBeUndefined();
       const directory = dirname(outputs.review_lifecycle_publisher_path!);
       try {
-        for (const kind of [
-          "lifecycle",
-          "post",
-          "tracking",
-          "validator",
-          "runner",
-          "debug",
-          "revoke",
-          "steward",
-        ]) {
+        for (const [kind, source] of [
+          ["lifecycle", "src/entrypoints/github-review-lifecycle.ts"],
+          ["post", "src/entrypoints/github-post-review.ts"],
+          ["tracking", "src/entrypoints/update-comment-link.ts"],
+          ["run", "src/entrypoints/review-run.ts"],
+          ["debug", "src/entrypoints/collect-debug-artifacts.ts"],
+          ["revoke", "src/entrypoints/revoke-github-token.ts"],
+          ["steward", "src/steward/postrun.ts"],
+        ] as const) {
           const file = outputs[`review_${kind}_publisher_path`]!;
           const bytes = await readFile(file);
           expect(createHash("sha256").update(bytes).digest("hex")).toBe(
             outputs[`review_${kind}_publisher_sha256`]!,
           );
+          // The bundler names each module it inlines, the entrypoint last.
+          expect(
+            bytes
+              .toString()
+              .match(/^\/\/ (\S+\.ts)$/gm)
+              ?.at(-1),
+          ).toBe(`// ${source}`);
           // Importing the frozen artifact must not execute its CLI entrypoint.
           const module = await import(pathToFileURL(file).href);
-          if (["lifecycle", "post", "tracking"].includes(kind))
+          if (["lifecycle", "post", "tracking", "run"].includes(kind))
             expect(typeof module.run).toBe("function");
         }
         expect(

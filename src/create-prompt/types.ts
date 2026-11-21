@@ -1,6 +1,4 @@
 import type { GitHubContext } from "../github/context";
-import type { ReviewArtifactPaths } from "../core/review/artifacts/types";
-import type { RepoReviewGuidelines } from "../core/review/prompts/types";
 
 export type CommonFields = {
   repository: string;
@@ -105,23 +103,7 @@ export type EventData =
   | PullRequestEvent
   | PullRequestTargetEvent;
 
-export type ReviewArtifacts = ReviewArtifactPaths;
-
-export type PrBranchPromptData = {
-  headRefName: string;
-  headRefOid: string;
-  /** The PR comes from a fork, so its code is not checked out. */
-  isFork?: boolean;
-  /** Git revision holding a fork PR's head commit, or null if it could not be fetched. */
-  headRevision?: string | null;
-};
-
 export type PreparedContext = CommonFields & {
   eventData: EventData;
   githubContext?: GitHubContext;
-  prBranchData?: PrBranchPromptData;
-  reviewArtifacts?: ReviewArtifacts;
-  reviewGuidelines?: RepoReviewGuidelines;
-  outputFilePath?: string;
-  includeSuggestions?: boolean;
 };

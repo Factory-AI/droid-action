@@ -26,7 +26,7 @@ import {
   AZURE_DEVOPS_TERMINOLOGY,
   generateAzureDevopsValidatorPrompt,
 } from "../../src/azure-devops/prompts";
-import { GITHUB_TERMINOLOGY } from "../../src/create-prompt/terminology";
+import { GITLAB_TERMINOLOGY } from "../../src/gitlab/prompts/terminology";
 import { generateCandidatesPrompt } from "../../src/core/review/prompts/candidates";
 import { generateValidatorPrompt } from "../../src/core/review/prompts/validator";
 import type { ReviewPromptContext } from "../../src/core/review/prompts/types";
@@ -56,7 +56,7 @@ describe("QA75 prompt output behavior", () => {
     it(`candidate body is explanation-only with separate structured security/title/priority (${includeSuggestions})`, () => {
       const prompt = generateCandidatesPrompt({
         ...common,
-        terminology: GITHUB_TERMINOLOGY,
+        terminology: GITLAB_TERMINOLOGY,
         includeSuggestions,
       });
       const [comment] = z
@@ -76,7 +76,7 @@ describe("QA75 prompt output behavior", () => {
   it("validator leaves deterministic counts/reviewers/checks/security to runtime enrichment", () => {
     const prompt = generateValidatorPrompt({
       ...common,
-      terminology: GITHUB_TERMINOLOGY,
+      terminology: GITLAB_TERMINOLOGY,
     });
     const summary = z
       .record(z.unknown())

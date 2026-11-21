@@ -440,9 +440,7 @@ exports[`review render templates Queued check 1`] = `
 
 ✅ Gathered PR context (4s)
 
-✅ Generated 3 candidates (1m 31s)
-
-✅ Validated candidates (38s)
+✅ Reviewed, kept 2 of 3 candidates (2m 09s)
 
 ✅ Posted review (2s)
 
@@ -460,9 +458,7 @@ exports[`review render templates Running check 1`] = `
 
 ✅ Gathered PR context (4s)
 
-✅ Generated 3 candidates (1m 31s)
-
-✅ Validated candidates (38s)
+✅ Reviewed, kept 2 of 3 candidates (2m 09s)
 
 ✅ Posted review (2s)
 
@@ -480,9 +476,7 @@ exports[`review render templates Completed check 1`] = `
 
 ✅ Gathered PR context (4s)
 
-✅ Generated 3 candidates (1m 31s)
-
-✅ Validated candidates (38s)
+✅ Reviewed, kept 2 of 3 candidates (2m 09s)
 
 ✅ Posted review (2s)
 
@@ -500,9 +494,7 @@ exports[`review render templates Failed check 1`] = `
 
 ✅ Gathered PR context (4s)
 
-✅ Generated 3 candidates (1m 31s)
-
-✅ Validated candidates (38s)
+✅ Reviewed, kept 2 of 3 candidates (2m 09s)
 
 ✅ Posted review (2s)
 
@@ -520,9 +512,7 @@ exports[`review render templates Skipped check 1`] = `
 
 ✅ Gathered PR context (4s)
 
-✅ Generated 3 candidates (1m 31s)
-
-✅ Validated candidates (38s)
+✅ Reviewed, kept 2 of 3 candidates (2m 09s)
 
 ✅ Posted review (2s)
 

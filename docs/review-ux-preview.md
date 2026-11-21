@@ -471,9 +471,7 @@ Queued…
 
 ✅ Gathered PR context (4s)
 
-✅ Generated 3 candidates (1m 31s)
-
-✅ Validated candidates (38s)
+✅ Reviewed, kept 2 of 3 candidates (2m 09s)
 
 ✅ Posted review (2s)
 
@@ -493,9 +491,7 @@ Reviewing 9ea6c83…
 
 ✅ Gathered PR context (4s)
 
-✅ Generated 3 candidates (1m 31s)
-
-✅ Validated candidates (38s)
+✅ Reviewed, kept 2 of 3 candidates (2m 09s)
 
 ✅ Posted review (2s)
 
@@ -515,9 +511,7 @@ Found 2 issues (2 P1)
 
 ✅ Gathered PR context (4s)
 
-✅ Generated 3 candidates (1m 31s)
-
-✅ Validated candidates (38s)
+✅ Reviewed, kept 2 of 3 candidates (2m 09s)
 
 ✅ Posted review (2s)
 
@@ -537,9 +531,7 @@ Review failed
 
 ✅ Gathered PR context (4s)
 
-✅ Generated 3 candidates (1m 31s)
-
-✅ Validated candidates (38s)
+✅ Reviewed, kept 2 of 3 candidates (2m 09s)
 
 ✅ Posted review (2s)
 
@@ -559,9 +551,7 @@ No new changes since 7f3e2a1
 
 ✅ Gathered PR context (4s)
 
-✅ Generated 3 candidates (1m 31s)
-
-✅ Validated candidates (38s)
+✅ Reviewed, kept 2 of 3 candidates (2m 09s)
 
 ✅ Posted review (2s)
 

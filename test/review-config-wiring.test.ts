@@ -35,25 +35,14 @@ describe("review configuration action wiring", () => {
         expect(manifest.inputs[key]?.default).toBe("");
         expect(manifest.inputs[key]?.description.length).toBeGreaterThan(15);
       }
-      const initial = manifest.runs.steps.find(
-        (step) =>
-          step.id ===
-          (file === "action.yml" || file === "prepare/action.yml"
-            ? "prepare"
-            : "prompt"),
-      );
+      const initial = manifest.runs.steps.find((step) => step.id === "prepare");
       for (const key of REVIEW_CONFIG_KEYS)
         expect(initial?.env?.[key.toUpperCase()]).toBe(`\${{ inputs.${key} }}`);
     });
     it(`${file} does not overwrite resolved base config with a later blank input`, () => {
       let initialized = false;
       for (const step of manifest.runs.steps) {
-        if (
-          step.id ===
-          (file === "action.yml" || file === "prepare/action.yml"
-            ? "prepare"
-            : "prompt")
-        ) {
+        if (step.id === "prepare") {
           initialized = true;
           continue;
         }
@@ -78,40 +67,29 @@ describe("review configuration action wiring", () => {
       }
     });
     it(`${file} binds post-model configuration, executables and completion proof to runner outputs`, () => {
-      const source =
-        file === "action.yml" || file === "prepare/action.yml"
-          ? "prepare"
-          : "prompt";
-      const validatorPreparation = manifest.runs.steps.find(
-        (step) => step.id === "prepare_validator",
-      );
-      if (validatorPreparation)
-        expect(validatorPreparation.env?.REVIEW_DEPTH).toBe(
-          `\${{ fromJSON(steps.${source}.outputs.review_config_json).review_depth }}`,
-        );
       for (const step of manifest.runs.steps.filter(
         (step) => step.env?.REVIEW_PUBLISHER_PATH,
       )) {
         expect(step.env?.REVIEW_CONFIG_JSON).toBe(
-          `\${{ steps.${source}.outputs.review_config_json }}`,
+          `\${{ steps.prepare.outputs.review_config_json }}`,
         );
         expect(step.env?.REVIEW_INCREMENTAL_BASE_SHA).toBe(
-          `\${{ steps.${source}.outputs.review_incremental_base_sha }}`,
+          `\${{ steps.prepare.outputs.review_incremental_base_sha }}`,
         );
         expect(step.env?.REVIEW_SECURITY_ONLY).toBe(
-          `\${{ steps.${source}.outputs.review_security_only }}`,
+          `\${{ steps.prepare.outputs.review_security_only }}`,
         );
         expect(step.env?.REVIEW_AUTOMATIC).toBe(
-          `\${{ steps.${source}.outputs.review_automatic }}`,
+          `\${{ steps.prepare.outputs.review_automatic }}`,
         );
         expect(step.env?.REVIEW_RUNTIME_PATH).toBe(
-          `\${{ steps.${source}.outputs.review_runtime_path }}`,
+          `\${{ steps.prepare.outputs.review_runtime_path }}`,
         );
         expect(step.env?.REVIEW_POSTED).toBe(
           "${{ steps.post_review.outputs.review_posted }}",
         );
         expect(step.env?.REVIEW_SKIPPED).toBe(
-          `\${{ steps.${source}.outputs.review_skipped }}`,
+          `\${{ steps.prepare.outputs.review_skipped }}`,
         );
         expect(step.run).toContain("/usr/bin/env -i");
         expect(step.run).toContain("/usr/bin/sha256sum");

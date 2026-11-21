@@ -57,10 +57,6 @@ export async function prepareFillMode({
     commentId,
     baseBranch: branchInfo.baseBranch,
     droidBranch: branchInfo.droidBranch,
-    prBranchData: {
-      headRefName: prData.headRefName,
-      headRefOid: prData.headRefOid,
-    },
     generatePrompt: generateFillPrompt,
   });
   const rawUserArgs = process.env.DROID_ARGS || "";

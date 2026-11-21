@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import path from "node:path";
 import os from "node:os";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { parse } from "yaml";
 import { prepareTagExecution } from "../../src/tag";
 import { shouldTriggerTag } from "../../src/tag";
@@ -11,14 +11,11 @@ import { createMockContext as sharedMockContext } from "../mockContext";
 import * as createInitial from "../../src/github/operations/comments/create-initial";
 import * as mcpInstaller from "../../src/mcp/install-mcp-server";
 import * as actorValidation from "../../src/github/validation/actor";
-import * as promptModule from "../../src/create-prompt";
-import * as reviewArtifactsModule from "../../src/github/data/review-artifacts";
+import * as checkout from "../../src/core/worker/checkout";
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import * as childProcess from "node:child_process";
 import { parseGitHubContext } from "../../src/github/context";
 import { DroidRunType } from "../../src/run-type";
-import { parseSessionTagFromDroidArgs } from "../utils/session-tag-helpers";
 import * as lifecycle from "../../src/github/operations/review-lifecycle";
 import {
   encodeReviewState,
@@ -48,9 +45,7 @@ describe("review command integration", () => {
   let actorSpy: ReturnType<typeof spyOn>;
   let setOutputSpy: ReturnType<typeof spyOn>;
   let exportVarSpy: ReturnType<typeof spyOn>;
-  let promptSpy: ReturnType<typeof spyOn>;
-  let computeArtifactsSpy: ReturnType<typeof spyOn>;
-  let execSyncSpy: ReturnType<typeof spyOn>;
+  let checkoutSpies: ReturnType<typeof spyOn>[];
   let fetchSpy: ReturnType<typeof spyOn>;
   let lifecycleSpy: ReturnType<typeof spyOn>;
   let stickyBodies: string[];
@@ -89,6 +84,7 @@ describe("review command integration", () => {
           baseRefName: "main",
           headRefName: "feature/review",
           headRefOid: HEAD,
+          title: "Review fixture",
         },
       },
     };
@@ -141,6 +137,7 @@ describe("review command integration", () => {
       [
         ...Object.keys(process.env).filter(managedKey),
         "RUNNER_TEMP",
+        "GITHUB_WORKSPACE",
         "DROID_ARGS",
         "DROID_EXEC_RUN_TYPE",
         "DROID_BOT_LOGIN",
@@ -188,7 +185,12 @@ describe("review command integration", () => {
           issue_url: `https://api.github.com/repos/${options.context.repository.full_name}/issues/${options.context.entityNumber}`,
         },
       });
+      rest.paginate ??= async (
+        list: (parameters: unknown) => Promise<{ data: unknown[] }>,
+        parameters: unknown,
+      ) => (await list(parameters)).data;
       rest.pulls ??= {};
+      rest.pulls.listReviewComments ??= async () => ({ data: [] });
       rest.pulls.get ??= async () => ({
         data: {
           title: "Review fixture",
@@ -221,6 +223,8 @@ describe("review command integration", () => {
     });
     tmpDir = await mkdtemp(path.join(os.tmpdir(), "review-int-"));
     process.env.RUNNER_TEMP = tmpDir;
+    process.env.GITHUB_WORKSPACE = tmpDir;
+    process.env.REVIEW_BASE_SHA = OLD;
     process.env.DROID_ARGS = "";
     process.env.GITHUB_REPOSITORY = "test-owner/test-repo";
     process.env.FACTORY_API_KEY = "test-factory-api-key";
@@ -248,15 +252,13 @@ describe("review command integration", () => {
 
     mcpSpy = spyOn(mcpInstaller, "prepareMcpTools").mockResolvedValue("{}");
     actorSpy = spyOn(actorValidation, "checkHumanActor").mockResolvedValue();
-    promptSpy = spyOn(promptModule, "createPrompt").mockResolvedValue();
-    computeArtifactsSpy = spyOn(
-      reviewArtifactsModule,
-      "computeReviewArtifacts",
-    ).mockResolvedValue({
-      diffPath: `${tmpDir}/droid-prompts/pr.diff`,
-      commentsPath: `${tmpDir}/droid-prompts/existing_comments.json`,
-      descriptionPath: `${tmpDir}/droid-prompts/pr_description.txt`,
-    });
+    // The suite has no checkout. Everything else that leaves a review's
+    // input runs: the lifecycle, the comments, and the input's builder.
+    checkoutSpies = [
+      spyOn(checkout, "fetchPullRequest").mockResolvedValue(),
+      spyOn(checkout, "fetchCommits").mockResolvedValue(),
+      spyOn(checkout, "hasCommit").mockResolvedValue(true),
+    ];
     setOutputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
     exportVarSpy = spyOn(core, "exportVariable").mockImplementation(
       (name, value) => {
@@ -264,16 +266,6 @@ describe("review command integration", () => {
           process.env[name] = String(value);
       },
     );
-
-    execSyncSpy = spyOn(childProcess, "execSync").mockImplementation(((
-      cmd: string,
-    ) => {
-      if (cmd.includes("merge-base")) return "abc123def456\n";
-      if (cmd.includes("git --no-pager diff")) {
-        return "diff --git a/file.ts b/file.ts\n+added line\n";
-      }
-      return "";
-    }) as typeof childProcess.execSync);
   });
 
   afterEach(async () => {
@@ -282,11 +274,9 @@ describe("review command integration", () => {
     createCommentSpy.mockRestore();
     mcpSpy.mockRestore();
     actorSpy.mockRestore();
-    promptSpy.mockRestore();
-    computeArtifactsSpy.mockRestore();
+    for (const spy of checkoutSpies) spy.mockRestore();
     setOutputSpy.mockRestore();
     exportVarSpy.mockRestore();
-    execSyncSpy.mockRestore();
     fetchSpy.mockRestore();
 
     await rm(tmpDir, { recursive: true, force: true });
@@ -300,11 +290,9 @@ describe("review command integration", () => {
     }
   });
 
-  function candidatesSessionTag(): unknown {
-    const droidArgs = setOutputSpy.mock.calls.find(
-      (call: unknown[]) => call[0] === "droid_args",
-    )?.[1] as string | undefined;
-    return parseSessionTagFromDroidArgs(droidArgs ?? "");
+  const inputPath = () => path.join(tmpDir, "droid-prompts/review_input.json");
+  async function writtenInput(): Promise<Record<string, unknown>> {
+    return JSON.parse(await readFile(inputPath(), "utf8"));
   }
   function expectStickyLifecycle(
     context: Parameters<typeof prepareTagExecution>[0]["context"],
@@ -368,6 +356,7 @@ describe("review command integration", () => {
               baseRefName: "main",
               headRefName: "feature/review",
               headRefOid: "def456",
+              title: "Review fixture",
             },
           },
         }),
@@ -379,6 +368,7 @@ describe("review command integration", () => {
           baseRefName: "main",
           headRefName: "feature/review",
           headRefOid: "def456",
+          title: "Review fixture",
         },
       },
     });
@@ -392,7 +382,15 @@ describe("review command integration", () => {
     expect(result.skipped).toBeFalsy();
     expect(result.branchInfo.baseBranch).toBe("main");
     expect(result.branchInfo.currentBranch).toBe("feature/review");
-    expect(promptSpy).toHaveBeenCalled();
+    expect(await writtenInput()).toMatchObject({
+      repo: "test-owner/test-repo",
+      prNumber: 7,
+      head: "def456",
+      base: OLD,
+      baseRef: "main",
+      headRef: "feature/review",
+      security: false,
+    });
     expect(process.env.DROID_EXEC_RUN_TYPE).toBe(DroidRunType.Review);
     expect(exportVarSpy).not.toHaveBeenCalledWith(
       "DROID_EXEC_RUN_TYPE",
@@ -444,9 +442,6 @@ describe("review command integration", () => {
       DroidRunType.Default,
     );
     expectStickyLifecycle(context);
-    expect(mcpSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ runType: DroidRunType.Default }),
-    );
   });
 
   it("keeps the run type null when no command is parsed", async () => {
@@ -483,9 +478,6 @@ describe("review command integration", () => {
       expect.anything(),
     );
     expectStickyLifecycle(context);
-    expect(mcpSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ runType: null }),
-    );
   });
 
   it("sets security flag only for @droid security", async () => {
@@ -522,6 +514,7 @@ describe("review command integration", () => {
               baseRefName: "main",
               headRefName: "feature/security",
               headRefOid: "abc123",
+              title: "Review fixture",
             },
           },
         }),
@@ -533,6 +526,7 @@ describe("review command integration", () => {
           baseRefName: "main",
           headRefName: "feature/security",
           headRefOid: "abc123",
+          title: "Review fixture",
         },
       },
     });
@@ -546,7 +540,11 @@ describe("review command integration", () => {
     expect(result.skipped).toBeFalsy();
     expect(result.branchInfo.baseBranch).toBe("main");
     expect(result.branchInfo.currentBranch).toBe("feature/security");
-    expect(promptSpy).toHaveBeenCalled();
+    // A security-only review is its judge's, not a flag on a code review.
+    expect(await writtenInput()).toMatchObject({
+      head: "abc123",
+      security: false,
+    });
     expect(process.env.DROID_EXEC_RUN_TYPE).toBe(DroidRunType.SecurityReview);
     expect(exportVarSpy).not.toHaveBeenCalledWith(
       "DROID_EXEC_RUN_TYPE",
@@ -561,7 +559,6 @@ describe("review command integration", () => {
       (call: unknown[]) => call[0] === "run_security_review",
     ) as [string, string] | undefined;
 
-    // Standalone security now uses two-pass pipeline (candidates + validator)
     expect(runCodeReviewCall?.[1]).toBe("true");
     expect(runSecurityReviewCall?.[1]).toBe("true");
   });
@@ -591,14 +588,7 @@ describe("review command integration", () => {
         "SECURITY_REVIEW_ENABLED",
         "true",
       );
-      expect(candidatesSessionTag()).toEqual({
-        name: "code-review",
-        metadata: expect.objectContaining({
-          pass: "candidates",
-          reviewType: "code",
-          securityReview: "false",
-        }),
-      });
+      expect(await writtenInput()).toMatchObject({ security: false });
     });
   }
 
@@ -620,7 +610,7 @@ describe("review command integration", () => {
           body.includes(SUMMARY_MARKER) && body.includes("[!IMPORTANT]"),
       ),
     ).toBe(true);
-    expect(promptSpy).not.toHaveBeenCalled();
+    expect(existsSync(inputPath())).toBe(false);
     expect(createCommentSpy).not.toHaveBeenCalled();
     expect(setOutputSpy).toHaveBeenCalledWith("run_code_review", "false");
     expect(setOutputSpy).toHaveBeenCalledWith("run_security_review", "false");
@@ -686,14 +676,7 @@ describe("review command integration", () => {
         "SECURITY_REVIEW_ENABLED",
         "true",
       );
-      expect(candidatesSessionTag()).toEqual({
-        name: "code-review",
-        metadata: expect.objectContaining({
-          pass: "candidates",
-          reviewType: "code",
-          securityReview: "false",
-        }),
-      });
+      expect(await writtenInput()).toMatchObject({ security: false });
     },
   );
 
@@ -725,14 +708,7 @@ describe("review command integration", () => {
         "SECURITY_REVIEW_ENABLED",
         "true",
       );
-      expect(candidatesSessionTag()).toEqual({
-        name: "code-review",
-        metadata: expect.objectContaining({
-          pass: "candidates",
-          reviewType: "code",
-          securityReview: "true",
-        }),
-      });
+      expect(await writtenInput()).toMatchObject({ security: true });
     },
   );
 
@@ -744,7 +720,7 @@ describe("review command integration", () => {
       ["explicitly enabled", "true", false, true],
       ["deduplicated", undefined, true, false],
     ] as const)(
-      `runs ${manifest} inputs through preparation to the written prompt: %s`,
+      `runs ${manifest} inputs through preparation to the written input: %s`,
       async (_name, securityInput, hasSummary, expectedSecurity) => {
         const action = parse(
           readFileSync(path.join(import.meta.dir, "../..", manifest), "utf8"),
@@ -756,9 +732,6 @@ describe("review command integration", () => {
             "",
         );
         const octokit = createAutomaticReviewOctokit(hasSummary);
-        // Exercise the real prompt builder and filesystem. Only remote APIs,
-        // checkout and MCP installation remain mocked by this suite.
-        promptSpy.mockRestore();
         const logSpy = spyOn(console, "log").mockImplementation(() => {});
         try {
           expect(shouldTriggerTag(context)).toBe(true);
@@ -773,19 +746,9 @@ describe("review command integration", () => {
             "run_security_review",
             String(expectedSecurity),
           );
-          const prompt = await readFile(
-            path.join(tmpDir, "droid-prompts/droid-prompt.txt"),
-            "utf8",
-          );
-          expect(prompt).toContain("test-owner/test-repo");
-          expect(prompt.includes("## Security Review (run concurrently)")).toBe(
-            expectedSecurity,
-          );
-          expect(candidatesSessionTag()).toEqual({
-            name: "code-review",
-            metadata: expect.objectContaining({
-              securityReview: String(expectedSecurity),
-            }),
+          expect(await writtenInput()).toMatchObject({
+            repo: "test-owner/test-repo",
+            security: expectedSecurity,
           });
         } finally {
           logSpy.mockRestore();
@@ -818,7 +781,6 @@ describe("review command integration", () => {
       const context = structuredClone(parseGitHubContext());
       // A prior security summary must not suppress a manual command.
       const octokit = createAutomaticReviewOctokit(true);
-      promptSpy.mockRestore();
       const logSpy = spyOn(console, "log").mockImplementation(() => {});
       try {
         expect(shouldTriggerTag(context)).toBe(true);
@@ -845,15 +807,20 @@ describe("review command integration", () => {
           expectedOutput,
           expect.any(String),
         );
-        const prompt = await readFile(
-          path.join(tmpDir, "droid-prompts/droid-prompt.txt"),
-          "utf8",
-        );
-        expect(prompt).toContain("test-owner/test-repo");
-        expect(prompt).not.toContain("## Security Review (run concurrently)");
-        expect(prompt.includes("senior security engineer")).toBe(
-          runType === DroidRunType.SecurityReview,
-        );
+        if (runType === DroidRunType.Fill) {
+          expect(
+            await readFile(
+              path.join(tmpDir, "droid-prompts/droid-prompt.txt"),
+              "utf8",
+            ),
+          ).toContain("test-owner/test-repo");
+          expect(existsSync(inputPath())).toBe(false);
+        } else {
+          expect(await writtenInput()).toMatchObject({
+            repo: "test-owner/test-repo",
+            security: false,
+          });
+        }
       } finally {
         logSpy.mockRestore();
       }

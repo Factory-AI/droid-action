@@ -12,16 +12,13 @@ import { rm } from "node:fs/promises";
 import { beginRisk, getRiskOidcToken } from "../core/risk/client";
 import {
   buildRiskRun,
-  describeFailure,
   parseFlag,
   parseReviewConfig,
   parseReviewOutcome,
   readEvent,
-  requiredEnv,
   resolveTarget,
   riskPlanPath,
   riskResultPath,
-  writePrivateJson,
 } from "../core/risk/plan";
 import {
   RISK_CAPABILITIES,
@@ -30,6 +27,11 @@ import {
   RISK_WORKFLOW_NOT_TRUSTED,
   type RiskPlan,
 } from "../core/risk/types";
+import {
+  describeFailure,
+  requiredEnv,
+  writePrivateJson,
+} from "../core/worker/step";
 import { freezeReviewRuntime } from "../prepare/review-runtime";
 
 export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {

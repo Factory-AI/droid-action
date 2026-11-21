@@ -9,16 +9,9 @@ import {
   type PrCommentRunType,
 } from "./comments/common";
 
-export type ExecutionDetails = {
-  cost_usd?: number;
-  duration_ms?: number;
-  duration_api_ms?: number;
-};
-
 export type CommentUpdateInput = {
   currentBody: string;
   actionFailed: boolean;
-  executionDetails: ExecutionDetails | null;
   jobUrl: string;
   branchLink?: string;
   prLink?: string;
@@ -109,7 +102,6 @@ export function ensureProperlyEncodedUrl(url: string): string | null {
 export function updateCommentBody(input: CommentUpdateInput): string {
   const originalBody = input.currentBody;
   const {
-    executionDetails,
     jobUrl,
     branchLink,
     prLink,
@@ -158,36 +150,16 @@ export function updateCommentBody(input: CommentUpdateInput): string {
     }
   }
 
-  // Calculate duration string if available
-  let durationStr = "";
-  if (executionDetails?.duration_ms !== undefined) {
-    const totalSeconds = Math.round(executionDetails.duration_ms / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    durationStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-  }
-
-  // Build the header
-  let header = "";
-
-  if (actionFailed) {
-    header = "**Droid encountered an error";
-    if (durationStr) {
-      header += ` after ${durationStr}`;
-    }
-    header += "**";
-  } else {
-    header =
-      review ||
-      input.prCommentRunType ||
-      readPrCommentRunType(originalBody, input.prCommentKind ?? "issue-comment")
-        ? "**Droid reviewed this PR"
-        : "**Droid finished";
-    if (durationStr) {
-      header += ` in ${durationStr}`;
-    }
-    header += "**";
-  }
+  const header = actionFailed
+    ? "**Droid encountered an error**"
+    : review ||
+        input.prCommentRunType ||
+        readPrCommentRunType(
+          originalBody,
+          input.prCommentKind ?? "issue-comment",
+        )
+      ? "**Droid reviewed this PR**"
+      : "**Droid finished**";
 
   // Add links section
   let links = ` · [View job](${jobUrl})`;

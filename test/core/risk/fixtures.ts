@@ -1,47 +1,6 @@
-import { execFile } from "node:child_process";
-import { join } from "node:path";
-import { promisify } from "node:util";
-import type {
-  PrRiskEvidenceWorkspace,
-  PullRequestRiskFile,
-  PullRequestRiskInput,
-  RiskJudge,
-  RiskPlan,
-} from "../../../src/core/risk/types";
+import type { RiskJudge, RiskPlan } from "../../../src/core/risk/types";
 
-const execFileAsync = promisify(execFile);
-
-export const pullRequest: PullRequestRiskInput = {
-  repo: "acme/app",
-  prNumber: 123,
-  title: "Rotate sessions safely",
-  baseSha: "b".repeat(40),
-  headSha: "a".repeat(40),
-  additions: 430,
-  deletions: 90,
-  changedFiles: 1,
-};
-
-export function file(
-  filename: string,
-  additions = 10,
-  deletions = 2,
-): PullRequestRiskFile {
-  return { filename, status: "modified", additions, deletions };
-}
-
-export function evidenceAt(rootDir: string): PrRiskEvidenceWorkspace {
-  const evidenceDir = join(rootDir, "evidence");
-  return {
-    rootDir,
-    headTreeDir: join(evidenceDir, "head"),
-    diffPath: join(evidenceDir, "pr.diff"),
-    inventoryPath: join(evidenceDir, "changed-files.json"),
-    guidelinesPath: null,
-    guidelinesBlobSha: null,
-    snapshotHash: "snapshot-hash",
-  };
-}
+type RiskIncremental = NonNullable<RiskPlan["incremental"]>;
 
 export const judge: RiskJudge = {
   group: "group-a",
@@ -64,17 +23,6 @@ export const validVerdict = {
   scores: { blastRadius: 2, testCoverage: 3 },
 };
 
-/** The one JSON object `droid exec -o json` prints for a finished session. */
-export function execSummary(result: unknown, sessionId = "session-1"): string {
-  return JSON.stringify({
-    type: "result",
-    subtype: "success",
-    is_error: false,
-    result: typeof result === "string" ? result : JSON.stringify(result),
-    session_id: sessionId,
-  });
-}
-
 export function planFor(overrides: Partial<RiskPlan> = {}): RiskPlan {
   return {
     repo: "acme/app",
@@ -88,59 +36,31 @@ export function planFor(overrides: Partial<RiskPlan> = {}): RiskPlan {
     },
     headSha: "a".repeat(40),
     baseSha: "b".repeat(40),
-    pullRequest: {
-      title: "Rotate sessions safely",
-      additions: 2,
-      deletions: 1,
-      changedFiles: 1,
-    },
+    pullRequest: { title: "Rotate sessions safely" },
     priorDeclines: [],
     judge,
     ...overrides,
   };
 }
 
-/**
- * Runs git for a fixture repository with no host configuration, so a
- * developer's signing or hook setup cannot change what a test commits.
- */
-export async function git(cwd: string, ...args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync(
-    "git",
-    ["-c", "user.name=Test", "-c", "user.email=test@example.com", ...args],
-    {
-      cwd,
-      env: {
-        PATH: process.env.PATH,
-        HOME: process.env.HOME,
-        GIT_CONFIG_GLOBAL: "/dev/null",
-        GIT_CONFIG_NOSYSTEM: "1",
-      },
+/** An earlier verdict to re-check, as Factory's `begin` serves one. */
+export function incrementalFor(
+  overrides: Partial<RiskIncremental> = {},
+): RiskIncremental {
+  return {
+    mode: "enforce",
+    reason: "small_change_since_decline",
+    priorHeadSha: "1".repeat(40),
+    priorAssessmentId: "0b9f6f0e-4c1d-4a55-9d2e-6a1f0c3b7e21",
+    priorBaseSha: "2".repeat(40),
+    judgeSha256: "9".repeat(64),
+    prior: {
+      verdict: false,
+      outcome: "doNotApprove",
+      brief: "- The rotation is untested.",
+      details: "No test exercises the rotation.",
+      concerns: [{ id: "c1", text: "The rotation is untested." }],
     },
-  );
-  return stdout.trim();
-}
-
-export async function commit(cwd: string, message: string): Promise<string> {
-  await git(cwd, "add", ".");
-  await git(cwd, "commit", "-q", "-m", message);
-  return git(cwd, "rev-parse", "HEAD");
-}
-
-/** A bare `origin.git` whose HEAD names `defaultBranch`, and a clone of it. */
-export async function createOriginAndCheckout(
-  repoDir: string,
-  defaultBranch = "dev",
-): Promise<string> {
-  await git(
-    repoDir,
-    "init",
-    "-q",
-    "--bare",
-    `--initial-branch=${defaultBranch}`,
-    "origin.git",
-  );
-  const checkoutDir = join(repoDir, "checkout");
-  await git(repoDir, "clone", "-q", "origin.git", checkoutDir);
-  return checkoutDir;
+    ...overrides,
+  };
 }

@@ -86,14 +86,9 @@ export function buildReviewPreviews(raw: string): Record<string, string> {
         durationSeconds: 4,
       },
       {
-        name: `Generated ${input.candidatesConsidered} candidates`,
+        name: `Reviewed, kept ${findings.length} of ${input.candidatesConsidered} candidates`,
         status: "completed" as const,
-        durationSeconds: 91,
-      },
-      {
-        name: "Validated candidates",
-        status: "completed" as const,
-        durationSeconds: 38,
+        durationSeconds: 129,
       },
       {
         name: "Posted review",

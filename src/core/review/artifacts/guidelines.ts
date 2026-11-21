@@ -6,7 +6,7 @@ import {
 } from "../prompts/guidelines";
 
 /** Basename of the on-disk copy, next to the diff and description. */
-export const REVIEW_GUIDELINES_ARTIFACT = "review_guidelines.md";
+const REVIEW_GUIDELINES_ARTIFACT = "review_guidelines.md";
 
 /**
  * What a platform's prepare state keeps about the guidelines so the

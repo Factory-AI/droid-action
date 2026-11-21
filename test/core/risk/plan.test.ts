@@ -1,11 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   buildRiskRun,
   buildSettleRequest,
-  describeFailure,
   parseFlag,
   parseReviewOutcome,
   readRiskPlan,
@@ -13,14 +12,12 @@ import {
   resolveTarget,
   riskPlanPath,
   riskResultPath,
-  writePrivateJson,
 } from "../../../src/core/risk/plan";
 import {
   RISK_SETTLE_MAX_BODY_BYTES,
-  RiskError,
-  failureReason,
   type RiskResultFile,
 } from "../../../src/core/risk/types";
+import { writePrivateJson } from "../../../src/core/worker/step";
 import { judge, planFor, validVerdict } from "./fixtures";
 
 const HEAD = "a".repeat(40);
@@ -150,36 +147,6 @@ describe("inputs", () => {
   });
 });
 
-describe("failures", () => {
-  it("labels only its own errors, and only with a well-formed reason", () => {
-    expect(failureReason(new RiskError("judge_timeout", "timed out"))).toBe(
-      "judge_timeout",
-    );
-    expect(failureReason(new RiskError("Not A Label", "odd"))).toBe(
-      "unexpected",
-    );
-    expect(failureReason(new Error("boom"))).toBe("unexpected");
-    expect(failureReason("boom")).toBe("unexpected");
-  });
-
-  it("removes the job's credentials from a message before it is logged", () => {
-    const saved = process.env.FACTORY_API_KEY;
-    process.env.FACTORY_API_KEY = "fk-super-secret-value";
-    try {
-      const logged = describeFailure(
-        new Error(
-          `request with fk-super-secret-value failed ${"x".repeat(5000)}`,
-        ),
-      );
-      expect(logged).not.toContain("fk-super-secret-value");
-      expect(logged.length).toBeLessThanOrEqual(2000);
-    } finally {
-      if (saved === undefined) delete process.env.FACTORY_API_KEY;
-      else process.env.FACTORY_API_KEY = saved;
-    }
-  });
-});
-
 describe("plan and result files", () => {
   let dir = "";
 
@@ -191,18 +158,11 @@ describe("plan and result files", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it("writes the plan readable by its owner alone, even over a file that was not", async () => {
-    const path = join(dir, "nested", "plan.json");
+  it("reads back the plan the begin step wrote", async () => {
+    const path = join(dir, "plan.json");
     const plan = planFor();
     await writePrivateJson(path, plan);
-    expect((await stat(path)).mode % 0o1000).toBe(0o600);
-    expect((await stat(join(dir, "nested"))).mode % 0o1000).toBe(0o700);
     expect(await readRiskPlan(path)).toEqual(plan);
-
-    const loose = join(dir, "loose.json");
-    await writeFile(loose, "{}", { mode: 0o644 });
-    await writePrivateJson(loose, plan);
-    expect((await stat(loose)).mode % 0o1000).toBe(0o600);
   });
 
   it("reports an unreadable plan without quoting it", async () => {
@@ -239,6 +199,7 @@ describe("plan and result files", () => {
         baseSha: "b".repeat(40),
         judgeSha256: judge.sha256,
         snapshotHash: "f".repeat(64),
+        guidelinesBlobSha: null,
         listedFiles: 1,
         attempts: [{ sessionId: "s1", valid: true, durationMs: 12 }],
         durationMs: 34,
@@ -261,8 +222,9 @@ describe("buildSettleRequest", () => {
       baseSha: plan.baseSha,
       judgeSha256: judge.sha256,
       snapshotHash: "f".repeat(64),
+      guidelinesBlobSha: null,
       listedFiles: 1,
-      attempts: [{ sessionId: "s1", valid: true }],
+      attempts: [{ sessionId: "s1", valid: true, durationMs: 12 }],
       durationMs: 34,
       verdict: validVerdict,
     };
@@ -293,8 +255,9 @@ describe("buildSettleRequest", () => {
         baseSha: plan.baseSha,
         judgeSha256: judge.sha256,
         snapshotHash: "f".repeat(64),
+        guidelinesBlobSha: null,
         listedFiles: 1,
-        attempts: [{ valid: true }],
+        attempts: [{ sessionId: "s1", valid: true, durationMs: 12 }],
         durationMs: 34,
         verdict: { ...validVerdict, details: "x".repeat(300 * 1024) },
       },
@@ -315,8 +278,9 @@ describe("buildSettleRequest", () => {
       baseSha: plan.baseSha,
       judgeSha256: judge.sha256,
       snapshotHash: "f".repeat(64),
+      guidelinesBlobSha: null,
       listedFiles: 1,
-      attempts: [{ valid: true }],
+      attempts: [{ sessionId: "s1", valid: true, durationMs: 12 }],
       durationMs: 34,
       verdict: { ...validVerdict, details },
     });

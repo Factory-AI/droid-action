@@ -206,6 +206,7 @@ jobs:
         uses: Factory-AI/droid-action@main
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          worker_token: ${{ secrets.DROID_REVIEW_READ_TOKEN }}
 ```
 
 Once committed, tagging `@droid fill`, `@droid review`, or `@droid security` on an open PR will trigger the bot automatically.
@@ -245,6 +246,7 @@ jobs:
         uses: Factory-AI/droid-action@main
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          worker_token: ${{ secrets.DROID_REVIEW_READ_TOKEN }}
           automatic_review: true
           automatic_security_review: true
           allowed_bots: factory-droid
@@ -255,7 +257,7 @@ The example allows reviews triggered by `factory-droid[bot]`. `allowed_bots` che
 
 On GitHub, omitting `automatic_security_review` (or leaving it empty) follows `automatic_review`. Existing workflows with `automatic_review: true` therefore also run security review unless they explicitly set `automatic_security_review: false`. New GitHub setup tooling writes your choice explicitly. Workflows that omit both inputs remain mention-driven, and explicit `@droid security` commands remain available.
 
-Both examples set `persist-credentials: false` so the workflow's `GITHUB_TOKEN` is not left in `.git/config`, where any command Droid runs could read it. The action authenticates its own git commands through `gh`.
+Both examples set `persist-credentials: false` so the workflow's `GITHUB_TOKEN` is not left in `.git/config`, where any command Droid runs could read it. The action authenticates its own git commands through `gh`. A review removes a token the checkout did leave there before its sessions start and does not put it back, so a later step of the job that relies on it has to bring its own credential.
 
 Pull requests from forks are reviewed without checking out their code. The action fetches the fork's commits to a separate ref and reviews the diff, so files from the fork, such as `.factory` hooks and MCP servers, `bunfig.toml` and `.env`, are never loaded in a job that holds your secrets. Droid is told it is reviewing a fork and reads the fork's files from that ref.
 
@@ -300,7 +302,7 @@ Droid never pushes to a repository's default branch and never force-pushes. The 
 
 ### Review UX and visible defaults
 
-Review output is rendered by TypeScript from the two-pass validator's structured JSON. The model supplies evidence and prose, not layout, counts, badges, or links.
+Review output is rendered by TypeScript from the review's structured answer. The model supplies evidence and prose, not layout, counts, badges, or links.
 
 - A sticky issue comment is the default summary location. Running and failed states preserve the previous review below a clear banner.
 - Findings use colored image severity labels by default, optional complete suggestions, a stable hidden finding marker, and a collapsed **Fix with an agent** prompt with an untrusted-data warning. The marker carries each finding's severity, title, and Security flag, so tools that read review comments do not depend on the visible layout. Review details are not displayed; hidden review state retains finding metadata, and security severity and CWE remain visible inline. Use `text` or `emoji` badges when remote images are blocked.
@@ -373,7 +375,7 @@ jobs:
 
 ## Authentication
 
-Droid needs two separate kinds of access: permission to run Droid, and permission to post on your pull requests. You set them up independently.
+Droid needs two separate kinds of access: permission to run Droid, and permission to post on your pull requests. You set them up independently. A review on GitHub needs a third, to download the worker that runs it.
 
 ### 1. Factory API key (run Droid)
 
@@ -412,26 +414,38 @@ To leave comments and reviews on your PRs, Droid needs a GitHub token. Droid nev
       github_token: ${{ secrets.MY_GITHUB_TOKEN }}
   ```
 
-> On GitLab, the same two pieces apply: set `FACTORY_API_KEY` and `GITLAB_TOKEN` as CI/CD variables. See [`docs/gitlab-setup.md`](docs/gitlab-setup.md).
+### 3. Review worker (run a review on GitHub)
+
+On GitHub, the action downloads one file, `droid-review.mjs`, from a private release. It contains both the code and security review rules. The action names the rules to use when it starts the worker; it does not download a separate judge. Pass a GitHub token that can read the release as `worker_token`:
+
+```yaml
+- uses: Factory-AI/droid-action@main
+  with:
+    factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+    worker_token: ${{ secrets.DROID_REVIEW_READ_TOKEN }}
+```
+
+The token is given to the step that downloads the worker and to the prepare step, which is handed every input. Both end before a model session starts. Without the token, or with one that cannot read the release, the review fails, saying the download step left no `droid-review.mjs`. [The worker](risk/README.md#the-worker) describes how the file is pinned and checked.
+
+> On GitLab, the first two pieces apply: set `FACTORY_API_KEY` and `GITLAB_TOKEN` as CI/CD variables. See [`docs/gitlab-setup.md`](docs/gitlab-setup.md).
 
 ## Configuration
 
 ### Core Inputs
 
-| Input                    | Purpose                                                                                                                                                                                                                                       |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `factory_api_key`        | **Required.** Grants Droid Exec permission to run via Factory.                                                                                                                                                                                |
-| `github_token`           | Optional override if you prefer a custom GitHub App/token. By default the installed app token is used.                                                                                                                                        |
-| `upload_debug_artifacts` | Default `false`. Uploads a `droid-review-debug-<run_id>` artifact with Droid's logs, sessions and review prompts. Credentials are redacted, but anyone who can read the repository's Actions runs can download it, including on public repos. |
+| Input                    | Purpose                                                                                                                                                                                                                                                                |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `factory_api_key`        | **Required.** Grants Droid Exec permission to run via Factory.                                                                                                                                                                                                         |
+| `github_token`           | Optional override if you prefer a custom GitHub App/token. By default the installed app token is used.                                                                                                                                                                 |
+| `worker_token`           | Needed for a review on GitHub. A GitHub token that can read the `droid-review` release the review worker is downloaded from. See [Review worker](#3-review-worker-run-a-review-on-github).                                                                             |
+| `upload_debug_artifacts` | Default `false`. Uploads a `droid-review-debug-<run_id>` artifact with Droid's logs and sessions, and a review's input, report and answer. Credentials are redacted, but anyone who can read the repository's Actions runs can download it, including on public repos. |
 
 ### Review Configuration
 
-| Input                         | Default | Purpose                                                                                              |
-| ----------------------------- | ------- | ---------------------------------------------------------------------------------------------------- |
-| `automatic_review`            | `false` | Automatically run code review on PRs without requiring `@droid review`.                              |
-| `review_depth`                | `deep`  | Review depth preset: `shallow` (fast) or `deep` (thorough). See [Review Depth](#review-depth) below. |
-| `review_candidates_max_turns` | `100`   | Stop candidate generation after this many assistant turns.                                           |
-| `review_validator_max_turns`  | `40`    | Stop validation after this many assistant turns.                                                     |
+| Input              | Default | Purpose                                                                                              |
+| ------------------ | ------- | ---------------------------------------------------------------------------------------------------- |
+| `automatic_review` | `false` | Automatically run code review on PRs without requiring `@droid review`.                              |
+| `review_depth`     | `deep`  | Review depth preset: `shallow` (fast) or `deep` (thorough). See [Review Depth](#review-depth) below. |
 
 ### Review UX Inputs
 
@@ -613,7 +627,7 @@ The step that writes guidelines reads untrusted comment text. It runs with file 
 
 ## Security Skills
 
-PR security reviews use the `security-review` skill built into the Droid CLI. No plugin is installed, so reviews always run the skill version that ships with the CLI.
+On GitHub, a PR security review runs in the `droid-review` worker, with the `security-review` skill that worker's release carries. On GitLab, Bitbucket and Azure DevOps, PR security reviews use the `security-review` skill built into the Droid CLI. No plugin is installed for either.
 
 Full-repository security scans (`@droid security --full` and scheduled scans) also install the `security-engineer` plugin from the public `Factory-AI/factory-plugins` repository, because these skills are not built into the CLI:
 
