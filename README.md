@@ -416,7 +416,7 @@ To leave comments and reviews on your PRs, Droid needs a GitHub token. Droid nev
 
 ### 3. Review worker (run a review on GitHub)
 
-On GitHub, a review runs in `droid-review`, a worker the action downloads as one file from a release in a private repository. Pass a GitHub token that can read that release as `worker_token`:
+On GitHub, the action downloads one file, `droid-review.mjs`, from a private release. It contains both the code and security review rules. The action names the rules to use when it starts the worker; it does not download a separate judge. Pass a GitHub token that can read the release as `worker_token`:
 
 ```yaml
 - uses: Factory-AI/droid-action@main

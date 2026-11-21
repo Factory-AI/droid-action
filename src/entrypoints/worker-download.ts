@@ -1,9 +1,8 @@
 #!/usr/bin/env bun
 
 /**
- * The one step that is given the worker token. It downloads what this
- * version of the action pins, the `droid-review` worker and the judge a
- * review will run with, to files only the job's user can read, and exits
+ * The one step that is given the worker token. It downloads the pinned
+ * `droid-review` bundle to a file only the job's user can read, and exits
  * before any session starts, so no process that runs pull request code is
  * ever given the token. It does not check the bytes: the step that uses a
  * file does, where it uses it. A download that fails writes nothing and
@@ -12,7 +11,7 @@
  */
 
 import * as core from "@actions/core";
-import { REVIEW_JUDGES, WORKER, type Pin } from "../core/worker/pins";
+import { WORKER } from "../core/worker/pins";
 import { downloadedPath } from "../core/worker/run";
 import { describeFailure, writePrivateFile } from "../core/worker/step";
 import { retryWithBackoff } from "../utils/retry";
@@ -50,32 +49,22 @@ function download(url: string, token: string): Promise<Buffer> {
   );
 }
 
-/**
- * Downloads the worker, and the judge `REVIEW_JUDGE` names when a review
- * will run in this job.
- */
 export async function run(
   env: NodeJS.ProcessEnv = process.env,
-  pins: { worker: Pin; judges: Record<string, Pin> } = {
-    worker: WORKER,
-    judges: REVIEW_JUDGES,
-  },
+  pin = WORKER,
 ): Promise<void> {
-  const judge = pins.judges[env.REVIEW_JUDGE?.trim() ?? ""];
-  for (const pin of [pins.worker, ...(judge ? [judge] : [])]) {
-    try {
-      const token = env.WORKER_TOKEN?.trim();
-      if (!token) throw new Error("WORKER_TOKEN is empty");
-      await writePrivateFile(
-        downloadedPath(pin, env),
-        await download(pin.url, token),
-      );
-      console.log(`Downloaded ${pin.name}.`);
-    } catch (error) {
-      core.warning(
-        `${pin.name} was not downloaded with the worker token (${describeFailure(error)}).`,
-      );
-    }
+  try {
+    const token = env.WORKER_TOKEN?.trim();
+    if (!token) throw new Error("WORKER_TOKEN is empty");
+    await writePrivateFile(
+      downloadedPath(pin, env),
+      await download(pin.url, token),
+    );
+    console.log(`Downloaded ${pin.name}.`);
+  } catch (error) {
+    core.warning(
+      `${pin.name} was not downloaded with the worker token (${describeFailure(error)}).`,
+    );
   }
 }
 

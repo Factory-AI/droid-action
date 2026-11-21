@@ -3,9 +3,8 @@
 /**
  * The one step of a review that starts a model session. It reads the input
  * the prepare step left, takes the credentials a checkout persisted out of
- * the job's checkout, and runs `droid-review review` there with the judge
- * the download step left, when the worker's bytes and the judge's are the
- * ones this version pins. It is given no GitHub token and no download token:
+ * the job's checkout, and runs `droid-review review` there with the named
+ * judge from the verified bundle. It is given no GitHub token and no download token:
  * both passes run pull request code beneath it. An answer about the prepared
  * commits is left where the publishing step reads it. Every other ending is
  * a failed review with a sentence saying why. It always exits 0, so the
@@ -26,7 +25,7 @@ import {
   type ReviewWorkerInput,
 } from "../core/review/worker";
 import { removeCheckoutCredentials } from "../core/worker/checkout";
-import { REVIEW_JUDGES, WORKER, type Pin } from "../core/worker/pins";
+import { WORKER, type Pin } from "../core/worker/pins";
 import { readDownloaded, runWorker } from "../core/worker/run";
 import {
   StepError,
@@ -38,7 +37,7 @@ import {
 
 async function review(
   env: NodeJS.ProcessEnv,
-  pins: { worker: Pin; judges: Record<"code" | "security", Pin> },
+  pin: Pin,
 ): Promise<ReviewOutcome & { note?: string }> {
   const securityOnly = env.REVIEW_SECURITY_ONLY === "true";
   const input: ReviewWorkerInput = await readFile(
@@ -50,20 +49,14 @@ async function review(
       "The review's input from the prepare step could not be read",
     );
   });
-  const worker = await readDownloaded(pins.worker, env);
-  // Parsed to be handed on whole. Nothing here reads a field of the judge.
-  const judge: unknown = JSON.parse(
-    (
-      await readDownloaded(pins.judges[securityOnly ? "security" : "code"], env)
-    ).toString("utf8"),
-  );
+  const worker = await readDownloaded(pin, env);
   const repoDir = requiredEnv("GITHUB_WORKSPACE", env);
   await removeCheckoutCredentials(repoDir);
   const report = await runWorker({
     product: "review",
     worker,
     repoDir,
-    input: { ...input, judge },
+    input: { ...input, judge: securityOnly ? "security" : "code" },
     // The worker's whole environment. Its passes run pull request code, so
     // of the job's credentials they get the Factory one and no other.
     env: {
@@ -91,14 +84,11 @@ async function review(
 
 export async function run(
   env: NodeJS.ProcessEnv = process.env,
-  pins: { worker: Pin; judges: Record<"code" | "security", Pin> } = {
-    worker: WORKER,
-    judges: REVIEW_JUDGES,
-  },
+  pin = WORKER,
 ): Promise<void> {
   let ending: ReviewOutcome & { note?: string };
   try {
-    ending = await review(env, pins);
+    ending = await review(env, pin);
   } catch (error) {
     ending = { error: describeFailure(error) };
   }

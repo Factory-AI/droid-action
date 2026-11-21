@@ -482,12 +482,8 @@ runs:
         LD_AUDIT: ""
         INPUT_PATH_TO_DROID_EXECUTABLE: ${{ inputs.path_to_droid_executable }}
 
-    # The one step that is given the worker token. It downloads the
-    # droid-review worker, and the judge a review will run with, to files only
-    # the job's user can read, and ends before any step that starts a session,
-    # so no process that runs pull request code is given the token. A failed
-    # download writes nothing and is a warning here: the step that finds no
-    # file it can use reports that.
+    # Only this step holds the download token. Review and risk share one
+    # pinned worker bundle; neither receives the token when it starts.
     - name: Download the worker
       if: ${{ !cancelled() && (inputs.risk_assessment == 'true' || (steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true' && steps.prepare.outputs.command_mode == '' && steps.prepare.outputs.run_code_review == 'true')) }}
       shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
@@ -504,7 +500,6 @@ runs:
         BASH_ENV: ""
         WORKER_TOKEN: ${{ inputs.worker_token }}
         WORKER_DIR: ${{ runner.temp }}/droid-worker
-        REVIEW_JUDGE: ${{ steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true' && steps.prepare.outputs.command_mode == '' && steps.prepare.outputs.run_code_review == 'true' && (steps.prepare.outputs.review_security_only == 'true' && 'security' || 'code') || '' }}
 
     - name: Review lifecycle reviewing
       if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.steward_skipped != 'true' && steps.prepare.outputs.command_mode == '' && steps.prepare.outputs.run_code_review == 'true'

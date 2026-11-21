@@ -8,7 +8,6 @@ import {
   spyOn,
 } from "bun:test";
 import * as core from "@actions/core";
-import { createHash } from "node:crypto";
 import {
   access,
   mkdir,
@@ -35,14 +34,6 @@ const exists = (path: string) =>
     () => true,
     () => false,
   );
-const sha256 = (text: string) =>
-  createHash("sha256").update(text).digest("hex");
-
-/** Stand-ins for the judges: the step hands one on and reads no field of it. */
-const JUDGES = {
-  code: JSON.stringify({ standIn: "code judge" }),
-  security: JSON.stringify({ standIn: "security judge" }),
-};
 
 describe("review-run entrypoint", () => {
   let dir = "";
@@ -71,14 +62,13 @@ describe("review-run entrypoint", () => {
   });
 
   /**
-   * Runs the step with a stand-in worker and stand-in judges where the
-   * download step leaves the real ones, and returns how the worker was run.
+   * Runs the step with only the worker in the download directory.
    */
   async function review(
     script: Omit<WorkerScript, "recordPath">,
     options: {
       env?: NodeJS.ProcessEnv;
-      left?: { worker?: string; code?: string; security?: string };
+      workerBytes?: string;
     } = {},
   ): Promise<WorkerRun | undefined> {
     const recordPath = join(dir, "worker-run.json");
@@ -87,15 +77,7 @@ describe("review-run entrypoint", () => {
     await mkdir(workerDir, { recursive: true });
     await writeFile(
       join(workerDir, "droid-review.mjs"),
-      options.left?.worker ?? worker.source,
-    );
-    await writeFile(
-      join(workerDir, "review-judge.json"),
-      options.left?.code ?? JUDGES.code,
-    );
-    await writeFile(
-      join(workerDir, "security-review-judge.json"),
-      options.left?.security ?? JUDGES.security,
+      options.workerBytes ?? worker.source,
     );
     await run(
       {
@@ -120,21 +102,7 @@ describe("review-run entrypoint", () => {
         ACTIONS_RUNTIME_TOKEN: "runtime-token",
         ...options.env,
       },
-      {
-        worker: { name: "droid-review.mjs", url: "", sha256: worker.sha256 },
-        judges: {
-          code: {
-            name: "review-judge.json",
-            url: "",
-            sha256: sha256(JUDGES.code),
-          },
-          security: {
-            name: "security-review-judge.json",
-            url: "",
-            sha256: sha256(JUDGES.security),
-          },
-        },
-      },
+      { name: "droid-review.mjs", url: "", sha256: worker.sha256 },
     );
     return (await exists(recordPath))
       ? JSON.parse(await readFile(recordPath, "utf8"))
@@ -189,7 +157,7 @@ describe("review-run entrypoint", () => {
     expect(ran?.args.slice(0, 3)).toEqual(["review", "--repo", checkoutDir]);
     expect(ran?.input).toEqual({
       ...input(),
-      judge: { standIn: "code judge" },
+      judge: "code",
     });
     expect(ran?.env).toEqual({
       PATH: process.env.PATH!,
@@ -242,7 +210,7 @@ describe("review-run entrypoint", () => {
       { env: { REVIEW_SECURITY_ONLY: "true" } },
     );
 
-    expect(ran?.input).toMatchObject({ judge: { standIn: "security judge" } });
+    expect(ran?.input).toMatchObject({ judge: "security" });
   });
 
   it("notes a review that ran on another model than the workflow named", async () => {
@@ -308,40 +276,18 @@ describe("review-run entrypoint", () => {
     });
   });
 
-  it.each([
-    [
-      "worker",
-      { worker: "// not the pinned worker\n" },
-      {},
-      "The downloaded droid-review.mjs does not have the bytes this version pins",
-    ],
-    [
-      "judge",
-      { code: '{"standIn":"another judge"}' },
-      {},
-      "The downloaded review-judge.json does not have the bytes this version pins",
-    ],
-    [
-      "security judge",
-      { security: '{"standIn":"another judge"}' },
-      { REVIEW_SECURITY_ONLY: "true" },
-      "The downloaded security-review-judge.json does not have the bytes this version pins",
-    ],
-  ])(
-    "starts no session with a %s whose bytes are not the pinned ones",
-    async (_name, left, env, message) => {
-      const ran = await review(
-        { report: answered(), exitCode: 0 },
-        { left, env },
-      );
-
-      expect(ran).toBeUndefined();
-      expect(outputs).toMatchObject({
-        conclusion: "failure",
-        error_message: message,
-      });
-    },
-  );
+  it("does not start the worker when its digest differs from the pin", async () => {
+    const ran = await review(
+      { report: answered(), exitCode: 0 },
+      { workerBytes: "// not the pinned worker\n" },
+    );
+    expect(ran).toBeUndefined();
+    expect(outputs).toMatchObject({
+      conclusion: "failure",
+      error_message:
+        "The downloaded droid-review.mjs does not have the bytes this version pins",
+    });
+  });
 
   it("starts no session when the prepare step left no input", async () => {
     await rm(promptsPath("review_input.json"));

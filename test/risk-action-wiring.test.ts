@@ -343,10 +343,6 @@ describe("risk assessment inside the full action", () => {
     expect(download?.if).toMatch(
       /^\$\{\{ !cancelled\(\) && \(inputs\.risk_assessment == 'true' \|\| \(.*steps\.prepare\.outputs\.run_code_review == 'true'\)\) \}\}$/,
     );
-    // The judge a review runs with is downloaded only when one will run.
-    expect(download?.env?.REVIEW_JUDGE).toMatch(
-      /run_code_review == 'true' && \(steps\.prepare\.outputs\.review_security_only == 'true' && 'security' \|\| 'code'\) \|\| '' \}\}$/,
-    );
   });
 
   it("assesses the pull request a comment was left on", () => {

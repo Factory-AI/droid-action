@@ -165,11 +165,13 @@ if (!script.until) end();
  */
 export function serveRelease(files: Record<string, string>): {
   urlOf: (name: string) => string;
+  requested: string[];
   token: string;
   forwarded: string[];
   stop: () => Promise<void>;
 } {
   const token = "worker-token";
+  const requested: string[] = [];
   const forwarded: string[] = [];
   const nameOf = (request: Request) =>
     new URL(request.url).pathname.split("/").at(-1) ?? "";
@@ -186,6 +188,7 @@ export function serveRelease(files: Record<string, string>): {
     hostname: "127.0.0.1",
     port: 0,
     fetch(request) {
+      requested.push(nameOf(request));
       const asked =
         request.headers.get("authorization") === `Bearer ${token}` &&
         request.headers.get("accept") === "application/octet-stream" &&
@@ -199,6 +202,7 @@ export function serveRelease(files: Record<string, string>): {
   });
   return {
     urlOf: (name) => `http://127.0.0.1:${api.port}/releases/assets/${name}`,
+    requested,
     token,
     forwarded,
     stop: async () => {

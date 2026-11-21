@@ -262,12 +262,8 @@ runs:
         LD_LIBRARY_PATH: ""
         LD_AUDIT: ""
 
-    # The one step that is given the worker token. It downloads the
-    # droid-review worker, and the judge a review will run with, to files only
-    # the job's user can read, and ends before any step that starts a session,
-    # so no process that runs pull request code is given the token. A failed
-    # download writes nothing and is a warning here: the step that finds no
-    # file it can use reports that.
+    # Only this step holds the download token. Review and risk share one
+    # pinned worker bundle; neither receives the token when it starts.
     - name: Download the worker
       if: steps.prepare.outputs.review_skipped != 'true'
       shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
@@ -284,7 +280,6 @@ runs:
         BASH_ENV: ""
         WORKER_TOKEN: ${{ inputs.worker_token }}
         WORKER_DIR: ${{ runner.temp }}/droid-worker
-        REVIEW_JUDGE: security
 
     - name: Review lifecycle reviewing
       if: steps.prepare.outputs.review_skipped != 'true'

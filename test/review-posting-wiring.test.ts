@@ -78,7 +78,6 @@ describe("review safety wiring", () => {
       const download = stepByName(action, "Download the worker");
 
       expect(stepById(action, "prepare").env.REVIEW_TYPE).toBe(type);
-      expect(download.env.REVIEW_JUDGE).toBe(type);
       for (const step of [
         download,
         stepByName(action, "Review lifecycle reviewing"),
