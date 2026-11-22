@@ -87,7 +87,7 @@ describe("review configuration action wiring", () => {
       );
       if (validatorPreparation)
         expect(validatorPreparation.env?.REVIEW_DEPTH).toBe(
-          `\${{ fromJSON(steps.${source}.outputs.review_config_json).review_depth }}`,
+          `\${{ fromJSON(steps.${source}.outputs.review_config_json || '{}').review_depth }}`,
         );
       for (const step of manifest.runs.steps.filter(
         (step) => step.env?.REVIEW_PUBLISHER_PATH,

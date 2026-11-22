@@ -84,6 +84,42 @@ describe("setupGitHubToken", () => {
     getIdTokenSpy.mockRestore();
     retrySpy.mockRestore();
   });
+  test("runs the skip callback before exiting on a workflow validation failure", async () => {
+    delete process.env.OVERRIDE_GITHUB_TOKEN;
+
+    global.fetch = mock(async () => ({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      json: async () => ({
+        error: "workflow_validation_failed",
+        message: "Workflow file differs from the default branch",
+      }),
+    })) as unknown as typeof fetch;
+    const calls: string[] = [];
+    const spies = [
+      spyOn(core, "setOutput").mockImplementation(() => {}),
+      spyOn(core, "setFailed").mockImplementation(() => {}),
+      spyOn(core, "warning").mockImplementation(() => {}),
+      spyOn(console, "log").mockImplementation(() => {}),
+      spyOn(core, "getIDToken").mockResolvedValue("oidc-token"),
+      spyOn(retryModule, "retryWithBackoff").mockImplementation(
+        <T>(operation: () => Promise<T>) => operation(),
+      ),
+    ];
+    exitSpy.mockImplementation(((code?: number) => {
+      calls.push(`exit:${code}`);
+      throw new Error(`process.exit called with code ${code}`);
+    }) as typeof process.exit);
+
+    await setupGitHubToken(undefined, {
+      onWorkflowValidationSkip: () => calls.push("skip"),
+    }).catch(() => {});
+
+    expect(calls.slice(0, 2)).toEqual(["skip", "exit:0"]);
+    for (const spy of spies) spy.mockRestore();
+  });
+
   test("asks the exchange for the requested permissions", async () => {
     delete process.env.OVERRIDE_GITHUB_TOKEN;
 

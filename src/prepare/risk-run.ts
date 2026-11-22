@@ -27,6 +27,9 @@ export const ID_TOKEN_WARNING_TITLE =
 export const ID_TOKEN_REPLY =
   "The risk assessment couldn't start: the workflow job needs `permissions: id-token: write`.";
 
+export const WORKFLOW_DIFFERS_WARNING_TITLE =
+  "Risk assessment skipped: workflow file differs from the default branch";
+
 /** Reads the inputs that decide what runs. An unknown `run` value throws. */
 export function readRiskRunInputs(
   env: NodeJS.ProcessEnv = process.env,
@@ -124,6 +127,20 @@ export function publishRunPlan(
   core.setOutput("run_reason", plan.reason);
   console.log(`Run plan: ${plan.reason}`);
   return { ...plan, risk, riskManual, idTokenMissing };
+}
+
+/**
+ * Factory exchanges a token only for a workflow file that matches the default
+ * branch's copy, and the action exits before begin when it does not. Without
+ * this warning the only trace is the generic validation skip, which does not
+ * say an assessment was wanted.
+ */
+export function warnRiskSkippedForWorkflow(plan: RunPlan): void {
+  if (!plan.risk) return;
+  core.warning(
+    "Factory assesses risk only when this workflow file matches its copy on the default branch, and this pull request changes it. No assessment ran and nothing was approved. Runs after the change reaches the default branch are assessed.",
+    { title: WORKFLOW_DIFFERS_WARNING_TITLE },
+  );
 }
 
 /** Tells the requester why their PR comment's assessment did not start. */

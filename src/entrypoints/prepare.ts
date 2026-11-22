@@ -31,6 +31,7 @@ import {
   readRiskRunInputs,
   replyRiskNeedsIdToken,
   riskRuntimeNeeded,
+  warnRiskSkippedForWorkflow,
   type RiskRunInputs,
 } from "../prepare/risk-run";
 
@@ -56,10 +57,14 @@ export async function run() {
 
     // Only the full action narrows its token. The prepare sub-action hands the
     // token to the caller's later steps, which may push or merge with it.
+    const plannedRun = planRun(context, riskInputs);
     const githubToken = await setupGitHubToken(
       process.env.SCOPE_APP_TOKEN === "true"
         ? appTokenPermissionsFor(context)
         : undefined,
+      {
+        onWorkflowValidationSkip: () => warnRiskSkippedForWorkflow(plannedRun),
+      },
     );
     core.setOutput("github_token", githubToken);
     const octokit = createOctokit(githubToken);
