@@ -204,7 +204,9 @@ The inputs are this sub-action's with a `risk_` prefix: `risk_pr_number`,
 `risk_disabled_paths` and so on), which Factory reads from the full action's
 step in the same way. They apply whatever `automatic_risk_assessment` says:
 turning automatic runs off still leaves manual ones, which use them too.
-`factory_api_key` is shared with the review and there
+`factory_api_key` is shared with the review unless
+`risk_factory_api_key` is set, which only the risk steps use (for a
+`risk_api_base_url` that does not accept the review's key). There
 is no `review_outcome`, `review_base_sha` or `review_has_rules`. The outputs are
 `risk_action`, `risk_outcome` and `risk_head_sha`. Everything else on this
 page applies unchanged.

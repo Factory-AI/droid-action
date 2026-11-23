@@ -287,6 +287,10 @@ inputs:
     description: "Pull request to risk-assess. Empty uses the pull request of the triggering event."
     required: false
     default: ""
+  risk_factory_api_key:
+    description: "Factory API key for the risk assessment only: the begin and settle requests and the judge session. Empty uses factory_api_key. Set it when risk_api_base_url is a Factory deployment that does not accept the review's key."
+    required: false
+    default: ""
   risk_api_base_url:
     description: "Factory API host that answers the risk assessment's begin and settle requests."
     required: false
@@ -1899,7 +1903,7 @@ runs:
         NODE_OPTIONS: ""
         ENV: ""
         BASH_ENV: ""
-        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+        FACTORY_API_KEY: ${{ inputs.risk_factory_api_key || inputs.factory_api_key }}
         RISK_API_BASE_URL: ${{ inputs.risk_api_base_url }}
         # A comment on a pull request is an issue_comment event, which names
         # the pull request as an issue.
@@ -2073,7 +2077,7 @@ runs:
         NODE_OPTIONS: ""
         ENV: ""
         BASH_ENV: ""
-        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+        FACTORY_API_KEY: ${{ inputs.risk_factory_api_key || inputs.factory_api_key }}
         GH_TOKEN: ${{ steps.risk_token.outputs.github_token || (steps.risk_token.outputs.use_workflow_token == 'true' && github.token) || '' }}
         RISK_JUDGE_API_BASE_URL: ${{ inputs.risk_judge_api_base_url }}
         RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
@@ -2191,7 +2195,7 @@ runs:
         NODE_OPTIONS: ""
         ENV: ""
         BASH_ENV: ""
-        FACTORY_API_KEY: ${{ inputs.factory_api_key }}
+        FACTORY_API_KEY: ${{ inputs.risk_factory_api_key || inputs.factory_api_key }}
         RISK_API_BASE_URL: ${{ inputs.risk_api_base_url }}
         RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
         RISK_RESULT_PATH: ${{ runner.temp }}/pr-risk/result.json
