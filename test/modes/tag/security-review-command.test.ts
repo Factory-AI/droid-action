@@ -18,6 +18,8 @@ import * as mcpInstaller from "../../../src/mcp/install-mcp-server";
 import * as comments from "../../../src/github/operations/comments/create-initial";
 import { DroidRunType } from "../../../src/run-type";
 import { parseSessionTagFromDroidArgs } from "../../utils/session-tag-helpers";
+import * as lifecycle from "../../../src/github/operations/review-lifecycle";
+import * as policy from "../../../src/utils/model-policy";
 
 const MOCK_PR_DATA = {
   baseRefName: "main",
@@ -44,8 +46,26 @@ describe("prepareSecurityReviewMode", () => {
   let setOutputSpy: ReturnType<typeof spyOn>;
   let createInitialSpy: ReturnType<typeof spyOn>;
   let exportVariableSpy: ReturnType<typeof spyOn>;
+  let lifecycleSpy: ReturnType<typeof spyOn>;
+  let readLifecycleSpy: ReturnType<typeof spyOn>;
+  let policySpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
+    policySpy = spyOn(policy, "applyModelPolicyFallback").mockImplementation(
+      async (config) => config,
+    );
+    lifecycleSpy = spyOn(
+      lifecycle,
+      "prepareReviewLifecycle",
+    ).mockImplementation(async (options) => ({
+      commentId: options.trackingCommentId ?? 777,
+      state: { head: "", findings: [] },
+      run: {} as lifecycle.ReviewLifecycleRun,
+    }));
+    readLifecycleSpy = spyOn(
+      lifecycle,
+      "readReviewLifecycle",
+    ).mockResolvedValue(null);
     process.env.DROID_ARGS = "";
     delete process.env.REVIEW_MODEL;
     delete process.env.SECURITY_MODEL;
@@ -89,6 +109,9 @@ describe("prepareSecurityReviewMode", () => {
   });
 
   afterEach(() => {
+    policySpy.mockRestore();
+    lifecycleSpy.mockRestore();
+    readLifecycleSpy.mockRestore();
     fetchPRSpy.mockRestore();
     computeArtifactsSpy.mockRestore();
     promptSpy.mockRestore();
@@ -189,6 +212,33 @@ describe("prepareSecurityReviewMode", () => {
     });
   });
 
+  it("labels policy-selected Auto without claiming a backend model", async () => {
+    policySpy.mockResolvedValueOnce({
+      model: undefined,
+      reasoningEffort: undefined,
+      fallbackNote: "Organization policy selected Auto.",
+    });
+    await prepareSecurityReviewMode({
+      context: createMockContext({
+        eventName: "issue_comment",
+        isPR: true,
+        entityNumber: 24,
+      }),
+      octokit: { rest: {}, graphql: () => {} } as any,
+      githubToken: "token",
+      trackingCommentId: 555,
+    });
+    expect(setOutputSpy).toHaveBeenCalledWith("review_model", "auto");
+    expect(setOutputSpy).toHaveBeenCalledWith(
+      "review_reasoning_effort",
+      "default",
+    );
+    expect(setOutputSpy).toHaveBeenCalledWith(
+      "model_fallback_note",
+      "Organization policy selected Auto.",
+    );
+  });
+
   it("creates tracking comment when not provided", async () => {
     const context = createMockContext({
       eventName: "issue_comment",
@@ -210,11 +260,8 @@ describe("prepareSecurityReviewMode", () => {
       githubToken: "token",
     });
 
-    expect(createInitialSpy).toHaveBeenCalledWith(
-      octokit.rest,
-      context,
-      "security",
-      DroidRunType.SecurityReview,
+    expect(lifecycleSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ octokit, context, securityOnly: true }),
     );
     expect(result.commentId).toBe(777);
   });
@@ -294,9 +341,17 @@ describe("prepareSecurityReviewMode", () => {
     ) as [string, string] | undefined;
     expect(droidArgsCall?.[1]).toContain('--model "openai-latest-balanced"');
     expect(droidArgsCall?.[1]).toContain('--reasoning-effort "medium"');
+    expect(setOutputSpy).toHaveBeenCalledWith(
+      "review_model",
+      "openai-latest-balanced",
+    );
+    expect(setOutputSpy).toHaveBeenCalledWith(
+      "review_reasoning_effort",
+      "medium",
+    );
   });
 
-  it("outputs install_security_skills flag", async () => {
+  it("does not request the security plugin install", async () => {
     const context = createMockContext({
       eventName: "issue_comment",
       isPR: true,
@@ -320,8 +375,8 @@ describe("prepareSecurityReviewMode", () => {
 
     const installSkillsCall = setOutputSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "install_security_skills",
-    ) as [string, string] | undefined;
-    expect(installSkillsCall?.[1]).toBe("true");
+    );
+    expect(installSkillsCall).toBeUndefined();
   });
 
   it("prefers SECURITY_MODEL over REVIEW_MODEL", async () => {
@@ -354,6 +409,11 @@ describe("prepareSecurityReviewMode", () => {
     ) as [string, string] | undefined;
     expect(droidArgsCall?.[1]).toContain('--model "gpt-5.1-codex"');
     expect(droidArgsCall?.[1]).not.toContain("claude-sonnet");
+    expect(setOutputSpy).toHaveBeenCalledWith("review_model", "gpt-5.1-codex");
+    expect(setOutputSpy).toHaveBeenCalledWith(
+      "review_reasoning_effort",
+      "default",
+    );
   });
 
   it("falls back to REVIEW_MODEL when SECURITY_MODEL is not set", async () => {

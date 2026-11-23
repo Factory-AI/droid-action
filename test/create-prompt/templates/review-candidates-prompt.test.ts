@@ -82,6 +82,24 @@ describe("generateReviewCandidatesPrompt", () => {
     expect(prompt).toContain("reviewSummary");
   });
 
+  it("gives a schema example that parses as JSON", () => {
+    const prompt = generateReviewCandidatesPrompt(createBaseContext());
+
+    const example = /```json\n([\s\S]*?)\n```/.exec(prompt)?.[1];
+    expect(example).toBeDefined();
+    const parsed = JSON.parse(example!);
+    expect(parsed.reviewSummary.body).toContain("\n\n- optional whole-change");
+  });
+  it("lets the summary carry whole-change observations from review guidelines", () => {
+    const context = createBaseContext();
+
+    const prompt = generateReviewCandidatesPrompt(context);
+
+    expect(prompt).toContain("whole-change observations");
+    expect(prompt).toContain("up to three short");
+    expect(prompt).toContain("never in `comments`");
+  });
+
   it("includes critical constraints to not post to GitHub", () => {
     const context = createBaseContext();
 
@@ -130,5 +148,32 @@ describe("generateReviewCandidatesPrompt", () => {
 
     expect(prompt).toContain("Do NOT include code suggestion blocks");
     expect(prompt).not.toContain("suggestion block rules");
+  });
+
+  it("carries the repository's review guidelines verbatim ahead of the context", () => {
+    const context = createBaseContext({
+      reviewGuidelines: {
+        source: ".factory/skills/review-guidelines/SKILL.md@main",
+        body: "# Team rules\n\n- Flag any new `Date.now()` call.",
+        path: "/tmp/test/review_guidelines.md",
+      },
+    });
+
+    const prompt = generateReviewCandidatesPrompt(context);
+
+    const block =
+      '<review-guidelines source=".factory/skills/review-guidelines/SKILL.md@main">\n# Team rules\n\n- Flag any new `Date.now()` call.\n</review-guidelines>';
+    expect(prompt).toContain(block);
+    expect(prompt.indexOf(block)).toBeLessThan(prompt.indexOf("<context>"));
+    expect(prompt).toContain(
+      "copy the `<review-guidelines>` block below verbatim into each subagent's prompt",
+    );
+  });
+
+  it("says nothing about guidelines when the repository has none", () => {
+    const prompt = generateReviewCandidatesPrompt(createBaseContext());
+
+    expect(prompt).not.toContain("review-guidelines");
+    expect(prompt).not.toContain("Repository review guidelines");
   });
 });

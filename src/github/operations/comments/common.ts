@@ -1,6 +1,12 @@
 import { GITHUB_SERVER_URL } from "../../api/config";
 import { sanitizeContent } from "../../utils/sanitizer";
 import {
+  decodeReviewState,
+  encodeReviewState,
+  hasSummaryMarker,
+  SUMMARY_MARKER,
+} from "../../../core/review/markers";
+import {
   DroidRunType,
   parsePrValidationRunType,
   type PrValidationRunType,
@@ -69,7 +75,7 @@ export function createJobRunLink(
   runId: string,
 ): string {
   const jobRunUrl = `${GITHUB_SERVER_URL}/${owner}/${repo}/actions/runs/${runId}`;
-  return `[View job run](${jobRunUrl})`;
+  return `[View job](${jobRunUrl})`;
 }
 
 export function createBranchLink(
@@ -119,7 +125,22 @@ export function prepareDroidTrackingCommentBody(
     readPrCommentRunType(currentBody, kind),
     runType,
   );
-  return prepareDroidCommentBody(content, mergedRunType, kind);
+  let body = prepareDroidCommentBody(content, mergedRunType, kind);
+  if (hasSummaryMarker(currentBody)) {
+    // Model updates may change visible progress, never incremental memory or active-run identity.
+    const state = decodeReviewState(currentBody);
+    const active = currentBody
+      .split("\n")
+      .find((line) =>
+        /^<!-- droid-review-active:v1 head=[a-f0-9]{7,64} run=\d+ -->$/.test(
+          line,
+        ),
+      );
+    body = [SUMMARY_MARKER, state ? encodeReviewState(state) : "", active, body]
+      .filter(Boolean)
+      .join("\n\n");
+  }
+  return body;
 }
 
 export function createCommentBody(

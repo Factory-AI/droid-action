@@ -1,5 +1,6 @@
 import * as fs from "fs/promises";
 import * as path from "path";
+import type { StoredReviewGuidelines } from "../core/review/artifacts/guidelines";
 
 /**
  * Files shared by the Azure DevOps review steps. Each step is its own
@@ -98,6 +99,8 @@ export type AzureDevopsPrepareState = {
   includeSuggestions: boolean;
   securityReviewEnabled: boolean;
   triggeredBy: string | null;
+  /** Where Pass 1 stored the repository's review guidelines, if it found any. */
+  reviewGuidelines?: StoredReviewGuidelines | null;
   /** Set when Pass 1 left no usable candidates, so Pass 2 never really ran. */
   validatorSkippedReason?: string;
 };

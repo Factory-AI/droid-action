@@ -10,6 +10,7 @@ import * as childProcess from "child_process";
 import * as fsPromises from "fs/promises";
 import { DroidRunType } from "../../../src/run-type";
 import { parseSessionTagFromDroidArgs } from "../../utils/session-tag-helpers";
+import * as lifecycle from "../../../src/github/operations/review-lifecycle";
 
 const MOCK_PR_DATA = {
   title: "PR for review",
@@ -33,6 +34,8 @@ describe("prepareReviewMode", () => {
   const originalReviewModel = process.env.REVIEW_MODEL;
   const originalRunnerTemp = process.env.RUNNER_TEMP;
   const originalSecurityReviewEnabled = process.env.SECURITY_REVIEW_ENABLED;
+  const originalFactoryApiKey = process.env.FACTORY_API_KEY;
+  const originalReasoningEffort = process.env.REASONING_EFFORT;
   let graphqlSpy: ReturnType<typeof spyOn>;
   let promptSpy: ReturnType<typeof spyOn>;
   let mcpSpy: ReturnType<typeof spyOn>;
@@ -42,12 +45,37 @@ describe("prepareReviewMode", () => {
   let execSyncSpy: ReturnType<typeof spyOn>;
   let writeFileSpy: ReturnType<typeof spyOn>;
   let mkdirSpy: ReturnType<typeof spyOn>;
+  let fetchSpy: ReturnType<typeof spyOn>;
+  let lifecycleSpy: ReturnType<typeof spyOn>;
+  let readLifecycleSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
+    lifecycleSpy = spyOn(
+      lifecycle,
+      "prepareReviewLifecycle",
+    ).mockImplementation(async (options) => ({
+      commentId: options.trackingCommentId ?? 777,
+      state: { head: "", findings: [] },
+      run: {} as lifecycle.ReviewLifecycleRun,
+    }));
+    readLifecycleSpy = spyOn(
+      lifecycle,
+      "readReviewLifecycle",
+    ).mockResolvedValue(null);
     process.env.DROID_ARGS = "";
     delete process.env.REVIEW_MODEL;
     delete process.env.SECURITY_REVIEW_ENABLED;
     process.env.RUNNER_TEMP = "/tmp/test-runner";
+    process.env.FACTORY_API_KEY = "test-factory-api-key";
+    // Exercise policy parsing without network timing or runner credentials.
+    const policyFetch = Object.assign(
+      async (input: Parameters<typeof fetch>[0]) => {
+        expect(String(input)).toEndWith("/api/organization/managed-settings");
+        return Response.json({ success: true, settings: {} });
+      },
+      { preconnect: fetch.preconnect },
+    );
+    fetchSpy = spyOn(globalThis, "fetch").mockImplementation(policyFetch);
 
     promptSpy = spyOn(promptModule, "createPrompt").mockResolvedValue();
     mcpSpy = spyOn(mcpInstaller, "prepareMcpTools").mockResolvedValue(
@@ -79,6 +107,9 @@ describe("prepareReviewMode", () => {
   });
 
   afterEach(() => {
+    lifecycleSpy.mockRestore();
+    readLifecycleSpy.mockRestore();
+    fetchSpy?.mockRestore();
     graphqlSpy?.mockRestore();
     promptSpy.mockRestore();
     mcpSpy.mockRestore();
@@ -88,7 +119,11 @@ describe("prepareReviewMode", () => {
     execSyncSpy.mockRestore();
     writeFileSpy.mockRestore();
     mkdirSpy.mockRestore();
-    process.env.DROID_ARGS = originalArgs;
+    if (originalArgs === undefined) {
+      delete process.env.DROID_ARGS;
+    } else {
+      process.env.DROID_ARGS = originalArgs;
+    }
     if (originalReviewModel !== undefined) {
       process.env.REVIEW_MODEL = originalReviewModel;
     } else {
@@ -103,6 +138,16 @@ describe("prepareReviewMode", () => {
       process.env.SECURITY_REVIEW_ENABLED = originalSecurityReviewEnabled;
     } else {
       delete process.env.SECURITY_REVIEW_ENABLED;
+    }
+    for (const [name, value] of Object.entries({
+      FACTORY_API_KEY: originalFactoryApiKey,
+      REASONING_EFFORT: originalReasoningEffort,
+    })) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
     }
   });
 
@@ -161,10 +206,19 @@ describe("prepareReviewMode", () => {
       octokit,
       githubToken: "token",
       trackingCommentId: 555,
+      fullReview: true,
+      focus: "the migration for locking issues",
     });
 
     expect(graphqlSpy).toHaveBeenCalled();
     expect(promptSpy).toHaveBeenCalled();
+    expect(lifecycleSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ full: true }),
+    );
+    const generated = promptSpy.mock.calls[0]?.[0]?.generatePrompt(
+      promptModule.prepareContext(context),
+    );
+    expect(generated).toContain("the migration for locking issues");
     expect(mcpSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         runType: DroidRunType.Review,
@@ -406,11 +460,8 @@ describe("prepareReviewMode", () => {
       githubToken: "token",
     });
 
-    expect(createInitialSpy).toHaveBeenCalledWith(
-      octokit.rest,
-      context,
-      "default",
-      DroidRunType.Review,
+    expect(lifecycleSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ octokit, context }),
     );
     expect(result.commentId).toBe(777);
   });
@@ -492,6 +543,10 @@ describe("prepareReviewMode", () => {
     expect(droidArgsCall?.[1]).toContain(
       '--model "claude-sonnet-4-5-20250929"',
     );
+    expect(setOutputSpy).toHaveBeenCalledWith(
+      "review_model",
+      "claude-sonnet-4-5-20250929",
+    );
   });
 
   it("does not add --model flag when REVIEW_MODEL is empty", async () => {
@@ -560,6 +615,14 @@ describe("prepareReviewMode", () => {
     // When REVIEW_MODEL is empty the deep depth preset kicks in (openai-latest-balanced, medium reasoning).
     expect(droidArgsCall?.[1]).toContain('--model "openai-latest-balanced"');
     expect(droidArgsCall?.[1]).toContain('--reasoning-effort "medium"');
+    expect(setOutputSpy).toHaveBeenCalledWith(
+      "review_model",
+      "openai-latest-balanced",
+    );
+    expect(setOutputSpy).toHaveBeenCalledWith(
+      "review_reasoning_effort",
+      "medium",
+    );
   });
 
   it("stores PR description as an artifact file", async () => {
@@ -778,5 +841,74 @@ describe("prepareReviewMode", () => {
     ) as [string, string] | undefined;
     expect(droidArgsCall?.[1]).toContain("FetchUrl");
     expect(droidArgsCall?.[1]).toContain("Task");
+  });
+
+  it("reads the repository's review guidelines from the PR base branch into the prompt", async () => {
+    const context = createMockContext({
+      eventName: "issue_comment",
+      isPR: true,
+      payload: {
+        comment: { id: 109, body: "@droid review" },
+      } as any,
+      entityNumber: 32,
+    });
+
+    const getContent = spyOn(
+      { getContent: async () => ({}) },
+      "getContent",
+    ).mockResolvedValue({
+      data: {
+        content: Buffer.from(
+          "---\nname: review-guidelines\n---\n# Rules\n- Never swallow errors.\n",
+        ).toString("base64"),
+      },
+    });
+    const octokit = {
+      rest: {
+        issues: { listComments: () => Promise.resolve({ data: [] }) },
+        pulls: { listReviewComments: () => Promise.resolve({ data: [] }) },
+        repos: { getContent },
+      },
+      graphql: () => Promise.resolve({}),
+    } as any;
+    graphqlSpy = spyOn(octokit, "graphql").mockResolvedValue({
+      repository: {
+        pullRequest: {
+          baseRefName: MOCK_PR_DATA.baseRefName,
+          headRefName: MOCK_PR_DATA.headRefName,
+          headRefOid: MOCK_PR_DATA.headRefOid,
+          isCrossRepository: false,
+          title: MOCK_PR_DATA.title,
+          body: MOCK_PR_DATA.body,
+        },
+      },
+    });
+
+    await prepareReviewMode({
+      context,
+      octokit,
+      githubToken: "token",
+      trackingCommentId: 562,
+    });
+
+    expect(getContent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: ".factory/skills/review-guidelines/SKILL.md",
+        ref: MOCK_PR_DATA.baseRefName,
+      }),
+    );
+    expect(promptSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reviewGuidelines: {
+          source: `.factory/skills/review-guidelines/SKILL.md@${MOCK_PR_DATA.baseRefName}`,
+          body: "# Rules\n- Never swallow errors.",
+          path: "/tmp/test-runner/droid-prompts/review_guidelines.md",
+        },
+      }),
+    );
+    expect(writeFileSpy).toHaveBeenCalledWith(
+      "/tmp/test-runner/droid-prompts/review_guidelines.md",
+      "# Rules\n- Never swallow errors.",
+    );
   });
 });

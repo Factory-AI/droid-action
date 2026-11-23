@@ -14,6 +14,8 @@ import { parseGitHubContext, isEntityContext } from "../github/context";
 import { shouldTriggerTag } from "../tag";
 import { prepare } from "../prepare";
 import { collectActionInputsPresence } from "./collect-inputs";
+import { initializeReviewConfig } from "../prepare/review-config";
+import { freezeReviewRuntime } from "../prepare/review-runtime";
 
 async function run() {
   try {
@@ -22,6 +24,10 @@ async function run() {
     // Parse GitHub context first to enable mode detection
     const context = parseGitHubContext();
 
+    // Cleanup must be available even when authentication is followed by an
+    // authorization failure, a missing trigger, or a preparation error.
+    await freezeReviewRuntime();
+
     // Only the full action narrows its token. The prepare sub-action hands the
     // token to the caller's later steps, which may push or merge with it.
     const githubToken = await setupGitHubToken(
@@ -29,6 +35,7 @@ async function run() {
         ? appTokenPermissionsFor(context)
         : undefined,
     );
+    core.setOutput("github_token", githubToken);
     const octokit = createOctokit(githubToken);
 
     // Step 3: Check write permissions (only for entity contexts)
@@ -48,6 +55,8 @@ async function run() {
       }
     }
 
+    await initializeReviewConfig(context, octokit);
+
     // Check trigger conditions
     const containsTrigger = shouldTriggerTag(context);
 
@@ -58,8 +67,6 @@ async function run() {
 
     if (!containsTrigger) {
       console.log("No trigger found, skipping remaining steps");
-      // Still set github_token output even when skipping
-      core.setOutput("github_token", githubToken);
       return;
     }
 
@@ -71,9 +78,6 @@ async function run() {
     });
 
     // MCP config is handled by individual modes (tag/agent) and included in their droid_args output
-
-    // Expose the GitHub token (Droid App token) as an output
-    core.setOutput("github_token", githubToken);
 
     // Pass MCP tool config downstream for registration
     if (result?.mcpTools) {

@@ -1,4 +1,5 @@
 import * as core from "@actions/core";
+import { exportRuntimeVariable } from "./utils/runtime-env";
 import type { DroidCommand } from "./core/review/triggers/parse-command";
 
 export enum DroidRunType {
@@ -8,6 +9,10 @@ export enum DroidRunType {
   Fill = "droid-fill",
   SecurityScan = "droid-security-scan",
   CiSteward = "ci-steward",
+  Fix = "droid-fix",
+  Question = "droid-question",
+  Help = "droid-help",
+  Control = "droid-control",
 }
 
 export type PrValidationRunType =
@@ -17,7 +22,8 @@ export type PrValidationRunType =
   | DroidRunType.SecurityScan;
 
 export function setDroidRunType(runType: DroidRunType): void {
-  core.exportVariable("DROID_EXEC_RUN_TYPE", runType);
+  exportRuntimeVariable("DROID_EXEC_RUN_TYPE", runType);
+  core.setOutput("droid_exec_run_type", runType);
 }
 
 export function assertDroidRunType(
@@ -74,6 +80,17 @@ export function resolveTagRunType({
   }
 
   switch (command) {
+    case "fix":
+      return DroidRunType.Fix;
+    case "question":
+      return DroidRunType.Question;
+    case "help":
+    case "unknown":
+      return DroidRunType.Help;
+    case "resolve":
+    case "pause":
+    case "resume":
+      return DroidRunType.Control;
     case "fill":
       return DroidRunType.Fill;
     case "security":

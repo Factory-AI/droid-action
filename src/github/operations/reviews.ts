@@ -1,5 +1,11 @@
-import { prepareDroidCommentBody } from "./comments/common";
+import { appendPrCommentMarker } from "./comments/common";
 import type { PrValidationRunType } from "../../run-type";
+import { normalizeFinding } from "../../core/review/validated/finding";
+import {
+  renderInlineComment,
+  renderReviewBody,
+} from "../../core/review/render";
+import { redactCredentials } from "../../utils/redact-credentials";
 
 export type GitHubReviewCommentPayload = {
   path: string;
@@ -15,6 +21,9 @@ export type GitHubReviewCreateClient = {
   rest: {
     pulls: {
       createReview: (...args: any[]) => Promise<{ data: { id?: number } }>;
+      listCommentsForReview?: (...args: any[]) => Promise<{
+        data: Array<{ id: number; body?: string; html_url?: string }>;
+      }>;
     };
   };
 };
@@ -36,22 +45,39 @@ export async function createGitHubCommentReview(options: {
   comments?: GitHubReviewCommentPayload[];
   commitId?: string | null;
   runType?: PrValidationRunType;
+  rendered?: boolean;
 }): Promise<number | undefined> {
   const { client, owner, repo, prNumber, body, comments, commitId, runType } =
     options;
+  if (!comments?.length) return undefined;
+  const richComments = comments.map((comment) => ({
+    ...comment,
+    body: options.rendered
+      ? redactCredentials(comment.body)
+      : renderInlineComment(normalizeFinding(comment), {
+          head: commitId ?? undefined,
+        }),
+  }));
   const preparedComments = runType
-    ? comments?.map((comment) => ({
+    ? richComments.map((comment) => ({
         ...comment,
-        body: prepareDroidCommentBody(comment.body, runType, "inline-comment"),
+        body: appendPrCommentMarker(comment.body, "inline-comment", runType),
       }))
-    : comments;
+    : richComments;
   const response = await client.rest.pulls.createReview({
     owner,
     repo,
     pull_number: prNumber,
     event: "COMMENT",
     ...(commitId ? { commit_id: commitId } : {}),
-    ...(body ? { body } : {}),
+    body:
+      options.rendered && body
+        ? redactCredentials(body)
+        : renderReviewBody({
+            state: "findings",
+            head: commitId ?? undefined,
+            findings: comments.map((comment) => normalizeFinding(comment)),
+          }),
     ...(preparedComments && preparedComments.length > 0
       ? { comments: preparedComments }
       : {}),

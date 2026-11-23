@@ -93,6 +93,25 @@ describe("generateReviewValidatorPrompt", () => {
     expect(prompt).toContain("updates the tracking comment");
   });
 
+  it("gives a schema example that parses as JSON", () => {
+    const prompt = generateReviewValidatorPrompt(createBaseContext());
+
+    const example = /```json\n([\s\S]*?)\n```/.exec(prompt)?.[1];
+    expect(example).toBeDefined();
+    const parsed = JSON.parse(example!);
+    expect(parsed.reviewSummary.body).toContain("\n\n- optional whole-change");
+  });
+  it("carries whole-change observations in the summary without judging them", () => {
+    const context = createBaseContext();
+    const prompt = generateReviewValidatorPrompt(context);
+
+    expect(prompt).toContain("up to three short bullets of whole-change");
+    expect(prompt).toContain("Carry them\n  through unchanged");
+    expect(prompt).toContain(
+      "never approved,\n  rejected, or moved into `results`",
+    );
+  });
+
   it("includes correct PR context", () => {
     const context = createBaseContext({
       prBranchData: {
@@ -142,5 +161,33 @@ describe("generateReviewValidatorPrompt", () => {
 
     expect(prompt).toContain("Do NOT include code suggestion blocks");
     expect(prompt).not.toContain("suggestion block rules");
+  });
+
+  it("carries the repository's review guidelines verbatim ahead of the context", () => {
+    const context = createBaseContext({
+      reviewGuidelines: {
+        source: ".factory/skills/review-guidelines/SKILL.md@main",
+        body: "# Team rules\n\n- Only P0 for data loss.",
+        path: "/tmp/test/review_guidelines.md",
+      },
+    });
+
+    const prompt = generateReviewValidatorPrompt(context);
+
+    const block =
+      '<review-guidelines source=".factory/skills/review-guidelines/SKILL.md@main">\n# Team rules\n\n- Only P0 for data loss.\n</review-guidelines>';
+    expect(prompt).toContain(block);
+    expect(prompt.indexOf(block)).toBeLessThan(prompt.indexOf("### Context"));
+    expect(prompt).toContain("judging each candidate");
+  });
+
+  it("says nothing about guidelines when the repository has none", () => {
+    const prompt = generateReviewValidatorPrompt(createBaseContext());
+
+    expect(prompt).not.toContain("<review-guidelines");
+    expect(prompt).not.toContain("Read that file in full before you start");
+    expect(prompt).not.toContain("Repository review guidelines");
+    expect(prompt).toContain("`source_guideline` is");
+    expect(prompt).toContain(".factory/skills/review-guidelines/SKILL.md");
   });
 });

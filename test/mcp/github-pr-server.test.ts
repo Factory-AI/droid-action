@@ -14,6 +14,10 @@ import {
   type ReviewComment,
 } from "../../src/mcp/github-pr-server";
 import { DroidRunType } from "../../src/run-type";
+import {
+  decodeFindingMarker,
+  decodeReviewMarker,
+} from "../../src/core/review/markers";
 
 function createOctokitStub() {
   const calls = {
@@ -164,13 +168,32 @@ describe("github-pr-server helpers", () => {
       octokit: client,
     });
 
-    expect(calls.createReview[0][0]).toEqual({
+    expect(calls.createReview).toHaveLength(1);
+    const payload = calls.createReview[0][0];
+    expect(payload).toEqual({
       owner: "o",
       repo: "r",
       pull_number: 7,
       event: "COMMENT",
-      body: "Summary",
-      comments: [{ path: "file.ts", position: 3, body: "issue" }],
+      body: expect.stringContaining("**Droid found 1 issue** (1 P2)"),
+      comments: [
+        {
+          path: "file.ts",
+          position: 3,
+          body: expect.stringContaining('alt="P2"'),
+        },
+      ],
+    });
+    expect(decodeReviewMarker(payload.body)).toEqual({ head: "unknown" });
+    expect(payload.comments[0].body).toContain(
+      "https://img.shields.io/badge/P2-yellow",
+    );
+    expect(payload.comments[0].body).toContain("**issue**\n\nissue");
+    expect(decodeFindingMarker(payload.comments[0].body)).toEqual({
+      id: expect.stringMatching(/^f-[a-f0-9]{12}$/),
+      sev: "P2",
+      cat: "correctness",
+      title: "issue",
     });
     expect(reviewId).toBe(9001);
   });
@@ -193,15 +216,35 @@ describe("github-pr-server helpers", () => {
       octokit: client,
     });
 
-    expect(calls.createReview[0][0].comments).toEqual([
+    expect(calls.createReview).toHaveLength(1);
+    const payload = calls.createReview[0][0];
+    expect(payload.event).toBe("COMMENT");
+    expect(payload.body).toContain("**Droid found 1 issue** (1 P1)");
+    expect(payload.comments).toEqual([
       {
         path: "file.ts",
         position: 3,
-        body:
-          "[P1] [security] issue\n\n" +
-          "<!-- factory-pr-inline-comment: run-type=droid-security-review -->",
+        body: expect.stringContaining('alt="P1"'),
       },
     ]);
+    expect(payload.comments[0].body).toContain('alt="Security"');
+    expect(payload.comments[0].body).toContain(
+      "https://img.shields.io/badge/P1-orange",
+    );
+    expect(payload.comments[0].body).toContain(
+      "https://img.shields.io/badge/Security-blue",
+    );
+    expect(payload.comments[0].body).toContain("**issue**\n\nissue");
+    expect(payload.comments[0].body).toEndWith(
+      "<!-- factory-pr-inline-comment: run-type=droid-security-review -->",
+    );
+    expect(decodeFindingMarker(payload.comments[0].body)).toEqual({
+      id: expect.stringMatching(/^f-[a-f0-9]{12}$/),
+      sev: "P1",
+      cat: "security",
+      title: "issue",
+      security: true,
+    });
   });
 
   it("deletes issue and review comments", async () => {

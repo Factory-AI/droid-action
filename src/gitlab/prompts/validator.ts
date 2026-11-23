@@ -19,6 +19,8 @@ export function generateGitlabReviewValidatorPrompt(
   ctx: GitlabReviewPromptContext,
 ): string {
   return generateValidatorPrompt({
+    reviewSettings: ctx.reviewSettings,
+    priorFindingsPath: ctx.priorFindingsPath,
     terminology: GITLAB_TERMINOLOGY,
     postingMode: "file",
     entityNumber: ctx.mrIid,
@@ -33,5 +35,6 @@ export function generateGitlabReviewValidatorPrompt(
     validatedPath: ctx.validatedPath,
     includeSuggestions: ctx.includeSuggestions,
     securityReviewEnabled: ctx.securityReviewEnabled,
+    repoGuidelines: ctx.repoGuidelines,
   });
 }

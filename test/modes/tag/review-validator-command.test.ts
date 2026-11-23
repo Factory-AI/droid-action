@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as core from "@actions/core";
+import * as fsPromises from "fs/promises";
 import * as promptModule from "../../../src/create-prompt";
 import * as prFetcher from "../../../src/github/data/pr-fetcher";
 import { prepareReviewValidatorMode } from "../../../src/tag/commands/review-validator";
@@ -85,5 +86,58 @@ describe("prepareReviewValidatorMode", () => {
     promptSpy.mockRestore();
     setOutputSpy.mockRestore();
     exportSpy.mockRestore();
+  });
+
+  it("hands the validator the guidelines Pass 1 stored, without refetching", async () => {
+    const fetchSpy = spyOn(prFetcher, "fetchPRBranchData").mockResolvedValue({
+      baseRefName: "main",
+      headRefName: "feature",
+      headRefOid: "abc123",
+      isFork: false,
+      title: "PR",
+      body: "",
+    });
+    const promptSpy = spyOn(promptModule, "createPrompt").mockResolvedValue();
+    const setOutputSpy = spyOn(core, "setOutput").mockImplementation(() => {});
+    const exportSpy = spyOn(core, "exportVariable").mockImplementation(
+      () => {},
+    );
+    const readFileSpy = spyOn(fsPromises, "readFile").mockResolvedValue(
+      "# Rules\n- Be terse.",
+    );
+    const getContent = spyOn(
+      { getContent: async () => ({}) },
+      "getContent",
+    ).mockResolvedValue({ data: { content: "" } });
+
+    await prepareReviewValidatorMode({
+      context: createMockContext({ isPR: true, entityNumber: 24 }),
+      octokit: { rest: { repos: { getContent } } } as any,
+      githubToken: "token",
+      trackingCommentId: 555,
+    });
+
+    // Pass 2 must judge candidates under the same text Pass 1 saw, so it
+    // reads the stored copy rather than the (mutable) base branch again.
+    expect(getContent).not.toHaveBeenCalled();
+    expect(readFileSpy).toHaveBeenCalledWith(
+      "/tmp/test-runner/droid-prompts/review_guidelines.md",
+      "utf8",
+    );
+    expect(promptSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reviewGuidelines: {
+          source: ".factory/skills/review-guidelines/SKILL.md@main",
+          body: "# Rules\n- Be terse.",
+          path: "/tmp/test-runner/droid-prompts/review_guidelines.md",
+        },
+      }),
+    );
+
+    fetchSpy.mockRestore();
+    promptSpy.mockRestore();
+    setOutputSpy.mockRestore();
+    exportSpy.mockRestore();
+    readFileSpy.mockRestore();
   });
 });

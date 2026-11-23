@@ -20,6 +20,8 @@ export function generateGitlabReviewCandidatesPrompt(
   ctx: GitlabReviewPromptContext,
 ): string {
   return generateCandidatesPrompt({
+    reviewSettings: ctx.reviewSettings,
+    priorFindingsPath: ctx.priorFindingsPath,
     terminology: GITLAB_TERMINOLOGY,
     entityNumber: ctx.mrIid,
     repoOrProject: ctx.projectPath,
@@ -32,5 +34,6 @@ export function generateGitlabReviewCandidatesPrompt(
     candidatesPath: ctx.candidatesPath,
     includeSuggestions: ctx.includeSuggestions,
     securityReviewEnabled: ctx.securityReviewEnabled,
+    repoGuidelines: ctx.repoGuidelines,
   });
 }

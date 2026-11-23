@@ -15,7 +15,7 @@ describe("resolveReviewConfig (used by gitlab-prepare)", () => {
 
   it("returns shallow preset for review_depth=shallow", () => {
     expect(resolveReviewConfig({ reviewDepth: "shallow" })).toEqual({
-      model: "oss-latest-premium",
+      model: "openai-latest-fast",
       reasoningEffort: undefined,
     });
   });
@@ -49,9 +49,10 @@ describe("resolveReviewConfig (used by gitlab-prepare)", () => {
     });
   });
 
-  it("unknown reviewDepth falls back to shallow preset", () => {
+  it("unknown reviewDepth falls back to the documented deep preset", () => {
     const out = resolveReviewConfig({ reviewDepth: "neutron-star" });
-    expect(out.model).toBe("oss-latest-premium");
+    expect(out.model).toBe("openai-latest-balanced");
+    expect(out.reasoningEffort).toBe("medium");
   });
 });
 

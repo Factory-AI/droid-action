@@ -1,10 +1,11 @@
 import * as core from "@actions/core";
+import { REVIEW_CONFIG_KEYS } from "../core/review/config";
 
 export function collectActionInputsPresence(): void {
   const inputDefaults: Record<string, string> = {
     trigger_phrase: "@droid",
     assignee_trigger: "",
-    label_trigger: "droid",
+    label_trigger: "",
     base_branch: "",
     branch_prefix: "droid/",
     allowed_bots: "",
@@ -35,6 +36,9 @@ export function collectActionInputsPresence(): void {
     security_scan_schedule: "false",
     security_scan_days: "7",
   };
+  // Config-enabled inputs use an empty omission sentinel. Explicit false/0
+  // remain distinguishable from an omitted workflow input.
+  for (const key of REVIEW_CONFIG_KEYS) inputDefaults[key] = "";
 
   const allInputsJson = process.env.ALL_INPUTS;
   if (!allInputsJson) {

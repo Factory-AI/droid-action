@@ -29,13 +29,26 @@ describe("droid-review template", () => {
     const bunLines = scriptLines(templateJob()).filter((line) =>
       /(^|[\s;&|(!])bun\s/.test(line),
     );
-    const runs = bunLines.filter((line) => !/\bbun install\b/.test(line));
-    expect(runs.length).toBeGreaterThanOrEqual(5);
-    for (const line of runs) {
-      expect(line).toContain(
-        "bun --config=/dev/null --env-file=/dev/null run ",
-      );
-    }
+    const helper = fs.readFileSync(
+      path.join(root, "gitlab/freeze-runtime.sh"),
+      "utf8",
+    );
+    expect(helper).toContain(
+      '"$DROID_FROZEN_BUN" --config=/dev/null --env-file=/dev/null run ',
+    );
+    expect(helper).toContain(
+      '"$DROID_FROZEN_BUN" --config=/dev/null --env-file=/dev/null build ',
+    );
+    const trustedCalls = (
+      scriptLines(templateJob()).join("\n") +
+      "\n" +
+      helper
+    ).match(/droid_run_trusted gitlab-[a-z-]+/g);
+    expect(trustedCalls).toHaveLength(5);
+    expect(templateJob().after_script).toEqual([]);
+    expect(scriptLines(templateJob()).join("\n")).toContain(
+      "droid_install_finalize_trap",
+    );
     for (const line of bunLines.filter((l) => /\bbun install\b/.test(l))) {
       expect(line).toContain('cd "$DROID_ACTION_DIR" && bun install');
     }

@@ -8,6 +8,7 @@
 import * as fs from "fs/promises";
 import { generateAzureDevopsValidatorPrompt } from "../azure-devops/prompts";
 import { readState, writeState } from "../azure-devops/paths";
+import { loadStoredReviewGuidelines } from "../core/review/artifacts/guidelines";
 
 function ensure<T>(value: T | null | undefined, name: string): T {
   if (value === null || value === undefined) {
@@ -67,6 +68,7 @@ export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
     validatedPath: ensure(state.validatedPath, "validatedPath"),
     includeSuggestions: state.includeSuggestions,
     securityReviewEnabled: state.securityReviewEnabled,
+    repoGuidelines: await loadStoredReviewGuidelines(state.reviewGuidelines),
   });
   await fs.writeFile(promptPath, prompt);
   console.log(`Wrote Pass-2 validator prompt to ${promptPath}`);

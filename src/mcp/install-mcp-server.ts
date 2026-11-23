@@ -4,7 +4,7 @@ import path from "path";
 import { GITHUB_API_URL, GITHUB_SERVER_URL } from "../github/api/config";
 import type { GitHubContext } from "../github/context";
 import { isEntityContext } from "../github/context";
-import type { DroidRunType } from "../run-type";
+import { DroidRunType } from "../run-type";
 import { parsePrCommentKind } from "../github/operations/comments/common";
 import { Octokit } from "@octokit/rest";
 
@@ -26,6 +26,12 @@ type PrepareConfigParams = {
   allowedTools: string[];
   mode: "tag";
   context: GitHubContext;
+  securityReportTarget?: {
+    sourceRevision: string;
+    branch: string;
+    baseBranch: string;
+    author: string;
+  };
 };
 
 async function checkActionsReadPermission(
@@ -190,7 +196,15 @@ export async function prepareMcpTools(
       };
     }
 
-    if (isEntityContext(context) && context.isPR && hasGitHubPRTools) {
+    const reportTarget =
+      runType === DroidRunType.SecurityScan
+        ? params.securityReportTarget
+        : undefined;
+    if (
+      isEntityContext(context) &&
+      hasGitHubPRTools &&
+      (runType === DroidRunType.SecurityScan ? !!reportTarget : context.isPR)
+    ) {
       baseMcpTools.mcpServers.github_pr = {
         command: "bun",
         args: [...BUN_RUN_ARGS, `${repoRoot}/src/mcp/github-pr-server.ts`],
@@ -198,8 +212,16 @@ export async function prepareMcpTools(
           GITHUB_TOKEN: githubToken,
           REPO_OWNER: owner,
           REPO_NAME: repo,
-          PR_NUMBER: context.entityNumber?.toString() || "",
+          PR_NUMBER: reportTarget ? "" : context.entityNumber?.toString() || "",
           ...(runType && { DROID_EXEC_RUN_TYPE: runType }),
+          ...(reportTarget && {
+            SECURITY_REPORT_SOURCE_REVISION: reportTarget.sourceRevision,
+            SECURITY_REPORT_BRANCH: reportTarget.branch,
+            SECURITY_REPORT_BASE_BRANCH: reportTarget.baseBranch,
+            SECURITY_REPORT_AUTHOR: reportTarget.author,
+            SECURITY_REPORT_ACTOR: context.actor,
+            SECURITY_REPORT_TRIGGER_NUMBER: context.entityNumber.toString(),
+          }),
         },
       };
     }

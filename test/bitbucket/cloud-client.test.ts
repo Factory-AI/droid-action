@@ -552,4 +552,38 @@ describe("mayForwardCredentials", () => {
       ),
     ).toBe(false);
   });
+
+  it("reads a file on a branch and returns null when it is absent", async () => {
+    server = startFakeServer((_req, url) => {
+      if (
+        url.pathname ===
+        "/2.0/repositories/my-ws/my-repo/src/main/.factory/skills/review-guidelines/SKILL.md"
+      ) {
+        return new Response("# Rules\n", { status: 200 });
+      }
+      return notFound();
+    });
+
+    const c = client();
+    expect(
+      await c.getFileAtRef(
+        ".factory/skills/review-guidelines/SKILL.md",
+        "main",
+      ),
+    ).toBe("# Rules\n");
+    expect(
+      await c.getFileAtRef(
+        ".factory/skills/review-guidelines/SKILL.md",
+        "develop",
+      ),
+    ).toBeNull();
+  });
+
+  it("rethrows non-404 failures when reading a file", async () => {
+    server = startFakeServer(() => json({ error: "nope" }, 403));
+
+    await expect(client().getFileAtRef("SKILL.md", "main")).rejects.toThrow(
+      BitbucketApiError,
+    );
+  });
 });

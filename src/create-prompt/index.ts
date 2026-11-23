@@ -15,6 +15,7 @@ import {
   isPullRequestReviewCommentEvent,
 } from "../github/context";
 import type { ParsedGitHubContext } from "../github/context";
+import { exportRuntimeVariable } from "../utils/runtime-env";
 import type {
   CommonFields,
   PreparedContext,
@@ -22,6 +23,7 @@ import type {
   PrBranchPromptData,
   ReviewArtifacts,
 } from "./types";
+import type { RepoReviewGuidelines } from "../core/review/prompts/types";
 
 export type { CommonFields, PreparedContext, ReviewArtifacts } from "./types";
 
@@ -304,6 +306,7 @@ export type PromptCreationOptions = {
   disallowedTools?: string[];
   includeActionsTools?: boolean;
   reviewArtifacts?: ReviewArtifacts;
+  reviewGuidelines?: RepoReviewGuidelines;
   outputFilePath?: string;
   includeSuggestions?: boolean;
 };
@@ -319,6 +322,7 @@ export async function createPrompt({
   disallowedTools = [],
   includeActionsTools = false,
   reviewArtifacts,
+  reviewGuidelines,
   outputFilePath,
   includeSuggestions,
 }: PromptCreationOptions) {
@@ -339,6 +343,10 @@ export async function createPrompt({
 
     if (includeSuggestions !== undefined) {
       preparedContext.includeSuggestions = includeSuggestions;
+    }
+
+    if (reviewGuidelines) {
+      preparedContext.reviewGuidelines = reviewGuidelines;
     }
 
     await mkdir(`${process.env.RUNNER_TEMP || "/tmp"}/droid-prompts`, {
@@ -365,8 +373,8 @@ export async function createPrompt({
       allowedTools,
     );
 
-    core.exportVariable("ALLOWED_TOOLS", allowedToolsString);
-    core.exportVariable("DISALLOWED_TOOLS", disallowedToolsString);
+    exportRuntimeVariable("ALLOWED_TOOLS", allowedToolsString);
+    exportRuntimeVariable("DISALLOWED_TOOLS", disallowedToolsString);
   } catch (error) {
     core.setFailed(`Create prompt failed with error: ${error}`);
     process.exit(1);

@@ -1,5 +1,6 @@
 import type { GitHubContext } from "../github/context";
 import type { ReviewArtifactPaths } from "../core/review/artifacts/types";
+import type { RepoReviewGuidelines } from "../core/review/prompts/types";
 
 export type CommonFields = {
   repository: string;
@@ -120,6 +121,7 @@ export type PreparedContext = CommonFields & {
   githubContext?: GitHubContext;
   prBranchData?: PrBranchPromptData;
   reviewArtifacts?: ReviewArtifacts;
+  reviewGuidelines?: RepoReviewGuidelines;
   outputFilePath?: string;
   includeSuggestions?: boolean;
 };

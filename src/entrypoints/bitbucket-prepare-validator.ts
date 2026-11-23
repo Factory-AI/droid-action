@@ -8,6 +8,7 @@
 import * as fs from "fs/promises";
 import { generateBitbucketValidatorPrompt } from "../bitbucket/prompts";
 import { readState, writeState } from "../bitbucket/state";
+import { loadStoredReviewGuidelines } from "../core/review/artifacts/guidelines";
 
 function ensure<T>(value: T | null | undefined, name: string): T {
   if (value === null || value === undefined) {
@@ -73,6 +74,7 @@ export async function run(): Promise<void> {
     includeSuggestions: state.includeSuggestions,
     securityReviewEnabled: state.securityReviewEnabled,
     diffTruncated: state.diffTruncated === true,
+    repoGuidelines: await loadStoredReviewGuidelines(state.reviewGuidelines),
   });
   await fs.writeFile(promptPath, prompt);
   console.log(`Wrote Pass-2 validator prompt to ${promptPath}`);

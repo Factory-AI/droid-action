@@ -43,6 +43,7 @@ const WITHHELD_ENV_NAMES = new Set([
   "GITHUB_STEP_SUMMARY",
   "OVERRIDE_GITHUB_TOKEN",
   "DEFAULT_WORKFLOW_TOKEN",
+  "WORKFLOW_GITHUB_TOKEN",
 ]);
 
 export function buildDroidEnv(
@@ -54,7 +55,8 @@ export function buildDroidEnv(
     if (
       value === undefined ||
       WITHHELD_ENV_NAMES.has(name) ||
-      name.startsWith("INPUT_")
+      name.startsWith("INPUT_") ||
+      name.startsWith("COMMAND_")
     ) {
       continue;
     }
@@ -164,7 +166,18 @@ export type DroidOptions = {
   systemPrompt?: string;
   appendSystemPrompt?: string;
   showFullOutput?: string;
+  isolatedProfile?: { cwd: string; env: Record<string, string> };
 };
+
+export class IsolatedDroidError extends Error {
+  constructor(
+    message: string,
+    readonly exitCode: number,
+  ) {
+    super(message);
+    this.name = "IsolatedDroidError";
+  }
+}
 
 type PreparedConfig = {
   droidArgs: string[];
@@ -237,7 +250,9 @@ export class MaxTurnsExceededError extends Error {
  */
 export class UsageLimitError extends Error {
   constructor(detail: string) {
-    super(`Droid could not run because a usage limit was reached: ${detail}`);
+    super(
+      `Droid could not run because a usage limit was reached: ${redactCredentials(detail)}`,
+    );
     this.name = "UsageLimitError";
   }
 }
@@ -444,7 +459,9 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
     let turnLimitHit = false;
     const droidProcess = spawn(droidExecutable, currentDroidArgs, {
       stdio: ["ignore", "pipe", "pipe"],
-      env: buildDroidEnv(process.env, config.env),
+      env:
+        options.isolatedProfile?.env ?? buildDroidEnv(process.env, config.env),
+      ...(options.isolatedProfile ? { cwd: options.isolatedProfile.cwd } : {}),
     });
 
     const stopForTurnLimit = () => {
@@ -722,6 +739,8 @@ export async function runDroid(promptPath: string, options: DroidOptions) {
     console.error(`Droid Exec failed: ${errorMessage}`);
     core.setOutput("error_message", errorMessage);
     core.setOutput("conclusion", "failure");
+    if (options.isolatedProfile)
+      throw new IsolatedDroidError(errorMessage, lastExitCode);
     process.exit(lastExitCode);
   }
 }

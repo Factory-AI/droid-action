@@ -8,9 +8,12 @@ import * as core from "@actions/core";
 import { writeFileSync } from "fs";
 import { setupGitHubToken } from "../github/token";
 import { parseAppTokenPermissions } from "../github/token-permissions";
+import { freezeReviewRuntime } from "../prepare/review-runtime";
 
 async function run() {
   try {
+    // Bind cleanup before minting: later prompt preparation can fail or skip.
+    await freezeReviewRuntime(["revoke"]);
     const overrideToken = process.env.OVERRIDE_GITHUB_TOKEN?.trim();
 
     let token: string;

@@ -176,6 +176,20 @@ export class BitbucketDataCenterClient implements BitbucketClient {
     return out;
   }
 
+  async getFileAtRef(filePath: string, ref: string): Promise<string | null> {
+    const encodedPath = filePath.split("/").map(encodeURIComponent).join("/");
+    try {
+      return await this.http.text(
+        `${this.repoUrl}/raw/${encodedPath}?at=${encodeURIComponent(`refs/heads/${ref}`)}`,
+      );
+    } catch (error) {
+      if (error instanceof BitbucketApiError && error.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
   async getPullRequest(): Promise<BitbucketPullRequest> {
     const pr = await this.http.json<DcPullRequest>(this.prUrl);
     return {

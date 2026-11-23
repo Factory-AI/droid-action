@@ -1,3 +1,10 @@
+import { parseValidatedReview } from "../../src/core/review/validated/parse";
+import {
+  LEGACY_INLINE_BODY,
+  LEGACY_FALLBACK_BODY,
+  legacyCandidatesFromPrompt,
+  legacyValidatedFromPrompt,
+} from "../helpers/legacy-review-contract";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "fs/promises";
 import * as os from "os";
@@ -40,6 +47,8 @@ type Fake = {
   identityUnknown?: boolean;
   /** Data Center only: mark the diff as truncated. */
   diffTruncated?: boolean;
+  /** Contents of `.factory/skills/review-guidelines/SKILL.md` on `main`. */
+  guidelines?: string;
   /** Return a Response to override the default for a request. */
   override?: (req: RecordedRequest) => Response | undefined;
 };
@@ -125,6 +134,13 @@ function startCloud(fake: Omit<Fake, "server">): Fake {
       return json({ id: c.id, content: { raw: c.body } });
     }
     if (/\/commit\/[^/]+\/statuses\/build$/.test(p)) return json(req.body, 201);
+    if (
+      p === `${CLOUD_REPO}/src/main/.factory/skills/review-guidelines/SKILL.md`
+    ) {
+      return state.guidelines === undefined
+        ? notFound()
+        : new Response(state.guidelines);
+    }
     return notFound();
   });
   return state;
@@ -213,6 +229,14 @@ function startDataCenter(fake: Omit<Fake, "server">): Fake {
     }
     if (/\/commits\/[^/]+\/builds$/.test(p))
       return new Response(null, { status: 204 });
+    if (
+      p === `${DC_REPO}/raw/.factory/skills/review-guidelines/SKILL.md` &&
+      url.searchParams.get("at") === "refs/heads/main"
+    ) {
+      return state.guidelines === undefined
+        ? notFound()
+        : new Response(state.guidelines);
+    }
     return notFound();
   });
   return state;
@@ -900,9 +924,78 @@ describe("Bitbucket Cloud review steps", () => {
     await prepareValidator();
     await expect(postReview()).rejects.toThrow(/Pass 2 did not write/);
   });
+  it("reads the review guidelines from the target branch into both passes", async () => {
+    const f = useCloud({
+      guidelines:
+        "---\nname: review-guidelines\n---\n# Web rules\n- Flag swallowed errors.\n",
+    });
+
+    const state = await prepare(deps);
+
+    const read = reqs(f, "GET", "/src/main/");
+    expect(read.map((r) => r.path)).toEqual([
+      `${CLOUD_REPO}/src/main/.factory/skills/review-guidelines/SKILL.md`,
+    ]);
+    const stored = path.join(tmp, "review_guidelines.md");
+    expect(state.reviewGuidelines).toEqual({
+      source: ".factory/skills/review-guidelines/SKILL.md@main",
+      path: stored,
+    });
+    expect(await fs.readFile(stored, "utf8")).toBe(
+      "# Web rules\n- Flag swallowed errors.",
+    );
+    const block =
+      '<review-guidelines source=".factory/skills/review-guidelines/SKILL.md@main">\n# Web rules\n- Flag swallowed errors.\n</review-guidelines>';
+    expect(await fs.readFile(state.promptPath!, "utf8")).toContain(block);
+
+    await fs.writeFile(
+      state.candidatesPath!,
+      JSON.stringify({ version: 1, comments: [] }),
+    );
+    await prepareValidator();
+    const validatorPrompt = await fs.readFile(state.promptPath!, "utf8");
+    expect(validatorPrompt).toContain("Phase 2 (validator)");
+    expect(validatorPrompt).toContain(block);
+  });
+
+  it("leaves the guidelines out when the target branch has none", async () => {
+    const f = useCloud();
+
+    const state = await prepare(deps);
+
+    expect(reqs(f, "GET", "/src/main/")).toHaveLength(1);
+    expect(state.reviewGuidelines).toBeNull();
+    expect(await fs.readFile(state.promptPath!, "utf8")).not.toContain(
+      "<review-guidelines",
+    );
+  });
 });
 
 describe("Bitbucket Data Center review steps (Jenkins)", () => {
+  it("reads the review guidelines from the target branch via the raw endpoint", async () => {
+    const f = useDataCenter({ guidelines: "# Billing rules\n- Round VAT.\n" });
+
+    const state = await prepare(deps);
+
+    const read = reqs(f, "GET", "/raw/");
+    expect(read.map((r) => r.path)).toEqual([
+      `${DC_REPO}/raw/.factory/skills/review-guidelines/SKILL.md?at=refs%2Fheads%2Fmain`,
+    ]);
+    expect(state.reviewGuidelines).toEqual({
+      source: ".factory/skills/review-guidelines/SKILL.md@main",
+      path: path.join(tmp, "review_guidelines.md"),
+    });
+    const block =
+      '<review-guidelines source=".factory/skills/review-guidelines/SKILL.md@main">\n# Billing rules\n- Round VAT.\n</review-guidelines>';
+    expect(await fs.readFile(state.promptPath!, "utf8")).toContain(block);
+
+    await fs.writeFile(
+      state.candidatesPath!,
+      JSON.stringify({ version: 1, comments: [] }),
+    );
+    await prepareValidator();
+    expect(await fs.readFile(state.promptPath!, "utf8")).toContain(block);
+  });
   it("runs the full flow from CHANGE_URL with DC anchors and versioned updates", async () => {
     const f = useDataCenter();
     process.env.BUILD_STATUS = "true";
@@ -1095,4 +1188,81 @@ describe("Bitbucket Data Center review steps (Jenkins)", () => {
       /Bitbucket API 401: Unauthorized .*Authentication failed/,
     );
   });
+});
+
+describe("legacy platform contract through real Bitbucket pipeline", () => {
+  for (const variant of ["Cloud", "Data Center"]) {
+    it(`${variant} preserves the generated legacy contract through inline and outside-hunk fallback`, async () => {
+      const f = variant === "Cloud" ? useCloud() : useDataCenter();
+      process.env.INCLUDE_SUGGESTIONS = "true";
+      process.env.AUTOMATIC_SECURITY_REVIEW = "true";
+      const state = await prepare(deps);
+      const candidatesPrompt = await fs.readFile(state.promptPath!, "utf8");
+      const candidates = legacyCandidatesFromPrompt(candidatesPrompt, {
+        path: "src/app.ts",
+        inlineLine: 3,
+        headSha: state.headSha!,
+      });
+      expect(candidates.comments).toHaveLength(2);
+      expect(candidatesPrompt).toContain("suggestion block rules");
+      await fs.writeFile(state.candidatesPath!, JSON.stringify(candidates));
+      await prepareValidator();
+      const validatorPrompt = await fs.readFile(state.promptPath!, "utf8");
+      const validated = legacyValidatedFromPrompt(validatorPrompt, {
+        path: "src/app.ts",
+        inlineLine: 3,
+        headSha: state.headSha!,
+      });
+      expect(validated.results).toHaveLength(2);
+      const parsed = parseValidatedReview(JSON.stringify(validated));
+      expect(parsed.approved).toHaveLength(2);
+      expect(parsed.outsideDiff).toHaveLength(0);
+      expect(parsed.skipped).toEqual([]);
+      expect(parsed.approved.map((comment) => comment.body)).toEqual([
+        LEGACY_INLINE_BODY,
+        LEGACY_FALLBACK_BODY,
+      ]);
+      await fs.writeFile(state.validatedPath!, JSON.stringify(validated));
+      const commentsPath =
+        variant === "Cloud"
+          ? "/pullrequests/42/comments"
+          : "/pull-requests/12/comments";
+      const before = reqs(f, "POST", commentsPath).length;
+      await postReview({ retryDelayMs: 0 });
+      const posted = reqs(f, "POST", commentsPath).slice(before);
+      expect(posted).toHaveLength(2);
+      const inline = posted[0]!.body;
+      const fallback = posted[1]!.body;
+      if (variant === "Cloud") {
+        expect(inline.content.raw).toBe(LEGACY_INLINE_BODY);
+        expect(inline.inline).toEqual({ path: "src/app.ts", to: 3 });
+        expect(fallback).not.toHaveProperty("inline");
+        expect(fallback.content.raw).toBe(
+          "**`src/app.ts:40`** (could not be posted inline, so the finding is posted as a regular comment)\n\n" +
+            LEGACY_FALLBACK_BODY,
+        );
+      } else {
+        expect(inline.text).toBe(LEGACY_INLINE_BODY);
+        expect(inline.anchor).toMatchObject({ path: "src/app.ts", line: 3 });
+        expect(fallback).not.toHaveProperty("anchor");
+        expect(fallback.text).toBe(
+          "**`src/app.ts:40`** (could not be posted inline, so the finding is posted as a regular comment)\n\n" +
+            LEGACY_FALLBACK_BODY,
+        );
+      }
+      const results = JSON.parse(
+        await fs.readFile(path.join(tmp, "review_post_results.json"), "utf8"),
+      );
+      expect(results).toMatchObject({
+        posted: 1,
+        fallbackPosted: 1,
+        approved: 2,
+        rejected: 0,
+        failed: 0,
+        skipped: 0,
+        failures: [],
+      });
+      expect(results.summaryBody).toBe(validated.reviewSummary.body);
+    });
+  }
 });

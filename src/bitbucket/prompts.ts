@@ -4,9 +4,12 @@
  * `"file"` mode: the passes write JSON and a CI step posts the result.
  */
 
-import { generateCandidatesPrompt } from "../core/review/prompts/candidates";
-import { generateValidatorPrompt } from "../core/review/prompts/validator";
-import type { ReviewTerminology } from "../core/review/prompts/types";
+import { generateCandidatesPrompt } from "../core/review/prompts/legacy-candidates";
+import { generateValidatorPrompt } from "../core/review/prompts/legacy-validator";
+import type {
+  RepoReviewGuidelines,
+  ReviewTerminology,
+} from "../core/review/prompts/types";
 
 export const BITBUCKET_TERMINOLOGY: ReviewTerminology = {
   entityNoun: "PR",
@@ -51,6 +54,8 @@ export type BitbucketReviewPromptContext = {
   includeSuggestions: boolean;
   securityReviewEnabled: boolean;
   diffTruncated?: boolean;
+  /** The repository's own review guidelines, when it has any */
+  repoGuidelines?: RepoReviewGuidelines;
 };
 
 export const TRUNCATED_DIFF_NOTE =
@@ -79,6 +84,7 @@ function shared(ctx: BitbucketReviewPromptContext) {
     candidatesPath: ctx.candidatesPath,
     includeSuggestions: ctx.includeSuggestions,
     securityReviewEnabled: ctx.securityReviewEnabled,
+    repoGuidelines: ctx.repoGuidelines,
   };
 }
 

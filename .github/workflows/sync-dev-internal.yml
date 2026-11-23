@@ -1,0 +1,61 @@
+name: Sync dev into dev-internal
+
+# Keeps dev-internal a superset of dev. Every push to dev merges dev into
+# dev-internal with a merge commit. When GitHub refuses the merge (a conflict,
+# or branch protection that requires a pull request), the job opens a pull
+# request from dev into dev-internal, or reuses the open one, and fails so
+# that someone finishes it by hand.
+on:
+  push:
+    branches: [dev]
+
+concurrency:
+  group: sync-dev-internal
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge dev into dev-internal
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Only a 404 means the branch is gone. Any other failed lookup
+          # (5xx, rate limit, network) fails the job: skipping there would
+          # leave dev-internal behind dev with a green run.
+          if ! lookup=$(gh api "repos/$GH_REPO/branches/dev-internal" --jq '.name' 2>&1); then
+            if grep -q 'HTTP 404' <<< "$lookup"; then
+              echo "::notice::dev-internal does not exist; nothing to sync."
+              exit 0
+            fi
+            echo "::error::Could not look up dev-internal: ${lookup//$'\n'/ }"
+            exit 1
+          fi
+          # 201 is a new merge commit and 204 means dev-internal already
+          # contains dev; gh exits non-zero for anything else.
+          if gh api -X POST "repos/$GH_REPO/merges" \
+            -f base=dev-internal \
+            -f head=dev \
+            -f commit_message="Merge dev into dev-internal" \
+            --silent; then
+            echo "::notice::dev-internal contains dev."
+            exit 0
+          fi
+          pr=$(gh pr list --base dev-internal --head dev --state open --json number --jq '.[0].number // empty')
+          if [ -z "$pr" ]; then
+            pr=$(gh api "repos/$GH_REPO/pulls" \
+              -f base=dev-internal \
+              -f head=dev \
+              -f title="Sync dev into dev-internal" \
+              -f body="Automated sync of \`dev\` into \`dev-internal\` could not merge on its own. Resolve the conflict, then merge with a merge commit so both branches keep the same history." \
+              --jq '.number')
+          fi
+          echo "::error::Could not merge dev into dev-internal. Finish pull request #$pr by hand."
+          exit 1

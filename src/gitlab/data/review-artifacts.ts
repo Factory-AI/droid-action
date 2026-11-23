@@ -32,7 +32,22 @@ export type ComputeReviewArtifactsOptions = {
   projectId: string | number;
   mrIid: number;
   outDir: string;
+  mr?: GitlabMr;
+  changes?: GitlabMrChanges;
+  notes?: GitlabNote[];
 };
+
+function patchPath(value: string): string {
+  if (!/[^\x21-\x7e]|["\\]/.test(value)) return value;
+  // Git quoted paths use bytewise octal escapes, not JSON Unicode escapes.
+  const escaped = Array.from(Buffer.from(value), (byte) => {
+    if (byte === 34 || byte === 92) return `\\${String.fromCharCode(byte)}`;
+    return byte < 32 || byte >= 127
+      ? `\\${byte.toString(8).padStart(3, "0")}`
+      : String.fromCharCode(byte);
+  }).join("");
+  return `"${escaped}"`;
+}
 
 export function buildDiffContent(changes: GitlabMrChanges): string {
   const files = changes.changes ?? [];
@@ -43,8 +58,17 @@ export function buildDiffContent(changes: GitlabMrChanges): string {
     .map((c) => {
       const oldPath = c.old_path || c.new_path;
       const newPath = c.new_path || c.old_path;
-      const header = `diff --git a/${oldPath} b/${newPath}`;
-      return `${header}\n${c.diff}`;
+      const oldFile = patchPath(`a/${oldPath}`);
+      const newFile = patchPath(`b/${newPath}`);
+      const header = `diff --git ${oldFile} ${newFile}`;
+      // GitLab returns hunks without file headers; the shared old-side
+      // eligibility parser needs them. No-hunk patches remain ineligible.
+      const fileHeaders =
+        /^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/m.test(c.diff) &&
+        !c.diff.startsWith("--- ")
+          ? `--- ${c.new_file ? "/dev/null" : oldFile}\n+++ ${c.deleted_file ? "/dev/null" : newFile}\n`
+          : "";
+      return `${header}\n${fileHeaders}${c.diff}`;
     })
     .join("\n");
 }
@@ -61,9 +85,9 @@ export async function computeReviewArtifacts(
   const { client, projectId, mrIid, outDir } = opts;
 
   const [mr, changes, notes] = await Promise.all([
-    client.getMr(projectId, mrIid),
-    client.getMrChanges(projectId, mrIid),
-    client.listNotes(projectId, mrIid),
+    opts.mr ?? client.getMr(projectId, mrIid),
+    opts.changes ?? client.getMrChanges(projectId, mrIid),
+    opts.notes ?? client.listNotes(projectId, mrIid),
   ]);
 
   const paths = await writeReviewArtifacts(

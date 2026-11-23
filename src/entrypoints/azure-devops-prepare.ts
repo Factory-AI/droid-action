@@ -26,6 +26,7 @@ import {
   withoutAzureDevopsTokens,
 } from "../azure-devops/token";
 import { AzureDevopsClient } from "../azure-devops/api/client";
+import { prepareReviewGuidelines } from "../core/review/artifacts/guidelines";
 import { azureDevopsApiVersion } from "../azure-devops/api/config";
 import {
   buildTrackingCommentBody,
@@ -284,6 +285,14 @@ export async function run(
     DROID_SESSION_TAG_VALIDATOR: sessionTag("validator"),
   });
 
+  const reviewGuidelines = state.targetBranch
+    ? await prepareReviewGuidelines({
+        ref: state.targetBranch,
+        promptsDir: outDir,
+        read: (filePath, ref) => client.getFileAtBranch(filePath, ref),
+      })
+    : undefined;
+
   const promptCtx: AzureDevopsReviewPromptContext = {
     repository,
     pullRequestId,
@@ -297,6 +306,7 @@ export async function run(
     validatedPath: validatedFilePath(env),
     includeSuggestions: ctx.inputs.includeSuggestions,
     securityReviewEnabled: ctx.inputs.automaticSecurityReview,
+    repoGuidelines: reviewGuidelines,
   };
 
   const promptPath = promptFilePath(env);
@@ -318,6 +328,9 @@ export async function run(
     candidatesPath: promptCtx.candidatesPath,
     validatedPath: promptCtx.validatedPath,
     headSha: range.head,
+    reviewGuidelines: reviewGuidelines
+      ? { source: reviewGuidelines.source, path: reviewGuidelines.path }
+      : null,
   };
   await writeState(state, env);
   console.log(`Wrote Pass-1 prompt to ${promptPath}`);

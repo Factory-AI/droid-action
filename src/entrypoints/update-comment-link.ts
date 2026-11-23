@@ -17,6 +17,12 @@ import { updateDroidComment } from "../github/operations/comments/update-droid-c
 import { fetchDroidComment } from "../github/operations/comments/fetch-droid-comment";
 import { readReviewPostOutcome } from "../core/review/tracking/results";
 import { parsePrValidationRunType } from "../run-type";
+import {
+  finishReviewLifecycle,
+  loadBoundReviewLifecycle,
+} from "../github/operations/review-lifecycle";
+import { isPermissionError } from "../github/operations/review-checks";
+import { redactCredentials } from "../utils/redact-credentials";
 
 export async function readReviewPostResults() {
   const filePath =
@@ -29,7 +35,7 @@ export async function readReviewPostResults() {
   return results;
 }
 
-async function run() {
+export async function run() {
   try {
     const commentId = parseInt(process.env.DROID_COMMENT_ID!);
     const githubToken = process.env.GITHUB_TOKEN!;
@@ -45,6 +51,26 @@ async function run() {
     const { owner, repo } = context.repository;
 
     const octokit = createOctokit(githubToken);
+    const lifecycle = await loadBoundReviewLifecycle(octokit);
+    if (lifecycle) {
+      if (!lifecycle.completed)
+        await finishReviewLifecycle({
+          octokit,
+          run: lifecycle,
+          error:
+            process.env.DROID_SUCCESS === "false" ||
+            process.env.PREPARE_SUCCESS === "false"
+              ? process.env.DROID_POST_ERROR_MESSAGE ||
+                process.env.DROID_VALIDATOR_ERROR_MESSAGE ||
+                process.env.DROID_ERROR_MESSAGE ||
+                process.env.PREPARE_ERROR ||
+                "The review failed. Check the job log and retry with @droid review."
+              : lifecycle.renderInput
+                ? undefined
+                : "The review stopped before validated results were posted.",
+        });
+      return;
+    }
 
     const serverUrl = GITHUB_SERVER_URL;
     const jobUrl = `${serverUrl}/${owner}/${repo}/actions/runs/${process.env.GITHUB_RUN_ID}`;
@@ -78,7 +104,7 @@ async function run() {
         console.log(
           "This can happen if the comment was deleted by a user, spam filter, or another automation.",
         );
-        process.exit(0);
+        return;
       }
 
       // For non-404 errors, log debug info and fail
@@ -162,7 +188,12 @@ async function run() {
         const droidSuccess = process.env.DROID_SUCCESS !== "false";
         actionFailed = !droidSuccess;
       } catch (error) {
-        console.error("Error reading output file:", error);
+        console.error(
+          "Error reading output file:",
+          redactCredentials(
+            error instanceof Error ? error.message : String(error),
+          ),
+        );
         // If we can't read the file, check for any failure markers
         actionFailed = process.env.DROID_SUCCESS === "false";
       }
@@ -191,6 +222,11 @@ async function run() {
     };
 
     const updatedBody = updateCommentBody(commentInput);
+    if (process.env.GITHUB_STEP_SUMMARY)
+      await fs.appendFile(
+        process.env.GITHUB_STEP_SUMMARY,
+        `${redactCredentials(updatedBody)}\n`,
+      );
 
     try {
       await updateDroidComment(octokit.rest, {
@@ -206,16 +242,32 @@ async function run() {
     } catch (updateError) {
       console.error(
         `Failed to update ${isPRReviewComment ? "PR review" : "issue"} comment:`,
-        updateError,
+        redactCredentials(
+          updateError instanceof Error
+            ? updateError.message
+            : String(updateError),
+        ),
       );
       throw updateError;
     }
 
-    process.exit(0);
+    return;
   } catch (error) {
-    console.error("Error updating comment with job link:", error);
-    process.exit(1);
+    const message = redactCredentials(
+      error instanceof Error ? error.message : String(error),
+    );
+    if (isPermissionError(error)) {
+      console.warn(
+        `Droid could not update review metadata. Check pull-requests: write permissions. ${message}`,
+      );
+      return;
+    }
+    throw new Error(message);
   }
 }
 
-run();
+if (import.meta.main)
+  run().catch((error) => {
+    console.error(error.message);
+    process.exit(1);
+  });

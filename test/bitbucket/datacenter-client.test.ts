@@ -520,4 +520,31 @@ describe("BitbucketDataCenterClient", () => {
         `${server.url}${PR}) - Repository PROJ/my-repo does not exist.`,
     );
   });
+
+  it("reads a file on a branch through the raw endpoint and returns null when absent", async () => {
+    server = startFakeServer((_req, url) => {
+      if (
+        url.pathname ===
+          `${REPO}/raw/.factory/skills/review-guidelines/SKILL.md` &&
+        url.searchParams.get("at") === "refs/heads/main"
+      ) {
+        return new Response("# Rules\n", { status: 200 });
+      }
+      return notFound();
+    });
+
+    const c = client();
+    expect(
+      await c.getFileAtRef(
+        ".factory/skills/review-guidelines/SKILL.md",
+        "main",
+      ),
+    ).toBe("# Rules\n");
+    expect(
+      await c.getFileAtRef(
+        ".factory/skills/review-guidelines/SKILL.md",
+        "develop",
+      ),
+    ).toBeNull();
+  });
 });
