@@ -84,7 +84,7 @@ describe("runPrRiskJudge", () => {
     expect(attempts).toEqual([{ sessionId: "session-1", valid: true }]);
   });
 
-  it("retries once with the exact contract when the answer carries an undeclared key", async () => {
+  it("asks the same session to restate with the exact contract when the answer carries an undeclared key", async () => {
     const outputs = [
       { ...validVerdict, confidence: 5 },
       { ...validVerdict, details: "Restated." },
@@ -109,7 +109,12 @@ describe("runPrRiskJudge", () => {
     expect(invocations).toHaveLength(2);
     for (const args of invocations) {
       expect(args[args.indexOf("--tag") + 1]).toBe("riskAssessment");
+      expect(args[args.indexOf("--only-tools") + 1]).toBe("Read,Grep,Task");
     }
+    expect(invocations[0]).not.toContain("--session-id");
+    const restate = invocations[1] ?? [];
+    expect(restate[restate.indexOf("--session-id") + 1]).toBe("s1");
+    const prompt: string = restate.at(-1) ?? "";
     expect(attempts).toEqual([
       {
         sessionId: "s1",
@@ -121,10 +126,13 @@ describe("runPrRiskJudge", () => {
       },
       { sessionId: "s2", valid: true },
     ]);
-    expect(skills[0]).not.toContain("## Strict retry");
-    expect(skills[1]).toContain("## Strict retry");
-    expect(skills[1]).toContain("- <root>: unrecognized_keys");
-    expect(skills[1]).toContain(
+    // The restatement goes to the session as a prompt; the skill is untouched.
+    expect(skills).toHaveLength(2);
+    expect(skills[1]).toBe(skills[0] ?? "no first skill");
+    expect(skills[1]).not.toContain("## Strict retry");
+    expect(prompt.startsWith("## Strict retry")).toBe(true);
+    expect(prompt).toContain("- <root>: unrecognized_keys");
+    expect(prompt).toContain(
       [
         "- verdict (boolean)",
         "- brief (string; one to three Markdown bullets shown under the headline, cut at 800 characters)",
@@ -137,26 +145,26 @@ describe("runPrRiskJudge", () => {
   it("asks a judge served without a verdict for none, and drops one it gives anyway", async () => {
     const { verdict: _omitted, ...answer } = validVerdict;
     const outputs = [{ ...answer, confidence: 5 }, validVerdict];
-    const skills: string[] = [];
+    const prompts: string[] = [];
 
     const verdict = await runPrRiskJudge(snapshot, {
       judge: { ...judge, verdictField: "omitted" },
       evidence: evidenceAt(evidenceRoot),
       env,
-      executeDroid: async ({ cwd }) => {
-        skills.push(await readFile(join(cwd, ...SKILL_PATH), "utf8"));
-        return execSummary(outputs[skills.length - 1], `s${skills.length}`);
+      executeDroid: async ({ args }) => {
+        prompts.push(args.at(-1) ?? "");
+        return execSummary(outputs[prompts.length - 1], `s${prompts.length}`);
       },
     });
 
     expect(verdict).toStrictEqual(answer);
-    expect(skills[1]).toContain(
+    expect(prompts[1]).toContain(
       [
         "exactly these keys and no others:",
         "- brief (string; one to three Markdown bullets shown under the headline, cut at 800 characters)",
       ].join("\n"),
     );
-    expect(skills[1]).not.toContain("- verdict (boolean)");
+    expect(prompts[1]).not.toContain("- verdict (boolean)");
   });
 
   it("still demands the verdict from a judge served with a mode it does not know", async () => {
@@ -176,6 +184,7 @@ describe("runPrRiskJudge", () => {
     expect(attempts.map((attempt) => attempt.invalidPaths)).toEqual([
       ["verdict"],
       ["verdict"],
+      ["verdict"],
     ]);
   });
 
@@ -189,23 +198,23 @@ describe("runPrRiskJudge", () => {
     "retries a full judgment that answers with %s, and never offers it in the retry contract",
     async (_name, extra) => {
       const outputs = [{ ...validVerdict, ...extra }, validVerdict];
-      const skills: string[] = [];
+      const prompts: string[] = [];
 
       const verdict = await runPrRiskJudge(snapshot, {
         judge,
         evidence: evidenceAt(evidenceRoot),
         env,
-        executeDroid: async ({ cwd }) => {
-          skills.push(await readFile(join(cwd, ...SKILL_PATH), "utf8"));
-          return execSummary(outputs[skills.length - 1], `s${skills.length}`);
+        executeDroid: async ({ args }) => {
+          prompts.push(args.at(-1) ?? "");
+          return execSummary(outputs[prompts.length - 1], `s${prompts.length}`);
         },
       });
 
       expect(verdict).toEqual(validVerdict);
-      expect(skills).toHaveLength(2);
-      expect(skills[1]).toContain("## Strict retry");
-      expect(skills[1]).not.toContain("resolvedConcerns");
-      expect(skills[1]).not.toContain("- checks");
+      expect(prompts).toHaveLength(2);
+      expect(prompts[1]).toContain("## Strict retry");
+      expect(prompts[1]).not.toContain("resolvedConcerns");
+      expect(prompts[1]).not.toContain("- checks");
     },
   );
 
@@ -270,7 +279,7 @@ describe("runPrRiskJudge", () => {
       message: "PR risk judge produced no valid verdict",
     });
 
-    expect(attempts).toHaveLength(2);
+    expect(attempts).toHaveLength(3);
     expect(attempts[0]).toMatchObject({
       invalidReason: "schema",
       invalidPaths: ["scores.blastRadius"],
@@ -311,6 +320,7 @@ describe("runPrRiskJudge", () => {
     });
 
     expect(verdict).toEqual(validVerdict);
+    expect(attempts).toHaveLength(2);
     expect(attempts[0]).toEqual({
       sessionId: "dead",
       valid: false,
@@ -335,7 +345,41 @@ describe("runPrRiskJudge", () => {
     expect(attempts.map((attempt) => attempt.invalidReason)).toEqual([
       "no_json",
       "no_json",
+      "no_json",
     ]);
+  });
+
+  it("falls back to a fresh strict retry when the session cannot restate", async () => {
+    const outputs = [
+      { ...validVerdict, confidence: 5 },
+      { ...validVerdict, scores: { blastRadius: 9, testCoverage: 3 } },
+      validVerdict,
+    ];
+    const invocations: Array<readonly string[]> = [];
+    const skills: string[] = [];
+
+    const verdict = await runPrRiskJudge(snapshot, {
+      judge,
+      evidence: evidenceAt(evidenceRoot),
+      env,
+      executeDroid: async ({ args, cwd }) => {
+        invocations.push(args);
+        skills.push(await readFile(join(cwd, ...SKILL_PATH), "utf8"));
+        return execSummary(outputs[invocations.length - 1], "s1");
+      },
+    });
+
+    expect(verdict).toEqual(validVerdict);
+    expect(invocations.map((args) => args.includes("--session-id"))).toEqual([
+      false,
+      true,
+      false,
+    ]);
+    expect(invocations[2]?.at(-1)).toBe("/pr-risk-judge");
+    // The fresh retry names what the restatement got wrong.
+    expect(skills[2]).toContain("## Strict retry");
+    expect(skills[2]).toContain("- scores.blastRadius: too_big");
+    expect(skills[2]).not.toContain("unrecognized_keys");
   });
 
   it("reports a judge that runs out of time as a timeout rather than an unexpected failure", async () => {

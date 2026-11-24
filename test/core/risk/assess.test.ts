@@ -153,6 +153,7 @@ describe("assessPullRequest", () => {
       attempts: [
         { valid: false, invalidReason: "no_json" },
         { valid: false, invalidReason: "no_json" },
+        { valid: false, invalidReason: "no_json" },
       ],
     });
     expect(
