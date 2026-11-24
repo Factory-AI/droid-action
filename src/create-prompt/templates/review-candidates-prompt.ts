@@ -44,6 +44,7 @@ export function generateReviewCandidatesPrompt(
     securityReviewEnabled: process.env.SECURITY_REVIEW_ENABLED === "true",
     reviewSettings: reviewPromptSettingsFromEnvironment(),
     priorFindingsPath: process.env.REVIEW_PRIOR_FINDINGS_PATH,
+    reviewIteration: context.reviewArtifacts?.iteration,
     sourceNote: forkPrSourceNote(
       context.prBranchData,
       context.eventData.baseBranch ?? "base",

@@ -208,7 +208,7 @@ export async function loadBoundReviewLifecycle(
     superseded: false,
     previousState: undefined,
     pullRequest: undefined,
-    full: undefined,
+    full: process.env.REVIEW_FULL === "true" || undefined,
     steps: Array.isArray(cached?.steps)
       ? cached.steps
           .filter(
@@ -961,6 +961,7 @@ export async function prepareReviewLifecycle(options: {
     review_reaction_kind: run.reaction?.kind || "",
     review_automatic: String(run.automatic),
     review_security_only: String(run.securityOnly),
+    review_full: String(!!run.full),
     review_skipped: String(!!run.skipReason),
   }))
     core.setOutput(key, value);

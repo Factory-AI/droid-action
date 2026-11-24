@@ -242,6 +242,10 @@ inputs:
     description: "Minimum reported finding priority: P0, P1, or P2 (effective default). Empty inherits base config."
     required: false
     default: ""
+  review_followup_severity_threshold:
+    description: "Minimum priority reported after the first review round (security findings are always reported): P0, P1 (effective default), or P2 to report the same as the first round. Empty inherits base config."
+    required: false
+    default: ""
   review_ignore_paths:
     description: "Comma/newline-separated ignored globs. Effective default generated files, dist/build/coverage and lock files; [] disables ignores. Empty inherits base config."
     required: false
@@ -477,6 +481,7 @@ runs:
         FIX_MODE: ${{ inputs.fix_mode }}
         REVIEW_DIAGRAM: ${{ inputs.review_diagram }}
         REVIEW_SEVERITY_THRESHOLD: ${{ inputs.review_severity_threshold }}
+        REVIEW_FOLLOWUP_SEVERITY_THRESHOLD: ${{ inputs.review_followup_severity_threshold }}
         REVIEW_IGNORE_PATHS: ${{ inputs.review_ignore_paths }}
         REVIEW_AUTO_TRIGGERS: ${{ inputs.review_auto_triggers }}
         REVIEW_DRAFTS: ${{ inputs.review_drafts }}
@@ -618,6 +623,7 @@ runs:
           REVIEW_POSTED="${REVIEW_POSTED:-}" \
           REVIEW_AUTOMATIC="${REVIEW_AUTOMATIC:-}" \
           REVIEW_SECURITY_ONLY="${REVIEW_SECURITY_ONLY:-}" \
+          REVIEW_FULL="${REVIEW_FULL:-}" \
           REVIEW_INCREMENTAL_BASE_SHA="${REVIEW_INCREMENTAL_BASE_SHA:-}" \
           REVIEW_CONFIG_JSON="${REVIEW_CONFIG_JSON:-}" \
           REVIEW_REACTION_KIND="${REVIEW_REACTION_KIND:-}" \
@@ -653,6 +659,7 @@ runs:
         REVIEW_POSTED: ${{ steps.post_review.outputs.review_posted }}
         REVIEW_AUTOMATIC: ${{ steps.prepare.outputs.review_automatic }}
         REVIEW_SECURITY_ONLY: ${{ steps.prepare.outputs.review_security_only }}
+        REVIEW_FULL: ${{ steps.prepare.outputs.review_full }}
         REVIEW_INCREMENTAL_BASE_SHA: ${{ steps.prepare.outputs.review_incremental_base_sha }}
         REVIEW_CONFIG_JSON: ${{ steps.prepare.outputs.review_config_json }}
         LD_AUDIT: ""
@@ -897,6 +904,7 @@ runs:
           REVIEW_POSTED="${REVIEW_POSTED:-}" \
           REVIEW_AUTOMATIC="${REVIEW_AUTOMATIC:-}" \
           REVIEW_SECURITY_ONLY="${REVIEW_SECURITY_ONLY:-}" \
+          REVIEW_FULL="${REVIEW_FULL:-}" \
           REVIEW_INCREMENTAL_BASE_SHA="${REVIEW_INCREMENTAL_BASE_SHA:-}" \
           REVIEW_CONFIG_JSON="${REVIEW_CONFIG_JSON:-}" \
           REVIEW_REACTION_KIND="${REVIEW_REACTION_KIND:-}" \
@@ -932,6 +940,7 @@ runs:
         REVIEW_POSTED: ${{ steps.post_review.outputs.review_posted }}
         REVIEW_AUTOMATIC: ${{ steps.prepare.outputs.review_automatic }}
         REVIEW_SECURITY_ONLY: ${{ steps.prepare.outputs.review_security_only }}
+        REVIEW_FULL: ${{ steps.prepare.outputs.review_full }}
         REVIEW_INCREMENTAL_BASE_SHA: ${{ steps.prepare.outputs.review_incremental_base_sha }}
         REVIEW_CONFIG_JSON: ${{ steps.prepare.outputs.review_config_json }}
         LD_AUDIT: ""
@@ -1004,6 +1013,7 @@ runs:
           REVIEW_SKIPPED="${REVIEW_SKIPPED:-}" \
           REVIEW_POSTED="${REVIEW_POSTED:-}" \
           REVIEW_SECURITY_ONLY="${REVIEW_SECURITY_ONLY:-}" \
+          REVIEW_FULL="${REVIEW_FULL:-}" \
           REVIEW_AUTOMATIC="${REVIEW_AUTOMATIC:-}" \
           REVIEW_INCREMENTAL_BASE_SHA="${REVIEW_INCREMENTAL_BASE_SHA:-}" \
           REVIEW_HEAD_SHA="${REVIEW_HEAD_SHA:-}" \
@@ -1035,6 +1045,7 @@ runs:
         REVIEW_SKIPPED: ${{ steps.prepare.outputs.review_skipped }}
         REVIEW_POSTED: ${{ steps.post_review.outputs.review_posted }}
         REVIEW_SECURITY_ONLY: ${{ steps.prepare.outputs.review_security_only }}
+        REVIEW_FULL: ${{ steps.prepare.outputs.review_full }}
         REVIEW_AUTOMATIC: ${{ steps.prepare.outputs.review_automatic }}
         REVIEW_INCREMENTAL_BASE_SHA: ${{ steps.prepare.outputs.review_incremental_base_sha }}
         REVIEW_HEAD_SHA: ${{ steps.prepare.outputs.review_head_sha }}
@@ -1124,6 +1135,7 @@ runs:
           REVIEW_SKIPPED="${REVIEW_SKIPPED:-}" \
           REVIEW_POSTED="${REVIEW_POSTED:-}" \
           REVIEW_SECURITY_ONLY="${REVIEW_SECURITY_ONLY:-}" \
+          REVIEW_FULL="${REVIEW_FULL:-}" \
           REVIEW_AUTOMATIC="${REVIEW_AUTOMATIC:-}" \
           REVIEW_INCREMENTAL_BASE_SHA="${REVIEW_INCREMENTAL_BASE_SHA:-}" \
           REVIEW_HEAD_SHA="${REVIEW_HEAD_SHA:-}" \
@@ -1165,6 +1177,7 @@ runs:
         REVIEW_SKIPPED: ${{ steps.prepare.outputs.review_skipped }}
         REVIEW_POSTED: ${{ steps.post_review.outputs.review_posted }}
         REVIEW_SECURITY_ONLY: ${{ steps.prepare.outputs.review_security_only }}
+        REVIEW_FULL: ${{ steps.prepare.outputs.review_full }}
         REVIEW_AUTOMATIC: ${{ steps.prepare.outputs.review_automatic }}
         REVIEW_INCREMENTAL_BASE_SHA: ${{ steps.prepare.outputs.review_incremental_base_sha }}
         REVIEW_HEAD_SHA: ${{ steps.prepare.outputs.review_head_sha }}
@@ -1254,6 +1267,7 @@ runs:
           REVIEW_POSTED="${REVIEW_POSTED:-}" \
           REVIEW_AUTOMATIC="${REVIEW_AUTOMATIC:-}" \
           REVIEW_SECURITY_ONLY="${REVIEW_SECURITY_ONLY:-}" \
+          REVIEW_FULL="${REVIEW_FULL:-}" \
           REVIEW_INCREMENTAL_BASE_SHA="${REVIEW_INCREMENTAL_BASE_SHA:-}" \
           REVIEW_CONFIG_JSON="${REVIEW_CONFIG_JSON:-}" \
           REVIEW_REACTION_KIND="${REVIEW_REACTION_KIND:-}" \
@@ -1289,6 +1303,7 @@ runs:
         REVIEW_POSTED: ${{ steps.post_review.outputs.review_posted }}
         REVIEW_AUTOMATIC: ${{ steps.prepare.outputs.review_automatic }}
         REVIEW_SECURITY_ONLY: ${{ steps.prepare.outputs.review_security_only }}
+        REVIEW_FULL: ${{ steps.prepare.outputs.review_full }}
         REVIEW_INCREMENTAL_BASE_SHA: ${{ steps.prepare.outputs.review_incremental_base_sha }}
         REVIEW_CONFIG_JSON: ${{ steps.prepare.outputs.review_config_json }}
         LD_AUDIT: ""
@@ -1366,6 +1381,7 @@ runs:
           REVIEW_POSTED="${REVIEW_POSTED:-}" \
           REVIEW_AUTOMATIC="${REVIEW_AUTOMATIC:-}" \
           REVIEW_SECURITY_ONLY="${REVIEW_SECURITY_ONLY:-}" \
+          REVIEW_FULL="${REVIEW_FULL:-}" \
           REVIEW_INCREMENTAL_BASE_SHA="${REVIEW_INCREMENTAL_BASE_SHA:-}" \
           REVIEW_CONFIG_JSON="${REVIEW_CONFIG_JSON:-}" \
           REVIEW_REACTION_KIND="${REVIEW_REACTION_KIND:-}" \
@@ -1407,6 +1423,7 @@ runs:
         REVIEW_POSTED: ${{ steps.post_review.outputs.review_posted }}
         REVIEW_AUTOMATIC: ${{ steps.prepare.outputs.review_automatic }}
         REVIEW_SECURITY_ONLY: ${{ steps.prepare.outputs.review_security_only }}
+        REVIEW_FULL: ${{ steps.prepare.outputs.review_full }}
         REVIEW_INCREMENTAL_BASE_SHA: ${{ steps.prepare.outputs.review_incremental_base_sha }}
         REVIEW_CONFIG_JSON: ${{ steps.prepare.outputs.review_config_json }}
         LD_AUDIT: ""
@@ -1482,6 +1499,7 @@ runs:
           REVIEW_POSTED="${REVIEW_POSTED:-}" \
           REVIEW_AUTOMATIC="${REVIEW_AUTOMATIC:-}" \
           REVIEW_SECURITY_ONLY="${REVIEW_SECURITY_ONLY:-}" \
+          REVIEW_FULL="${REVIEW_FULL:-}" \
           REVIEW_INCREMENTAL_BASE_SHA="${REVIEW_INCREMENTAL_BASE_SHA:-}" \
           REVIEW_CONFIG_JSON="${REVIEW_CONFIG_JSON:-}" \
           REVIEW_REACTION_KIND="${REVIEW_REACTION_KIND:-}" \
@@ -1533,6 +1551,7 @@ runs:
         REVIEW_POSTED: ${{ steps.post_review.outputs.review_posted }}
         REVIEW_AUTOMATIC: ${{ steps.prepare.outputs.review_automatic }}
         REVIEW_SECURITY_ONLY: ${{ steps.prepare.outputs.review_security_only }}
+        REVIEW_FULL: ${{ steps.prepare.outputs.review_full }}
         REVIEW_INCREMENTAL_BASE_SHA: ${{ steps.prepare.outputs.review_incremental_base_sha }}
         REVIEW_CONFIG_JSON: ${{ steps.prepare.outputs.review_config_json }}
         LD_AUDIT: ""
@@ -1629,6 +1648,7 @@ runs:
           REVIEW_POSTED="${REVIEW_POSTED:-}" \
           REVIEW_AUTOMATIC="${REVIEW_AUTOMATIC:-}" \
           REVIEW_SECURITY_ONLY="${REVIEW_SECURITY_ONLY:-}" \
+          REVIEW_FULL="${REVIEW_FULL:-}" \
           REVIEW_INCREMENTAL_BASE_SHA="${REVIEW_INCREMENTAL_BASE_SHA:-}" \
           REVIEW_CONFIG_JSON="${REVIEW_CONFIG_JSON:-}" \
           REVIEW_REACTION_KIND="${REVIEW_REACTION_KIND:-}" \
@@ -1669,6 +1689,7 @@ runs:
         REVIEW_POSTED: ${{ steps.post_review.outputs.review_posted }}
         REVIEW_AUTOMATIC: ${{ steps.prepare.outputs.review_automatic }}
         REVIEW_SECURITY_ONLY: ${{ steps.prepare.outputs.review_security_only }}
+        REVIEW_FULL: ${{ steps.prepare.outputs.review_full }}
         REVIEW_INCREMENTAL_BASE_SHA: ${{ steps.prepare.outputs.review_incremental_base_sha }}
         REVIEW_CONFIG_JSON: ${{ steps.prepare.outputs.review_config_json }}
         LD_AUDIT: ""

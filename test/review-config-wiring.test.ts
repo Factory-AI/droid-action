@@ -104,6 +104,9 @@ describe("review configuration action wiring", () => {
         expect(step.env?.REVIEW_AUTOMATIC).toBe(
           `\${{ steps.${source}.outputs.review_automatic }}`,
         );
+        expect(step.env?.REVIEW_FULL).toBe(
+          `\${{ steps.${source}.outputs.review_full }}`,
+        );
         expect(step.env?.REVIEW_RUNTIME_PATH).toBe(
           `\${{ steps.${source}.outputs.review_runtime_path }}`,
         );
