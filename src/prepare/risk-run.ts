@@ -137,10 +137,9 @@ export function publishRunPlan(
  */
 export function warnRiskSkippedForWorkflow(plan: RunPlan): void {
   if (!plan.risk) return;
-  core.warning(
-    "Factory assesses risk only when this workflow file matches its copy on the default branch, and this pull request changes it. No assessment ran and nothing was approved. Runs after the change reaches the default branch are assessed.",
-    { title: WORKFLOW_DIFFERS_WARNING_TITLE },
-  );
+  core.warning("Workflow differs from default branch", {
+    title: WORKFLOW_DIFFERS_WARNING_TITLE,
+  });
 }
 
 /** Tells the requester why their PR comment's assessment did not start. */

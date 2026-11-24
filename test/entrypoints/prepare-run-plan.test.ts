@@ -450,7 +450,9 @@ describe("prepare's run plan", () => {
       skipExchange();
       context = pullRequest("opened");
       await run();
-      expect(skipWarnings()).toHaveLength(1);
+      expect(skipWarnings()).toEqual([
+        `warning:${WORKFLOW_DIFFERS_WARNING_TITLE}:Workflow differs from default branch`,
+      ]);
     });
 
     it("adds nothing for a review-only install", async () => {
