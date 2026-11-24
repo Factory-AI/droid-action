@@ -632,7 +632,7 @@ runs:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
         REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
-        REVIEW_DEPTH: ${{ fromJSON(steps.prompt.outputs.review_config_json).review_depth }}
+        REVIEW_DEPTH: ${{ fromJSON(steps.prompt.outputs.review_config_json || '{}').review_depth }}
         REVIEW_MODEL: ${{ steps.prompt.outputs.review_model }}
         REASONING_EFFORT: ${{ steps.prompt.outputs.review_reasoning_effort }}
         INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}

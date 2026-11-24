@@ -20,9 +20,15 @@ async function getOidcToken(): Promise<string> {
   }
 }
 
+export type SetupGitHubTokenOptions = {
+  /** Runs just before the action exits on a workflow validation skip. */
+  onWorkflowValidationSkip?: () => void;
+};
+
 async function exchangeForAppToken(
   oidcToken: string,
   permissions?: AppTokenPermissions,
+  options: SetupGitHubTokenOptions = {},
 ): Promise<string> {
   // Without a body the endpoint mints a token with every permission the app
   // holds. An endpoint that predates narrowing ignores the body the same way.
@@ -73,6 +79,7 @@ async function exchangeForAppToken(
         "Action skipped due to workflow validation error. This is expected when adding Droid workflows to new repositories or on PRs with workflow changes. If you're seeing this, your workflow will begin working once you merge your PR.",
       );
       core.setOutput("skipped_due_to_workflow_validation_mismatch", "true");
+      options.onWorkflowValidationSkip?.();
       process.exit(0);
     }
 
@@ -168,6 +175,7 @@ export async function revokeGitHubAppToken(token: string): Promise<void> {
  */
 export async function setupGitHubToken(
   permissions?: AppTokenPermissions,
+  options: SetupGitHubTokenOptions = {},
 ): Promise<string> {
   try {
     // Check if GitHub token was provided as override
@@ -190,7 +198,7 @@ export async function setupGitHubToken(
         : "Exchanging OIDC token for app token...",
     );
     const appToken = await retryWithBackoff(() =>
-      exchangeForAppToken(oidcToken, permissions),
+      exchangeForAppToken(oidcToken, permissions, options),
     );
     console.log("App token successfully obtained");
 

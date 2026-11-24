@@ -1057,7 +1057,7 @@ runs:
         REVIEW_VALIDATED_PATH: ${{ inputs.review_validated_path }}
         REVIEW_CANDIDATES_PATH: ${{ inputs.review_candidates_path }}
         DROID_COMMENT_ID: ${{ steps.prepare.outputs.droid_comment_id }}
-        REVIEW_DEPTH: ${{ fromJSON(steps.prepare.outputs.review_config_json).review_depth }}
+        REVIEW_DEPTH: ${{ fromJSON(steps.prepare.outputs.review_config_json || '{}').review_depth }}
         REVIEW_MODEL: ${{ steps.prepare.outputs.review_model }}
         REASONING_EFFORT: ${{ steps.prepare.outputs.review_reasoning_effort != 'default' && steps.prepare.outputs.review_reasoning_effort || '' }}
         INCLUDE_SUGGESTIONS: ${{ inputs.include_suggestions }}

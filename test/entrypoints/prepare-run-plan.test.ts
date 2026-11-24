@@ -16,6 +16,7 @@ import {
   resolveReviewUxConfig,
 } from "../../src/core/review/config";
 import { isManualReviewRequest } from "../../src/github/utils/review-intent";
+import { WORKFLOW_DIFFERS_WARNING_TITLE } from "../../src/prepare/risk-run";
 import type { GitHubContext } from "../../src/github/context";
 import { createMockAutomationContext, createMockContext } from "../mockContext";
 
@@ -425,6 +426,41 @@ describe("prepare's run plan", () => {
       "The run input must be auto, review, risk or both",
     );
     expect(outputs.run_risk).toBeUndefined();
+  });
+
+  describe("when the token exchange skips the action for a changed workflow file", () => {
+    // The real setup exits the process after the callback; throwing here
+    // stands in for that exit.
+    const skipExchange = () =>
+      spies.push(
+        spyOn(token, "setupGitHubToken").mockImplementation(
+          async (_permissions, options) => {
+            options?.onWorkflowValidationSkip?.();
+            throw new Error("process exited");
+          },
+        ),
+      );
+    const skipWarnings = () =>
+      events.filter((event) =>
+        event.startsWith(`warning:${WORKFLOW_DIFFERS_WARNING_TITLE}:`),
+      );
+
+    it("says the risk assessment was skipped when one was planned", async () => {
+      process.env.AUTOMATIC_RISK_ASSESSMENT = "true";
+      skipExchange();
+      context = pullRequest("opened");
+      await run();
+      expect(skipWarnings()).toEqual([
+        `warning:${WORKFLOW_DIFFERS_WARNING_TITLE}:Workflow differs from default branch`,
+      ]);
+    });
+
+    it("adds nothing for a review-only install", async () => {
+      skipExchange();
+      context = pullRequest("opened");
+      await run();
+      expect(skipWarnings()).toHaveLength(0);
+    });
   });
 
   it("still asks Factory, as a failed run, when prepare fails before planning", async () => {
