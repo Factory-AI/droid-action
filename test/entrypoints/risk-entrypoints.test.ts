@@ -23,7 +23,10 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { run as assess } from "../../src/entrypoints/risk-assess";
-import { run as begin } from "../../src/entrypoints/risk-begin";
+import {
+  run as begin,
+  WORKFLOW_NOT_TRUSTED_WARNING_TITLE,
+} from "../../src/entrypoints/risk-begin";
 import { run as settle } from "../../src/entrypoints/risk-settle";
 import * as pullRequestRisk from "../../src/github/data/pr-risk";
 import {
@@ -39,7 +42,7 @@ import {
 type Received = { path: string; headers: Headers; body: unknown };
 
 /** A stand-in for Factory that records each request and answers with JSON. */
-function fakeFactory(answer: unknown) {
+function fakeFactory(answer: unknown, status = 200) {
   const received: Received[] = [];
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -50,7 +53,7 @@ function fakeFactory(answer: unknown) {
         headers: request.headers,
         body: await request.json(),
       });
-      return Response.json(answer);
+      return Response.json(answer, { status });
     },
   });
   return {
@@ -75,8 +78,8 @@ describe("risk action entrypoints", () => {
   let factory: ReturnType<typeof fakeFactory> | undefined;
   const frozen: string[] = [];
 
-  function serve(answer: unknown) {
-    factory = fakeFactory(answer);
+  function serve(answer: unknown, status?: number) {
+    factory = fakeFactory(answer, status);
     return factory;
   }
 
@@ -303,6 +306,46 @@ describe("risk action entrypoints", () => {
       );
       expect(await exists(planPath)).toBe(false);
       expect(failed).toEqual([]);
+    });
+
+    it("warns, with a title, when Factory does not trust the workflow run", async () => {
+      const notice = spyOn(core, "notice").mockImplementation(() => {});
+      const warning = spyOn(core, "warning").mockImplementation(() => {});
+      serve(
+        {
+          detail:
+            "This workflow differs from the version on the default branch, so its runs are not assessed until the change is merged.",
+          code: "workflow_not_trusted",
+        },
+        403,
+      );
+
+      await begin(
+        jobEnv({ GITHUB_EVENT_PATH: await eventFile(pullRequestEvent) }),
+      );
+
+      expect(outputs).toEqual({ action: "skip" });
+      expect(warning.mock.calls).toEqual([
+        [
+          "Workflow differs from default branch",
+          { title: WORKFLOW_NOT_TRUSTED_WARNING_TITLE },
+        ],
+      ]);
+      expect(notice).not.toHaveBeenCalled();
+      expect(await exists(planPath)).toBe(false);
+      expect(failed).toEqual([]);
+    });
+
+    it("fails on any other refusal, so it cannot pass unseen", async () => {
+      serve(
+        { detail: "The OIDC token was issued to another repository." },
+        403,
+      );
+
+      await expect(
+        begin(jobEnv({ GITHUB_EVENT_PATH: await eventFile(pullRequestEvent) })),
+      ).rejects.toThrow("PR risk begin failed with status 403");
+      expect(outputs).toEqual({});
     });
 
     it("judges nothing when Factory asks for something this version does not know", async () => {
