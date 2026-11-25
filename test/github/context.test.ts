@@ -15,7 +15,7 @@ describe("automatic review input parsing", () => {
   const originalEnvironment = {
     AUTOMATIC_REVIEW: process.env.AUTOMATIC_REVIEW,
     AUTOMATIC_SECURITY_REVIEW: process.env.AUTOMATIC_SECURITY_REVIEW,
-    AUTOMATIC_REVIEW_ONLY: process.env.AUTOMATIC_REVIEW_ONLY,
+    FACTORY_AUTOMATION: process.env.FACTORY_AUTOMATION,
   };
 
   beforeEach(() => {
@@ -130,16 +130,10 @@ describe("automatic review input parsing", () => {
     },
   );
 
-  it("takes no PR-body commands with AUTOMATIC_REVIEW_ONLY", () => {
-    process.env.AUTOMATIC_REVIEW = "false";
-    process.env.AUTOMATIC_SECURITY_REVIEW = "false";
-    github.context.payload.pull_request = { number: 7, body: "@droid review" };
-    expect(shouldTriggerTag(parseGitHubContext())).toBe(true);
-    expect(extractCommandFromContext(parseGitHubContext())).not.toBeNull();
-
-    process.env.AUTOMATIC_REVIEW_ONLY = "true";
-    const context = parseGitHubContext();
-    expect(shouldTriggerTag(context)).toBe(false);
-    expect(extractCommandFromContext(context)).toBeNull();
+  it("reads FACTORY_AUTOMATION, which github/run-review.sh sets", () => {
+    delete process.env.FACTORY_AUTOMATION;
+    expect(parseGitHubContext().inputs.factoryAutomation).toBe(false);
+    process.env.FACTORY_AUTOMATION = "true";
+    expect(parseGitHubContext().inputs.factoryAutomation).toBe(true);
   });
 });

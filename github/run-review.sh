@@ -1,28 +1,33 @@
 #!/usr/bin/env bash
-# Droid code review for a GitHub pull request, run outside GitHub Actions.
+# Droid on a GitHub event, run outside GitHub Actions.
 #
-#   github/run-review.sh before     # before the review session
+#   github/run-review.sh before     # before the Droid session
 #   github/run-review.sh validate   # after the session, also when it failed
 #   github/run-review.sh after      # after validate, also when it failed
 #
-# This is action.yml's automatic review with its first `droid exec` pass
-# replaced by a session the caller runs:
-#   before    prepare.ts opens the Droid Review check, marks the PR as being
-#             reviewed, checks out the PR head, and writes the context files
-#             and the candidates prompt, $RUNNER_TEMP/droid-prompts/droid-prompt.txt.
-#             The session follows that prompt with read-only GitHub access and
-#             writes $RUNNER_TEMP/droid-prompts/review_candidates.json.
-#   validate  runs the validator pass as its own `droid exec`, with no GitHub
-#             credential in its environment.
+# This is action.yml with its model step replaced by a session the caller runs
+# on the prompt before writes, $RUNNER_TEMP/droid-prompts/droid-prompt.txt:
+#   before    runs prepare.ts on the event, which decides what to do with it
+#             as in action.yml. For a review, it opens the Droid Review check,
+#             marks the PR as being reviewed, checks out the PR head, and
+#             writes the context files and the candidates prompt. The session
+#             follows it with read-only GitHub access and writes
+#             $RUNNER_TEMP/droid-prompts/review_candidates.json.
+#             For `@droid fix` or a question in a Droid finding's thread, the
+#             session reads a context file and writes its fix or answer, both
+#             in the $RUNNER_TEMP/droid-command-* directory the prompt names.
+#             Other commands finish in before, as in action.yml, apart from
+#             `@droid fill` and `@droid security --full`: their model runs
+#             write to GitHub, so before replies that they are not supported.
+#   validate  for a review, runs the validator pass as its own `droid exec`,
+#             with no GitHub credential in its environment.
 #   after     posts the review and closes the check, or closes it as failed.
+#             For a command, publishes the fix or answer, or replies that it
+#             failed.
 #
 # Run every part from the same clone of the repository, on the same machine,
 # with:
 #   GITHUB_REPOSITORY  owner/repo
-#   PR_NUMBER          pull request number
-#   PR_HEAD_SHA        commit to review; `before` skips if the PR moved on
-#   PR_ACTION          pull_request action that started the run (opened,
-#                      synchronize, ...), checked against review_auto_triggers
 #   GITHUB_TOKEN       for before and after, a token with pull requests and
 #                      checks write and contents read. For validate, a
 #                      read-only token: its `droid exec` can read this
@@ -30,26 +35,26 @@
 #   GITHUB_RUN_ID      id of this run, the same in every part
 #   RUNNER_TEMP        absolute path of an existing directory of this run's
 #                      own, the same in every part
+#   GITHUB_EVENT_NAME  required by before: the event and a file holding its
+#   GITHUB_EVENT_PATH  webhook payload, as GitHub Actions sets them. validate
+#                      and after read the copy before keeps.
 #   GITHUB_ACTOR       required by before: the login that sent the event,
 #                      whose permissions prepare checks (ALLOWED_BOTS must
 #                      list it when it is a bot)
 #   FACTORY_API_KEY    required by validate, for the validator pass
-#   VALIDATE_RESULT    required by after to post: succeeded when validate
-#                      exited 0. Unset or any other value closes the check as
-#                      failed, without posting.
-# Optional: SESSION_USER (below), GITHUB_RUN_ATTEMPT, and the review settings
-# action.yml passes as environment variables (AUTOMATIC_REVIEW,
-# AUTOMATIC_SECURITY_REVIEW, REVIEW_DEPTH...), which win over the base
-# branch's .factory/review.yaml. When neither sets AUTOMATIC_REVIEW, the review
-# runs. @droid commands in the PR's description are ignored. validate runs the
-# droid on its PATH.
+#   VALIDATE_RESULT    required by after to post a review: succeeded when
+#                      validate exited 0. Unset or any other value closes the
+#                      check as failed, without posting.
+# Optional: SESSION_USER (below), GITHUB_RUN_ATTEMPT, and action.yml's inputs
+# as the environment variables its prepare step sets (AUTOMATIC_REVIEW,
+# AUTOMATIC_SECURITY_REVIEW, REVIEW_DEPTH, ALLOWED_BOTS...), which win over the
+# base branch's .factory/review.yaml. validate runs the droid on its PATH.
 #
-# before exits 78 when there is nothing to review: the PR moved past
-# PR_HEAD_SHA (GitHub's API gets up to a minute to report a pushed head), or
-# the review settings skip this event. Skip the session then;
-# validate and after do nothing. Any other non-zero exit is a failure, which
-# the Droid Review check reports once before has opened it. Run after even
-# when before failed or was stopped: it closes a check before left open.
+# before exits 78 when prepare skipped the event or finished it: skip the
+# session then; validate and after do nothing. Any other non-zero exit is a
+# failure, which the Droid Review check reports once before has opened it.
+# Run after even when before failed or was stopped: it closes a check before
+# left open.
 #
 # The write token stays inside before and after: neither leaves a copy on
 # disk once it exits (after deletes what a stopped before left), and every
@@ -61,9 +66,10 @@
 #   - droid-action, RUNNER_TEMP and every directory above them must be
 #     writable by root alone (sticky ones such as /tmp aside) and readable by
 #     SESSION_USER;
-#   - before hands the clone and $RUNNER_TEMP/droid-prompts over to
-#     SESSION_USER after its git work, and copies the droids the prompt uses
-#     into that user's ~/.factory/droids;
+#   - before hands the clone, $RUNNER_TEMP/droid-prompts and a command's
+#     droid-command-* directory over to SESSION_USER after its git work, and
+#     for a review copies the droids the prompt uses into that user's
+#     ~/.factory/droids;
 #   - after runs no git and reads what the session and validate wrote as
 #     SESSION_USER; before and after keep their own files in
 #     $RUNNER_TEMP/github-review.
@@ -80,9 +86,8 @@ case "$PART" in
     exit 2
     ;;
 esac
-: "${GITHUB_REPOSITORY:?must be owner/repo}" "${PR_NUMBER:?is required}" \
-  "${PR_HEAD_SHA:?is required}" "${PR_ACTION:?is required}" \
-  "${GITHUB_TOKEN:?is required}" "${GITHUB_RUN_ID:?is required}" \
+: "${GITHUB_REPOSITORY:?must be owner/repo}" "${GITHUB_TOKEN:?is required}" \
+  "${GITHUB_RUN_ID:?is required}" \
   "${RUNNER_TEMP:?must be a directory only this run uses}"
 case "$RUNNER_TEMP" in
   /*) ;;
@@ -92,7 +97,9 @@ case "$RUNNER_TEMP" in
     ;;
 esac
 if [ "$PART" = before ]; then
-  : "${GITHUB_ACTOR:?must be the login that sent the pull_request event}"
+  : "${GITHUB_EVENT_NAME:?must be the name of the GitHub event}" \
+    "${GITHUB_EVENT_PATH:?must be a file holding the event payload}" \
+    "${GITHUB_ACTOR:?must be the login that sent the event}"
 fi
 SESSION_USER="${SESSION_USER:-$(id -un)}"
 SPLIT_USERS=false
@@ -109,6 +116,8 @@ PROMPTS_DIR="$RUNNER_TEMP/droid-prompts"
 # Written by before and after only.
 STATE_DIR="$RUNNER_TEMP/github-review"
 STATE_FILE="$STATE_DIR/state"
+# The event payload as before copied it, which every part's entrypoints read.
+EVENT_FILE="$STATE_DIR/event.json"
 # before's WORK_DIR, which it deletes when it exits.
 BEFORE_DIR="$STATE_DIR/before"
 # validate's error, for after to report on the check.
@@ -127,20 +136,23 @@ export REVIEW_LIFECYCLE_PATH="$STATE_DIR/review_lifecycle.json"
 # The previous reviewed head's diff to this head, which prepare computes with
 # git for posting: after runs no git.
 export REVIEW_PRIOR_DIFF_PATH="$STATE_DIR/review_prior_diff.json"
-export GITHUB_EVENT_NAME=pull_request
 export PATH="$HOME/.bun/bin:$PATH"
 
 # What validate and after need from prepare.ts, as ENV_NAME=output_name. The
 # other outputs stay in $WORK_DIR, which is deleted on exit: some hold the token.
 STATE="DROID_EXEC_RUN_TYPE=droid_exec_run_type DROID_COMMENT_ID=droid_comment_id
-REVIEW_HEAD_SHA=review_head_sha REVIEW_BASE_SHA=review_base_sha
+PR_NUMBER=pr_number REVIEW_HEAD_SHA=review_head_sha REVIEW_BASE_SHA=review_base_sha
 REVIEW_COMMENT_ID=review_comment_id REVIEW_CHECK_ID=review_check_id
 REVIEW_STARTED_AT=review_started_at
 REVIEW_INCREMENTAL_BASE_SHA=review_incremental_base_sha
 REVIEW_REACTION_ID=review_reaction_id REVIEW_REACTION_TARGET=review_reaction_target
 REVIEW_REACTION_KIND=review_reaction_kind REVIEW_AUTOMATIC=review_automatic
 REVIEW_SECURITY_ONLY=review_security_only REVIEW_CONFIG_JSON=review_config_json
-REVIEW_MODEL=review_model REASONING_EFFORT=review_reasoning_effort"
+REVIEW_MODEL=review_model REASONING_EFFORT=review_reasoning_effort
+COMMAND_MODE=command_mode COMMAND_OUTPUT_PATH=command_output_path
+COMMAND_EXPECTED_HEAD=command_expected_head COMMAND_FIX_MODE=command_fix_mode
+COMMAND_PR_NUMBER=command_pr_number COMMAND_ACTOR=command_actor
+COMMAND_ROOT_COMMENT_ID=command_root_comment_id"
 
 # Prints the last value set for $2 in $1, a GITHUB_OUTPUT or GITHUB_ENV file.
 value() {
@@ -164,11 +176,13 @@ save_state() {
   done >"$2"
   # The effective depth (input or base config); the validator's model follows it.
   printf 'REVIEW_DEPTH=%s\n' "$(value "$1/env" REVIEW_DEPTH)" >>"$2"
+  # Which event the copy in $EVENT_FILE is, for the entrypoints that read it.
+  printf 'GITHUB_EVENT_NAME=%s\n' "${GITHUB_EVENT_NAME:-}" >>"$2"
 }
 
 load_state() {
   local pair name
-  for pair in $STATE REVIEW_DEPTH=; do
+  for pair in $STATE REVIEW_DEPTH= GITHUB_EVENT_NAME=; do
     name="${pair%%=*}"
     export "$name=$(sed -n "s/^$name=//p" "$1" | tail -n 1)"
   done
@@ -214,7 +228,7 @@ read_session_file() {
 }
 
 # Loads the state before left. Without one there is nothing to do: before
-# skipped the review or failed, and closed any check it had opened. Unless
+# skipped the event or failed, and closed any check it had opened. Unless
 # after finds $BEFORE_DIR: before was then stopped, perhaps with the check
 # open, and after closes it.
 load_prepared() {
@@ -222,7 +236,7 @@ load_prepared() {
   if [ "$PART" = after ] && [ ! -f "$STATE_FILE" ] && [ -d "$BEFORE_DIR" ]; then
     stopped=true
   elif [ ! -f "$STATE_FILE" ]; then
-    echo "No prepared review for this run ($STATE_FILE is missing); nothing to do."
+    echo "No prepared run ($STATE_FILE is missing); nothing to do."
     exit 0
   fi
   if [ "$SPLIT_USERS" = true ]; then
@@ -230,10 +244,7 @@ load_prepared() {
   fi
   if [ "$stopped" = true ]; then close_stopped_before; fi
   load_state "$STATE_FILE"
-  if [ "$PART" = after ]; then REVIEW_OPEN=true; fi
-  if [ "$REVIEW_HEAD_SHA" != "$PR_HEAD_SHA" ]; then
-    fail DROID_POST_ERROR_MESSAGE "The prepared review is for $REVIEW_HEAD_SHA, not $PR_HEAD_SHA; nothing was posted."
-  fi
+  if [ "$PART" = after ] && [ -n "$REVIEW_HEAD_SHA" ]; then REVIEW_OPEN=true; fi
 }
 
 # Exits after closing the check prepare.ts opened, if it got that far, from
@@ -257,7 +268,7 @@ use_work_dir() {
   [ -d "$1" ] || exit 1
   WORK_DIR="$1"
   # The entrypoints read their event and report outputs like a workflow step.
-  export GITHUB_EVENT_PATH="$WORK_DIR/event.json" GITHUB_ENV="$WORK_DIR/env"
+  export GITHUB_EVENT_PATH="$EVENT_FILE" GITHUB_ENV="$WORK_DIR/env"
   : >"$GITHUB_ENV"
 }
 
@@ -336,23 +347,16 @@ before() {
   fi
   # New directories, so nothing another user left in them is written through.
   rm -rf "$STATE_DIR" "$PROMPTS_DIR" &&
-    mkdir "$STATE_DIR" "$PROMPTS_DIR" && mkdir -m 700 "$BEFORE_DIR" || exit 1
+    mkdir "$STATE_DIR" "$PROMPTS_DIR" && mkdir -m 700 "$BEFORE_DIR" &&
+    cp -- "$GITHUB_EVENT_PATH" "$EVENT_FILE" || exit 1
   use_work_dir "$BEFORE_DIR"
   install_bun && (cd "$DROID_ACTION_DIR" && bun install --frozen-lockfile) || exit 1
-  # Right after a push, GitHub's API can still report the previous head.
-  run_entrypoint event src/entrypoints/github-pr-event.ts PR_HEAD_WAIT_SECONDS=60 || exit 1
-  local head
-  head="$(value "$WORK_DIR/event" head_sha)"
-  if [ "$head" != "$PR_HEAD_SHA" ]; then
-    echo "PR #$PR_NUMBER is at $head now, not $PR_HEAD_SHA; skipping. Nothing was posted to the pull request."
-    exit "$NOTHING_TO_REVIEW"
-  fi
   # `git clone --depth 1` fetches only the default branch, and gh pr checkout
   # cannot track a PR branch outside the fetch refspec.
   git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*' || exit 1
 
   OVERRIDE_GITHUB_TOKEN="$GITHUB_TOKEN" run_entrypoint prepare src/entrypoints/prepare.ts \
-    REVIEW_CONFIG_JSON= DEFAULT_AUTOMATIC_REVIEW=true AUTOMATIC_REVIEW_ONLY=true
+    REVIEW_CONFIG_JSON= FACTORY_AUTOMATION=true
   local status=$?
   save_state "$WORK_DIR" "$WORK_DIR/state"
   load_state "$WORK_DIR/state"
@@ -360,33 +364,40 @@ before() {
   if [ "$status" -ne 0 ]; then
     local error
     error="$(value "$WORK_DIR/prepare" prepare_error)"
-    fail PREPARE_ERROR "${error:-Preparing the review failed with exit status $status.}"
+    fail PREPARE_ERROR "${error:-Preparing the run failed with exit status $status.}"
   fi
-  if [ "$(value "$WORK_DIR/prepare" run_code_review)" != true ]; then
-    # prepare.ts has already closed the review it skipped.
-    echo "No review to run for this event."
+  if [ "$(value "$WORK_DIR/prepare" contains_trigger)" != true ] ||
+    [ "$(value "$WORK_DIR/prepare" steward_skipped)" = true ]; then
+    # prepare.ts did all there was to do, and closed any review it skipped.
+    echo "Nothing more to run for this $GITHUB_EVENT_NAME event."
     exit "$NOTHING_TO_REVIEW"
   fi
-  if [ "$REVIEW_HEAD_SHA" != "$PR_HEAD_SHA" ]; then
-    fail PREPARE_ERROR "PR #$PR_NUMBER moved to $REVIEW_HEAD_SHA while Droid prepared the review of $PR_HEAD_SHA."
-  fi
 
-  run_entrypoint lifecycle src/entrypoints/github-review-lifecycle.ts REVIEW_PHASE=candidates
-  # The security-reviewer subagent the candidates prompt can ask for, copied
-  # into the HOME sh sees as the session user.
-  # shellcheck disable=SC2016
-  as_session_user sh -c 'mkdir -p "$HOME/.factory/droids" && cp -r "$1/." "$HOME/.factory/droids/"' \
-    sh "$DROID_ACTION_DIR/.factory/droids" ||
-    fail PREPARE_ERROR "Could not copy the review droids into $SESSION_USER's ~/.factory/droids."
-  cp "$PROMPTS_DIR/pr.diff" "$STATE_DIR/" ||
-    fail PREPARE_ERROR "Could not keep a copy of the PR diff for posting."
+  local command_dir=
+  if [ -n "$COMMAND_MODE" ]; then
+    # The session reads the command's context there and writes its result.
+    command_dir="$(dirname -- "$COMMAND_OUTPUT_PATH")"
+  elif [ "$(value "$WORK_DIR/prepare" run_code_review)" = true ]; then
+    run_entrypoint lifecycle src/entrypoints/github-review-lifecycle.ts REVIEW_PHASE=candidates
+    # The security-reviewer subagent the candidates prompt can ask for, copied
+    # into the HOME sh sees as the session user.
+    # shellcheck disable=SC2016
+    as_session_user sh -c 'mkdir -p "$HOME/.factory/droids" && cp -r "$1/." "$HOME/.factory/droids/"' \
+      sh "$DROID_ACTION_DIR/.factory/droids" ||
+      fail PREPARE_ERROR "Could not copy the review droids into $SESSION_USER's ~/.factory/droids."
+    cp "$PROMPTS_DIR/pr.diff" "$STATE_DIR/" ||
+      fail PREPARE_ERROR "Could not keep a copy of the PR diff for posting."
+  else
+    fail PREPARE_ERROR "github/run-review.sh does not run $DROID_EXEC_RUN_TYPE runs."
+  fi
   if [ "$SPLIT_USERS" = true ]; then
-    # Git is done, so the session may have the clone and the prompts.
-    chown -R "$SESSION_USER:" -- "$PROMPTS_DIR" "$(git rev-parse --show-toplevel)" ||
+    # Git is done, so the session may have the clone and its files.
+    chown -R "$SESSION_USER:" -- "$PROMPTS_DIR" "$(git rev-parse --show-toplevel)" \
+      ${command_dir:+"$command_dir"} ||
       fail PREPARE_ERROR "Could not hand the clone and prompts over to $SESSION_USER."
   fi
-  mv "$WORK_DIR/state" "$STATE_FILE" || fail PREPARE_ERROR "Could not save the prepared review."
-  echo "Ready for the review session: prompt $PROMPTS_DIR/droid-prompt.txt, candidates $REVIEW_CANDIDATES_PATH."
+  mv "$WORK_DIR/state" "$STATE_FILE" || fail PREPARE_ERROR "Could not save the prepared run."
+  echo "Ready for the session: prompt $PROMPTS_DIR/droid-prompt.txt."
 }
 
 validate() {
@@ -395,11 +406,13 @@ validate() {
   rm -f "$ERROR_FILE" "$REVIEW_VALIDATED_PATH"
   use_work_dir "$(mktemp -d)"
   load_prepared
+  if [ -n "$COMMAND_MODE" ]; then
+    echo "@droid $COMMAND_MODE has no validator pass; nothing to do."
+    exit 0
+  fi
   [ -n "${FACTORY_API_KEY:-}" ] ||
     fail DROID_VALIDATOR_ERROR_MESSAGE "FACTORY_API_KEY is required for the validator pass."
   install_bun || fail DROID_VALIDATOR_ERROR_MESSAGE "Could not install bun."
-  run_entrypoint event src/entrypoints/github-pr-event.ts ||
-    fail DROID_VALIDATOR_ERROR_MESSAGE "Could not read PR #$PR_NUMBER from GitHub."
 
   # As in action.yml, the validator gets no effort for the "default" label.
   local effort="$REASONING_EFFORT"
@@ -433,6 +446,16 @@ after() {
   load_prepared
   # Copies of what the session and validate wrote, read as SESSION_USER: root
   # would follow a link they planted to one of its own files.
+  if [ -n "$COMMAND_MODE" ]; then
+    # Without a result, the publisher replies that the session did not
+    # finish. It refuses a result over 4 MiB, as a cut copy always is.
+    local success=true
+    read_session_file "$COMMAND_OUTPUT_PATH" "$SESSION_FILE_MAX_BYTES" >"$WORK_DIR/command_output" 2>/dev/null ||
+      { rm -f "$WORK_DIR/command_output"; success=false; }
+    run_entrypoint post src/entrypoints/github-post-command.ts \
+      COMMAND_OUTPUT_PATH="$WORK_DIR/command_output" DROID_SUCCESS="$success"
+    return
+  fi
   local name
   for name in review_candidates.json review_validated.json; do
     # One byte over the limit marks a file too large to use.
@@ -453,8 +476,6 @@ after() {
     error="$(read_session_file "$ERROR_FILE" 2000 2>/dev/null)"
     fail DROID_VALIDATOR_ERROR_MESSAGE "${error:-The validator pass failed.}"
   fi
-  run_entrypoint event src/entrypoints/github-pr-event.ts ||
-    fail DROID_POST_ERROR_MESSAGE "Could not read PR #$PR_NUMBER from GitHub."
   run_entrypoint lifecycle src/entrypoints/github-review-lifecycle.ts REVIEW_PHASE=validated
   run_entrypoint lifecycle src/entrypoints/github-review-lifecycle.ts REVIEW_PHASE=posted
   run_entrypoint post src/entrypoints/github-post-review.ts ||

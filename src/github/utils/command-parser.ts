@@ -23,7 +23,7 @@ export { parseDroidCommand };
 export function extractCommandFromContext(
   context: GitHubContext,
 ): ParsedCommand | null {
-  if (!context.payload || context.inputs.automaticReviewOnly) {
+  if (!context.payload) {
     return null;
   }
 

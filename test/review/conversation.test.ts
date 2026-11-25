@@ -16,6 +16,7 @@ import type { Octokits } from "../../src/github/api/client";
 import { prepareTagExecution } from "../../src/tag";
 import * as actors from "../../src/github/validation/actor";
 import * as reviewMode from "../../src/tag/commands/review";
+import * as createInitial from "../../src/github/operations/comments/create-initial";
 import { resolveReviewUxConfig } from "../../src/core/review/config";
 
 const head = "a".repeat(40);
@@ -168,6 +169,33 @@ describe("command execution isolation and replies", () => {
     expect(reviewSpy).not.toHaveBeenCalled();
     expect(issueComments[0].body).toContain("### Droid commands");
   });
+  test.each([
+    ["@droid fill", "`@droid fill`"],
+    ["@droid security --full", "`@droid security --full`"],
+  ])(
+    "a Factory-run automation only replies that %s is not supported",
+    async (body, name) => {
+      const automation = context();
+      automation.inputs.factoryAutomation = true;
+      automation.payload = { comment: { id: 101, body } } as any;
+      const initialSpy = spyOn(createInitial, "createInitialComment");
+      try {
+        const result = await prepareTagExecution({
+          context: automation,
+          octokit: client,
+          githubToken: "unused",
+        });
+        expect(result.skipped).toBe(true);
+        expect(output("steward_skipped")).toBe("true");
+        expect(issueComments.map((comment) => comment.body)).toEqual([
+          `${name} is not supported on Factory-run automations yet.`,
+        ]);
+        expect(initialSpy).not.toHaveBeenCalled();
+      } finally {
+        initialSpy.mockRestore();
+      }
+    },
+  );
   test("disabled fixes never start Exec or fetch source snapshots", async () => {
     const disabled = context();
     disabled.inputs.reviewConfig = resolveReviewUxConfig({

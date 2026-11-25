@@ -97,6 +97,22 @@ function completed(reason: string): PrepareResult {
   };
 }
 
+/** Their model runs write to GitHub with tools that need the write token. */
+export async function refuseUnsupportedCommand(options: {
+  context: ParsedGitHubContext;
+  octokit: Octokits;
+  command: "fill" | "security-full";
+}): Promise<PrepareResult> {
+  const name =
+    options.command === "fill" ? "@droid fill" : "@droid security --full";
+  await replyToCommand(
+    options.octokit,
+    options.context,
+    `\`${name}\` is not supported on Factory-run automations yet.`,
+  );
+  return completed("command_unsupported");
+}
+
 export async function prepareConversationCommand(options: {
   context: ParsedGitHubContext;
   octokit: Octokits;

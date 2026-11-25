@@ -183,31 +183,6 @@ describe("real preparation adapters distinguish manual PR-body requests", () => 
   });
 });
 
-describe("a runner that takes no PR-body commands", () => {
-  beforeEach(() => {
-    context.inputs.automaticReviewOnly = true;
-  });
-  it("keeps draft filtering for a PR-body review request", async () => {
-    await review.prepareReviewMode({
-      context,
-      octokit: kit,
-      githubToken: "test-only",
-    });
-    expect(lifecycleSpy.mock.calls[0]?.[0].skipReason).toBeDefined();
-    expect(promptSpy).not.toHaveBeenCalled();
-  });
-  it("does not make a PR-body security request a manual review", async () => {
-    context.inputs.automaticReview = true;
-    (context.payload as any).pull_request.body = "@droid security";
-    await security.prepareSecurityReviewMode({
-      context,
-      octokit: kit,
-      githubToken: "test-only",
-    });
-    expect(lifecycleSpy.mock.calls[0]?.[0].full).not.toBe(true);
-  });
-});
-
 describe("mode-specific manual requests do not inherit unrelated automatic flags", () => {
   it("a request added to a previously empty body is manual", async () => {
     (context.payload as any).changes.body.from = null;
