@@ -220,7 +220,9 @@ describe("fetchAndStoreComments", () => {
   let tempDir: string;
 
   beforeEach(async () => {
-    tempDir = await fsPromises.mkdtemp(join(tmpdir(), "droid-review-comments-"));
+    tempDir = await fsPromises.mkdtemp(
+      join(tmpdir(), "droid-review-comments-"),
+    );
   });
 
   afterEach(async () => {
@@ -312,7 +314,9 @@ describe("fetchAndStoreComments", () => {
       start_side: "RIGHT",
       commit_id: "current-commit",
       original_commit_id: "previous-commit",
-      _links: { self: { href: "https://example.invalid/api/pulls/comments/20" } },
+      _links: {
+        self: { href: "https://example.invalid/api/pulls/comments/20" },
+      },
       reactions: { total_count: 1, eyes: 1 },
     };
     const review = {
@@ -324,11 +328,18 @@ describe("fetchAndStoreComments", () => {
         url: "https://example.invalid/review-reactions",
       },
     };
-    const reply = { id: 21, in_reply_to_id: 20, body: "Fixed in the next commit" };
+    const reply = {
+      id: 21,
+      in_reply_to_id: 20,
+      body: "Fixed in the next commit",
+    };
     const raw = { issueComments: [issue], reviewComments: [review, reply] };
     const before = JSON.stringify(raw);
     const expected = JSON.stringify(
-      { issueComments: [retainedIssue], reviewComments: [retainedReview, reply] },
+      {
+        issueComments: [retainedIssue],
+        reviewComments: [retainedReview, reply],
+      },
       null,
       2,
     );
