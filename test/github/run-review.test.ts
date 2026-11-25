@@ -82,6 +82,7 @@ function machine() {
   fs.writeFileSync(path.join(bin, "droid"), DROID_STUB, { mode: 0o755 });
   const checkout = path.join(root, "checkout");
   fs.mkdirSync(checkout);
+  spawnSync("git", ["init", "-q", checkout]);
   const runnerTemp = path.join(root, "runner-temp");
   const home = path.join(root, "home");
   const tmp = path.join(root, "tmp");

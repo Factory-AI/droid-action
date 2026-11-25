@@ -20,8 +20,8 @@
 #   PR_HEAD_SHA        commit to review; `before` skips if the PR moved on
 #   PR_ACTION          pull_request action that started the run (opened,
 #                      synchronize, ...), checked against review_auto_triggers
-#   GITHUB_TOKEN       token that can write contents, pull requests, issues
-#                      and checks on the repository; each part may get its own
+#   GITHUB_TOKEN       repository token with pull requests and checks write
+#                      and contents read; each part may get its own
 #   GITHUB_RUN_ID      id of this run, the same in both parts
 #   FACTORY_API_KEY    required by `after`, for the validator pass
 # Optional: RUNNER_TEMP (default $TMPDIR or /tmp), GITHUB_RUN_ATTEMPT,
@@ -164,6 +164,9 @@ before() {
     GITHUB_ACTOR="$(value "$WORK_DIR/event" author)"
     export GITHUB_ACTOR
   fi
+  # `git clone --depth 1` fetches only the default branch, and gh pr checkout
+  # cannot track a PR branch outside the fetch refspec.
+  git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*' || exit 1
 
   run_entrypoint prepare src/entrypoints/prepare.ts \
     REVIEW_CONFIG_JSON= OVERRIDE_GITHUB_TOKEN="$GITHUB_TOKEN" AUTOMATIC_REVIEW=true
