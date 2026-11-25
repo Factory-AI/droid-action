@@ -23,6 +23,12 @@ export async function initializeReviewConfig(
           repo: context.repository.repo,
           prNumber: context.entityNumber,
           inputs: reviewInputsFromEnvironment(),
+          // github/run-review.sh reviews unless the caller or the base-branch
+          // file turns automatic review off; in Actions it stays opt-in.
+          defaults:
+            process.env.DEFAULT_AUTOMATIC_REVIEW === "true"
+              ? { automatic_review: true }
+              : undefined,
           onBaseSha: (sha) => {
             core.exportVariable("REVIEW_BASE_SHA", sha);
             core.setOutput("review_base_sha", sha);

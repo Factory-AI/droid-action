@@ -33,7 +33,7 @@ case "$*" in
     out author octocat
     ;;
   *prepare.ts)
-    echo "prepare actor=$GITHUB_ACTOR auto=$AUTOMATIC_REVIEW config=[\${REVIEW_CONFIG_JSON-unset}] override=$OVERRIDE_GITHUB_TOKEN cwd=$PWD" >> "$STUB_LOG"
+    echo "prepare actor=$GITHUB_ACTOR auto=[\${AUTOMATIC_REVIEW-unset}] security=[\${AUTOMATIC_SECURITY_REVIEW-unset}] default_auto=\${DEFAULT_AUTOMATIC_REVIEW-unset} config=[\${REVIEW_CONFIG_JSON-unset}] override=$OVERRIDE_GITHUB_TOKEN cwd=$PWD" >> "$STUB_LOG"
     echo "::add-mask::$OVERRIDE_GITHUB_TOKEN"
     out github_token "$OVERRIDE_GITHUB_TOKEN"
     out mcp_tools "{\\"env\\":{\\"GITHUB_TOKEN\\":\\"$OVERRIDE_GITHUB_TOKEN\\"}}"
@@ -229,9 +229,10 @@ describe("github/run-review.sh before", () => {
       "src/entrypoints/github-review-lifecycle.ts",
     ]);
     // Entrypoints run from the PR checkout, as in action.yml, with the PR
-    // author as actor and no review configuration carried in.
+    // author as actor, no review configuration carried in, and automatic
+    // review on only by default.
     expect(run.calls).toContain(
-      `prepare actor=octocat auto=true config=[] override=${WRITE_TOKEN} cwd=${m.checkout}`,
+      `prepare actor=octocat auto=[unset] security=[unset] default_auto=true config=[] override=${WRITE_TOKEN} cwd=${m.checkout}`,
     );
     expect(run.calls).toContain(
       `lifecycle phase=candidates check=11 head=${HEAD}`,
@@ -255,6 +256,18 @@ describe("github/run-review.sh before", () => {
     expect(
       fs.existsSync(path.join(m.home, ".factory/droids/security-reviewer.md")),
     ).toBe(true);
+  });
+
+  it("passes the caller's review settings to prepare instead of forcing them", () => {
+    const m = machine();
+    const run = m.run("before", {
+      AUTOMATIC_REVIEW: "false",
+      AUTOMATIC_SECURITY_REVIEW: "true",
+    });
+    expect(run.status).toBe(0);
+    expect(run.calls).toContain(
+      "auto=[false] security=[true] default_auto=true",
+    );
   });
 
   it("tells the caller to skip the session when the PR moved past PR_HEAD_SHA", () => {

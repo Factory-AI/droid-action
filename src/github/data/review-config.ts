@@ -50,6 +50,8 @@ export async function loadReviewUxConfigFromBase(options: {
   repo: string;
   prNumber: number;
   inputs?: ReviewConfigInputs;
+  /** Settings below the base-branch file and the inputs. */
+  defaults?: Record<string, unknown>;
   onBaseSha?: (sha: string) => void;
 }): Promise<ReviewUxConfig> {
   const { client, owner, repo, prNumber } = options;
@@ -82,7 +84,10 @@ export async function loadReviewUxConfigFromBase(options: {
     );
   } catch (error) {
     if (status(error) !== 404) throw error;
-    return resolveReviewUxConfig({ inputs: options.inputs });
+    return resolveReviewUxConfig({
+      fileConfig: options.defaults,
+      inputs: options.inputs,
+    });
   }
   const data = record(content.data);
   if (
@@ -142,5 +147,8 @@ export async function loadReviewUxConfigFromBase(options: {
   const fileConfig = parseReviewConfigYaml(
     Buffer.from(data.content, "base64").toString("utf8"),
   );
-  return resolveReviewUxConfig({ fileConfig, inputs: options.inputs });
+  return resolveReviewUxConfig({
+    fileConfig: { ...options.defaults, ...fileConfig },
+    inputs: options.inputs,
+  });
 }

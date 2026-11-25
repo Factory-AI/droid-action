@@ -32,8 +32,10 @@
 # Optional: RUNNER_TEMP (an existing directory; default $TMPDIR or /tmp),
 # SESSION_USER (below), GITHUB_RUN_ATTEMPT, GITHUB_ACTOR (default: the PR
 # author; ALLOWED_BOTS must list it when it is a bot), and the review settings
-# action.yml passes as environment variables (REVIEW_DEPTH,
-# AUTOMATIC_SECURITY_REVIEW...). validate runs the droid on its PATH.
+# action.yml passes as environment variables (AUTOMATIC_REVIEW,
+# AUTOMATIC_SECURITY_REVIEW, REVIEW_DEPTH...), which win over the base
+# branch's .factory/review.yaml. When neither sets AUTOMATIC_REVIEW, the review
+# runs. validate runs the droid on its PATH.
 #
 # before exits 78 when there is nothing to review: the PR moved past
 # PR_HEAD_SHA, or the review settings skip this event. Skip the session then;
@@ -265,7 +267,7 @@ before() {
   git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*' || exit 1
 
   run_entrypoint prepare src/entrypoints/prepare.ts \
-    REVIEW_CONFIG_JSON= OVERRIDE_GITHUB_TOKEN="$GITHUB_TOKEN" AUTOMATIC_REVIEW=true
+    REVIEW_CONFIG_JSON= OVERRIDE_GITHUB_TOKEN="$GITHUB_TOKEN" DEFAULT_AUTOMATIC_REVIEW=true
   local status=$?
   save_state "$WORK_DIR/state"
   load_state "$WORK_DIR/state"
