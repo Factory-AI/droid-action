@@ -8,7 +8,7 @@ import {
   spyOn,
 } from "bun:test";
 import * as childProcess from "child_process";
-import { mkdtemp, readFile, rm } from "fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
@@ -204,4 +204,51 @@ describe("incremental safety: model artifact boundaries", () => {
       manifest.skipped.map((entry: { path: string }) => entry.path),
     ).toEqual(["dist/é.ts", "dist/a\tb.ts"]);
   });
+  it.each([
+    ["a full", undefined],
+    ["an incremental", OLD],
+  ])(
+    "keeps the prior diff of %s review for posting",
+    async (_name, incrementalBaseSha) => {
+      const priorDiff =
+        "diff --git a/src/x.ts b/src/x.ts\n--- a/src/x.ts\n+++ b/src/x.ts\n@@ -1 +1 @@\n-old\n+new\n";
+      mockGit((command) => {
+        if (command.includes("--is-shallow-repository")) return "false\n";
+        if (command.includes("merge-base")) return BASE;
+        if (command.includes(`${OLD}..${HEAD}`)) return priorDiff;
+        if (command.includes(`${BASE}..${HEAD}`))
+          return "synthetic full diff\n";
+        return "";
+      });
+      await writeFile(
+        process.env.REVIEW_LIFECYCLE_PATH!,
+        JSON.stringify({ head: HEAD, state: { head: OLD, findings: [] } }),
+      );
+      const kept = join(directory, "prior_diff.json");
+      process.env.REVIEW_PRIOR_DIFF_PATH = kept;
+      const octokit = {
+        rest: {
+          issues: { listComments: async () => ({ data: [] }) },
+          pulls: { listReviewComments: async () => ({ data: [] }) },
+        },
+      } as unknown as Octokits;
+      await computeReviewArtifacts({
+        baseRef: "main",
+        tempDir: directory,
+        octokit,
+        owner: "o",
+        repo: "r",
+        prNumber: 7,
+        title: "Synthetic",
+        body: "",
+        headRevision: HEAD,
+        incrementalBaseSha,
+      });
+      expect(JSON.parse(await readFile(kept, "utf8"))).toEqual({
+        base: OLD,
+        head: HEAD,
+        diff: priorDiff,
+      });
+    },
+  );
 });

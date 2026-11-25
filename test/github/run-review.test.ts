@@ -34,7 +34,7 @@ case "$*" in
     out head_sha "\${STUB_HEAD:-$PR_HEAD_SHA}"
     ;;
   *prepare.ts)
-    echo "prepare actor=$GITHUB_ACTOR auto=[\${AUTOMATIC_REVIEW-unset}] security=[\${AUTOMATIC_SECURITY_REVIEW-unset}] default_auto=\${DEFAULT_AUTOMATIC_REVIEW-unset} only=\${AUTOMATIC_REVIEW_ONLY-unset} config=[\${REVIEW_CONFIG_JSON-unset}] override=$OVERRIDE_GITHUB_TOKEN cwd=$PWD prior=$REVIEW_PRIOR_FINDINGS_PATH" >> "$STUB_LOG"
+    echo "prepare actor=$GITHUB_ACTOR auto=[\${AUTOMATIC_REVIEW-unset}] security=[\${AUTOMATIC_SECURITY_REVIEW-unset}] default_auto=\${DEFAULT_AUTOMATIC_REVIEW-unset} only=\${AUTOMATIC_REVIEW_ONLY-unset} config=[\${REVIEW_CONFIG_JSON-unset}] override=$OVERRIDE_GITHUB_TOKEN cwd=$PWD prior=$REVIEW_PRIOR_FINDINGS_PATH prior_diff=$REVIEW_PRIOR_DIFF_PATH" >> "$STUB_LOG"
     echo "::add-mask::$OVERRIDE_GITHUB_TOKEN"
     out github_token "$OVERRIDE_GITHUB_TOKEN"
     out mcp_tools "{\\"env\\":{\\"GITHUB_TOKEN\\":\\"$OVERRIDE_GITHUB_TOKEN\\"}}"
@@ -71,7 +71,7 @@ case "$*" in
     echo approved > "$(dirname "$INPUT_PROMPT_FILE")/review_validated.json"
     ;;
   *github-post-review.ts)
-    echo "post token=$GITHUB_TOKEN effort=[$REASONING_EFFORT] check=$REVIEW_CHECK_ID bun_options=\${BUN_OPTIONS-unset} git_config=$(git config --get droid.planted || echo unreadable) validated=$(cat "$REVIEW_VALIDATED_PATH" 2>/dev/null) from=$REVIEW_VALIDATED_PATH diff=$REVIEW_DIFF_PATH:$(head -n 1 "$REVIEW_DIFF_PATH" 2>/dev/null)" >> "$STUB_LOG"
+    echo "post token=$GITHUB_TOKEN effort=[$REASONING_EFFORT] check=$REVIEW_CHECK_ID bun_options=\${BUN_OPTIONS-unset} git_config=$(git config --get droid.planted || echo unreadable) validated=$(cat "$REVIEW_VALIDATED_PATH" 2>/dev/null) from=$REVIEW_VALIDATED_PATH diff=$REVIEW_DIFF_PATH:$(head -n 1 "$REVIEW_DIFF_PATH" 2>/dev/null) prior_diff=$REVIEW_PRIOR_DIFF_PATH" >> "$STUB_LOG"
     if [ -n "\${STUB_POST_ERROR:-}" ]; then out error_message "$STUB_POST_ERROR"; exit 1; fi
     ;;
 esac
@@ -271,7 +271,7 @@ describe("github/run-review.sh before", () => {
     // author as actor, no review configuration carried in, and automatic
     // review on only by default.
     expect(run.calls).toContain(
-      `prepare actor=octocat auto=[unset] security=[unset] default_auto=true only=true config=[] override=${WRITE_TOKEN} cwd=${m.checkout} prior=${path.join(m.prompts, "review_prior_findings.json")}`,
+      `prepare actor=octocat auto=[unset] security=[unset] default_auto=true only=true config=[] override=${WRITE_TOKEN} cwd=${m.checkout} prior=${path.join(m.prompts, "review_prior_findings.json")} prior_diff=${path.join(m.stateDir, "review_prior_diff.json")}`,
     );
     // The token reaches prepare through its environment, not env(1)'s arguments.
     expect(run.calls).toContain(
@@ -515,6 +515,10 @@ describe("github/run-review.sh after", () => {
       `post token=${WRITE_TOKEN} effort=[default] check=11`,
     );
     expect(run.calls).toContain("validated=approved");
+    // The prior diff prepare kept, in before's own directory.
+    expect(run.calls).toContain(
+      `prior_diff=${path.join(m.stateDir, "review_prior_diff.json")}`,
+    );
     expect(run.calls).not.toContain("phase=finalize");
   });
 

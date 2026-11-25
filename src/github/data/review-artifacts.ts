@@ -18,6 +18,7 @@ import {
   finishReviewLifecycle,
   readReviewLifecycle,
   saveReviewLifecycle,
+  savePreparedPriorDiff,
   stateFindings,
 } from "../operations/review-lifecycle";
 import { redactCredentials } from "../../utils/redact-credentials";
@@ -385,6 +386,11 @@ export async function computeReviewArtifacts(opts: {
         /* No fixed eligibility without the actual prior-head diff. */
       }
     }
+    if (priorDiff !== undefined)
+      await savePreparedPriorDiff(
+        { base: lifecycle.state.head, head: lifecycle.head },
+        priorDiff,
+      );
     const changedFindings =
       priorDiff === undefined
         ? []

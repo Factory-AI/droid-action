@@ -34,6 +34,7 @@ import {
   readReviewLifecycle,
   replaceReviewDescription,
   saveReviewLifecycle,
+  savePreparedPriorDiff,
   fetchImmutableReviewDiff,
 } from "../../src/github/operations/review-lifecycle";
 import { resolveReviewUxConfig } from "../../src/core/review/config";
@@ -1604,6 +1605,37 @@ describe("review lifecycle production boundaries", () => {
         .conclusion,
     ).toBe("neutral");
   });
+  // github/run-review.sh posts without git, and GitHub's three-dot comparison
+  // cannot stand for the previous tree once the PR was rebased.
+  it.each([
+    ["the diff preparation kept", OLD, "resolved"],
+    ["a kept diff of another range", BASE, "open"],
+    ["no kept diff", undefined, "open"],
+  ] as const)(
+    "without git after a rebase, judges a confirmed fix from %s",
+    async (_name, keptBase, state) => {
+      process.env.REVIEW_PRIOR_DIFF_PATH = join(directory, "prior_diff.json");
+      const f = fixture();
+      f.setThreads(false);
+      await f.prepare();
+      if (keptBase)
+        await savePreparedPriorDiff({ base: keptBase, head: HEAD }, DIFF);
+      spyOn(childProcess, "execFileSync").mockImplementation(() => {
+        throw new Error("Posting runs no git.");
+      });
+      await f.post(
+        [],
+        [
+          {
+            id: "f-known",
+            status: "fixed",
+            evidence: "The new timeout guard handles every request.",
+          },
+        ],
+      );
+      expect(decodeReviewState(f.body())?.findings[0]?.state).toBe(state);
+    },
+  );
   it("resolves only an explicit fixed decision grounded in authenticated changed code", async () => {
     const f = fixture();
     f.setThreads(false);

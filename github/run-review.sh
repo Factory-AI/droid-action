@@ -123,6 +123,9 @@ export REVIEW_CANDIDATES_PATH="$PROMPTS_DIR/review_candidates.json"
 export REVIEW_VALIDATED_PATH="$PROMPTS_DIR/review_validated.json"
 export REVIEW_PRIOR_FINDINGS_PATH="$PROMPTS_DIR/review_prior_findings.json"
 export REVIEW_LIFECYCLE_PATH="$STATE_DIR/review_lifecycle.json"
+# The previous reviewed head's diff to this head, which prepare computes with
+# git for posting: after runs no git.
+export REVIEW_PRIOR_DIFF_PATH="$STATE_DIR/review_prior_diff.json"
 export GITHUB_EVENT_NAME=pull_request
 export PATH="$HOME/.bun/bin:$PATH"
 
