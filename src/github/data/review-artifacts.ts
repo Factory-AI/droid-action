@@ -25,6 +25,7 @@ import {
   normalizePatchPath,
   pathsFromDiffHeader,
 } from "../../core/review/validated/diff";
+import { record } from "../../core/review/validated/finding";
 
 const DIFF_MAX_BUFFER = 50 * 1024 * 1024; // 50MB buffer for large diffs
 
@@ -155,6 +156,52 @@ export async function computeAndStoreDiff(
   return diffPath;
 }
 
+const ACTOR_PROFILE_FIELDS = [
+  "url",
+  "html_url",
+  "avatar_url",
+  "gravatar_id",
+  "followers_url",
+  "following_url",
+  "gists_url",
+  "starred_url",
+  "subscriptions_url",
+  "organizations_url",
+  "repos_url",
+  "events_url",
+  "received_events_url",
+] as const;
+
+function compactActor(actor: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...actor };
+  for (const field of ACTOR_PROFILE_FIELDS) delete result[field];
+  return result;
+}
+
+// Strip only profile decoration from the prompt copy, not from the API data.
+function compactCommentForPrompt(comment: unknown): unknown {
+  const data = record(comment);
+  if (!data) return comment;
+  const result = { ...data };
+  const user = record(result.user);
+  if (user) result.user = compactActor(user);
+  const app = record(result.performed_via_github_app);
+  const owner = record(app?.owner);
+  if (app && owner) {
+    result.performed_via_github_app = {
+      ...app,
+      owner: compactActor(owner),
+    };
+  }
+  const sourceReactions = record(result.reactions);
+  if (sourceReactions) {
+    const reactions = { ...sourceReactions };
+    delete reactions.url;
+    result.reactions = reactions;
+  }
+  return result;
+}
+
 export async function fetchAndStoreComments(
   octokit: Octokits,
   owner: string,
@@ -165,7 +212,7 @@ export async function fetchAndStoreComments(
   const promptsDir = `${tempDir}/droid-prompts`;
   await mkdir(promptsDir, { recursive: true });
 
-  const [issueComments, reviewComments] = await Promise.all([
+  const [firstIssuePage, firstReviewPage] = await Promise.all([
     octokit.rest.issues.listComments({
       owner,
       repo,
@@ -179,7 +226,9 @@ export async function fetchAndStoreComments(
       per_page: 100,
     }),
   ]);
-  for (let page = 2, count = issueComments.data.length; count === 100; page++) {
+  const issueComments = [...firstIssuePage.data];
+  const reviewComments = [...firstReviewPage.data];
+  for (let page = 2, count = issueComments.length; count === 100; page++) {
     const next = await octokit.rest.issues.listComments({
       owner,
       repo,
@@ -188,13 +237,9 @@ export async function fetchAndStoreComments(
       page,
     });
     count = next.data.length;
-    issueComments.data.push(...next.data);
+    issueComments.push(...next.data);
   }
-  for (
-    let page = 2, count = reviewComments.data.length;
-    count === 100;
-    page++
-  ) {
+  for (let page = 2, count = reviewComments.length; count === 100; page++) {
     const next = await octokit.rest.pulls.listReviewComments({
       owner,
       repo,
@@ -203,12 +248,12 @@ export async function fetchAndStoreComments(
       page,
     });
     count = next.data.length;
-    reviewComments.data.push(...next.data);
+    reviewComments.push(...next.data);
   }
 
   const comments = {
-    issueComments: issueComments.data,
-    reviewComments: reviewComments.data,
+    issueComments: issueComments.map(compactCommentForPrompt),
+    reviewComments: reviewComments.map(compactCommentForPrompt),
   };
 
   const commentsPath = `${promptsDir}/existing_comments.json`;
@@ -217,7 +262,7 @@ export async function fetchAndStoreComments(
     redactCredentials(JSON.stringify(comments, null, 2)),
   );
   console.log(
-    `Stored existing comments (${issueComments.data.length} issue, ${reviewComments.data.length} review) at ${commentsPath}`,
+    `Stored existing comments (${issueComments.length} issue, ${reviewComments.length} review) at ${commentsPath}`,
   );
   return commentsPath;
 }
