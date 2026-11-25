@@ -496,6 +496,8 @@ fix_mode: commit
 
 The shorter aliases `depth`, `severity_threshold`, `ignore_paths`, `summary_sections`, `badges`, `incremental`, `auto_resolve`, and `max_auto_runs` are accepted. Do not specify an alias and its full key together. Model and reasoning inputs still override the selected depth preset.
 
+The file may also carry a top-level `rules` key. It holds Factory's pull request rules, which Factory reads and validates itself. Reviews ignore the key and whatever it holds, so it changes no review setting and cannot fail a review. Any other key that is not a setting above still fails explicitly.
+
 ### Review Depth
 
 `review_depth` is the only setting you need to choose how reviews run. Each preset picks the model and reasoning effort for you, and Factory keeps it on its recommended model as new models ship. You get upgrades without editing your workflow or updating `droid-action`.
