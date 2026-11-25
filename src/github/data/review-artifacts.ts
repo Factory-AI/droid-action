@@ -386,18 +386,33 @@ export async function computeReviewArtifacts(opts: {
         ? []
         : changedFindingCandidates(previous, priorDiff);
     lifecycle.eligibleFixedIds = changedFindings.map((finding) => finding.id);
+    const openFindings = previous.filter(
+      (finding) =>
+        finding.state !== "resolved" && finding.state !== "dismissed",
+    );
+    const changedFindingIndexes: number[] = [];
+    let nextOpenIndex = 0;
+    for (const finding of changedFindings) {
+      const index = openFindings.indexOf(finding, nextOpenIndex);
+      if (index < 0) break;
+      changedFindingIndexes.push(index);
+      nextOpenIndex = index + 1;
+    }
+    // Never guess by ID if a future selector stops returning ordered references.
+    const canIndexChangedFindings =
+      changedFindingIndexes.length === changedFindings.length;
     await writeFile(
       `${opts.tempDir}/droid-prompts/review_prior_findings.json`,
       redactCredentials(
         JSON.stringify(
           {
+            ...(canIndexChangedFindings ? { version: 2 } : {}),
             head: lifecycle.head,
             reviewedHead: lifecycle.state.head,
-            openFindings: previous.filter(
-              (finding) =>
-                finding.state !== "resolved" && finding.state !== "dismissed",
-            ),
-            changedFindings,
+            openFindings,
+            ...(canIndexChangedFindings
+              ? { changedFindingIndexes }
+              : { changedFindings }),
             eligibleFixedIds: lifecycle.eligibleFixedIds,
           },
           null,

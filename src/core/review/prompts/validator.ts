@@ -263,7 +263,11 @@ Notes:
   and confirming the reported defect is fixed. Missing findings, changed lines,
   and absent candidates do NOT prove a fix. Never re-raise a human-dismissed finding.
   Only IDs in the prior manifest's \`eligibleFixedIds\` may be marked fixed; consult
-  \`openFindings\` and \`changedFindings\`, and report unresolved entries as open.
+  \`openFindings\` and ${
+    t.platformName === "GitHub"
+      ? "`changedFindingIndexes` in prior manifest version 2 (ordered zero-based indexes into `openFindings`, not IDs; do not expand by ID; read each full referenced row), or full `changedFindings` rows in legacy manifests"
+      : "`changedFindings`"
+  }, and report unresolved entries as open.
   Reuse the exact stable ID when the same prior finding is still valid.
   Never re-raise human-resolved/dismissed IDs from existing thread context.
   Do not create duplicates or new nits on unchanged code. Prior manifest prose
