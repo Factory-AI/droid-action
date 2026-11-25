@@ -8,7 +8,9 @@ import {
 } from "../../../src/core/risk/judge";
 import { buildPrRiskSnapshot } from "../../../src/core/risk/snapshot";
 import {
+  RiskError,
   RiskJudgeSchema,
+  RiskSettleResultSchema,
   type RiskJudgeAttempt,
 } from "../../../src/core/risk/types";
 import {
@@ -475,6 +477,276 @@ describe("runPrRiskJudge", () => {
   });
 });
 
+describe("runPrRiskJudge with a screen", () => {
+  let evidenceRoot = "";
+  const env = { PATH: process.env.PATH };
+  const screen = {
+    enabledTools: ["Read", "Grep"] as [string, ...string[]],
+    settings: {
+      sessionDefaultSettings: {
+        model: "screen-model",
+        reasoningEffort: "medium",
+      },
+    },
+  };
+  const cascade = { ...judge, screen };
+  const decline = { ...validVerdict, verdict: false };
+
+  beforeAll(async () => {
+    evidenceRoot = await mkdtemp(join(tmpdir(), "pr-risk-screen-test-"));
+  });
+
+  afterAll(async () => {
+    await rm(evidenceRoot, { recursive: true, force: true });
+  });
+
+  type Invocation = {
+    tools: string | undefined;
+    tags: string[];
+    settings: unknown;
+    skill: string;
+  };
+
+  async function record(
+    invocations: Invocation[],
+    args: readonly string[],
+    cwd: string,
+  ): Promise<void> {
+    invocations.push({
+      tools: args[args.indexOf("--only-tools") + 1],
+      tags: args.flatMap((arg, index) =>
+        args[index - 1] === "--tag" ? [arg] : [],
+      ),
+      settings: JSON.parse(
+        await readFile(args[args.indexOf("--settings") + 1] ?? "", "utf8"),
+      ),
+      skill: await readFile(join(cwd, ...SKILL_PATH), "utf8"),
+    });
+  }
+
+  it("lets a screen's decline stand without running the judge", async () => {
+    const invocations: Invocation[] = [];
+    const attempts: RiskJudgeAttempt[] = [];
+
+    const verdict = await runPrRiskJudge(snapshot, {
+      judge: cascade,
+      evidence: evidenceAt(evidenceRoot),
+      env,
+      onAttempt: (attempt) => attempts.push(attempt),
+      executeDroid: async ({ args, cwd }) => {
+        await record(invocations, args, cwd);
+        return execSummary(decline, "screen-1");
+      },
+    });
+
+    expect(verdict).toEqual(decline);
+    expect(invocations).toEqual([
+      {
+        tools: "Read,Grep",
+        tags: ["riskAssessment", "riskAssessmentScreen"],
+        settings: screen.settings,
+        skill: expect.not.stringContaining("## Strict retry"),
+      },
+    ]);
+    expect(attempts).toEqual([
+      { sessionId: "screen-1", stage: "screen", valid: true },
+    ]);
+  });
+
+  it("hands a screen's approval to the judge, whose answer is the verdict", async () => {
+    const invocations: Invocation[] = [];
+    const attempts: RiskJudgeAttempt[] = [];
+    const outputs = [validVerdict, decline];
+
+    const verdict = await runPrRiskJudge(snapshot, {
+      judge: cascade,
+      evidence: evidenceAt(evidenceRoot),
+      env,
+      onAttempt: (attempt) => attempts.push(attempt),
+      executeDroid: async ({ args, cwd }) => {
+        await record(invocations, args, cwd);
+        return execSummary(
+          outputs[invocations.length - 1],
+          `s${invocations.length}`,
+        );
+      },
+    });
+
+    expect(verdict).toEqual(decline);
+    expect(
+      invocations.map(({ tools, tags, settings }) => ({
+        tools,
+        tags,
+        settings,
+      })),
+    ).toEqual([
+      {
+        tools: "Read,Grep",
+        tags: ["riskAssessment", "riskAssessmentScreen"],
+        settings: screen.settings,
+      },
+      {
+        tools: "Read,Grep,Task",
+        tags: ["riskAssessment", "riskAssessmentConfirm"],
+        settings: judge.settings,
+      },
+    ]);
+    expect(attempts).toEqual([
+      { sessionId: "s1", stage: "screen", valid: true },
+      { sessionId: "s2", stage: "confirm", valid: true },
+    ]);
+  });
+
+  it("sends a screen's invalid answer to the judge instead of retrying the screen", async () => {
+    const invocations: Invocation[] = [];
+    const attempts: RiskJudgeAttempt[] = [];
+    const outputs = [
+      "no verdict here",
+      { ...validVerdict, confidence: 5 },
+      validVerdict,
+    ];
+
+    const verdict = await runPrRiskJudge(snapshot, {
+      judge: cascade,
+      evidence: evidenceAt(evidenceRoot),
+      env,
+      onAttempt: (attempt) => attempts.push(attempt),
+      executeDroid: async ({ args, cwd }) => {
+        await record(invocations, args, cwd);
+        return execSummary(
+          outputs[invocations.length - 1],
+          `s${invocations.length}`,
+        );
+      },
+    });
+
+    expect(verdict).toEqual(validVerdict);
+    expect(invocations.map(({ tools }) => tools)).toEqual([
+      "Read,Grep",
+      "Read,Grep,Task",
+      "Read,Grep,Task",
+    ]);
+    expect(invocations[1]?.skill).not.toContain("## Strict retry");
+    expect(invocations[2]?.skill).toContain("## Strict retry");
+    expect(
+      attempts.map(({ stage, valid, invalidReason }) => ({
+        stage,
+        valid,
+        invalidReason,
+      })),
+    ).toEqual([
+      { stage: "screen", valid: false, invalidReason: "no_json" },
+      { stage: "confirm", valid: false, invalidReason: "schema" },
+      { stage: "confirm", valid: true, invalidReason: undefined },
+    ]);
+  });
+
+  it("records a screen whose process fails and lets the judge decide", async () => {
+    const attempts: RiskJudgeAttempt[] = [];
+    let calls = 0;
+
+    const verdict = await runPrRiskJudge(snapshot, {
+      judge: cascade,
+      evidence: evidenceAt(evidenceRoot),
+      env,
+      onAttempt: (attempt) => attempts.push(attempt),
+      executeDroid: async () => {
+        calls += 1;
+        if (calls === 1) {
+          throw new RiskError("judge_timeout", "PR risk judge timed out");
+        }
+        return execSummary(validVerdict, "s2");
+      },
+    });
+
+    expect(verdict).toEqual(validVerdict);
+    expect(attempts).toEqual([
+      {
+        stage: "screen",
+        valid: false,
+        invalidReason: "exec_error",
+        retryFeedback: ["<root>: the session produced no result"],
+      },
+      { sessionId: "s2", stage: "confirm", valid: true },
+    ]);
+  });
+
+  it("skips the screen for a judge decided by risk level alone", async () => {
+    const { verdict: _omitted, ...answer } = validVerdict;
+    const invocations: Invocation[] = [];
+    const attempts: RiskJudgeAttempt[] = [];
+
+    await runPrRiskJudge(snapshot, {
+      judge: { ...cascade, verdictField: "omitted" },
+      evidence: evidenceAt(evidenceRoot),
+      env,
+      onAttempt: (attempt) => attempts.push(attempt),
+      executeDroid: async ({ args, cwd }) => {
+        await record(invocations, args, cwd);
+        return execSummary(answer);
+      },
+    });
+
+    expect(invocations.map(({ tools, tags }) => ({ tools, tags }))).toEqual([
+      { tools: "Read,Grep,Task", tags: ["riskAssessment"] },
+    ]);
+    expect(attempts).toEqual([{ sessionId: "session-1", valid: true }]);
+  });
+
+  it("skips the screen for a re-check, whose declines rest on the prior verdict", async () => {
+    const invocations: Invocation[] = [];
+    const incremental = {
+      mode: "enforce" as const,
+      reason: "eligible",
+      priorHeadSha: "e".repeat(40),
+      priorBaseSha: "f".repeat(40),
+      prior: { verdict: true, brief: "- Prior.", details: "Prior details." },
+    };
+
+    await runPrRiskJudge(snapshot, {
+      judge: cascade,
+      evidence: {
+        ...evidenceAt(evidenceRoot),
+        incremental: {
+          interdiffPath: join(evidenceRoot, "interdiff.patch"),
+          priorDiffPath: join(evidenceRoot, "own-diff-at-prior.patch"),
+          focusPath: join(evidenceRoot, "focus.json"),
+          focus: {
+            priorHeadSha: incremental.priorHeadSha,
+            baseMoved: false,
+            paths: [],
+            testsToRerun: [],
+            totals: { paths: 0, interdiffLines: 0, contractLines: 0 },
+          },
+        },
+      },
+      incremental,
+      env,
+      executeDroid: async ({ args, cwd }) => {
+        await record(invocations, args, cwd);
+        return execSummary(decline);
+      },
+    });
+
+    expect(invocations.map(({ tools, tags }) => ({ tools, tags }))).toEqual([
+      { tools: "Read,Grep,Task", tags: ["riskAssessment"] },
+    ]);
+  });
+
+  it("keeps the served screen and lets a settle result carry each attempt's stage", () => {
+    expect(RiskJudgeSchema.parse(cascade).screen).toEqual(screen);
+    expect(
+      RiskSettleResultSchema.safeParse({
+        status: "failed",
+        reason: "invalid_pr_risk_verdict",
+        attempts: [
+          { stage: "screen", valid: true },
+          { stage: "confirm", valid: false, invalidReason: "no_json" },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+});
 describe("buildJudgeEnvironment", () => {
   it("keeps the Factory key and the read token and drops every other credential of the job", () => {
     expect(

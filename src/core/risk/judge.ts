@@ -6,12 +6,14 @@ import { renderPrRiskSkill } from "./snapshot";
 import {
   RISK_JUDGE_SKILL_NAME,
   RISK_SESSION_TAG,
+  RISK_STAGE_SESSION_TAGS,
   RiskError,
   type PrRiskEvidenceWorkspace,
   type PullRequestRiskSnapshot,
   type RiskIncremental,
   type RiskJudge,
   type RiskJudgeAttempt,
+  type RiskJudgeStage,
   type RiskScoreRanges,
   type RiskVerdictField,
 } from "./types";
@@ -222,6 +224,12 @@ async function executePrRiskDroid(
  * are data under `evidence/`, never ambient config. An answer that misses the
  * contract earns one strict retry naming the failed rules; the schema is
  * never weakened to rescue an invalid judgment.
+ *
+ * A judge served with a `screen` first runs the skill once with the screen's
+ * tools and settings. A valid decline from it is the verdict; anything else
+ * (an approval, an invalid answer, a failed session) goes to the judge
+ * itself, so no approval rests on the screen. A re-check, and a judge
+ * decided by risk level alone, have no decline to stand on and skip it.
  */
 export async function runPrRiskJudge(
   snapshot: PullRequestRiskSnapshot,
@@ -238,8 +246,16 @@ export async function runPrRiskJudge(
     evidence,
     options.incremental,
   );
-  const settingsPath = await writePrRiskSettings(evidence, judge.settings);
-  const args = [
+  const screen =
+    judge.screen && !incremental && judge.verdictField !== "omitted"
+      ? judge.screen
+      : undefined;
+
+  const argsFor = (
+    settingsPath: string,
+    enabledTools: readonly string[],
+    stage: RiskJudgeStage | undefined,
+  ) => [
     "--settings",
     settingsPath,
     "exec",
@@ -251,8 +267,9 @@ export async function runPrRiskJudge(
     "--disable-builtin-skills",
     "--tag",
     RISK_SESSION_TAG,
+    ...(stage ? ["--tag", RISK_STAGE_SESSION_TAGS[stage]] : []),
     "--only-tools",
-    judge.enabledTools.join(","),
+    enabledTools.join(","),
     "--output-format",
     "json",
     "--cwd",
@@ -260,7 +277,11 @@ export async function runPrRiskJudge(
     `/${RISK_JUDGE_SKILL_NAME}`,
   ];
 
-  const attempt = async (skillText: string): Promise<PrRiskJudgeParse> => {
+  const attempt = async (
+    args: readonly string[],
+    stage: RiskJudgeStage | undefined,
+    skillText: string,
+  ): Promise<PrRiskJudgeParse> => {
     await writePrRiskSkill(evidence, skillText);
     const parsed = parsePrRiskJudgeOutput(
       await executePrRiskDroid(args, options),
@@ -269,6 +290,7 @@ export async function runPrRiskJudge(
     );
     options.onAttempt?.({
       ...(parsed.sessionId ? { sessionId: parsed.sessionId } : {}),
+      ...(stage ? { stage } : {}),
       valid: parsed.verdict !== undefined,
       ...(parsed.verdict === undefined
         ? {
@@ -286,10 +308,44 @@ export async function runPrRiskJudge(
     return parsed;
   };
 
-  const first = await attempt(skill);
+  if (screen) {
+    const screenArgs = argsFor(
+      await writePrRiskSettings(
+        evidence,
+        screen.settings,
+        "screen-settings.json",
+      ),
+      screen.enabledTools,
+      "screen",
+    );
+    try {
+      const screened = await attempt(screenArgs, "screen", skill);
+      if (screened.verdict?.verdict === false) return screened.verdict;
+    } catch (error) {
+      if (!(error instanceof RiskError)) throw error;
+      // The judge still decides, so a screen that times out or dies costs
+      // only its own run; the attempt records that it produced nothing.
+      options.onAttempt?.({
+        stage: "screen",
+        valid: false,
+        invalidReason: "exec_error",
+        retryFeedback: ["<root>: the session produced no result"],
+      });
+    }
+  }
+
+  const stage = screen ? "confirm" : undefined;
+  const args = argsFor(
+    await writePrRiskSettings(evidence, judge.settings),
+    judge.enabledTools,
+    stage,
+  );
+  const first = await attempt(args, stage, skill);
   if (first.verdict) return first.verdict;
 
   const retry = await attempt(
+    args,
+    stage,
     [
       skill.trimEnd(),
       "",

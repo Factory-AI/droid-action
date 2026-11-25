@@ -11,6 +11,11 @@ export const RISK_UNKNOWN_ACTION = "unknown_action";
 export const RISK_JUDGE_SKILL_NAME = "pr-risk-judge";
 export const RISK_SNAPSHOT_PLACEHOLDER = "{{PR_SNAPSHOT_JSON}}";
 export const RISK_SESSION_TAG = "riskAssessment";
+/** The second tag a cascade's sessions carry, by the stage they ran. */
+export const RISK_STAGE_SESSION_TAGS = {
+  screen: "riskAssessmentScreen",
+  confirm: "riskAssessmentConfirm",
+} as const;
 export const RISK_SETTLE_MAX_BODY_BYTES = 256 * 1024;
 /** How many checks a re-check may cite, so how many the runner re-runs. */
 export const MAX_CITED_CHECKS = 20;
@@ -95,7 +100,21 @@ export type RiskBeginRequest = {
  * for a judge decided by risk level alone; absent, or a value this version
  * does not know, it is `required`, so an unknown mode can only fail a run,
  * never let an answer skip the verdict.
+ *
+ * `screen`, when served, makes the judge a cascade: the same skill runs
+ * first with the screen's tools and settings, and only its declines stand.
+ * Anything else it answers goes to the judge itself, so every approval is the
+ * judge's own.
  */
+export const RiskJudgeScreenSchema = z.object({
+  enabledTools: z.array(z.string().min(1)).nonempty(),
+  settings: z.record(z.unknown()),
+});
+export type RiskJudgeScreen = z.infer<typeof RiskJudgeScreenSchema>;
+
+export const RISK_JUDGE_STAGES = ["screen", "confirm"] as const;
+export type RiskJudgeStage = (typeof RISK_JUDGE_STAGES)[number];
+
 export const RiskJudgeSchema = z.object({
   group: z.string().min(1),
   skill: z.string().min(1),
@@ -104,6 +123,7 @@ export const RiskJudgeSchema = z.object({
   scores: z.record(z.tuple([z.number().int(), z.number().int()])),
   timeoutSeconds: z.number().int().positive(),
   verdictField: z.enum(RISK_VERDICT_FIELD_MODES).optional().catch("required"),
+  screen: RiskJudgeScreenSchema.optional(),
   sha256: Sha256Schema,
 });
 export type RiskJudge = z.infer<typeof RiskJudgeSchema>;
@@ -204,6 +224,8 @@ export type RiskPlan = z.infer<typeof RiskPlanSchema>;
 export const RiskJudgeAttemptSchema = z
   .object({
     sessionId: z.string().min(1).optional(),
+    // Sent only by a cascade, so a server that predates it never sees it.
+    stage: z.enum(RISK_JUDGE_STAGES).optional(),
     valid: z.boolean(),
     durationMs: z.number().int().nonnegative().optional(),
     invalidReason: z.enum(["exec_error", "no_json", "schema"]).optional(),

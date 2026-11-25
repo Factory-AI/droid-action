@@ -858,8 +858,9 @@ export async function writePrRiskSkill(
 export async function writePrRiskSettings(
   evidence: PrRiskEvidenceWorkspace,
   settings: Record<string, unknown>,
+  fileName = "settings.json",
 ): Promise<string> {
-  const settingsPath = join(evidence.rootDir, "settings.json");
+  const settingsPath = join(evidence.rootDir, fileName);
   await writeFile(settingsPath, JSON.stringify(settings), "utf8");
   return settingsPath;
 }
