@@ -24,13 +24,7 @@ async function run() {
   );
   await writeFile(
     process.env.GITHUB_EVENT_PATH!,
-    JSON.stringify({
-      action: process.env.PR_ACTION,
-      number: pr.number,
-      pull_request: pr,
-      repository: pr.base.repo,
-      sender: pr.user,
-    }),
+    JSON.stringify({ action: process.env.PR_ACTION, pull_request: pr }),
   );
   core.setOutput("head_sha", pr.head.sha);
   core.setOutput("author", pr.user.login);
