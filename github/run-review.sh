@@ -29,7 +29,8 @@
 # with:
 #   GITHUB_REPOSITORY  owner/repo
 #   GITHUB_TOKEN       for before and after, a token with pull requests and
-#                      checks write and contents read. For validate, a
+#                      checks write and contents read; after's also needs
+#                      contents write to publish `@droid fix`. For validate, a
 #                      read-only token: its `droid exec` can read this
 #                      process's environment, so it must never get the write one.
 #   GITHUB_RUN_ID      id of this run, the same in every part
