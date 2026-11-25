@@ -8,6 +8,7 @@ const REPO_ROOT = path.resolve(import.meta.dir, "../..");
 const SCRIPT = path.join(REPO_ROOT, "github/run-review.sh");
 const HEAD = "a".repeat(40);
 const WRITE_TOKEN = "ghs_write_token";
+const READ_TOKEN = "ghs_read_token";
 const dirs: string[] = [];
 afterAll(() => {
   for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
@@ -15,10 +16,14 @@ afterAll(() => {
 
 /**
  * Stub `bun` (entrypoints) and `droid` binaries record how run-review.sh
- * drives them, so both parts are tested without network or models. The
- * entrypoint stubs report outputs the way @actions/core does.
+ * drives them, so every part is tested without network or models. The
+ * entrypoint stubs report outputs the way @actions/core does. The validator
+ * runs with a cleared environment, so the stub reads its settings from
+ * stub.env and records the environment the validator received.
  */
 const BUN_STUB = `#!/usr/bin/env bash
+received_env="$(env)"
+. "__STUB_DIR__/stub.env"
 echo "bun $*" >> "$STUB_LOG"
 out() { printf '%s<<EOF\\n%s\\nEOF\\n' "$1" "$2" >> "$GITHUB_OUTPUT"; }
 case "$*" in
@@ -47,7 +52,7 @@ case "$*" in
     if [ -n "\${STUB_PREPARE_ERROR:-}" ]; then out prepare_error "$STUB_PREPARE_ERROR"; exit 1; fi
     ;;
   *github-review-lifecycle.ts)
-    echo "lifecycle phase=$REVIEW_PHASE check=$REVIEW_CHECK_ID head=$REVIEW_HEAD_SHA success=\${DROID_SUCCESS-unset} error=\${DROID_POST_ERROR_MESSAGE:-}\${DROID_VALIDATOR_ERROR_MESSAGE:-}\${DROID_ERROR_MESSAGE:-}\${PREPARE_ERROR:-}" >> "$STUB_LOG"
+    echo "lifecycle phase=$REVIEW_PHASE check=$REVIEW_CHECK_ID head=$REVIEW_HEAD_SHA success=\${DROID_SUCCESS-unset} error=\${DROID_POST_ERROR_MESSAGE:-}\${DROID_VALIDATOR_ERROR_MESSAGE:-}\${PREPARE_ERROR:-}" >> "$STUB_LOG"
     ;;
   *prepare-validator.ts)
     echo "validator-prompt effort=[$REASONING_EFFORT] depth=$REVIEW_DEPTH model=$REVIEW_MODEL comment=$DROID_COMMENT_ID token=$GITHUB_TOKEN" >> "$STUB_LOG"
@@ -57,7 +62,7 @@ case "$*" in
     out mcp_tools '{"mcpServers":{}}'
     ;;
   *base-action/src/index.ts)
-    echo "validator github_token=\${GITHUB_TOKEN-unset} gh_token=\${GH_TOKEN-unset} factory=\${FACTORY_API_KEY-unset} args=$INPUT_DROID_ARGS mcp=$INPUT_MCP_TOOLS turns=$INPUT_MAX_TURNS prompt=$INPUT_PROMPT_FILE" >> "$STUB_LOG"
+    printf '%s\\n' "$received_env" > "__STUB_DIR__/validator.env"
     if [ -n "\${STUB_VALIDATOR_ERROR:-}" ]; then out error_message "$STUB_VALIDATOR_ERROR"; exit 1; fi
     ;;
   *github-post-review.ts)
@@ -72,13 +77,19 @@ const DROID_STUB = `#!/usr/bin/env bash
 echo "droid $*" >> "$STUB_LOG"
 `;
 
-/** One machine: both parts of a run share its RUNNER_TEMP and HOME. */
+const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+
+/** One machine: every part of a run shares its RUNNER_TEMP and HOME. */
 function machine() {
   const root = tempDir("gh-run-");
   dirs.push(root);
   const bin = path.join(root, "bin");
   fs.mkdirSync(bin);
-  fs.writeFileSync(path.join(bin, "bun"), BUN_STUB, { mode: 0o755 });
+  fs.writeFileSync(
+    path.join(bin, "bun"),
+    BUN_STUB.replaceAll("__STUB_DIR__", root),
+    { mode: 0o755 },
+  );
   fs.writeFileSync(path.join(bin, "droid"), DROID_STUB, { mode: 0o755 });
   const checkout = path.join(root, "checkout");
   fs.mkdirSync(checkout);
@@ -88,10 +99,24 @@ function machine() {
   const tmp = path.join(root, "tmp");
   fs.mkdirSync(tmp);
   const log = path.join(root, "calls.log");
-  const stateFile = path.join(runnerTemp, "droid-prompts/github-review-state");
+  const validatorEnvFile = path.join(root, "validator.env");
+  const prompts = path.join(runnerTemp, "droid-prompts");
+  const stateFile = path.join(prompts, "github-review-state");
+  const errorFile = path.join(prompts, "github-review-error");
 
-  const run = (part: "before" | "after", env: Record<string, string> = {}) => {
+  const run = (
+    part: "before" | "validate" | "after",
+    env: Record<string, string> = {},
+  ) => {
     fs.writeFileSync(log, "");
+    fs.rmSync(validatorEnvFile, { force: true });
+    fs.writeFileSync(
+      path.join(root, "stub.env"),
+      Object.entries({ STUB_LOG: log, ...env })
+        .filter(([name]) => name.startsWith("STUB_"))
+        .map(([name, value]) => `export ${name}=${shellQuote(value)}\n`)
+        .join(""),
+    );
     const result = spawnSync("bash", [SCRIPT, part], {
       encoding: "utf8",
       cwd: checkout,
@@ -105,9 +130,8 @@ function machine() {
         PR_NUMBER: "7",
         PR_HEAD_SHA: HEAD,
         PR_ACTION: "synchronize",
-        GITHUB_TOKEN: WRITE_TOKEN,
+        GITHUB_TOKEN: part === "validate" ? READ_TOKEN : WRITE_TOKEN,
         GITHUB_RUN_ID: "run-1",
-        GH_TOKEN: "ghu_read_token",
         FACTORY_API_KEY: "fk-123",
         ...env,
       },
@@ -121,10 +145,27 @@ function machine() {
       entrypoints: calls
         .split("\n")
         .filter((l) => l.startsWith("bun "))
-        .map((l) => l.replace(`${REPO_ROOT}/`, "")),
+        .map((l) =>
+          l.replace(
+            `bun --config=/dev/null --env-file=/dev/null run ${REPO_ROOT}/`,
+            "",
+          ),
+        ),
+      validatorEnv: fs.existsSync(validatorEnvFile)
+        ? Object.fromEntries(
+            fs
+              .readFileSync(validatorEnvFile, "utf8")
+              .trim()
+              .split("\n")
+              .map((line) => [
+                line.slice(0, line.indexOf("=")),
+                line.slice(line.indexOf("=") + 1),
+              ]),
+          )
+        : undefined,
     };
   };
-  return { run, checkout, runnerTemp, home, tmp, stateFile };
+  return { run, checkout, runnerTemp, home, tmp, stateFile, errorFile };
 }
 
 function filesUnder(dir: string): string[] {
@@ -141,9 +182,9 @@ describe("github/run-review.sh before", () => {
     expect(run.status).toBe(0);
     expect(run.entrypoints).toEqual([
       "bun install --frozen-lockfile",
-      "bun --config=/dev/null --env-file=/dev/null run src/entrypoints/github-pr-event.ts",
-      "bun --config=/dev/null --env-file=/dev/null run src/entrypoints/prepare.ts",
-      "bun --config=/dev/null --env-file=/dev/null run src/entrypoints/github-review-lifecycle.ts",
+      "src/entrypoints/github-pr-event.ts",
+      "src/entrypoints/prepare.ts",
+      "src/entrypoints/github-review-lifecycle.ts",
     ]);
     // Entrypoints run from the PR checkout, as in action.yml, with the PR
     // author as actor and no review configuration carried in.
@@ -157,8 +198,12 @@ describe("github/run-review.sh before", () => {
     // The session can read these; the outputs holding the token are deleted.
     expect(run.stdout + run.stderr).not.toContain(WRITE_TOKEN);
     expect(fs.readdirSync(m.tmp)).toEqual([]);
-    const readable = [...filesUnder(m.runnerTemp), ...filesUnder(m.home)];
-    expect(readable.length).toBeGreaterThan(0);
+    const readable = [
+      ...filesUnder(m.runnerTemp),
+      ...filesUnder(m.home),
+      ...filesUnder(path.join(m.checkout, ".git")),
+    ];
+    expect(readable).toContain(m.stateFile);
     for (const file of readable)
       expect(fs.readFileSync(file, "utf8")).not.toContain(WRITE_TOKEN);
     const state = fs.readFileSync(m.stateFile, "utf8");
@@ -170,19 +215,19 @@ describe("github/run-review.sh before", () => {
     ).toBe(true);
   });
 
-  it("skips without touching GitHub when the PR moved past PR_HEAD_SHA", () => {
+  it("tells the caller to skip the session when the PR moved past PR_HEAD_SHA", () => {
     const m = machine();
     const run = m.run("before", { STUB_HEAD: "b".repeat(40) });
-    expect(run.status).toBe(0);
+    expect(run.status).toBe(78);
     expect(run.calls).not.toContain("prepare.ts");
     expect(run.stdout).toContain("Nothing was posted to the pull request");
     expect(fs.existsSync(m.stateFile)).toBe(false);
   });
 
-  it("stops after prepare when there is no review to run", () => {
+  it("tells the caller to skip the session when there is no review to run", () => {
     const m = machine();
     const run = m.run("before", { STUB_RUN_CODE_REVIEW: "false" });
-    expect(run.status).toBe(0);
+    expect(run.status).toBe(78);
     expect(run.calls).not.toContain("lifecycle");
     expect(fs.existsSync(m.stateFile)).toBe(false);
   });
@@ -224,7 +269,7 @@ describe("github/run-review.sh before", () => {
 
   it.each([
     ["before", "GITHUB_RUN_ID"],
-    ["after", "FACTORY_API_KEY"],
+    ["validate", "FACTORY_API_KEY"],
   ] as const)("%s fails before doing anything without %s", (part, name) => {
     const m = machine();
     const run = m.run(part, { [name]: "" });
@@ -234,31 +279,90 @@ describe("github/run-review.sh before", () => {
   });
 });
 
-describe("github/run-review.sh after", () => {
-  it("validates without GitHub credentials, then posts with the token", () => {
+describe("github/run-review.sh validate", () => {
+  it("runs the validator with no GitHub credential and leaves the check alone", () => {
     const m = machine();
     expect(m.run("before").status).toBe(0);
+    const run = m.run("validate", {
+      GH_TOKEN: "ghu_machine_token",
+      OVERRIDE_GITHUB_TOKEN: WRITE_TOKEN,
+      CALLER_SETTING: "kept out",
+    });
+    expect(run.status).toBe(0);
+    expect(run.entrypoints).toEqual([
+      "bun install --frozen-lockfile",
+      "src/entrypoints/github-pr-event.ts",
+      "src/entrypoints/prepare-validator.ts",
+      "base-action/src/index.ts",
+    ]);
+    // The validator prompt gets prepare's model and depth, and no effort for
+    // the "default" label, as action.yml passes them.
+    expect(run.calls).toContain(
+      `validator-prompt effort=[] depth=shallow model=openai-latest-fast comment=22 token=${READ_TOKEN}`,
+    );
+    const { PWD, SHLVL, _, ...validatorEnv } = run.validatorEnv!;
+    expect(validatorEnv).toEqual({
+      PATH: expect.any(String),
+      HOME: m.home,
+      FACTORY_API_KEY: "fk-123",
+      DROID_EXEC_RUN_TYPE: "droid-review",
+      FACTORY_DROID_AUTO_UPDATE_ENABLED: "false",
+      DETAILED_PERMISSION_MESSAGES: "1",
+      INPUT_MAX_TURNS: "40",
+      INPUT_PROMPT_FILE: path.join(
+        m.runnerTemp,
+        "droid-prompts/droid-prompt.txt",
+      ),
+      INPUT_DROID_ARGS: '--enabled-tools "Read"',
+      INPUT_MCP_TOOLS: '{"mcpServers":{}}',
+      GITHUB_OUTPUT: expect.any(String),
+    });
+    expect(run.calls).not.toContain("lifecycle");
+    expect(fs.existsSync(m.errorFile)).toBe(false);
+  });
+
+  it.each([
+    [
+      { STUB_CANDIDATES: "invalid" },
+      "The review session did not write valid candidates to",
+    ],
+    [{ STUB_VALIDATOR_ERROR: "turn cap reached" }, "turn cap reached"],
+  ])("leaves its failure for after to report (%p)", (env, error) => {
+    const m = machine();
+    expect(m.run("before").status).toBe(0);
+    const run = m.run("validate", env);
+    expect(run.status).toBe(1);
+    expect(fs.readFileSync(m.errorFile, "utf8")).toContain(error);
+    expect(run.calls).not.toContain("lifecycle");
+  });
+
+  it("clears an earlier failure when a retry succeeds", () => {
+    const m = machine();
+    expect(m.run("before").status).toBe(0);
+    expect(m.run("validate", { STUB_VALIDATOR_ERROR: "timeout" }).status).toBe(
+      1,
+    );
+    expect(m.run("validate").status).toBe(0);
+    expect(fs.existsSync(m.errorFile)).toBe(false);
+  });
+});
+
+describe("github/run-review.sh after", () => {
+  it("posts the review with the token and closes the check", () => {
+    const m = machine();
+    expect(m.run("before").status).toBe(0);
+    expect(m.run("validate").status).toBe(0);
     const run = m.run("after");
     expect(run.status).toBe(0);
     expect(run.entrypoints).toEqual([
       "bun install --frozen-lockfile",
-      "bun --config=/dev/null --env-file=/dev/null run src/entrypoints/github-pr-event.ts",
-      "bun --config=/dev/null --env-file=/dev/null run src/entrypoints/github-review-lifecycle.ts",
-      "bun --config=/dev/null --env-file=/dev/null run src/entrypoints/prepare-validator.ts",
-      "bun --config=/dev/null --env-file=/dev/null run base-action/src/index.ts",
-      "bun --config=/dev/null --env-file=/dev/null run src/entrypoints/github-review-lifecycle.ts",
-      "bun --config=/dev/null --env-file=/dev/null run src/entrypoints/github-post-review.ts",
+      "src/entrypoints/github-pr-event.ts",
+      "src/entrypoints/github-review-lifecycle.ts",
+      "src/entrypoints/github-review-lifecycle.ts",
+      "src/entrypoints/github-post-review.ts",
     ]);
     expect(run.calls).toContain(
       `lifecycle phase=validated check=11 head=${HEAD}`,
-    );
-    // The validator prompt gets prepare's model and depth, and no effort for
-    // the "default" label, as action.yml passes them.
-    expect(run.calls).toContain(
-      `validator-prompt effort=[] depth=shallow model=openai-latest-fast comment=22 token=${WRITE_TOKEN}`,
-    );
-    expect(run.calls).toContain(
-      `validator github_token=unset gh_token=unset factory=fk-123 args=--enabled-tools "Read" mcp={"mcpServers":{}} turns=40 prompt=${m.runnerTemp}/droid-prompts/droid-prompt.txt`,
     );
     expect(run.calls).toContain(`lifecycle phase=posted check=11 head=${HEAD}`);
     expect(run.calls).toContain(
@@ -267,36 +371,54 @@ describe("github/run-review.sh after", () => {
     expect(run.calls).not.toContain("phase=finalize");
   });
 
-  it("does nothing when before prepared no review", () => {
-    const m = machine();
-    const run = m.run("after");
-    expect(run.status).toBe(0);
-    expect(run.entrypoints).toEqual([]);
-    expect(run.stdout).toContain("nothing to post");
-  });
-
-  it.each([
-    [
-      { STUB_CANDIDATES: "invalid" },
-      "The review session did not write valid candidates to",
-      "base-action/src/index.ts",
-    ],
-    [
-      { STUB_VALIDATOR_ERROR: "turn cap reached" },
-      "turn cap reached",
-      "github-post-review.ts",
-    ],
-    [{ STUB_POST_ERROR: "422 Unprocessable" }, "422 Unprocessable", undefined],
-  ])("closes the check with the failure (%p)", (env, error, skipped) => {
+  it("closes the check with validate's failure without posting", () => {
     const m = machine();
     expect(m.run("before").status).toBe(0);
-    const run = m.run("after", env);
+    expect(
+      m.run("validate", { STUB_VALIDATOR_ERROR: "turn cap reached" }).status,
+    ).toBe(1);
+    const run = m.run("after");
     expect(run.status).toBe(1);
     expect(run.calls).toContain(
-      `lifecycle phase=finalize check=11 head=${HEAD} success=false error=${error}`,
+      `lifecycle phase=finalize check=11 head=${HEAD} success=false error=turn cap reached`,
     );
-    if (skipped) expect(run.calls).not.toContain(skipped);
+    expect(run.calls).not.toContain("github-post-review.ts");
   });
+
+  it("reads validate's error only from a regular file", () => {
+    const m = machine();
+    expect(m.run("before").status).toBe(0);
+    const secret = path.join(m.home, "secret.txt");
+    fs.writeFileSync(secret, "TOP SECRET");
+    fs.symlinkSync(secret, m.errorFile);
+    const run = m.run("after");
+    expect(run.status).toBe(1);
+    expect(run.calls).toContain(
+      `lifecycle phase=finalize check=11 head=${HEAD} success=false error=The validator pass failed.`,
+    );
+    expect(run.calls + run.stdout + run.stderr).not.toContain("TOP SECRET");
+  });
+
+  it("closes the check when posting fails", () => {
+    const m = machine();
+    expect(m.run("before").status).toBe(0);
+    const run = m.run("after", { STUB_POST_ERROR: "422 Unprocessable" });
+    expect(run.status).toBe(1);
+    expect(run.calls).toContain(
+      `lifecycle phase=finalize check=11 head=${HEAD} success=false error=422 Unprocessable`,
+    );
+  });
+
+  it.each(["validate", "after"] as const)(
+    "%s does nothing when before prepared no review",
+    (part) => {
+      const m = machine();
+      const run = m.run(part);
+      expect(run.status).toBe(0);
+      expect(run.entrypoints).toEqual([]);
+      expect(run.stdout).toContain("nothing to do");
+    },
+  );
 
   it("refuses a prepared review for a different commit", () => {
     const m = machine();
