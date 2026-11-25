@@ -1,8 +1,9 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
-import { git, tempDir } from "../azure-devops/helpers";
+import { git } from "../helpers/git";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../..");
 const WRITE_TOKEN = "ghs_write_token";
@@ -70,7 +71,7 @@ function startGitServer(projectRoot: string) {
 
 describe("authenticated git fetches on a computer with credential.helper=store", () => {
   it("use the token without storing it", () => {
-    const root = tempDir("gh-cred-");
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "gh-cred-"));
     dirs.push(root);
     const projects = path.join(root, "projects");
     const work = path.join(root, "work");

@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
-import { json, startFakeServer } from "../bitbucket/fake-server";
-import { tempDir } from "../azure-devops/helpers";
+import { json, startFakeServer } from "../helpers/fake-server";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../..");
 const dirs: string[] = [];
@@ -44,7 +44,7 @@ async function bun(args: string[], env: Record<string, string>) {
 
 describe("github-pr-event", () => {
   it("writes a pull_request event the Actions context parser accepts", async () => {
-    const dir = tempDir("gh-event-");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gh-event-"));
     dirs.push(dir);
     const server = startFakeServer((req) =>
       req.path === "/repos/acme/app/pulls/7"

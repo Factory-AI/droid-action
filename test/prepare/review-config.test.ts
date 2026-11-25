@@ -107,6 +107,12 @@ describe("automatic review precedence for github/run-review.sh", () => {
     ],
     ["neither sets it", {}, undefined, { code: true, security: true }],
     [
+      "review.yaml sets other settings only",
+      {},
+      "review_depth: shallow\n",
+      { code: true, security: true },
+    ],
+    [
       "the caller asks for a security-only review",
       { AUTOMATIC_REVIEW: "false", AUTOMATIC_SECURITY_REVIEW: "true" },
       undefined,

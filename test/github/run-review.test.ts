@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
-import { tempDir } from "../azure-devops/helpers";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../..");
 const HEAD = "a".repeat(40);
@@ -14,7 +14,7 @@ afterAll(() => {
 });
 
 /**
- * Stub `bun` (entrypoints), `runuser` and `chown` binaries record how
+ * Stub `bun` (entrypoints), `runuser`, `chown` and `env` binaries record how
  * run-review.sh drives them, so every part is tested without network, models
  * or root. The entrypoint stubs report outputs the way @actions/core does.
  * The validator and runuser get cleared environments, so the stubs read their
@@ -33,7 +33,7 @@ case "$*" in
     out author octocat
     ;;
   *prepare.ts)
-    echo "prepare actor=$GITHUB_ACTOR auto=[\${AUTOMATIC_REVIEW-unset}] security=[\${AUTOMATIC_SECURITY_REVIEW-unset}] default_auto=\${DEFAULT_AUTOMATIC_REVIEW-unset} config=[\${REVIEW_CONFIG_JSON-unset}] override=$OVERRIDE_GITHUB_TOKEN cwd=$PWD" >> "$STUB_LOG"
+    echo "prepare actor=$GITHUB_ACTOR auto=[\${AUTOMATIC_REVIEW-unset}] security=[\${AUTOMATIC_SECURITY_REVIEW-unset}] default_auto=\${DEFAULT_AUTOMATIC_REVIEW-unset} config=[\${REVIEW_CONFIG_JSON-unset}] override=$OVERRIDE_GITHUB_TOKEN cwd=$PWD prior=$REVIEW_PRIOR_FINDINGS_PATH" >> "$STUB_LOG"
     echo "::add-mask::$OVERRIDE_GITHUB_TOKEN"
     out github_token "$OVERRIDE_GITHUB_TOKEN"
     out mcp_tools "{\\"env\\":{\\"GITHUB_TOKEN\\":\\"$OVERRIDE_GITHUB_TOKEN\\"}}"
@@ -48,14 +48,17 @@ case "$*" in
     out run_code_review "\${STUB_RUN_CODE_REVIEW:-true}"
     printf 'REVIEW_DEPTH<<EOF\\nshallow\\nEOF\\n' >> "$GITHUB_ENV"
     echo "candidates prompt" > "$RUNNER_TEMP/droid-prompts/droid-prompt.txt"
-    echo "diff --git a/f b/f" > "$RUNNER_TEMP/droid-prompts/pr.diff"
+    [ -n "\${STUB_NO_DIFF:-}" ] || echo "diff --git a/f b/f" > "$RUNNER_TEMP/droid-prompts/pr.diff"
     if [ -n "\${STUB_PREPARE_ERROR:-}" ]; then out prepare_error "$STUB_PREPARE_ERROR"; exit 1; fi
+    if [ -n "\${STUB_PREPARE_CRASH:-}" ]; then exit 3; fi
+    # The check is open: stop run-review.sh the way a timeout's SIGKILL does.
+    if [ -n "\${STUB_KILL_BEFORE:-}" ]; then kill -9 "$PPID"; exit 0; fi
     ;;
   *github-review-lifecycle.ts)
     echo "lifecycle phase=$REVIEW_PHASE check=$REVIEW_CHECK_ID head=$REVIEW_HEAD_SHA success=\${DROID_SUCCESS-unset} error=\${DROID_POST_ERROR_MESSAGE:-}\${DROID_VALIDATOR_ERROR_MESSAGE:-}\${PREPARE_ERROR:-}" >> "$STUB_LOG"
     ;;
   *prepare-validator.ts)
-    echo "validator-prompt effort=[$REASONING_EFFORT] depth=$REVIEW_DEPTH model=$REVIEW_MODEL comment=$DROID_COMMENT_ID token=$GITHUB_TOKEN" >> "$STUB_LOG"
+    echo "validator-prompt effort=[$REASONING_EFFORT] depth=$REVIEW_DEPTH model=$REVIEW_MODEL comment=$DROID_COMMENT_ID token=$GITHUB_TOKEN prior=$REVIEW_PRIOR_FINDINGS_PATH" >> "$STUB_LOG"
     if [ "\${STUB_CANDIDATES:-valid}" = invalid ]; then out validator_should_run false; exit 0; fi
     out validator_should_run true
     out droid_args '--enabled-tools "Read"'
@@ -85,17 +88,45 @@ HOME="__STUB_DIR__/session-home" exec "$@"
 const CHOWN_STUB = `#!/usr/bin/env bash
 . "__STUB_DIR__/stub.env"
 echo "chown $*" >> "$STUB_LOG"
+[ -z "\${STUB_CHOWN_FAIL:-}" ] || exit 1
+`;
+
+// Serves any bun release download as a zip holding the bun stub, which the
+// test moves to bin/bun-stub when it wants install_bun to run.
+const CURL_STUB = `#!/usr/bin/env bash
+while [ $# -gt 0 ]; do
+  case "$1" in -o) out="$2"; shift ;; https://*) url="$1" ;; esac
+  shift
+done
+build="\${url##*/bun-}"
+python3 - "$out" "bun-\${build%.zip}/bun" "__STUB_DIR__/bin/bun-stub" <<'PY'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "w") as z:
+    z.write(sys.argv[3], sys.argv[2])
+PY
+`;
+
+// Any user can read env(1)'s arguments in /proc/<pid>/cmdline.
+const ENV_STUB = `#!/usr/bin/env bash
+echo "env $*" >> "__STUB_DIR__/calls.log"
+exec /usr/bin/env "$@"
 `;
 
 const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 
 /** One machine: every part of a run shares its RUNNER_TEMP and HOME. */
 function machine() {
-  const root = tempDir("gh-run-");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "gh-run-"));
   dirs.push(root);
   const bin = path.join(root, "bin");
   fs.mkdirSync(bin);
-  const stubs = { bun: BUN_STUB, runuser: RUNUSER_STUB, chown: CHOWN_STUB };
+  const stubs = {
+    bun: BUN_STUB,
+    runuser: RUNUSER_STUB,
+    chown: CHOWN_STUB,
+    env: ENV_STUB,
+    curl: CURL_STUB,
+  };
   for (const [name, stub] of Object.entries(stubs))
     fs.writeFileSync(
       path.join(bin, name),
@@ -170,6 +201,7 @@ function machine() {
     const calls = fs.readFileSync(log, "utf8");
     return {
       status: result.status,
+      signal: result.signal,
       stdout: result.stdout,
       stderr: result.stderr,
       calls,
@@ -198,6 +230,8 @@ function machine() {
   };
   return {
     run,
+    bin,
+    action,
     checkout,
     runnerTemp,
     home,
@@ -206,6 +240,7 @@ function machine() {
     prompts,
     stateDir,
     stateFile: path.join(stateDir, "state"),
+    beforeDir: path.join(stateDir, "before"),
     errorFile: path.join(prompts, "github-review-error"),
   };
 }
@@ -232,8 +267,16 @@ describe("github/run-review.sh before", () => {
     // author as actor, no review configuration carried in, and automatic
     // review on only by default.
     expect(run.calls).toContain(
-      `prepare actor=octocat auto=[unset] security=[unset] default_auto=true config=[] override=${WRITE_TOKEN} cwd=${m.checkout}`,
+      `prepare actor=octocat auto=[unset] security=[unset] default_auto=true config=[] override=${WRITE_TOKEN} cwd=${m.checkout} prior=${path.join(m.prompts, "review_prior_findings.json")}`,
     );
+    // The token reaches prepare through its environment, not env(1)'s arguments.
+    expect(run.calls).toContain(
+      "env REVIEW_CONFIG_JSON= DEFAULT_AUTOMATIC_REVIEW=true TMPDIR=",
+    );
+    for (const call of run.calls
+      .split("\n")
+      .filter((l) => l.startsWith("env ")))
+      expect(call).not.toContain(WRITE_TOKEN);
     expect(run.calls).toContain(
       `lifecycle phase=candidates check=11 head=${HEAD}`,
     );
@@ -299,6 +342,11 @@ describe("github/run-review.sh before", () => {
       MOVED,
       `PR #7 moved to ${MOVED} while Droid prepared the review of ${HEAD}.`,
     ],
+    [
+      { STUB_PREPARE_CRASH: "1" },
+      HEAD,
+      "Preparing the review failed with exit status 3.",
+    ],
   ])(
     "closes the check it opened when preparing fails (%p)",
     (env, head, error) => {
@@ -311,6 +359,25 @@ describe("github/run-review.sh before", () => {
       expect(fs.existsSync(m.stateFile)).toBe(false);
     },
   );
+
+  it("names a failed droid copy on the check", () => {
+    const m = machine();
+    fs.rmSync(path.join(m.action, ".factory/droids"), { recursive: true });
+    const run = m.run("before");
+    expect(run.status).toBe(1);
+    expect(run.calls).toContain(
+      `lifecycle phase=finalize check=11 head=${HEAD} success=false error=Could not copy the review droids into ${os.userInfo().username}'s ~/.factory/droids.`,
+    );
+  });
+
+  it("names a failed diff copy on the check", () => {
+    const m = machine();
+    const run = m.run("before", { STUB_NO_DIFF: "1" });
+    expect(run.status).toBe(1);
+    expect(run.calls).toContain(
+      `lifecycle phase=finalize check=11 head=${HEAD} success=false error=Could not keep a copy of the PR diff for posting.`,
+    );
+  });
 
   it("leaves GitHub alone when prepare fails before opening a check", () => {
     const m = machine();
@@ -352,12 +419,13 @@ describe("github/run-review.sh validate", () => {
     // The validator prompt gets prepare's model and depth, and no effort for
     // the "default" label, as action.yml passes them.
     expect(run.calls).toContain(
-      `validator-prompt effort=[] depth=shallow model=openai-latest-fast comment=22 token=${READ_TOKEN}`,
+      `validator-prompt effort=[] depth=shallow model=openai-latest-fast comment=22 token=${READ_TOKEN} prior=${path.join(m.prompts, "review_prior_findings.json")}`,
     );
     const { PWD, SHLVL, _, ...validatorEnv } = run.validatorEnv!;
     expect(validatorEnv).toEqual({
       PATH: expect.any(String),
       HOME: m.home,
+      RUNNER_TEMP: m.runnerTemp,
       FACTORY_API_KEY: "fk-123",
       DROID_EXEC_RUN_TYPE: "droid-review",
       FACTORY_DROID_AUTO_UPDATE_ENABLED: "false",
@@ -415,7 +483,10 @@ describe("github/run-review.sh after", () => {
   it("keeps git away from config the session could have planted", () => {
     const m = machine();
     expect(m.run("before").status).toBe(0);
+    // In the clone, and in a repository above after's private directory.
     spawnSync("git", ["-C", m.checkout, "config", "droid.planted", "yes"]);
+    spawnSync("git", ["init", "-q", m.tmp]);
+    spawnSync("git", ["-C", m.tmp, "config", "droid.planted", "yes"]);
     const run = m.run("after");
     expect(run.status).toBe(0);
     expect(run.calls).toContain("git_config=unreadable");
@@ -443,6 +514,36 @@ describe("github/run-review.sh after", () => {
     expect(run.calls).toContain(
       `lifecycle phase=finalize check=11 head=${HEAD} success=false error=422 Unprocessable`,
     );
+  });
+
+  it("closes the check that a stopped before left open", () => {
+    const m = machine();
+    expect(m.run("before", { STUB_KILL_BEFORE: "1" }).signal).toBe("SIGKILL");
+    expect(fs.existsSync(m.beforeDir)).toBe(true);
+    const validate = m.run("validate");
+    expect(validate.status).toBe(0);
+    expect(validate.entrypoints).toEqual([]);
+    const run = m.run("after");
+    expect(run.status).toBe(1);
+    expect(run.entrypoints).toEqual([
+      "src/entrypoints/github-review-lifecycle.ts",
+    ]);
+    expect(run.calls).toContain(
+      `lifecycle phase=finalize check=11 head=${HEAD} success=false error=Droid was stopped while preparing the review of ${HEAD}; nothing was posted.`,
+    );
+    // It held prepare's outputs, the token among them.
+    expect(fs.existsSync(m.beforeDir)).toBe(false);
+  });
+
+  it("only cleans up after a before stopped before it opened a check", () => {
+    const m = machine();
+    expect(
+      m.run("before", { STUB_KILL_BEFORE: "1", STUB_REVIEW_HEAD: "" }).signal,
+    ).toBe("SIGKILL");
+    const run = m.run("after");
+    expect(run.status).toBe(0);
+    expect(run.entrypoints).toEqual([]);
+    expect(fs.existsSync(m.beforeDir)).toBe(false);
   });
 
   it.each(["validate", "after"] as const)(
@@ -575,6 +676,40 @@ describe.skipIf(process.platform !== "linux")(
         `Only root may be able to change ${m.stateDir} `,
       );
       expect(run.entrypoints).toEqual([]);
+    });
+
+    it("before names the failed hand-over on the check", () => {
+      const m = machine();
+      const run = m.run("before", { ...asRoot, STUB_CHOWN_FAIL: "1" });
+      expect(run.status).toBe(1);
+      expect(run.calls).toContain(
+        `lifecycle phase=finalize check=11 head=${HEAD} success=false error=Could not hand the clone and prompts over to reviewer.`,
+      );
+      expect(fs.existsSync(m.stateFile)).toBe(false);
+    });
+
+    it("after refuses what a stopped before left where another user could write", () => {
+      const m = machine();
+      expect(m.run("before", { ...asRoot, STUB_KILL_BEFORE: "1" }).signal).toBe(
+        "SIGKILL",
+      );
+      fs.chmodSync(m.stateDir, 0o777);
+      const run = m.run("after", asRoot);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toContain(
+        `Only root may be able to change ${m.stateDir} `,
+      );
+      expect(run.entrypoints).toEqual([]);
+    });
+
+    it("before installs no bun whose SHA-256 differs from the pinned one", () => {
+      const m = machine();
+      fs.renameSync(path.join(m.bin, "bun"), path.join(m.bin, "bun-stub"));
+      const run = m.run("before", asRoot);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toContain("did NOT match");
+      expect(run.entrypoints).toEqual([]);
+      expect(fs.existsSync(path.join(m.home, ".bun/bin/bun"))).toBe(false);
     });
 
     it("will not run validate as another user than the session's", () => {
