@@ -28,7 +28,16 @@ and are never printed to the job log.
    Factory. The answer is JSON with `verdict`, `brief`, `details`, and the
    judge's declared `scores`; a judge Factory serves with
    `"verdictField": "omitted"` is decided by risk level alone, so its
-   answer carries no `verdict`. A run that produced no answer is reported too, with a short
+   answer carries no `verdict`. A judge served with a `screen` (its own
+   `enabledTools` and `settings`) runs as a cascade: the same skill runs
+   first with the screen's tools and settings, its decline is the answer,
+   and anything else goes to the judge itself, so every approval is the
+   judge's. The judge runs in a second workspace built before the screen
+   starts, so nothing the screen's commands write reaches it, and the run
+   fails (`pr_risk_evidence_changed`) if that workspace changed anyway.
+   Each attempt reports its `stage` (`screen` or `confirm`), and
+   each session is tagged `riskAssessmentScreen` or `riskAssessmentConfirm`
+   next to `riskAssessment`. A re-check skips the screen. A run that produced no answer is reported too, with a short
    reason, so the head is marked unavailable instead of keeping a stale
    result.
 
@@ -336,8 +345,9 @@ file is JSON with `skill` (the judge's instructions; the pull request
 snapshot replaces `{{PR_SNAPSHOT_JSON}}` in it, or is appended when the
 placeholder is absent), `enabledTools`, `settings` (written as the session's
 settings file), `scores` (each score's name with its `[min, max]` range), and
-optionally `group`, `timeoutSeconds`, and `verdictField` (`"omitted"` for a
-judge that answers without a verdict). The result is written to
+optionally `group`, `timeoutSeconds`, `verdictField` (`"omitted"` for a
+judge that answers without a verdict), and `screen` (`enabledTools` and
+`settings` for a cascade's first stage). The result is written to
 `<out>/pr-risk-result.json`, and the command exits non-zero when no verdict
 was produced. `--droid-binary` selects a Droid CLI other than the one on
 `PATH`; a relative path is taken from the directory the command is run in.

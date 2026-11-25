@@ -6,6 +6,7 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  readlink,
   realpath,
   rm,
   stat,
@@ -862,4 +863,40 @@ export async function writePrRiskSettings(
   const settingsPath = join(evidence.rootDir, "settings.json");
   await writeFile(settingsPath, JSON.stringify(settings), "utf8");
   return settingsPath;
+}
+
+/**
+ * A digest of everything under the workspace's `evidence/`: every path, its
+ * kind, and each file's bytes or each link's target. The runner reads the
+ * files itself, with no git, so code a session ran cannot vouch for them.
+ */
+export async function fingerprintPrRiskEvidence(
+  evidence: PrRiskEvidenceWorkspace,
+): Promise<string> {
+  const digest = createHash("sha256");
+  const walk = async (dir: string, prefix: string): Promise<void> => {
+    const entries = (await readdir(dir, { withFileTypes: true })).sort(
+      (a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
+    );
+    for (const entry of entries) {
+      const path = join(dir, entry.name);
+      const name = `${prefix}${entry.name}`;
+      if (entry.isSymbolicLink()) {
+        digest.update(`link\0${name}\0${await readlink(path)}\0`);
+      } else if (entry.isDirectory()) {
+        digest.update(`dir\0${name}\0`);
+        await walk(path, `${name}/`);
+      } else if (entry.isFile()) {
+        // Each file's own digest, so no file's bytes can pose as the
+        // entries after it.
+        const file = createHash("sha256");
+        for await (const chunk of createReadStream(path)) file.update(chunk);
+        digest.update(`file\0${name}\0${file.digest("hex")}\0`);
+      } else {
+        digest.update(`other\0${name}\0`);
+      }
+    }
+  };
+  await walk(join(evidence.rootDir, "evidence"), "");
+  return digest.digest("hex");
 }

@@ -2,11 +2,13 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {
   createPrRiskEvidenceWorkspace,
+  fingerprintPrRiskEvidence,
   removeCheckoutCredentials,
   removePrRiskEvidenceWorkspace,
 } from "./evidence";
 import {
   buildJudgeEnvironment,
+  prRiskScreenFor,
   runPrRiskJudge,
   type RunPrRiskJudgeOptions,
 } from "./judge";
@@ -82,7 +84,11 @@ export async function assessPullRequest(
 
 type PreparedJudgment = Awaited<
   ReturnType<typeof createPrRiskEvidenceWorkspace>
-> & { token: string; incremental?: RiskIncremental };
+> & {
+  token: string;
+  incremental?: RiskIncremental;
+  confirm?: RunPrRiskJudgeOptions["confirm"];
+};
 
 type JudgmentStart = { startedAt: number } & (
   | { prepared: PreparedJudgment }
@@ -103,33 +109,67 @@ async function prepareJudgment(
         "No GitHub token is available to read the pull request",
       );
     }
-    const built = await createPrRiskEvidenceWorkspace(
-      {
-        repo: plan.repo,
-        prNumber: plan.pr,
-        title: plan.pullRequest.title,
-        baseSha: plan.baseSha,
-        headSha: plan.headSha,
-      },
-      {
-        repoDir: options.repoDir,
-        githubToken: token,
-        priorDeclines: plan.priorDeclines,
-        incremental,
-      },
-    );
-    if (!options.keepCheckoutCredentials) {
-      try {
+    const build = () =>
+      createPrRiskEvidenceWorkspace(
+        {
+          repo: plan.repo,
+          prNumber: plan.pr,
+          title: plan.pullRequest.title,
+          baseSha: plan.baseSha,
+          headSha: plan.headSha,
+        },
+        {
+          repoDir: options.repoDir,
+          githubToken: token,
+          priorDeclines: plan.priorDeclines,
+          incremental,
+        },
+      );
+    const built = await build();
+    let confirm: PreparedJudgment["confirm"];
+    try {
+      // The judge behind a screen gets its own workspace, built now, before
+      // the screen runs head code, because commands the screen runs can
+      // rewrite its workspace.
+      if (prRiskScreenFor(plan.judge, incremental)) {
+        const second = await build();
+        confirm = {
+          evidence: second.evidence,
+          fingerprint: await fingerprintPrRiskEvidence(second.evidence),
+        };
+        if (second.evidence.snapshotHash !== built.evidence.snapshotHash) {
+          throw new RiskError(
+            "pr_risk_revision_mismatch",
+            "PR risk evidence for the judge did not match the screen's",
+          );
+        }
+      }
+      if (!options.keepCheckoutCredentials) {
         await removeCheckoutCredentials(
           options.repoDir,
           built.evidence.headTreeDir,
         );
-      } catch (error) {
-        await removeWorkspace(built.evidence);
-        throw error;
+        if (confirm) {
+          await removeCheckoutCredentials(
+            options.repoDir,
+            confirm.evidence.headTreeDir,
+          );
+        }
       }
+    } catch (error) {
+      await removeWorkspace(built.evidence);
+      if (confirm) await removeWorkspace(confirm.evidence);
+      throw error;
     }
-    return { startedAt, prepared: { ...built, token, incremental } };
+    return {
+      startedAt,
+      prepared: {
+        ...built,
+        token,
+        incremental,
+        ...(confirm ? { confirm } : {}),
+      },
+    };
   } catch (failure) {
     return { startedAt, failure };
   }
@@ -159,8 +199,14 @@ async function finishJudgment(
   const { startedAt } = start;
   try {
     if ("failure" in start) throw start.failure;
-    const { snapshot, evidence, incrementalFallback, token, incremental } =
-      start.prepared;
+    const {
+      snapshot,
+      evidence,
+      incrementalFallback,
+      token,
+      incremental,
+      confirm,
+    } = start.prepared;
     try {
       let attemptStartedAt = Date.now();
       const verdict = await runPrRiskJudge(snapshot, {
@@ -178,6 +224,7 @@ async function finishJudgment(
         ),
         droidBinary: options.droidBinary,
         executeDroid: options.executeDroid,
+        ...(confirm ? { confirm } : {}),
         onAttempt: (attempt) => {
           const now = Date.now();
           attempts.push({ ...attempt, durationMs: now - attemptStartedAt });
@@ -236,6 +283,7 @@ async function finishJudgment(
       };
     } finally {
       await removeWorkspace(evidence);
+      if (confirm) await removeWorkspace(confirm.evidence);
     }
   } catch (error) {
     const reason = failureReason(error);

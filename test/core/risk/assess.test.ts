@@ -83,6 +83,51 @@ describe("assessPullRequest", () => {
     ).not.toContain(seen.cwd ?? "unset");
   });
 
+  it("gives the judge behind a screen a workspace the screen's commands never touched, and removes both", async () => {
+    const screen = {
+      enabledTools: ["Read", "Execute"] as [string, ...string[]],
+      settings: { sessionDefaultSettings: { model: "screen-model" } },
+    };
+    const seen: Array<{ cwd: string; app: string; diff: string }> = [];
+
+    const { result } = await assessPullRequest({
+      plan: planFor({ baseSha, headSha, judge: { ...judge, screen } }),
+      repoDir: checkoutDir,
+      githubToken: "read-token",
+      env,
+      executeDroid: async ({ cwd }) => {
+        const app = join(cwd, "evidence", "head", "app.ts");
+        const diff = join(cwd, "evidence", "pr.diff");
+        seen.push({
+          cwd,
+          app: await readFile(app, "utf8"),
+          diff: await readFile(diff, "utf8"),
+        });
+        if (seen.length === 1) {
+          // What a build or a hostile install script run by the screen does.
+          await writeFile(app, "export const planted = 1;\n");
+          await writeFile(diff, "+export const planted = 1;\n");
+        }
+        return execSummary(validVerdict, `s${seen.length}`);
+      },
+    });
+
+    expect(result).toMatchObject({
+      status: "judged",
+      verdict: validVerdict,
+      attempts: [
+        { sessionId: "s1", stage: "screen", valid: true },
+        { sessionId: "s2", stage: "confirm", valid: true },
+      ],
+    });
+    expect(seen).toHaveLength(2);
+    expect(seen[1]?.cwd).not.toBe(seen[0]?.cwd);
+    expect(seen[1]?.app).toBe("export const next = 1;\n");
+    expect(seen[1]?.diff).toContain("+export const next = 1;");
+    expect(seen[1]?.diff).not.toContain("planted");
+    const worktrees = await git(checkoutDir, "worktree", "list", "--porcelain");
+    for (const { cwd } of seen) expect(worktrees).not.toContain(cwd);
+  });
   it("lists and counts what the planned commits change, whatever the pull request reported when the run began", async () => {
     const seen: { inventory?: unknown; skill?: string } = {};
 
