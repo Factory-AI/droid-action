@@ -35,6 +35,7 @@ export function renderCommandHelp(context: ParsedGitHubContext): string {
 | \`@droid\` or \`@droid review\` | Review new changes (full on the first run) |
 | \`@droid review --full\` | Re-review the full PR |
 | \`@droid review <focus text>\` | Focus on a particular concern |
+| \`@droid review --showme\` | Review, with each finding as one short paragraph and an optional fix outline |
 | \`@droid security\` or \`@droid review security\` | Review security |
 | \`@droid security --full\` | Full repository security report |
 | \`@droid fix\` | Fix this finding in its thread, or all open findings at PR level |

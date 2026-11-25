@@ -27,6 +27,10 @@ export type ReviewFinding = {
   why: string;
   verification: string;
   suggestion?: string;
+  /** Untrusted model Markdown; render only through `fixMarkdown`. */
+  fix_markdown?: string;
+  /** Estimated production lines added plus removed by the fix. */
+  fix_lines?: number;
   agent_prompt: string;
   outside_diff: boolean;
   source_guideline?: FindingLocation;

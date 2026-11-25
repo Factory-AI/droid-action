@@ -71,6 +71,8 @@ export function normalizeFinding(data: Record<string, unknown>): ReviewFinding {
   const startLine = positive(data.startLine ?? data.start_line) ?? null;
   const source = location(data.source_guideline);
   const securitySeverity = data.securitySeverity ?? data.security_severity;
+  const fixMarkdown = nonempty(data.fix_markdown);
+  const fixLines = positive(data.fix_lines);
   return {
     id,
     title,
@@ -106,6 +108,8 @@ export function normalizeFinding(data: Record<string, unknown>): ReviewFinding {
     why: nonempty(data.why) ?? "",
     verification: nonempty(data.verification) ?? "",
     ...(suggestion !== undefined ? { suggestion } : {}),
+    ...(fixMarkdown ? { fix_markdown: fixMarkdown } : {}),
+    ...(fixLines ? { fix_lines: fixLines } : {}),
     agent_prompt:
       nonempty(data.agent_prompt) ??
       `Verify ${side === "LEFT" ? (oldPath ?? path) : path}${line ? `:${line}` : ""}: ${title}. ${body}`,

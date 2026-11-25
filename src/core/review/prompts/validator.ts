@@ -15,6 +15,7 @@
  * via thin adapters that supply a `ReviewTerminology` shape.
  */
 
+import { buildFindingTextSection } from "./finding-text";
 import { buildRepoGuidelinesSection } from "./guidelines";
 import type { ReviewPromptContext, ReviewTerminology } from "./types";
 import { fenced, redactSecrets } from "../render/helpers";
@@ -101,6 +102,7 @@ export function generateValidatorPrompt(ctx: ReviewPromptContext): string {
     postingMode = "tool",
     sourceNote,
     repoGuidelines,
+    fixOutline = false,
   } = ctx;
 
   if (!validatedPath) {
@@ -179,7 +181,7 @@ ${sourceNote ? `\n${sourceNote}\n` : ""}
         "category": "correctness",
         "security": false,
         "path": "src/index.ts",
-        "body": "One short paragraph explaining what breaks, when, and what to do.",
+        "body": "${fixOutline ? "One short paragraph explaining what breaks, when, and why." : "One short paragraph explaining what breaks, when, and what to do."}",${fixOutline ? `\n        "fix_markdown": "Optional outline of the fix; see <finding_text>.",\n        "fix_lines": 2,` : ""}
         "why": "Trigger, affected path, and why existing guards do not prevent the bug.",
         "verification": "Concrete code trace or test that confirms the issue.",
         "also_at": [],
@@ -228,7 +230,7 @@ Notes:
 * \`id\` is a stable candidate ID: preserve it on later runs. \`title\` is an
   outcome-style sentence-case title, at most 70 characters, with no trailing period.
   \`severity\` is P0, P1, or P2. \`category\` is correctness, security, performance,
-  or maintainability. \`body\` is a short paragraph, without the title or priority tag.
+  or maintainability. \`body\` is a short paragraph, without the title or priority tag.${fixOutline ? "\n* `fix_markdown` and `fix_lines` follow <finding_text> below. Check any outline\n  from the candidate against the current code, then keep it, correct it, or remove\n  it. Rewrite a candidate `body` that breaks the <finding_text> rules." : ""}
 * Security findings also set \`security: true\`, \`securitySeverity\` to critical,
   high, medium, or low (independent of priority), and \`cwe\` when evidenced.
 * \`also_at\` combines duplicate locations as {path, startLine?, line};
@@ -273,7 +275,7 @@ Notes:
   through unchanged: they are not candidates, so they are never approved,
   rejected, or moved into \`results\`.
 
-Tooling note:
+${fixOutline ? `${buildFindingTextSection(includeSuggestions)}\n\n` : ""}Tooling note:
 * If the tools list includes \`ApplyPatch\` (common for OpenAI models like GPT-5.2), use \`ApplyPatch\` to create/update the file at the exact path.
 * Otherwise, use \`Create\` (or \`Edit\` if overwriting) to write the file.
 

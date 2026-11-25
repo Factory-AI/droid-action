@@ -229,7 +229,13 @@ export function encodeReviewState(state: ReviewState): string {
             line: undefined,
             title: undefined,
             body: undefined,
-            finding: { ...item.finding, state: item.state },
+            // Only the visible inline comment shows the fix outline.
+            finding: {
+              ...item.finding,
+              fix_markdown: undefined,
+              fix_lines: undefined,
+              state: item.state,
+            },
           }
         : item,
     ),

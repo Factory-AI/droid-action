@@ -668,6 +668,7 @@ export async function run(
     badges: config.review_badges,
     includeCategories: config.review_category_chips,
     includeAgentPrompts: config.include_agent_prompts,
+    fixOutline: lifecycle?.fixOutline === true,
     showDroppedFindings: config.show_dropped_findings,
     diagram: config.review_diagram,
     sections: config.review_summary_sections,

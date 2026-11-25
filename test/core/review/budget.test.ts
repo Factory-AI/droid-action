@@ -333,6 +333,35 @@ describe("automatic renderer output budgets", () => {
     expect(decodeFindingMarker(body)?.id).toBe("f-real");
     expect(validateRenderedMarkdown(body)).toEqual([]);
   });
+  it("drops the fix outline first when a comment is over budget, keeping the whole suggestion", () => {
+    const finding = normalizeFinding({
+      id: "f-real",
+      title: "A verified defect",
+      path: "src/a.ts",
+      line: 10,
+      severity: "P1",
+      body: "body ".repeat(2000),
+      agent_prompt: "prompt ".repeat(2000),
+    });
+    const suggestion = `    // FULL_SUGGESTION\n${"x".repeat(7900)}\n`;
+    const body = renderInlineComment(
+      {
+        ...finding,
+        suggestion,
+        // Each "&" renders as "&amp;", so this short outline grows fivefold.
+        fix_markdown: `OUTLINE ${"&".repeat(4000)}`,
+        fix_lines: 3,
+      },
+      { fixOutline: true },
+    );
+    expect(outputBytes(body)).toBeLessThanOrEqual(MAX_INLINE_OUTPUT_BYTES);
+    expect(body).toContain(`~~~suggestion\n${suggestion}\n~~~`);
+    expect(body).not.toContain("OUTLINE");
+    expect(body).not.toContain("Proposed fix");
+    expect(body).not.toContain("Estimated fix");
+    expect(decodeFindingMarker(body)?.id).toBe("f-real");
+    expect(validateRenderedMarkdown(body)).toEqual([]);
+  });
   it("bounds check output and preserves its machine counts", () => {
     const output = renderCheckRun({
       ...oversizedReview(),

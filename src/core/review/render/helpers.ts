@@ -91,6 +91,17 @@ export function fenced(text: string, language = "text"): string {
   const fence = "~".repeat(Math.max(3, ...runs.map((run) => run.length + 1)));
   return `${fence}${language}\n${content}\n${fence}`;
 }
+/** Restrict diagrams to passive graph syntax; no HTML, links, init directives, or click handlers. */
+export function safeDiagram(value: string): string | null {
+  if (
+    !/^(?:flowchart|graph|sequenceDiagram)\b/.test(value.trim()) ||
+    /<\/?[a-z][^>]*>|[&`~]|%%|(?:^|[\n;])\s*(?:click|linkStyle|style|classDef|accTitle|accDescr)\b|https?:|javascript:/i.test(
+      value,
+    )
+  )
+    return null;
+  return redactSecrets(value.trim());
+}
 export function stripSummaryMarkers(body: string): string {
   return body
     .replace(/<!--\s*droid-review-(?:summary|state):v1[\s\S]*?-->/g, "")

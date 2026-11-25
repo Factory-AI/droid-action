@@ -40,6 +40,31 @@ describe("review UX command grammar", () => {
     expect(String(parseDroidCommand(text)?.command)).toBe(command),
   );
 
+  test("parses --showme as a review flag that combines with --full and focus", () => {
+    expect(parseDroidCommand("@droid review --showme")).toMatchObject({
+      command: "review",
+      showme: true,
+    });
+    expect(
+      parseDroidCommand("@DROID REVIEW --FULL --SHOWME the migration"),
+    ).toMatchObject({
+      command: "review",
+      showme: true,
+      fullReview: true,
+      focus: "the migration",
+    });
+    expect(
+      parseDroidCommand("@droid review the migration --showme."),
+    ).toMatchObject({
+      command: "review",
+      showme: true,
+      focus: "the migration",
+    });
+    expect(parseDroidCommand("@droid review --showmore")).toMatchObject({
+      command: "unknown",
+    });
+  });
+
   test("preserves focus independently of full override", () => {
     expect(
       parseDroidCommand("@droid review --full the migration"),
