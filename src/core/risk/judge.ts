@@ -220,8 +220,9 @@ async function executePrRiskDroid(
  * prompt (`/pr-risk-judge`), its tools the whole tool surface, and its
  * settings the whole model configuration; head files and the complete diff
  * are data under `evidence/`, never ambient config. An answer that misses the
- * contract earns one strict retry naming the failed rules; the schema is
- * never weakened to rescue an invalid judgment.
+ * contract is first sent back to the same session to restate, then earns one
+ * fresh strict retry naming the failed rules; the schema is never weakened to
+ * rescue an invalid judgment.
  */
 export async function runPrRiskJudge(
   snapshot: PullRequestRiskSnapshot,
@@ -239,7 +240,7 @@ export async function runPrRiskJudge(
     options.incremental,
   );
   const settingsPath = await writePrRiskSettings(evidence, judge.settings);
-  const args = [
+  const sessionArgs = (prompt: string, sessionId?: string) => [
     "--settings",
     settingsPath,
     "exec",
@@ -257,11 +258,15 @@ export async function runPrRiskJudge(
     "json",
     "--cwd",
     evidence.rootDir,
-    `/${RISK_JUDGE_SKILL_NAME}`,
+    ...(sessionId ? ["--session-id", sessionId] : []),
+    prompt,
   ];
 
-  const attempt = async (skillText: string): Promise<PrRiskJudgeParse> => {
-    await writePrRiskSkill(evidence, skillText);
+  const attempt = async (
+    args: readonly string[],
+    skillText?: string,
+  ): Promise<PrRiskJudgeParse> => {
+    if (skillText !== undefined) await writePrRiskSkill(evidence, skillText);
     const parsed = parsePrRiskJudgeOutput(
       await executePrRiskDroid(args, options),
       judge.scores,
@@ -286,24 +291,39 @@ export async function runPrRiskJudge(
     return parsed;
   };
 
-  const first = await attempt(skill);
-  if (first.verdict) return first.verdict;
-
-  const retry = await attempt(
+  const strictRetry = (feedback: readonly string[]) =>
     [
-      skill.trimEnd(),
-      "",
       "## Strict retry",
       "",
       "The previous attempt failed these validation rules:",
-      ...first.retryFeedback.map((feedback) => `- ${feedback}`),
+      ...feedback.map((line) => `- ${line}`),
       "",
       "Return exactly one JSON object with exactly these keys and no others:",
       describePrRiskContract(judge.scores, contract),
       "",
       "Do not invent evidence or change a judgment to satisfy the contract; restate the same verdict in the required shape.",
       "",
-    ].join("\n"),
+    ].join("\n");
+
+  const first = await attempt(sessionArgs(`/${RISK_JUDGE_SKILL_NAME}`), skill);
+  if (first.verdict) return first.verdict;
+
+  // A session that finished with a malformed answer already holds the whole
+  // judgment; asking it to restate costs a few thousand tokens, where a fresh
+  // session repeats every read and subagent. A session that errored has no
+  // judgment to restate, so it goes straight to a fresh one.
+  let feedback = first.retryFeedback;
+  if (first.sessionId && first.invalidReason !== "exec_error") {
+    const restated = await attempt(
+      sessionArgs(strictRetry(feedback), first.sessionId),
+    );
+    if (restated.verdict) return restated.verdict;
+    feedback = restated.retryFeedback;
+  }
+
+  const retry = await attempt(
+    sessionArgs(`/${RISK_JUDGE_SKILL_NAME}`),
+    [skill.trimEnd(), "", strictRetry(feedback)].join("\n"),
   );
   if (retry.verdict) return retry.verdict;
   throw new RiskError(
