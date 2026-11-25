@@ -267,6 +267,10 @@ after() {
   load_prepared
   REVIEW_OPEN=true
   install_bun || fail DROID_POST_ERROR_MESSAGE "Could not install bun or droid-action's dependencies."
+  # The session could have planted git config that runs commands, in the
+  # checkout or a parent directory. With no repository, posting reads diffs
+  # through GitHub's API instead.
+  export GIT_DIR=/dev/null
   if [ -e "$ERROR_FILE" ]; then
     # validate's pass could have replaced the file, so only a capped regular
     # file is read.

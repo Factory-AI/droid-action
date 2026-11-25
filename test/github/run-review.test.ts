@@ -66,7 +66,7 @@ case "$*" in
     if [ -n "\${STUB_VALIDATOR_ERROR:-}" ]; then out error_message "$STUB_VALIDATOR_ERROR"; exit 1; fi
     ;;
   *github-post-review.ts)
-    echo "post token=$GITHUB_TOKEN effort=[$REASONING_EFFORT] check=$REVIEW_CHECK_ID bun_options=\${BUN_OPTIONS-unset}" >> "$STUB_LOG"
+    echo "post token=$GITHUB_TOKEN effort=[$REASONING_EFFORT] check=$REVIEW_CHECK_ID bun_options=\${BUN_OPTIONS-unset} git_config=$(git config --get droid.planted || echo unreadable)" >> "$STUB_LOG"
     if [ -n "\${STUB_POST_ERROR:-}" ]; then out error_message "$STUB_POST_ERROR"; exit 1; fi
     ;;
 esac
@@ -369,6 +369,15 @@ describe("github/run-review.sh after", () => {
       `post token=${WRITE_TOKEN} effort=[default] check=11`,
     );
     expect(run.calls).not.toContain("phase=finalize");
+  });
+
+  it("keeps git away from config the session could have planted", () => {
+    const m = machine();
+    expect(m.run("before").status).toBe(0);
+    spawnSync("git", ["-C", m.checkout, "config", "droid.planted", "yes"]);
+    const run = m.run("after");
+    expect(run.status).toBe(0);
+    expect(run.calls).toContain("git_config=unreadable");
   });
 
   it("closes the check with validate's failure without posting", () => {
