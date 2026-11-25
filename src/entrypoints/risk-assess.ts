@@ -30,6 +30,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { assessPullRequest, readDroidCliVersion } from "../core/risk/assess";
+import { assertFactoryApiBaseUrl } from "../core/risk/client";
 import {
   describeFailure,
   readRiskPlan,
@@ -82,6 +83,7 @@ type AssessInputs = {
 };
 
 async function actionInputs(env: NodeJS.ProcessEnv): Promise<AssessInputs> {
+  const judgeApiBaseUrl = env.RISK_JUDGE_API_BASE_URL?.trim();
   return {
     plan: await readRiskPlan(riskPlanPath(env)),
     repoDir: requiredEnv("GITHUB_WORKSPACE", env),
@@ -91,7 +93,9 @@ async function actionInputs(env: NodeJS.ProcessEnv): Promise<AssessInputs> {
     // caller's, which may write.
     githubToken: env.GH_TOKEN?.trim() || undefined,
     droidBinary: env.DROID_BIN?.trim() || undefined,
-    judgeApiBaseUrl: env.RISK_JUDGE_API_BASE_URL?.trim() || undefined,
+    judgeApiBaseUrl: judgeApiBaseUrl
+      ? assertFactoryApiBaseUrl(judgeApiBaseUrl)
+      : undefined,
   };
 }
 

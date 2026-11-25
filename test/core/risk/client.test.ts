@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, mock, spyOn } from "bun:test";
 import * as core from "@actions/core";
 import {
+  assertFactoryApiBaseUrl,
   beginRisk,
   getRiskOidcToken,
   settleRisk,
@@ -49,7 +50,7 @@ function clientOptions(
   overrides: Partial<RiskClientOptions> = {},
 ): RiskClientOptions {
   return {
-    baseUrl: "https://factory.example/",
+    baseUrl: "https://app.factory.ai/",
     apiKey: "factory-key",
     fetch,
     retry: { initialDelayMs: 1 },
@@ -99,7 +100,7 @@ describe("beginRisk", () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0]?.url).toBe(
-      "https://factory.example/api/internal/pr-risk/begin",
+      "https://app.factory.ai/api/internal/pr-risk/begin",
     );
     expect(calls[0]?.headers.get("authorization")).toBe("Bearer factory-key");
     expect(calls[0]?.headers.get("content-type")).toBe("application/json");
@@ -286,7 +287,7 @@ describe("settleRisk", () => {
     const answer = await settleRisk(settleRequest, clientOptions(fetch));
 
     expect(calls[0]?.url).toBe(
-      "https://factory.example/api/internal/pr-risk/settle",
+      "https://app.factory.ai/api/internal/pr-risk/settle",
     );
     expect(calls[0]?.body).toEqual(settleRequest);
     expect(answer).toEqual({
@@ -333,7 +334,7 @@ describe("settleRisk", () => {
     });
   });
   it("gives up after three attempts when no answer arrives, without quoting the transport error", async () => {
-    const down = new TypeError("fetch failed for https://factory.example");
+    const down = new TypeError("fetch failed for https://app.factory.ai");
     const { calls, fetch } = stubFetch([down, down, down]);
 
     await expect(
@@ -367,5 +368,55 @@ describe("getRiskOidcToken", () => {
       }),
     ).toBe("oidc-jwt");
     expect(getIDToken).toHaveBeenCalledWith("factory-pr-risk");
+  });
+});
+
+describe("assertFactoryApiBaseUrl", () => {
+  it.each([
+    "https://factory.ai",
+    "https://app.factory.ai",
+    "https://api.factory.ai/",
+    "https://staging.api.factory.ai",
+  ])("accepts %s", (url) => {
+    expect(assertFactoryApiBaseUrl(url)).toBe(url);
+  });
+
+  it.each([
+    "https://factory.ai.evil.com",
+    "https://evilfactory.ai",
+    "https://app.factory.ai.",
+    "http://app.factory.ai",
+    "https://127.0.0.1",
+    "http://127.0.0.1:3000",
+    "https://[::1]",
+    "not a url",
+  ])("refuses %s", (url) => {
+    expect(() => assertFactoryApiBaseUrl(url)).toThrow(
+      expect.objectContaining({ reason: "untrusted_api_url" }),
+    );
+  });
+
+  it("sends no begin request to a host that is not Factory's", async () => {
+    const { calls, fetch } = stubFetch([json(200, { action: "skip" })]);
+
+    await expect(
+      beginRisk(
+        beginRequest,
+        clientOptions(fetch, { baseUrl: "https://factory.ai.evil.com" }),
+      ),
+    ).rejects.toMatchObject({ reason: "untrusted_api_url" });
+    expect(calls).toEqual([]);
+  });
+
+  it("sends no settle request to a host that is not Factory's", async () => {
+    const { calls, fetch } = stubFetch([json(200, { status: "skipped" })]);
+
+    await expect(
+      settleRisk(
+        settleRequest,
+        clientOptions(fetch, { baseUrl: "http://127.0.0.1:8080" }),
+      ),
+    ).rejects.toMatchObject({ reason: "untrusted_api_url" });
+    expect(calls).toEqual([]);
   });
 });

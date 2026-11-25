@@ -288,11 +288,11 @@ inputs:
     required: false
     default: ""
   risk_api_base_url:
-    description: "Factory API host that answers the risk assessment's begin and settle requests."
+    description: "Factory API host that answers the risk assessment's begin and settle requests. Must be https on factory.ai or a subdomain of it; any other URL is refused and nothing is sent."
     required: false
     default: "https://app.factory.ai"
   risk_judge_api_base_url:
-    description: "Factory API host for the risk judge session only. Empty uses the Droid CLI's default."
+    description: "Factory API host for the risk judge session only. Empty uses the Droid CLI's default. Must be https on factory.ai or a subdomain of it; any other URL is refused and nothing is sent."
     required: false
     default: ""
   risk_dry_run:

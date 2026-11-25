@@ -40,6 +40,33 @@ export type RiskClientOptions = {
   retry?: RetryOptions;
 };
 
+/**
+ * Returns `raw` when it is an https URL on factory.ai or one of its
+ * subdomains, and throws otherwise. The API key goes wherever this URL
+ * points, and the URL comes from workflow inputs a pull request can change.
+ */
+export function assertFactoryApiBaseUrl(raw: string): string {
+  let url: URL | undefined;
+  try {
+    url = new URL(raw);
+  } catch {
+    // Not echoed: it may not be a URL at all.
+  }
+  const host = url?.hostname;
+  if (
+    url?.protocol !== "https:" ||
+    (host !== "factory.ai" && !host?.endsWith(".factory.ai"))
+  ) {
+    throw new RiskError(
+      "untrusted_api_url",
+      `Refusing to send the Factory API key to ${
+        url ? url.origin : "a value that is not a URL"
+      }: the Factory API URL must be https on factory.ai or a subdomain of it.`,
+    );
+  }
+  return raw;
+}
+
 /** `status` is undefined when no HTTP answer arrived at all. */
 class RiskRequestError extends RiskError {
   constructor(
@@ -101,7 +128,7 @@ async function post(
   options: RiskClientOptions,
 ): Promise<unknown> {
   const request: RiskFetch = options.fetch ?? fetch;
-  const url = `${options.baseUrl.replace(/\/+$/, "")}${path}`;
+  const url = `${assertFactoryApiBaseUrl(options.baseUrl).replace(/\/+$/, "")}${path}`;
   const payload = JSON.stringify(body);
   return retryWithBackoff(
     async () => {
