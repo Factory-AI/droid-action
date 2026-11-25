@@ -909,18 +909,22 @@ export async function prepareReviewLifecycle(options: {
       "Droid could not read review metadata. Check pull-requests: write permissions; this review will continue without incremental memory.",
     );
   const jobUrl = `${GITHUB_SERVER_URL}/${owner}/${repo}/actions/runs/${options.context.runId}`;
-  run.checkId = await createReviewCheck({
-    octokit: checkClient(options.octokit),
-    owner,
-    repo,
-    head: run.head,
-    runId: run.runId,
-    runAttempt: run.runAttempt || "1",
-    securityOnly: run.securityOnly,
-    enabled: config.review_check_run,
-    jobUrl,
-    warn,
-  });
+  // A skipped run has no result for the head. A check it completed would
+  // become the head's latest and hide an earlier review's result from branch
+  // protection.
+  if (!run.skipReason)
+    run.checkId = await createReviewCheck({
+      octokit: checkClient(options.octokit),
+      owner,
+      repo,
+      head: run.head,
+      runId: run.runId,
+      runAttempt: run.runAttempt || "1",
+      securityOnly: run.securityOnly,
+      enabled: config.review_check_run,
+      jobUrl,
+      warn,
+    });
   await createEyes(
     options.octokit,
     options.context,
@@ -1129,15 +1133,23 @@ export async function finishReviewLifecycle(options: {
           .reduce((sum, step) => sum + (step.durationSeconds || 0), 0),
     );
   }
-  const conclusion = reviewCheckConclusion(
-    input.findings || [],
-    {
-      failOnSeverity: config.fail_on_severity,
-      securityBlockOnCritical: config.security_block_on_critical,
-      securityBlockOnHigh: config.security_block_on_high,
-    },
-    failed || input.state === "failed",
-  );
+  const policy = {
+    failOnSeverity: config.fail_on_severity,
+    securityBlockOnCritical: config.security_block_on_critical,
+    securityBlockOnHigh: config.security_block_on_high,
+  };
+  const conclusion =
+    input.state === "skipped"
+      ? // A skipped run's check, created before it knew it would skip, must
+        // not pass the head while the findings it skipped to still block.
+        reviewCheckConclusion(stateFindings(run.state), policy) === "failure"
+        ? "failure"
+        : "neutral"
+      : reviewCheckConclusion(
+          input.findings || [],
+          policy,
+          failed || input.state === "failed",
+        );
   const output = renderCheckRun({
     ...input,
     phase: "completed",
@@ -1158,7 +1170,7 @@ export async function finishReviewLifecycle(options: {
     repo: run.repo,
     checkId: run.checkId,
     status: "completed",
-    conclusion: input.state === "skipped" ? "neutral" : conclusion,
+    conclusion,
     ...output,
     warn,
   });

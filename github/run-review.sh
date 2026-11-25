@@ -45,7 +45,8 @@
 # droid on its PATH.
 #
 # before exits 78 when there is nothing to review: the PR moved past
-# PR_HEAD_SHA, or the review settings skip this event. Skip the session then;
+# PR_HEAD_SHA (GitHub's API gets up to a minute to report a pushed head), or
+# the review settings skip this event. Skip the session then;
 # validate and after do nothing. Any other non-zero exit is a failure, which
 # the Droid Review check reports once before has opened it. Run after even
 # when before failed or was stopped: it closes a check before left open.
@@ -338,7 +339,8 @@ before() {
     mkdir "$STATE_DIR" "$PROMPTS_DIR" && mkdir -m 700 "$BEFORE_DIR" || exit 1
   use_work_dir "$BEFORE_DIR"
   install_bun && (cd "$DROID_ACTION_DIR" && bun install --frozen-lockfile) || exit 1
-  run_entrypoint event src/entrypoints/github-pr-event.ts || exit 1
+  # Right after a push, GitHub's API can still report the previous head.
+  run_entrypoint event src/entrypoints/github-pr-event.ts PR_HEAD_WAIT_SECONDS=60 || exit 1
   local head
   head="$(value "$WORK_DIR/event" head_sha)"
   if [ "$head" != "$PR_HEAD_SHA" ]; then

@@ -37,7 +37,11 @@ import {
   savePreparedPriorDiff,
   fetchImmutableReviewDiff,
 } from "../../src/github/operations/review-lifecycle";
-import { resolveReviewUxConfig } from "../../src/core/review/config";
+import {
+  automaticReviewSkipReason,
+  resolveReviewUxConfig,
+  reviewConfigFromEnvironment,
+} from "../../src/core/review/config";
 import { reviewCheckConclusion } from "../../src/github/operations/review-checks";
 import { run as postReview } from "../../src/entrypoints/github-post-review";
 import { run as lifecyclePhase } from "../../src/entrypoints/github-review-lifecycle";
@@ -1590,6 +1594,54 @@ describe("review lifecycle production boundaries", () => {
       "Looks good to merge",
     );
   });
+  it("leaves an earlier failing check the head's latest when an automatic trigger is skipped", async () => {
+    process.env.FAIL_ON_SEVERITY = "P1";
+    const f = fixture([]);
+    await f.prepare();
+    await f.post([{ status: "approved", comment: finding() }]);
+    const checkCalls = () =>
+      f.calls.filter(
+        (call) =>
+          call.method === "checkCreate" || call.method === "checkUpdate",
+      );
+    expect(checkCalls().at(-1)?.input.conclusion).toBe("failure");
+    const settled = checkCalls().length;
+
+    const skipped = await prepareReviewLifecycle({
+      octokit: f.octokit,
+      context: f.context,
+      headSha: HEAD,
+      skipReason: automaticReviewSkipReason({
+        config: reviewConfigFromEnvironment(),
+        draft: false,
+        eventAction: "labeled",
+        manual: false,
+      }),
+    });
+
+    expect(skipped.skipReason).toBe("automatic trigger labeled is disabled");
+    expect(outputs.review_check_id).toBe("");
+    expect(checkCalls()).toHaveLength(settled);
+  });
+  it.each([
+    ["failure", "while its findings block", "P1"],
+    ["neutral", "when nothing blocks", ""],
+  ] as const)(
+    "completes a check made before the run skipped as %s %s",
+    async (conclusion, _when, failOnSeverity) => {
+      if (failOnSeverity) process.env.FAIL_ON_SEVERITY = failOnSeverity;
+      const f = fixture();
+      const prepared = await f.prepare();
+      await finishReviewLifecycle({
+        octokit: f.octokit,
+        run: prepared.run,
+        input: { state: "skipped", skipReason: "No new changes since bbbbbbb" },
+      });
+      expect(
+        f.calls.filter((call) => call.method === "checkUpdate").at(-1)?.input,
+      ).toMatchObject({ status: "completed", conclusion });
+    },
+  );
   it("never resolves an absent finding and does not trust cached fixed eligibility", async () => {
     const f = fixture();
     f.setThreads(false);

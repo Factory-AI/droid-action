@@ -30,6 +30,7 @@ echo "bun $*" >> "$STUB_LOG"
 out() { printf '%s<<EOF\\n%s\\nEOF\\n' "$1" "$2" >> "$GITHUB_OUTPUT"; }
 case "$*" in
   *github-pr-event.ts)
+    echo "event wait=\${PR_HEAD_WAIT_SECONDS-unset}" >> "$STUB_LOG"
     echo '{}' > "$GITHUB_EVENT_PATH"
     out head_sha "\${STUB_HEAD:-$PR_HEAD_SHA}"
     ;;
@@ -267,9 +268,11 @@ describe("github/run-review.sh before", () => {
       "src/entrypoints/prepare.ts",
       "src/entrypoints/github-review-lifecycle.ts",
     ]);
-    // Entrypoints run from the PR checkout, as in action.yml, with the PR
-    // author as actor, no review configuration carried in, and automatic
-    // review on only by default.
+    // GitHub's API gets time to report the pushed head.
+    expect(run.calls).toContain("event wait=60\n");
+    // Entrypoints run from the PR checkout, as in action.yml, with the
+    // event's sender as actor, no review configuration carried in, and
+    // automatic review on only by default.
     expect(run.calls).toContain(
       `prepare actor=octocat auto=[unset] security=[unset] default_auto=true only=true config=[] override=${WRITE_TOKEN} cwd=${m.checkout} prior=${path.join(m.prompts, "review_prior_findings.json")} prior_diff=${path.join(m.stateDir, "review_prior_diff.json")}`,
     );
@@ -515,6 +518,8 @@ describe("github/run-review.sh after", () => {
       `post token=${WRITE_TOKEN} effort=[default] check=11`,
     );
     expect(run.calls).toContain("validated=approved");
+    // Only before waits for a pushed head.
+    expect(run.calls).toContain("event wait=unset\n");
     // The prior diff prepare kept, in before's own directory.
     expect(run.calls).toContain(
       `prior_diff=${path.join(m.stateDir, "review_prior_diff.json")}`,
