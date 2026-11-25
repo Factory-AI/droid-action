@@ -240,7 +240,8 @@ describe("GitHub prior findings model view", () => {
       if (command.startsWith("git fetch origin main:")) return "";
       if (command.startsWith("git cat-file -e ")) return "";
       if (command.startsWith("git merge-base ")) return BASE;
-      if (command.startsWith("git --no-pager diff ")) return fixture.diff ?? DIFF;
+      if (command.startsWith("git --no-pager diff "))
+        return fixture.diff ?? DIFF;
       throw new Error(`Unexpected synthetic command: ${command}`);
     }) as typeof childProcess.execSync);
     const octokit = {

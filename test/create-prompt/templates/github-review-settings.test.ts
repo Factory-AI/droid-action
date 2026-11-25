@@ -95,10 +95,8 @@ function expectedModelSettings(config: ReviewUxConfig) {
 }
 
 function settingsBlock(prompt: string): unknown {
-  const section =
-    /### Effective review settings[^\n]*\n\n~~~json\n([\s\S]*?)\n~~~/.exec(
-      prompt,
-    );
+  const re = /### Effective review settings[^\n]*\n\n~~~json\n([\s\S]*?)\n~~~/;
+  const section = re.exec(prompt);
   if (!section) throw new Error("Missing actual effective-settings JSON block");
   return JSON.parse(section[1]!);
 }
@@ -342,11 +340,8 @@ describe("GitHub-only model settings projection", () => {
           expect(summary.suggestedReviewers).toBeUndefined();
         }
         if (config.review_pre_merge_checks.length) {
-          expect(summary.preMergeChecks?.map((check) => check.passed)).toEqual([
-            true,
-            true,
-            true,
-          ]);
+          const checks = summary.preMergeChecks?.map((check) => check.passed);
+          expect(checks).toEqual([true, true, true]);
         } else {
           expect(summary.preMergeChecks).toBeUndefined();
         }
@@ -408,7 +403,8 @@ describe("GitHub-only model settings projection", () => {
           config.review_pre_merge_checks.length > 0,
         );
         const measurement = measurements.find((row) => row.scenario === name);
-        if (!measurement) throw new Error("Missing rendered-prompt measurement");
+        if (!measurement)
+          throw new Error("Missing rendered-prompt measurement");
         measurement.runtime = { summary, rendered, conclusions };
       });
     });

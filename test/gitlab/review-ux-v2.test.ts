@@ -1851,16 +1851,11 @@ describe("GitLab v2 production entrypoints, local API only", () => {
     await environment(async (directory) => {
       process.env.REVIEW_MODEL = "gpt-5.4";
       await prepareRun();
-      const previous = JSON.parse(
-        await fs.readFile(
-          path.join(directory, "previous_findings.json"),
-          "utf8",
-        ),
-      );
+      const priorPath = path.join(directory, "previous_findings.json");
+      const previous = JSON.parse(await fs.readFile(priorPath, "utf8"));
       expect(previous.eligibleFixedIds).toEqual([finding.id]);
-      expect(
-        previous.changedFindings.map((f: { id: string }) => f.id),
-      ).toEqual([finding.id]);
+      const ids = previous.changedFindings.map((f: { id: string }) => f.id);
+      expect(ids).toEqual([finding.id]);
       expect(previous).not.toHaveProperty("verifyFixed");
       expect(
         await fs.readFile(path.join(directory, "mr.diff"), "utf8"),
@@ -1960,10 +1955,9 @@ describe("GitLab v2 production entrypoints, local API only", () => {
             path.join(directory, "review_candidates.json"),
           );
           if (previous) {
-            expect(
-              t.requests.find((r) => r.path.includes("/repository/compare"))
-                ?.path,
-            ).toContain(`from=${BASE}&to=${HEAD}`);
+            const comparePath = "/repository/compare";
+            const match = t.requests.find((r) => r.path.includes(comparePath));
+            expect(match?.path).toContain(`from=${BASE}&to=${HEAD}`);
           }
           const priorPath = path.join(directory, "previous_findings.json");
           const promptPath = path.join(directory, "prompt.txt");
