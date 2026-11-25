@@ -33,6 +33,9 @@ import {
 } from "../core/risk/types";
 import { freezeReviewRuntime } from "../prepare/review-runtime";
 
+export const WORKFLOW_NOT_TRUSTED_WARNING_TITLE =
+  "Risk assessment skipped: Factory did not trust this workflow run";
+
 export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
   const repo = requiredEnv("GITHUB_REPOSITORY", env);
   const apiKey = requiredEnv("FACTORY_API_KEY", env);
@@ -93,11 +96,16 @@ export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
       core.warning(
         `Factory asked for something this version of the risk action does not know, so nothing was assessed for #${target.pr}. Update the action.`,
       );
+    } else if (response.reason === RISK_WORKFLOW_NOT_TRUSTED) {
+      // A notice is easy to miss on a green job, and this refusal leaves the
+      // pull request with no assessment at all. Factory refuses only a
+      // workflow that is missing from, or differs from, the default branch.
+      core.warning("Workflow differs from default branch", {
+        title: WORKFLOW_NOT_TRUSTED_WARNING_TITLE,
+      });
     } else {
       core.notice(
-        response.reason === RISK_WORKFLOW_NOT_TRUSTED
-          ? `Factory does not accept PR risk requests from this workflow run (${RISK_WORKFLOW_NOT_TRUSTED}); nothing was assessed.`
-          : `PR risk assessment skipped for #${target.pr} (${response.reason}).`,
+        `PR risk assessment skipped for #${target.pr} (${response.reason}).`,
       );
     }
     return;
