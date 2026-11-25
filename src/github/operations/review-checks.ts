@@ -71,6 +71,42 @@ export async function optionalGitHubOperation<T>(
   }
 }
 
+export function reviewCheckName(securityOnly?: boolean): string {
+  return securityOnly ? "Droid Security Review" : "Droid Review";
+}
+
+/**
+ * Whether `head` has a check named like this run's other than `exceptId`,
+ * completed or not. Not knowing counts as yes, so a skipped run never hides a
+ * check it could not see.
+ */
+export async function hasOtherReviewCheck(options: {
+  octokit: Octokits;
+  owner: string;
+  repo: string;
+  head: string;
+  securityOnly?: boolean;
+  exceptId?: number;
+  warn: (message: string) => void;
+}): Promise<boolean> {
+  try {
+    const { data } = await options.octokit.rest.checks.listForRef({
+      owner: options.owner,
+      repo: options.repo,
+      ref: options.head,
+      check_name: reviewCheckName(options.securityOnly),
+      filter: "all",
+      per_page: 100,
+    });
+    return data.check_runs.some((check) => check.id !== options.exceptId);
+  } catch {
+    options.warn(
+      "Droid could not list this commit's checks, so the skipped review left them as they were.",
+    );
+    return true;
+  }
+}
+
 export function reviewCheckExternalId(
   runId = process.env.GITHUB_RUN_ID,
   runAttempt = process.env.GITHUB_RUN_ATTEMPT || "1",
@@ -103,7 +139,7 @@ export async function createReviewCheck(options: {
       options.octokit.rest.checks.create({
         owner: options.owner,
         repo: options.repo,
-        name: options.securityOnly ? "Droid Security Review" : "Droid Review",
+        name: reviewCheckName(options.securityOnly),
         head_sha: options.head,
         external_id: externalId,
         status: "queued",

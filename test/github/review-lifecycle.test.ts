@@ -194,6 +194,19 @@ describe("review lifecycle production boundaries", () => {
             checkStatus = input.status;
             return { data: {} };
           },
+          // The checks this fixture created on the ref, all as check 50.
+          listForRef: async (input: any) => ({
+            data: {
+              check_runs: calls
+                .filter(
+                  (call) =>
+                    call.method === "checkCreate" &&
+                    call.input.head_sha === input.ref &&
+                    call.input.name === input.check_name,
+                )
+                .map(() => ({ id: 50 })),
+            },
+          }),
         },
         reactions: {
           createForIssue: async (input: any) => {
@@ -1623,15 +1636,54 @@ describe("review lifecycle production boundaries", () => {
     expect(outputs.review_check_id).toBe("");
     expect(checkCalls()).toHaveLength(settled);
   });
+  it("gives a skipped automatic trigger the neutral check on a head with none", async () => {
+    // Even while a finding from an earlier head blocks.
+    process.env.FAIL_ON_SEVERITY = "P1";
+    const f = fixture();
+    await prepareReviewLifecycle({
+      octokit: f.octokit,
+      context: f.context,
+      headSha: HEAD,
+      skipReason:
+        "Automatic reviews are paused. Comment `@droid resume` to restart.",
+    });
+    expect(outputs.review_check_id).toBe("50");
+    expect(
+      f.calls.filter((call) => call.method === "checkCreate"),
+    ).toHaveLength(1);
+    expect(
+      f.calls.filter((call) => call.method === "checkUpdate").at(-1)?.input,
+    ).toMatchObject({ status: "completed", conclusion: "neutral" });
+  });
+  it("creates no check for a skipped run when it cannot list the head's checks", async () => {
+    const f = fixture();
+    spyOn(f.octokit.rest.checks, "listForRef").mockImplementation((async () => {
+      throw Object.assign(new Error("Resource not accessible"), {
+        status: 403,
+      });
+    }) as any);
+    await prepareReviewLifecycle({
+      octokit: f.octokit,
+      context: f.context,
+      headSha: HEAD,
+      skipReason: "automatic trigger labeled is disabled",
+    });
+    expect(f.calls.some((call) => call.method === "checkCreate")).toBe(false);
+  });
   it.each([
-    ["failure", "while its findings block", "P1"],
-    ["neutral", "when nothing blocks", ""],
+    ["failure", "over another check while its findings block", "P1", true],
+    ["neutral", "on a head with no other check", "P1", false],
+    ["neutral", "when nothing blocks", "", true],
   ] as const)(
     "completes a check made before the run skipped as %s %s",
-    async (conclusion, _when, failOnSeverity) => {
+    async (conclusion, _when, failOnSeverity, otherCheck) => {
       if (failOnSeverity) process.env.FAIL_ON_SEVERITY = failOnSeverity;
       const f = fixture();
       const prepared = await f.prepare();
+      if (otherCheck)
+        spyOn(f.octokit.rest.checks, "listForRef").mockResolvedValue({
+          data: { check_runs: [{ id: 49 }, { id: 50 }] },
+        } as any);
       await finishReviewLifecycle({
         octokit: f.octokit,
         run: prepared.run,

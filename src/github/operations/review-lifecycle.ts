@@ -33,6 +33,7 @@ import { normalizeFinding } from "../../core/review/validated/finding";
 import { redactCredentials } from "../../utils/redact-credentials";
 import {
   createReviewCheck,
+  hasOtherReviewCheck,
   optionalGitHubOperation,
   reviewCheckConclusion,
   reviewCheckExternalId,
@@ -909,10 +910,21 @@ export async function prepareReviewLifecycle(options: {
       "Droid could not read review metadata. Check pull-requests: write permissions; this review will continue without incremental memory.",
     );
   const jobUrl = `${GITHUB_SERVER_URL}/${owner}/${repo}/actions/runs/${options.context.runId}`;
-  // A skipped run has no result for the head. A check it completed would
-  // become the head's latest and hide an earlier review's result from branch
-  // protection.
-  if (!run.skipReason)
+  // A skipped run completes its check as neutral. On a head that already has
+  // a Droid Review check, that check would become the latest and hide the
+  // other one's result from branch protection, so the run creates none there.
+  const leaveChecksAlone =
+    !!run.skipReason &&
+    config.review_check_run &&
+    (await hasOtherReviewCheck({
+      octokit: checkClient(options.octokit),
+      owner,
+      repo,
+      head: run.head,
+      securityOnly: run.securityOnly,
+      warn,
+    }));
+  if (!leaveChecksAlone)
     run.checkId = await createReviewCheck({
       octokit: checkClient(options.octokit),
       owner,
@@ -1138,18 +1150,28 @@ export async function finishReviewLifecycle(options: {
     securityBlockOnCritical: config.security_block_on_critical,
     securityBlockOnHigh: config.security_block_on_high,
   };
-  const conclusion =
-    input.state === "skipped"
-      ? // A skipped run's check, created before it knew it would skip, must
-        // not pass the head while the findings it skipped to still block.
-        reviewCheckConclusion(stateFindings(run.state), policy) === "failure"
+  let conclusion = reviewCheckConclusion(
+    input.findings || [],
+    policy,
+    failed || input.state === "failed",
+  );
+  if (input.state === "skipped")
+    // A check made before the run knew it would skip must not pass the head
+    // over another Droid Review check while the findings it skipped to block.
+    conclusion =
+      run.checkId &&
+      reviewCheckConclusion(stateFindings(run.state), policy) === "failure" &&
+      (await hasOtherReviewCheck({
+        octokit: checkClient(options.octokit),
+        owner: run.owner,
+        repo: run.repo,
+        head: run.head,
+        securityOnly: run.securityOnly,
+        exceptId: run.checkId,
+        warn,
+      }))
         ? "failure"
-        : "neutral"
-      : reviewCheckConclusion(
-          input.findings || [],
-          policy,
-          failed || input.state === "failed",
-        );
+        : "neutral";
   const output = renderCheckRun({
     ...input,
     phase: "completed",
