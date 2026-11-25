@@ -25,6 +25,7 @@ import { dirname, isAbsolute, join, relative } from "node:path";
 import { run as assess } from "../../src/entrypoints/risk-assess";
 import { run as begin } from "../../src/entrypoints/risk-begin";
 import { run as settle } from "../../src/entrypoints/risk-settle";
+import { RISK_DEFAULT_API_BASE_URL } from "../../src/core/risk/types";
 import * as pullRequestRisk from "../../src/github/data/pr-risk";
 import {
   commit,
@@ -93,7 +94,6 @@ describe("risk action entrypoints", () => {
       GITHUB_RUN_ID: "77",
       GITHUB_RUN_ATTEMPT: "2",
       FACTORY_API_KEY: "factory-key",
-      RISK_API_BASE_URL: factory?.url,
       RISK_DRY_RUN: "true",
       RISK_PLAN_PATH: planPath,
       RISK_RESULT_PATH: resultPath,
@@ -115,6 +115,20 @@ describe("risk action entrypoints", () => {
     });
     spyOn(core, "notice").mockImplementation(() => {});
     spyOn(core, "warning").mockImplementation(() => {});
+    // The risk client only sends to Factory hosts, so its default host is
+    // routed to the stand-in here instead of being pointed at it.
+    const realFetch = globalThis.fetch;
+    spyOn(globalThis, "fetch").mockImplementation(((input, init) => {
+      const url = String(input);
+      if (!url.startsWith(`${RISK_DEFAULT_API_BASE_URL}/`)) {
+        return realFetch(input, init);
+      }
+      if (!factory) throw new Error(`unexpected request to ${url}`);
+      return realFetch(
+        factory.url + url.slice(RISK_DEFAULT_API_BASE_URL.length),
+        init,
+      );
+    }) as typeof fetch);
   });
 
   afterEach(async () => {
@@ -383,9 +397,44 @@ describe("risk action entrypoints", () => {
       expect(received).toEqual([]);
       expect(await exists(planPath)).toBe(false);
     });
+
+    it("sends nothing to an API host that is not Factory's", async () => {
+      const { received } = serve({ action: "judge", ...assignment });
+
+      await expect(
+        begin(
+          jobEnv({
+            GITHUB_EVENT_PATH: await eventFile(pullRequestEvent),
+            RISK_API_BASE_URL: factory?.url,
+          }),
+        ),
+      ).rejects.toMatchObject({ reason: "untrusted_api_url" });
+
+      expect(received).toEqual([]);
+      expect(await exists(planPath)).toBe(false);
+    });
   });
 
   describe("risk-assess", () => {
+    it("leaves a failed result, and runs no judge, for a judge API host that is not Factory's", async () => {
+      await mkdir(join(dir, "pr-risk"));
+      await writeFile(planPath, JSON.stringify(planFor()));
+
+      await assess(
+        [],
+        jobEnv({
+          GITHUB_WORKSPACE: dir,
+          DROID_BIN: join(dir, "no-such-droid"),
+          GH_TOKEN: "read-token",
+          RISK_JUDGE_API_BASE_URL: "https://evilfactory.ai",
+        }),
+      );
+
+      expect(JSON.parse(await readFile(resultPath, "utf8"))).toEqual({
+        result: { status: "failed", reason: "untrusted_api_url" },
+      });
+    });
+
     it("leaves a failed result when the plan cannot be read", async () => {
       await assess([], jobEnv({ GITHUB_WORKSPACE: dir }));
 
@@ -623,6 +672,17 @@ describe("risk action entrypoints", () => {
       });
       expect(outputs).toEqual({ outcome: "approve" });
       expect(failed).toEqual([]);
+    });
+
+    it("sends nothing to an API host that is not Factory's", async () => {
+      const { received } = serve({ status: "published", outcome: "approve" });
+      await writeFile(resultPath, JSON.stringify(judged));
+
+      await expect(
+        settle(jobEnv({ RISK_API_BASE_URL: "https://factory.ai.evil.com" })),
+      ).rejects.toMatchObject({ reason: "untrusted_api_url" });
+
+      expect(received).toEqual([]);
     });
 
     it("hands back the lease token begin passed on", async () => {

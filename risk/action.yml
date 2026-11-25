@@ -67,11 +67,11 @@ inputs:
     required: false
     default: ""
   api_base_url:
-    description: "Factory API host that answers the begin and settle requests."
+    description: "Factory API host that answers the begin and settle requests. Must be https on factory.ai or a subdomain of it; any other URL is refused and nothing is sent."
     required: false
     default: "https://app.factory.ai"
   judge_api_base_url:
-    description: "Factory API host for the judge session only. Empty uses the Droid CLI's default."
+    description: "Factory API host for the judge session only. Empty uses the Droid CLI's default. Must be https on factory.ai or a subdomain of it; any other URL is refused and nothing is sent."
     required: false
     default: ""
   dry_run:

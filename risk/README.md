@@ -231,8 +231,8 @@ request of a `workflow_run` event, or from `pr_number`.
 | `over_size`                | no       |                               | Risk setting. What Factory does with a pull request over either size cap.                                       |
 | `skip_when_human_approved` | no       |                               | Risk setting. Whether Factory skips assessing a pull request a human has approved: `auto`, `always` or `never`. |
 | `rules`                    | no       |                               | Risk setting. Path rules in the format of `.factory/review.yaml`'s `rules` key.                                 |
-| `api_base_url`             | no       | `https://app.factory.ai`      | Factory API host that answers the begin and settle requests.                                                    |
-| `judge_api_base_url`       | no       | the Droid CLI's default       | Factory API host for the judge session only.                                                                    |
+| `api_base_url`             | no       | `https://app.factory.ai`      | Factory API host that answers the begin and settle requests. Must be https on factory.ai or a subdomain of it.  |
+| `judge_api_base_url`       | no       | the Droid CLI's default       | Factory API host for the judge session only. Must be https on factory.ai or a subdomain of it.                  |
 | `dry_run`                  | no       | `false`                       | Tells Factory this is a dry run. A dry run can also run without `id-token: write`.                              |
 | `manual`                   | no       | `true` on `workflow_dispatch` | Marks the run as an explicit request to assess.                                                                 |
 
