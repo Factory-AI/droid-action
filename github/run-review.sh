@@ -28,14 +28,21 @@
 #                      read-only token: its `droid exec` can read this
 #                      process's environment, so it must never get the write one.
 #   GITHUB_RUN_ID      id of this run, the same in every part
+#   RUNNER_TEMP        absolute path of an existing directory of this run's
+#                      own, the same in every part
+#   GITHUB_ACTOR       required by before: the login that sent the event,
+#                      whose permissions prepare checks (ALLOWED_BOTS must
+#                      list it when it is a bot)
 #   FACTORY_API_KEY    required by validate, for the validator pass
-# Optional: RUNNER_TEMP (an existing directory; default $TMPDIR or /tmp),
-# SESSION_USER (below), GITHUB_RUN_ATTEMPT, GITHUB_ACTOR (default: the PR
-# author; ALLOWED_BOTS must list it when it is a bot), and the review settings
+#   VALIDATE_RESULT    required by after to post: succeeded when validate
+#                      exited 0. Unset or any other value closes the check as
+#                      failed, without posting.
+# Optional: SESSION_USER (below), GITHUB_RUN_ATTEMPT, and the review settings
 # action.yml passes as environment variables (AUTOMATIC_REVIEW,
 # AUTOMATIC_SECURITY_REVIEW, REVIEW_DEPTH...), which win over the base
 # branch's .factory/review.yaml. When neither sets AUTOMATIC_REVIEW, the review
-# runs. validate runs the droid on its PATH.
+# runs. @droid commands in the PR's description are ignored. validate runs the
+# droid on its PATH.
 #
 # before exits 78 when there is nothing to review: the PR moved past
 # PR_HEAD_SHA, or the review settings skip this event. Skip the session then;
@@ -74,9 +81,17 @@ case "$PART" in
 esac
 : "${GITHUB_REPOSITORY:?must be owner/repo}" "${PR_NUMBER:?is required}" \
   "${PR_HEAD_SHA:?is required}" "${PR_ACTION:?is required}" \
-  "${GITHUB_TOKEN:?is required}" "${GITHUB_RUN_ID:?is required}"
-if [ "$PART" = validate ]; then
-  : "${FACTORY_API_KEY:?is required for the validator pass}"
+  "${GITHUB_TOKEN:?is required}" "${GITHUB_RUN_ID:?is required}" \
+  "${RUNNER_TEMP:?must be a directory only this run uses}"
+case "$RUNNER_TEMP" in
+  /*) ;;
+  *)
+    echo "RUNNER_TEMP must be an absolute path, not $RUNNER_TEMP." >&2
+    exit 1
+    ;;
+esac
+if [ "$PART" = before ]; then
+  : "${GITHUB_ACTOR:?must be the login that sent the pull_request event}"
 fi
 SESSION_USER="${SESSION_USER:-$(id -un)}"
 SPLIT_USERS=false
@@ -89,7 +104,6 @@ fi
 DROID_ACTION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # install_bun pins the SHA-256 of this version's builds.
 BUN_VERSION=1.2.11
-export RUNNER_TEMP="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 PROMPTS_DIR="$RUNNER_TEMP/droid-prompts"
 # Written by before and after only.
 STATE_DIR="$RUNNER_TEMP/github-review"
@@ -98,6 +112,8 @@ STATE_FILE="$STATE_DIR/state"
 BEFORE_DIR="$STATE_DIR/before"
 # validate's error, for after to report on the check.
 ERROR_FILE="$PROMPTS_DIR/github-review-error"
+# The most after reads of a file the session or validate wrote.
+SESSION_FILE_MAX_BYTES=$((16 * 1024 * 1024))
 WORK_DIR=
 REVIEW_OPEN=false
 NOTHING_TO_REVIEW=78
@@ -184,6 +200,13 @@ as_session_user() {
   else
     "$@"
   fi
+}
+
+# Prints the session's file $1, read as SESSION_USER for at most 30 seconds
+# and $2 bytes, so a FIFO or a link to a device cannot stall after or fill
+# its disk.
+read_session_file() {
+  as_session_user timeout 30 head -c "$2" -- "$1"
 }
 
 # Loads the state before left. Without one there is nothing to do: before
@@ -319,16 +342,12 @@ before() {
     echo "PR #$PR_NUMBER is at $head now, not $PR_HEAD_SHA; skipping. Nothing was posted to the pull request."
     exit "$NOTHING_TO_REVIEW"
   fi
-  if [ -z "${GITHUB_ACTOR:-}" ]; then
-    GITHUB_ACTOR="$(value "$WORK_DIR/event" author)"
-    export GITHUB_ACTOR
-  fi
   # `git clone --depth 1` fetches only the default branch, and gh pr checkout
   # cannot track a PR branch outside the fetch refspec.
   git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*' || exit 1
 
   OVERRIDE_GITHUB_TOKEN="$GITHUB_TOKEN" run_entrypoint prepare src/entrypoints/prepare.ts \
-    REVIEW_CONFIG_JSON= DEFAULT_AUTOMATIC_REVIEW=true
+    REVIEW_CONFIG_JSON= DEFAULT_AUTOMATIC_REVIEW=true AUTOMATIC_REVIEW_ONLY=true
   local status=$?
   save_state "$WORK_DIR" "$WORK_DIR/state"
   load_state "$WORK_DIR/state"
@@ -366,8 +385,13 @@ before() {
 }
 
 validate() {
+  # after then finds this run's outcome only: no earlier error, and no
+  # results the validator did not write.
+  rm -f "$ERROR_FILE" "$REVIEW_VALIDATED_PATH"
   use_work_dir "$(mktemp -d)"
   load_prepared
+  [ -n "${FACTORY_API_KEY:-}" ] ||
+    fail DROID_VALIDATOR_ERROR_MESSAGE "FACTORY_API_KEY is required for the validator pass."
   install_bun || fail DROID_VALIDATOR_ERROR_MESSAGE "Could not install bun."
   run_entrypoint event src/entrypoints/github-pr-event.ts ||
     fail DROID_VALIDATOR_ERROR_MESSAGE "Could not read PR #$PR_NUMBER from GitHub."
@@ -406,16 +430,22 @@ after() {
   # would follow a link they planted to one of its own files.
   local name
   for name in review_candidates.json review_validated.json; do
-    as_session_user cat -- "$PROMPTS_DIR/$name" >"$WORK_DIR/$name" 2>/dev/null ||
+    # One byte over the limit marks a file too large to use.
+    if ! read_session_file "$PROMPTS_DIR/$name" $((SESSION_FILE_MAX_BYTES + 1)) >"$WORK_DIR/$name" 2>/dev/null ||
+      [ "$(wc -c <"$WORK_DIR/$name")" -gt "$SESSION_FILE_MAX_BYTES" ]; then
       rm -f "$WORK_DIR/$name"
+    fi
   done
   export REVIEW_CANDIDATES_PATH="$WORK_DIR/review_candidates.json" \
     REVIEW_VALIDATED_PATH="$WORK_DIR/review_validated.json" \
     REVIEW_DIFF_PATH="$STATE_DIR/pr.diff" \
     REVIEW_POST_RESULTS_PATH="$STATE_DIR/review_post_results.json"
-  if [ -e "$ERROR_FILE" ] || [ -L "$ERROR_FILE" ]; then
+  [ -n "${VALIDATE_RESULT:-}" ] ||
+    fail DROID_VALIDATOR_ERROR_MESSAGE "VALIDATE_RESULT is required to post the review."
+  if [ "$VALIDATE_RESULT" != succeeded ] || [ -e "$ERROR_FILE" ] ||
+    [ -L "$ERROR_FILE" ]; then
     local error
-    error="$(as_session_user head -c 2000 -- "$ERROR_FILE" 2>/dev/null)"
+    error="$(read_session_file "$ERROR_FILE" 2000 2>/dev/null)"
     fail DROID_VALIDATOR_ERROR_MESSAGE "${error:-The validator pass failed.}"
   fi
   run_entrypoint event src/entrypoints/github-pr-event.ts ||

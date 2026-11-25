@@ -1,12 +1,5 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  spyOn,
-  mock,
-} from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import * as childProcess from "child_process";
 import * as core from "@actions/core";
 import { prepareSecurityReviewMode } from "../../../src/tag/commands/security-review";
 import { createMockContext } from "../../mockContext";
@@ -49,6 +42,7 @@ describe("prepareSecurityReviewMode", () => {
   let lifecycleSpy: ReturnType<typeof spyOn>;
   let readLifecycleSpy: ReturnType<typeof spyOn>;
   let policySpy: ReturnType<typeof spyOn>;
+  let execSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
     policySpy = spyOn(policy, "applyModelPolicyFallback").mockImplementation(
@@ -99,16 +93,18 @@ describe("prepareSecurityReviewMode", () => {
       () => {},
     );
 
-    // Mock execSync for git checkout
-    mock.module("child_process", () => ({
-      execSync: (cmd: string) => {
-        if (cmd.includes("git rev-parse")) return "feature/security-review\n";
-        return "";
-      },
-    }));
+    // Mock git and gh for the checkout
+    execSpy = spyOn(childProcess, "execFileSync").mockImplementation(((
+      file: string,
+      args: readonly string[] = [],
+    ) =>
+      file === "git" && args[0] === "rev-parse"
+        ? "feature/security-review\n"
+        : "") as typeof childProcess.execFileSync);
   });
 
   afterEach(() => {
+    execSpy.mockRestore();
     policySpy.mockRestore();
     lifecycleSpy.mockRestore();
     readLifecycleSpy.mockRestore();

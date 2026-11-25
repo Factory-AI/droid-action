@@ -13,6 +13,7 @@ import * as client from "../../src/github/api/client";
 import * as contextMod from "../../src/github/context";
 import * as validator from "../../src/tag/commands/review-validator";
 import { DroidRunType } from "../../src/run-type";
+import { resolveReviewUxConfig } from "../../src/core/review/config";
 
 const PR_CONTEXT = {
   eventName: "issue_comment",
@@ -57,6 +58,7 @@ describe("prepare-validator entrypoint", () => {
       "DROID_COMMENT_ID",
       "DROID_EXEC_RUN_TYPE",
       "REVIEW_CANDIDATES_PATH",
+      "REVIEW_CONFIG_JSON",
     ]) {
       if (originalEnv[name] === undefined) delete process.env[name];
       else process.env[name] = originalEnv[name];
@@ -94,6 +96,47 @@ describe("prepare-validator entrypoint", () => {
       expect.stringContaining("DROID_COMMENT_ID"),
     );
     expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("runs without a tracking comment when review_summary is off", async () => {
+    spyOn(core, "setFailed").mockImplementation(() => {});
+    spyOn(core, "setSecret").mockImplementation(() => {});
+    const outputs: Record<string, string> = {};
+    spyOn(core, "setOutput").mockImplementation(((
+      name: string,
+      value: unknown,
+    ) => {
+      outputs[name] = String(value);
+    }) as any);
+    spyOn(process, "exit").mockImplementation(((code: number) => {
+      throw new Error(`Unexpected process.exit(${code})`);
+    }) as any);
+    spyOn(contextMod, "parseGitHubContext").mockReturnValue(PR_CONTEXT);
+    spyOn(client, "createOctokit").mockReturnValue({} as any);
+    const validatorSpy = spyOn(
+      validator,
+      "prepareReviewValidatorMode",
+    ).mockResolvedValue({
+      commentId: 0,
+      branchInfo: { baseBranch: "main", droidBranch: "feat" },
+      mcpTools: "{}",
+    } as any);
+
+    process.env.GITHUB_TOKEN = "existing-token";
+    // What prepare outputs for a new PR when no summary comment is made.
+    process.env.DROID_COMMENT_ID = "0";
+    process.env.REVIEW_CONFIG_JSON = JSON.stringify(
+      resolveReviewUxConfig({ fileConfig: { review_summary: "off" } }),
+    );
+    delete process.env.REVIEW_CANDIDATES_PATH;
+
+    const mod = await loadEntrypoint();
+    await mod.default();
+
+    expect(validatorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ trackingCommentId: 0 }),
+    );
+    expect(outputs.validator_should_run).toBe("true");
   });
 
   it("reuses the run's token instead of minting and publishing another", async () => {

@@ -50,7 +50,7 @@ describe("review command integration", () => {
   let exportVarSpy: ReturnType<typeof spyOn>;
   let promptSpy: ReturnType<typeof spyOn>;
   let computeArtifactsSpy: ReturnType<typeof spyOn>;
-  let execSyncSpy: ReturnType<typeof spyOn>;
+  let execSpy: ReturnType<typeof spyOn>;
   let fetchSpy: ReturnType<typeof spyOn>;
   let lifecycleSpy: ReturnType<typeof spyOn>;
   let stickyBodies: string[];
@@ -265,15 +265,17 @@ describe("review command integration", () => {
       },
     );
 
-    execSyncSpy = spyOn(childProcess, "execSync").mockImplementation(((
-      cmd: string,
+    execSpy = spyOn(childProcess, "execFileSync").mockImplementation(((
+      file: string,
+      args: readonly string[] = [],
     ) => {
+      const cmd = [file, ...args].join(" ");
       if (cmd.includes("merge-base")) return "abc123def456\n";
       if (cmd.includes("git --no-pager diff")) {
         return "diff --git a/file.ts b/file.ts\n+added line\n";
       }
       return "";
-    }) as typeof childProcess.execSync);
+    }) as typeof childProcess.execFileSync);
   });
 
   afterEach(async () => {
@@ -286,7 +288,7 @@ describe("review command integration", () => {
     computeArtifactsSpy.mockRestore();
     setOutputSpy.mockRestore();
     exportVarSpy.mockRestore();
-    execSyncSpy.mockRestore();
+    execSpy.mockRestore();
     fetchSpy.mockRestore();
 
     await rm(tmpDir, { recursive: true, force: true });

@@ -41,10 +41,21 @@ describe("incremental safety: model artifact boundaries", () => {
     Object.assign(process.env, savedEnv);
     await rm(directory, { recursive: true, force: true });
   });
-  function git(diff: string, diverged = false) {
-    return spyOn(childProcess, "execSync").mockImplementation(((
-      command: string,
+  /** Answers git by its command line and returns the commands that ran. */
+  function mockGit(answer: (command: string) => string) {
+    const commands: string[] = [];
+    spyOn(childProcess, "execFileSync").mockImplementation(((
+      file: string,
+      args: readonly string[] = [],
     ) => {
+      const command = [file, ...args].join(" ");
+      commands.push(command);
+      return answer(command);
+    }) as typeof childProcess.execFileSync);
+    return commands;
+  }
+  function git(diff: string, diverged = false) {
+    return mockGit((command) => {
       if (command.includes("--is-shallow-repository")) return "false\n";
       if (command.includes("--is-ancestor")) {
         if (diverged) throw new Error("Synthetic divergent history");
@@ -54,10 +65,10 @@ describe("incremental safety: model artifact boundaries", () => {
       if (command.includes("merge-base")) return BASE;
       if (command.includes("--no-pager diff")) return diff;
       return "";
-    }) as typeof childProcess.execSync);
+    });
   }
   it("keeps a divergent available previous tree as the actual incremental baseline", async () => {
-    const exec = git("synthetic direct prior diff\n", true);
+    const commands = git("synthetic direct prior diff\n", true);
     let selected: [string, boolean] | undefined;
     await computeAndStoreDiff("main", directory, {
       incrementalBaseSha: OLD,
@@ -67,14 +78,10 @@ describe("incremental safety: model artifact boundaries", () => {
       },
     });
     expect(selected).toEqual([OLD, true]);
-    expect(
-      exec.mock.calls.some(
-        ([command]) => command === `git --no-pager diff ${OLD}..${HEAD}`,
-      ),
-    ).toBe(true);
+    expect(commands).toContain(`git --no-pager diff ${OLD}..${HEAD}`);
   });
   it("retains full-review merge-base behavior without a requested incremental base", async () => {
-    const exec = git("synthetic full diff\n", true);
+    const commands = git("synthetic full diff\n", true);
     let selected: [string, boolean] | undefined;
     await computeAndStoreDiff("main", directory, {
       headRevision: HEAD,
@@ -83,14 +90,10 @@ describe("incremental safety: model artifact boundaries", () => {
       },
     });
     expect(selected).toEqual([BASE, false]);
-    expect(
-      exec.mock.calls.some(
-        ([command]) => command === `git --no-pager diff ${BASE}..${HEAD}`,
-      ),
-    ).toBe(true);
+    expect(commands).toContain(`git --no-pager diff ${BASE}..${HEAD}`);
   });
   it("keeps valid ancestor incremental reviews on the previous tree", async () => {
-    const exec = git("synthetic ancestor diff\n");
+    const commands = git("synthetic ancestor diff\n");
     let selected: [string, boolean] | undefined;
     await computeAndStoreDiff("main", directory, {
       incrementalBaseSha: OLD,
@@ -100,22 +103,17 @@ describe("incremental safety: model artifact boundaries", () => {
       },
     });
     expect(selected).toEqual([OLD, true]);
-    expect(
-      exec.mock.calls.some(
-        ([command]) => command === `git --no-pager diff ${OLD}..${HEAD}`,
-      ),
-    ).toBe(true);
+    expect(commands).toContain(`git --no-pager diff ${OLD}..${HEAD}`);
   });
   it("resets artifact range to the full PR if the prior commit is unavailable", async () => {
-    const exec = git("synthetic full diff\n");
-    exec.mockImplementation(((command: string) => {
+    mockGit((command) => {
       if (command.includes("cat-file") || command.includes("--is-ancestor"))
         throw new Error("Synthetic unavailable object");
       if (command.includes("--is-shallow-repository")) return "false\n";
       if (command.includes("merge-base")) return BASE;
       if (command.includes("--no-pager diff")) return "synthetic full diff\n";
       return "";
-    }) as typeof childProcess.execSync);
+    });
     let selected: [string, boolean] | undefined;
     await computeAndStoreDiff("main", directory, {
       incrementalBaseSha: OLD,

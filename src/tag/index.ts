@@ -36,6 +36,7 @@ export function shouldTriggerTag(context: GitHubContext): boolean {
   ) {
     return context.isPR;
   }
+  if (context.inputs.automaticReviewOnly) return false;
   return checkContainsTrigger(context);
 }
 

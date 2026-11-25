@@ -3,7 +3,7 @@
 /**
  * Writes a pull_request event for PR_NUMBER to GITHUB_EVENT_PATH, built from
  * the GitHub API, so github/run-review.sh can run the Actions entrypoints
- * outside GitHub Actions. Outputs the PR's current head commit and author.
+ * outside GitHub Actions. Outputs the PR's current head commit.
  */
 
 import * as core from "@actions/core";
@@ -27,7 +27,6 @@ async function run() {
     JSON.stringify({ action: process.env.PR_ACTION, pull_request: pr }),
   );
   core.setOutput("head_sha", pr.head.sha);
-  core.setOutput("author", pr.user.login);
 }
 
 if (import.meta.main) {

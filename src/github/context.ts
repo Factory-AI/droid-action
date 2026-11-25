@@ -95,6 +95,8 @@ type BaseContext = {
     trackProgress: boolean;
     automaticReview: boolean;
     automaticSecurityReview: boolean;
+    /** Takes no @droid commands from the event: only automatic reviews run. */
+    automaticReviewOnly?: boolean;
     securityModel: string;
     securitySeverityThreshold: string;
     securityBlockOnCritical: boolean;
@@ -164,6 +166,7 @@ export function parseGitHubContext(): GitHubContext {
       trackProgress: process.env.TRACK_PROGRESS === "true",
       automaticReview: reviewConfig.automatic_review,
       automaticSecurityReview: reviewConfig.automatic_security_review,
+      automaticReviewOnly: process.env.AUTOMATIC_REVIEW_ONLY === "true",
       securityModel: process.env.SECURITY_MODEL ?? "",
       securitySeverityThreshold: reviewConfig.security_severity_threshold,
       securityBlockOnCritical: reviewConfig.security_block_on_critical,

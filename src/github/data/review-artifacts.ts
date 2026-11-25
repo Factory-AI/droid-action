@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { writeFile, mkdir, readFile } from "fs/promises";
 import { createHash } from "crypto";
 import type { Octokits } from "../api/client";
@@ -62,23 +62,21 @@ export async function computeAndStoreDiff(
       throw new Error("PR head commit is not available locally");
     }
     const githubToken = options?.githubToken;
-    const fetchCommand = (args: string) =>
-      githubToken ? ghAuthenticatedGit(args) : `git ${args}`;
-    const fetchEnv = githubToken
-      ? { ...process.env, GH_TOKEN: githubToken }
-      : process.env;
+    const gitFetch = (args: string[]) =>
+      execFileSync("git", githubToken ? ghAuthenticatedGit(args) : args, {
+        encoding: "utf8",
+        stdio: "pipe",
+        env: githubToken
+          ? { ...process.env, GH_TOKEN: githubToken }
+          : process.env,
+      });
 
     // Unshallow the repo if it's a shallow clone (needed for merge-base)
     try {
-      execSync("git rev-parse --is-shallow-repository", {
+      execFileSync("git", ["rev-parse", "--is-shallow-repository"], {
         encoding: "utf8",
         stdio: "pipe",
-      }).trim() === "true" &&
-        execSync(fetchCommand("fetch --unshallow"), {
-          encoding: "utf8",
-          stdio: "pipe",
-          env: fetchEnv,
-        });
+      }).trim() === "true" && gitFetch(["fetch", "--unshallow"]);
       console.log("Unshallowed repository");
     } catch {
       console.log("Repository already has full history");
@@ -86,10 +84,13 @@ export async function computeAndStoreDiff(
 
     // Fetch the base branch (it may not exist locally yet)
     try {
-      execSync(
-        fetchCommand(`fetch origin ${baseRef}:refs/remotes/origin/${baseRef}`),
-        { encoding: "utf8", stdio: "pipe", env: fetchEnv },
-      );
+      // refs/heads/ keeps a branch name that starts with "-" from reading
+      // as an option.
+      gitFetch([
+        "fetch",
+        "origin",
+        `refs/heads/${baseRef}:refs/remotes/origin/${baseRef}`,
+      ]);
       console.log(`Fetched base branch: ${baseRef}`);
     } catch {
       console.log(`Base branch fetch skipped (may already exist): ${baseRef}`);
@@ -101,10 +102,11 @@ export async function computeAndStoreDiff(
       /^[a-f0-9]{7,64}$/i.test(options.incrementalBaseSha)
     ) {
       try {
-        execSync(`git cat-file -e ${options.incrementalBaseSha}^{commit}`, {
-          encoding: "utf8",
-          stdio: "pipe",
-        });
+        execFileSync(
+          "git",
+          ["cat-file", "-e", `${options.incrementalBaseSha}^{commit}`],
+          { encoding: "utf8", stdio: "pipe" },
+        );
         incrementalBase = options.incrementalBaseSha;
       } catch {
         console.log(
@@ -114,15 +116,17 @@ export async function computeAndStoreDiff(
     }
     const mergeBase =
       incrementalBase ??
-      execSync(
-        `git merge-base ${headRevision} refs/remotes/origin/${baseRef}`,
+      execFileSync(
+        "git",
+        ["merge-base", headRevision, `refs/remotes/origin/${baseRef}`],
         { encoding: "utf8" },
       ).trim();
 
-    diff = execSync(`git --no-pager diff ${mergeBase}..${headRevision}`, {
-      encoding: "utf8",
-      maxBuffer: DIFF_MAX_BUFFER,
-    });
+    diff = execFileSync(
+      "git",
+      ["--no-pager", "diff", `${mergeBase}..${headRevision}`],
+      { encoding: "utf8", maxBuffer: DIFF_MAX_BUFFER },
+    );
     options?.onRangeSelected?.(mergeBase, !!incrementalBase);
   } catch {
     // Fallback: use gh CLI to get the diff (works even with shallow clones)
@@ -134,7 +138,7 @@ export async function computeAndStoreDiff(
       diff = await retryWithBackoff(
         () =>
           Promise.resolve(
-            execSync(`gh pr diff ${options.prNumber}`, {
+            execFileSync("gh", ["pr", "diff", String(options.prNumber)], {
               encoding: "utf8",
               maxBuffer: DIFF_MAX_BUFFER,
               env: { ...process.env, GH_TOKEN: options.githubToken },

@@ -8,6 +8,8 @@ const REPO_ROOT = path.resolve(import.meta.dir, "../..");
 const HEAD = "a".repeat(40);
 const WRITE_TOKEN = "ghs_write_token";
 const READ_TOKEN = "ghs_read_token";
+// run-review.sh's SESSION_FILE_MAX_BYTES.
+const SESSION_FILE_MAX_BYTES = 16 * 1024 * 1024;
 const dirs: string[] = [];
 afterAll(() => {
   for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
@@ -30,10 +32,9 @@ case "$*" in
   *github-pr-event.ts)
     echo '{}' > "$GITHUB_EVENT_PATH"
     out head_sha "\${STUB_HEAD:-$PR_HEAD_SHA}"
-    out author octocat
     ;;
   *prepare.ts)
-    echo "prepare actor=$GITHUB_ACTOR auto=[\${AUTOMATIC_REVIEW-unset}] security=[\${AUTOMATIC_SECURITY_REVIEW-unset}] default_auto=\${DEFAULT_AUTOMATIC_REVIEW-unset} config=[\${REVIEW_CONFIG_JSON-unset}] override=$OVERRIDE_GITHUB_TOKEN cwd=$PWD prior=$REVIEW_PRIOR_FINDINGS_PATH" >> "$STUB_LOG"
+    echo "prepare actor=$GITHUB_ACTOR auto=[\${AUTOMATIC_REVIEW-unset}] security=[\${AUTOMATIC_SECURITY_REVIEW-unset}] default_auto=\${DEFAULT_AUTOMATIC_REVIEW-unset} only=\${AUTOMATIC_REVIEW_ONLY-unset} config=[\${REVIEW_CONFIG_JSON-unset}] override=$OVERRIDE_GITHUB_TOKEN cwd=$PWD prior=$REVIEW_PRIOR_FINDINGS_PATH" >> "$STUB_LOG"
     echo "::add-mask::$OVERRIDE_GITHUB_TOKEN"
     out github_token "$OVERRIDE_GITHUB_TOKEN"
     out mcp_tools "{\\"env\\":{\\"GITHUB_TOKEN\\":\\"$OVERRIDE_GITHUB_TOKEN\\"}}"
@@ -193,7 +194,10 @@ function machine() {
           PR_ACTION: "synchronize",
           GITHUB_TOKEN: part === "validate" ? READ_TOKEN : WRITE_TOKEN,
           GITHUB_RUN_ID: "run-1",
+          GITHUB_ACTOR: "octocat",
           FACTORY_API_KEY: "fk-123",
+          // What a caller passes after when validate exited 0.
+          VALIDATE_RESULT: "succeeded",
           ...env,
         },
       },
@@ -267,11 +271,11 @@ describe("github/run-review.sh before", () => {
     // author as actor, no review configuration carried in, and automatic
     // review on only by default.
     expect(run.calls).toContain(
-      `prepare actor=octocat auto=[unset] security=[unset] default_auto=true config=[] override=${WRITE_TOKEN} cwd=${m.checkout} prior=${path.join(m.prompts, "review_prior_findings.json")}`,
+      `prepare actor=octocat auto=[unset] security=[unset] default_auto=true only=true config=[] override=${WRITE_TOKEN} cwd=${m.checkout} prior=${path.join(m.prompts, "review_prior_findings.json")}`,
     );
     // The token reaches prepare through its environment, not env(1)'s arguments.
     expect(run.calls).toContain(
-      "env REVIEW_CONFIG_JSON= DEFAULT_AUTOMATIC_REVIEW=true TMPDIR=",
+      "env REVIEW_CONFIG_JSON= DEFAULT_AUTOMATIC_REVIEW=true AUTOMATIC_REVIEW_ONLY=true TMPDIR=",
     );
     for (const call of run.calls
       .split("\n")
@@ -389,19 +393,53 @@ describe("github/run-review.sh before", () => {
     expect(run.calls).not.toContain("lifecycle");
   });
 
-  it.each([
-    ["before", "GITHUB_RUN_ID"],
-    ["validate", "FACTORY_API_KEY"],
-  ] as const)("%s fails before doing anything without %s", (part, name) => {
+  it.each(["GITHUB_RUN_ID", "RUNNER_TEMP", "GITHUB_ACTOR"])(
+    "fails before doing anything without %s",
+    (name) => {
+      const m = machine();
+      const run = m.run("before", { [name]: "" });
+      expect(run.status).toBe(1);
+      expect(run.stderr).toContain(name);
+      expect(run.entrypoints).toEqual([]);
+    },
+  );
+
+  it("refuses a relative RUNNER_TEMP, which after would resolve elsewhere", () => {
     const m = machine();
-    const run = m.run(part, { [name]: "" });
+    const run = m.run("before", { RUNNER_TEMP: "runner-temp" });
     expect(run.status).toBe(1);
-    expect(run.stderr).toContain(name);
+    expect(run.stderr).toContain("RUNNER_TEMP must be an absolute path");
     expect(run.entrypoints).toEqual([]);
   });
 });
 
 describe("github/run-review.sh validate", () => {
+  it("leaves after only its own outcome", () => {
+    const m = machine();
+    expect(m.run("before").status).toBe(0);
+    // Results the session wrote itself, and an earlier attempt's error.
+    const validated = path.join(m.prompts, "review_validated.json");
+    fs.writeFileSync(validated, "planted");
+    fs.writeFileSync(m.errorFile, "stale error\n");
+    const run = m.run("validate", { FACTORY_API_KEY: "" });
+    expect(run.status).toBe(1);
+    expect(run.entrypoints).toEqual([]);
+    expect(fs.existsSync(validated)).toBe(false);
+    expect(fs.readFileSync(m.errorFile, "utf8")).toBe(
+      "FACTORY_API_KEY is required for the validator pass.\n",
+    );
+  });
+
+  it("clears an earlier attempt's error when it succeeds", () => {
+    const m = machine();
+    expect(m.run("before").status).toBe(0);
+    expect(
+      m.run("validate", { STUB_VALIDATOR_ERROR: "turn cap reached" }).status,
+    ).toBe(1);
+    expect(m.run("validate").status).toBe(0);
+    expect(fs.existsSync(m.errorFile)).toBe(false);
+  });
+
   it("runs the validator with no GitHub credential and leaves the check alone", () => {
     const m = machine();
     expect(m.run("before").status).toBe(0);
@@ -480,6 +518,28 @@ describe("github/run-review.sh after", () => {
     expect(run.calls).not.toContain("phase=finalize");
   });
 
+  it("stops reading a session file that never ends", () => {
+    const m = machine();
+    expect(m.run("before").status).toBe(0);
+    fs.symlinkSync("/dev/zero", path.join(m.prompts, "review_validated.json"));
+    const run = m.run("after");
+    expect(run.calls).toContain("validated= from=");
+  });
+
+  it.each([
+    ["uses", SESSION_FILE_MAX_BYTES, "approved"],
+    ["drops", SESSION_FILE_MAX_BYTES + 1, ""],
+  ])("%s a session file of %i bytes", (_verb, size, validated) => {
+    const m = machine();
+    expect(m.run("before").status).toBe(0);
+    fs.writeFileSync(
+      path.join(m.prompts, "review_validated.json"),
+      "approved".padEnd(size, "\n"),
+    );
+    const run = m.run("after");
+    expect(run.calls).toContain(`validated=${validated} from=`);
+  });
+
   it("keeps git away from config the session could have planted", () => {
     const m = machine();
     expect(m.run("before").status).toBe(0);
@@ -492,19 +552,38 @@ describe("github/run-review.sh after", () => {
     expect(run.calls).toContain("git_config=unreadable");
   });
 
-  it("closes the check with validate's failure without posting", () => {
+  it("closes the check with the error validate left, whatever VALIDATE_RESULT says", () => {
     const m = machine();
     expect(m.run("before").status).toBe(0);
     expect(
       m.run("validate", { STUB_VALIDATOR_ERROR: "turn cap reached" }).status,
     ).toBe(1);
-    const run = m.run("after");
+    const run = m.run("after", { VALIDATE_RESULT: "succeeded" });
     expect(run.status).toBe(1);
     expect(run.calls).toContain(
       `lifecycle phase=finalize check=11 head=${HEAD} success=false error=turn cap reached`,
     );
     expect(run.calls).not.toContain("github-post-review.ts");
   });
+
+  it.each([
+    ["failed", "The validator pass failed."],
+    ["timed-out", "The validator pass failed."],
+    ["", "VALIDATE_RESULT is required to post the review."],
+  ])(
+    "closes the check without posting when validate's result is [%s]",
+    (result, error) => {
+      const m = machine();
+      expect(m.run("before").status).toBe(0);
+      expect(m.run("validate").status).toBe(0);
+      const run = m.run("after", { VALIDATE_RESULT: result });
+      expect(run.status).toBe(1);
+      expect(run.calls).toContain(
+        `lifecycle phase=finalize check=11 head=${HEAD} success=false error=${error}`,
+      );
+      expect(run.calls).not.toContain("github-post-review.ts");
+    },
+  );
 
   it("closes the check when posting fails", () => {
     const m = machine();
@@ -606,7 +685,7 @@ describe.skipIf(process.platform !== "linux")(
       expect(after.status).toBe(0);
       for (const name of ["review_candidates.json", "review_validated.json"])
         expect(after.calls).toContain(
-          `runuser reviewer token=unset cat -- ${path.join(m.prompts, name)}\n`,
+          `runuser reviewer token=unset timeout 30 head -c ${SESSION_FILE_MAX_BYTES + 1} -- ${path.join(m.prompts, name)}\n`,
         );
       // Posting reads those copies and before's own copy of the diff.
       expect(after.calls).toContain("validated=approved from=");
@@ -625,10 +704,10 @@ describe.skipIf(process.platform !== "linux")(
           STUB_VALIDATOR_ERROR: "turn cap reached",
         }).status,
       ).toBe(1);
-      const run = m.run("after", asRoot);
+      const run = m.run("after", { ...asRoot, VALIDATE_RESULT: "failed" });
       expect(run.status).toBe(1);
       expect(run.calls).toContain(
-        `runuser reviewer token=unset head -c 2000 -- ${m.errorFile}\n`,
+        `runuser reviewer token=unset timeout 30 head -c 2000 -- ${m.errorFile}\n`,
       );
       expect(run.calls).toContain(
         `lifecycle phase=finalize check=11 head=${HEAD} success=false error=turn cap reached`,

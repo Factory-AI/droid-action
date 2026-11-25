@@ -50,8 +50,8 @@ export async function loadReviewUxConfigFromBase(options: {
   repo: string;
   prNumber: number;
   inputs?: ReviewConfigInputs;
-  /** Settings below the base-branch file and the inputs. */
-  defaults?: Record<string, unknown>;
+  /** The automatic-review default, below the base-branch file and the inputs. */
+  defaults?: Pick<ReviewUxConfig, "automatic_review">;
   onBaseSha?: (sha: string) => void;
 }): Promise<ReviewUxConfig> {
   const { client, owner, repo, prNumber } = options;

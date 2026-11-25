@@ -10,8 +10,21 @@ import * as fsPromises from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 
+/** Answers each command by its command line, as a shell would show it. */
+function mockCommands(answer: (cmd: string, opts?: any) => string) {
+  return spyOn(childProcess, "execFileSync").mockImplementation(((
+    file: string,
+    args: readonly string[] = [],
+    opts?: any,
+  ) =>
+    answer(
+      [file, ...args].join(" "),
+      opts,
+    )) as typeof childProcess.execFileSync);
+}
+
 describe("review-artifacts", () => {
-  let execSyncSpy: ReturnType<typeof spyOn>;
+  let execSpy: ReturnType<typeof spyOn>;
   let writeFileSpy: ReturnType<typeof spyOn>;
   let mkdirSpy: ReturnType<typeof spyOn>;
 
@@ -21,22 +34,20 @@ describe("review-artifacts", () => {
   });
 
   afterEach(() => {
-    execSyncSpy?.mockRestore();
+    execSpy?.mockRestore();
     writeFileSpy.mockRestore();
     mkdirSpy.mockRestore();
   });
 
   describe("computeAndStoreDiff", () => {
     it("computes diff via git merge-base and writes to disk", async () => {
-      execSyncSpy = spyOn(childProcess, "execSync").mockImplementation(((
-        cmd: string,
-      ) => {
+      execSpy = mockCommands((cmd) => {
         if (cmd.includes("is-shallow-repository")) return "false\n";
         if (cmd.includes("fetch origin main")) return "";
         if (cmd.includes("merge-base")) return "abc123\n";
         if (cmd.includes("diff")) return "diff --git a/f.ts b/f.ts\n+line\n";
         return "";
-      }) as typeof childProcess.execSync);
+      });
 
       const result = await computeAndStoreDiff("main", "/tmp/test");
 
@@ -53,10 +64,7 @@ describe("review-artifacts", () => {
     });
 
     it("falls back to gh pr diff when merge-base fails", async () => {
-      execSyncSpy = spyOn(childProcess, "execSync").mockImplementation(((
-        cmd: string,
-        opts?: any,
-      ) => {
+      execSpy = mockCommands((cmd, opts) => {
         if (cmd.includes("is-shallow-repository")) return "false\n";
         if (cmd.includes("merge-base")) throw new Error("no merge base");
         if (cmd.includes("gh pr diff")) {
@@ -64,7 +72,7 @@ describe("review-artifacts", () => {
           return "diff from gh cli\n";
         }
         return "";
-      }) as typeof childProcess.execSync);
+      });
 
       const result = await computeAndStoreDiff("main", "/tmp/test", {
         githubToken: "test-token",
@@ -83,10 +91,7 @@ describe("review-artifacts", () => {
     // the fetches authenticate through gh instead.
     it("authenticates its fetches through gh when given a token", async () => {
       const fetches: { cmd: string; token?: string }[] = [];
-      execSyncSpy = spyOn(childProcess, "execSync").mockImplementation(((
-        cmd: string,
-        opts?: any,
-      ) => {
+      execSpy = mockCommands((cmd, opts) => {
         if (cmd.includes("is-shallow-repository")) return "true\n";
         if (cmd.includes(" fetch ")) {
           fetches.push({ cmd, token: opts?.env?.GH_TOKEN });
@@ -95,7 +100,7 @@ describe("review-artifacts", () => {
         if (cmd.includes("merge-base")) return "abc123\n";
         if (cmd.includes("diff")) return "diff --git a/f.ts b/f.ts\n";
         return "";
-      }) as typeof childProcess.execSync);
+      });
 
       await computeAndStoreDiff("main", "/tmp/test", {
         githubToken: "test-token",
@@ -112,13 +117,11 @@ describe("review-artifacts", () => {
     });
 
     it("throws when merge-base fails and no fallback credentials", async () => {
-      execSyncSpy = spyOn(childProcess, "execSync").mockImplementation(((
-        cmd: string,
-      ) => {
+      execSpy = mockCommands((cmd) => {
         if (cmd.includes("is-shallow-repository")) return "false\n";
         if (cmd.includes("merge-base")) throw new Error("no merge base");
         return "";
-      }) as typeof childProcess.execSync);
+      });
 
       await expect(computeAndStoreDiff("main", "/tmp/test")).rejects.toThrow(
         "no fallback credentials",
@@ -158,14 +161,12 @@ describe("review-artifacts", () => {
 
   describe("computeReviewArtifacts", () => {
     it("runs all three artifact computations in parallel", async () => {
-      execSyncSpy = spyOn(childProcess, "execSync").mockImplementation(((
-        cmd: string,
-      ) => {
+      execSpy = mockCommands((cmd) => {
         if (cmd.includes("is-shallow-repository")) return "false\n";
         if (cmd.includes("merge-base")) return "abc123\n";
         if (cmd.includes("diff")) return "some diff\n";
         return "";
-      }) as typeof childProcess.execSync);
+      });
 
       const mockOctokit = {
         rest: {

@@ -69,89 +69,116 @@ function startGitServer(projectRoot: string) {
   };
 }
 
-describe("authenticated git fetches on a computer with credential.helper=store", () => {
-  it("use the token without storing it", () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "gh-cred-"));
-    dirs.push(root);
-    const projects = path.join(root, "projects");
-    const work = path.join(root, "work");
-    fs.mkdirSync(work);
-    git(work, "init", "-q", "-b", "main");
-    git(work, "config", "user.email", "test@example.com");
-    git(work, "config", "user.name", "Test");
-    // Two commits, so a depth-1 clone is shallow.
-    for (const content of ["one\n", "two\n"]) {
-      fs.writeFileSync(path.join(work, "app.ts"), content);
-      git(work, "add", ".");
-      git(work, "commit", "-qm", content.trim());
-    }
-    fs.mkdirSync(path.join(projects, "acme"), { recursive: true });
-    git(
-      root,
+/**
+ * A remote that wants credentials, holding main with two commits and the
+ * branch `base` at the first, and a depth-1 clone of main on a computer with
+ * credential.helper=store.
+ */
+function shallowClone(base: string) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "gh-cred-"));
+  dirs.push(root);
+  const projects = path.join(root, "projects");
+  const work = path.join(root, "work");
+  fs.mkdirSync(work);
+  git(work, "init", "-q", "-b", "main");
+  git(work, "config", "user.email", "test@example.com");
+  git(work, "config", "user.name", "Test");
+  // Two commits, so a depth-1 clone is shallow.
+  for (const content of ["one\n", "two\n"]) {
+    fs.writeFileSync(path.join(work, "app.ts"), content);
+    git(work, "add", ".");
+    git(work, "commit", "-qm", content.trim());
+    if (content === "one\n" && base !== "main") git(work, "branch", base);
+  }
+  fs.mkdirSync(path.join(projects, "acme"), { recursive: true });
+  git(root, "clone", "-q", "--bare", work, path.join(projects, "acme/app.git"));
+
+  const home = path.join(root, "home");
+  fs.mkdirSync(home);
+  fs.writeFileSync(
+    path.join(home, ".gitconfig"),
+    "[credential]\n\thelper = store\n",
+  );
+  const bin = path.join(root, "bin");
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, "gh"), GH_STUB, { mode: 0o755 });
+  const env = {
+    HOME: home,
+    PATH: `${bin}:${process.env.PATH}`,
+    GIT_CONFIG_NOSYSTEM: "1",
+  };
+
+  const server = startGitServer(projects);
+  const checkout = path.join(root, "checkout");
+  const clone = spawnSync(
+    "git",
+    [
+      "-c",
+      "credential.helper=",
+      "-c",
+      "credential.helper=!f() { echo username=computer; echo password=read-token; }; f",
       "clone",
       "-q",
-      "--bare",
-      work,
-      path.join(projects, "acme/app.git"),
+      "--depth",
+      "1",
+      `${server.url}/acme/app.git`,
+      checkout,
+    ],
+    { env, encoding: "utf8" },
+  );
+  // The diff step of before: `fetch --unshallow`, then the base branch.
+  const computeDiff = () =>
+    spawnSync(
+      "bun",
+      [
+        "-e",
+        `const { computeAndStoreDiff } = await import(${JSON.stringify(path.join(REPO_ROOT, "src/github/data/review-artifacts.ts"))});
+await computeAndStoreDiff(${JSON.stringify(base)}, ${JSON.stringify(root)}, { githubToken: ${JSON.stringify(WRITE_TOKEN)}, prNumber: 7 });`,
+      ],
+      { cwd: checkout, env, encoding: "utf8" },
     );
+  return { root, home, checkout, server, clone, computeDiff };
+}
 
-    const home = path.join(root, "home");
-    fs.mkdirSync(home);
-    fs.writeFileSync(
-      path.join(home, ".gitconfig"),
-      "[credential]\n\thelper = store\n",
-    );
-    const bin = path.join(root, "bin");
-    fs.mkdirSync(bin);
-    fs.writeFileSync(path.join(bin, "gh"), GH_STUB, { mode: 0o755 });
-    const env = {
-      HOME: home,
-      PATH: `${bin}:${process.env.PATH}`,
-      GIT_CONFIG_NOSYSTEM: "1",
-    };
-
-    const server = startGitServer(projects);
+describe("authenticated git fetches on a computer with credential.helper=store", () => {
+  it("use the token without storing it", () => {
+    const remote = shallowClone("main");
     try {
-      const checkout = path.join(root, "checkout");
-      const clone = spawnSync(
-        "git",
-        [
-          "-c",
-          "credential.helper=",
-          "-c",
-          "credential.helper=!f() { echo username=computer; echo password=read-token; }; f",
-          "clone",
-          "-q",
-          "--depth",
-          "1",
-          `${server.url}/acme/app.git`,
-          checkout,
-        ],
-        { env, encoding: "utf8" },
-      );
-      expect(clone.stderr).toBe("");
-
-      // The diff step of before: `fetch --unshallow`, then the base branch.
-      const diff = spawnSync(
-        "bun",
-        [
-          "-e",
-          `const { computeAndStoreDiff } = await import(${JSON.stringify(path.join(REPO_ROOT, "src/github/data/review-artifacts.ts"))});
-await computeAndStoreDiff("main", ${JSON.stringify(root)}, { githubToken: ${JSON.stringify(WRITE_TOKEN)}, prNumber: 7 });`,
-        ],
-        { cwd: checkout, env, encoding: "utf8" },
-      );
-      expect(diff.status).toBe(0);
-      expect(git(checkout, "rev-parse", "--is-shallow-repository")).toBe(
+      expect(remote.clone.stderr).toBe("");
+      expect(remote.computeDiff().status).toBe(0);
+      expect(git(remote.checkout, "rev-parse", "--is-shallow-repository")).toBe(
         "false",
       );
     } finally {
-      server.stop();
+      remote.server.stop();
     }
-    expect(server.credentials).toContain(`x-access-token:${WRITE_TOKEN}`);
-    const store = path.join(home, ".git-credentials");
+    expect(remote.server.credentials).toContain(
+      `x-access-token:${WRITE_TOKEN}`,
+    );
+    const store = path.join(remote.home, ".git-credentials");
     expect(
       fs.existsSync(store) ? fs.readFileSync(store, "utf8") : "",
     ).not.toContain(WRITE_TOKEN);
+  });
+
+  it("keep shell syntax in the base branch name away from any shell", () => {
+    // A valid branch name: git allows ; $ ( ) ` | and & in refs.
+    const base =
+      "base;touch${IFS}p1;$(touch${IFS}p2)`touch${IFS}p3`|touch${IFS}p4&";
+    const remote = shallowClone(base);
+    try {
+      expect(remote.computeDiff().status).toBe(0);
+    } finally {
+      remote.server.stop();
+    }
+    // git diffed against the base branch, taking its name as one argument.
+    expect(
+      fs.readFileSync(path.join(remote.root, "droid-prompts/pr.diff"), "utf8"),
+    ).toContain("+two");
+    expect(
+      ["p1", "p2", "p3", "p4"].filter((name) =>
+        fs.existsSync(path.join(remote.checkout, name)),
+      ),
+    ).toEqual([]);
   });
 });

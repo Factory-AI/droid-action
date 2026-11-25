@@ -74,7 +74,6 @@ describe("github-pr-event", () => {
     expect(outputs).toMatch(
       new RegExp(`^head_sha<<(.+)\\n${"a".repeat(40)}\\n\\1$`, "m"),
     );
-    expect(outputs).toMatch(/^author<<(.+)\noctocat\n\1$/m);
 
     const parsed = await bun(
       [

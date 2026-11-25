@@ -5,6 +5,7 @@ import { readFile } from "fs/promises";
 import { createOctokit } from "../github/api/client";
 import { parseGitHubContext, isEntityContext } from "../github/context";
 import { prepareReviewValidatorMode } from "../tag/commands/review-validator";
+import { reviewConfigFromEnvironment } from "../core/review/config";
 import {
   DroidRunType,
   parsePrValidationRunType,
@@ -73,8 +74,13 @@ async function run() {
     core.setSecret(githubToken);
     const octokit = createOctokit(githubToken);
 
-    const trackingCommentId = Number(process.env.DROID_COMMENT_ID);
-    if (!trackingCommentId || Number.isNaN(trackingCommentId)) {
+    const trackingCommentId = Number(process.env.DROID_COMMENT_ID || 0);
+    // With review_summary off, preparation gives a new PR no summary comment.
+    if (
+      Number.isNaN(trackingCommentId) ||
+      (!trackingCommentId &&
+        reviewConfigFromEnvironment().review_summary !== "off")
+    ) {
       throw new Error("DROID_COMMENT_ID is required for validator run");
     }
     const result = await prepareReviewValidatorMode({
