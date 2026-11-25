@@ -346,6 +346,19 @@ describe("risk assessment inside the full action", () => {
     );
   });
 
+  it("gives every risk step the risk key, falling back to the review's", () => {
+    const keyed = risk.filter((candidate) => candidate.env?.FACTORY_API_KEY);
+    expect(keyed.map((candidate) => candidate.name)).toEqual([
+      "Ask Factory whether to assess risk",
+      "Assess PR risk",
+      "Report risk result to Factory",
+    ]);
+    for (const candidate of keyed)
+      expect(candidate.env?.FACTORY_API_KEY).toBe(
+        "${{ inputs.risk_factory_api_key || inputs.factory_api_key }}",
+      );
+  });
+
   it("installs its own Droid CLI instead of reusing the review's", () => {
     const install = risk.find(
       (candidate) => candidate.name === "Install Droid CLI for the risk judge",
@@ -470,6 +483,13 @@ describe("inputs that choose what runs", () => {
   });
 
   // An empty default is how prepare tells an unset alias from an explicit one.
+  it("declares risk_factory_api_key as optional, so the review's key is the default", () => {
+    expect(inputs.risk_factory_api_key).toMatchObject({
+      required: false,
+      default: "",
+    });
+  });
+
   it("keeps risk_assessment as a deprecated alias that defaults to unset", () => {
     expect(inputs.risk_assessment).toMatchObject({
       required: false,
