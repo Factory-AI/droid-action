@@ -25,6 +25,7 @@ import {
   normalizePatchPath,
   pathsFromDiffHeader,
 } from "../../core/review/validated/diff";
+import { record } from "../../core/review/validated/finding";
 
 const DIFF_MAX_BUFFER = 50 * 1024 * 1024; // 50MB buffer for large diffs
 
@@ -171,10 +172,6 @@ const ACTOR_PROFILE_FIELDS = [
   "received_events_url",
 ] as const;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function compactActor(actor: Record<string, unknown>): Record<string, unknown> {
   const result = { ...actor };
   for (const field of ACTOR_PROFILE_FIELDS) delete result[field];
@@ -183,18 +180,22 @@ function compactActor(actor: Record<string, unknown>): Record<string, unknown> {
 
 // Strip only profile decoration from the prompt copy, not from the API data.
 function compactCommentForPrompt(comment: unknown): unknown {
-  if (!isRecord(comment)) return comment;
-  const result = { ...comment };
-  if (isRecord(result.user)) result.user = compactActor(result.user);
-  const app = result.performed_via_github_app;
-  if (isRecord(app) && isRecord(app.owner)) {
+  const data = record(comment);
+  if (!data) return comment;
+  const result = { ...data };
+  const user = record(result.user);
+  if (user) result.user = compactActor(user);
+  const app = record(result.performed_via_github_app);
+  const owner = record(app?.owner);
+  if (app && owner) {
     result.performed_via_github_app = {
       ...app,
-      owner: compactActor(app.owner),
+      owner: compactActor(owner),
     };
   }
-  if (isRecord(result.reactions)) {
-    const reactions = { ...result.reactions };
+  const sourceReactions = record(result.reactions);
+  if (sourceReactions) {
+    const reactions = { ...sourceReactions };
     delete reactions.url;
     result.reactions = reactions;
   }
