@@ -201,9 +201,17 @@ describe("GitHub prior findings model view", () => {
     priorPath = join(directory, "droid-prompts/review_prior_findings.json");
     process.env.REVIEW_LIFECYCLE_PATH = join(directory, "lifecycle.json");
     process.env.REVIEW_PRIOR_FINDINGS_PATH = priorPath;
-    spyOn(globalThis, "fetch").mockImplementation(async () => {
-      throw new Error("Live network is forbidden in this fixture.");
-    });
+    const forbiddenFetch = Object.assign(
+      async () => {
+        throw new Error("Live network is forbidden in this fixture.");
+      },
+      {
+        preconnect: () => {
+          throw new Error("Live network is forbidden in this fixture.");
+        },
+      },
+    );
+    spyOn(globalThis, "fetch").mockImplementation(forbiddenFetch);
     spyOn(childProcess, "execFileSync").mockImplementation(() => {
       throw new Error("Synthetic unavailable previous tree.");
     });
@@ -227,16 +235,12 @@ describe("GitHub prior findings model view", () => {
     if (lifecycle) {
       await writeFile(process.env.REVIEW_LIFECYCLE_PATH!, original);
     }
-    spyOn(childProcess, "execSync").mockImplementation(((
-      command: string,
-    ) => {
-      if (command === "git rev-parse --is-shallow-repository")
-        return "false\n";
+    spyOn(childProcess, "execSync").mockImplementation(((command: string) => {
+      if (command === "git rev-parse --is-shallow-repository") return "false\n";
       if (command.startsWith("git fetch origin main:")) return "";
       if (command.startsWith("git cat-file -e ")) return "";
       if (command.startsWith("git merge-base ")) return BASE;
-      if (command.startsWith("git --no-pager diff "))
-        return fixture.diff ?? DIFF;
+      if (command.startsWith("git --no-pager diff ")) return fixture.diff ?? DIFF;
       throw new Error(`Unexpected synthetic command: ${command}`);
     }) as typeof childProcess.execSync);
     const octokit = {

@@ -1858,9 +1858,9 @@ describe("GitLab v2 production entrypoints, local API only", () => {
         ),
       );
       expect(previous.eligibleFixedIds).toEqual([finding.id]);
-      expect(previous.changedFindings.map((f: { id: string }) => f.id)).toEqual([
-        finding.id,
-      ]);
+      expect(
+        previous.changedFindings.map((f: { id: string }) => f.id),
+      ).toEqual([finding.id]);
       expect(previous).not.toHaveProperty("verifyFixed");
       expect(
         await fs.readFile(path.join(directory, "mr.diff"), "utf8"),

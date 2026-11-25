@@ -95,9 +95,10 @@ function expectedModelSettings(config: ReviewUxConfig) {
 }
 
 function settingsBlock(prompt: string): unknown {
-  const section = /### Effective review settings[^\n]*\n\n~~~json\n([\s\S]*?)\n~~~/.exec(
-    prompt,
-  );
+  const section =
+    /### Effective review settings[^\n]*\n\n~~~json\n([\s\S]*?)\n~~~/.exec(
+      prompt,
+    );
   if (!section) throw new Error("Missing actual effective-settings JSON block");
   return JSON.parse(section[1]!);
 }
@@ -163,6 +164,9 @@ describe("GitHub-only model settings projection", () => {
     it(`${name}: removes only runtime-owned members from the real GitHub adapters`, () => {
       withConfig(config, () => {
         const originalConfig = process.env.REVIEW_CONFIG_JSON;
+        if (originalConfig === undefined) {
+          throw new Error("Missing trusted review configuration");
+        }
         const full = reviewPromptSettingsFromEnvironment();
         const expected = expectedModelSettings(config);
         const shared = {
@@ -332,15 +336,25 @@ describe("GitHub-only model settings projection", () => {
           },
         );
         expect(runtime).toEqual(config);
-        expect(summary.suggestedReviewers).toEqual(
-          config.review_suggest_reviewers ? ["org/security"] : undefined,
-        );
-        expect(summary.preMergeChecks?.map((check) => check.passed)).toEqual(
-          config.review_pre_merge_checks.length ? [true, true, true] : undefined,
-        );
-        expect(summary.effort).toEqual(
-          config.review_effort ? { score: 3 } : undefined,
-        );
+        if (config.review_suggest_reviewers) {
+          expect(summary.suggestedReviewers).toEqual(["org/security"]);
+        } else {
+          expect(summary.suggestedReviewers).toBeUndefined();
+        }
+        if (config.review_pre_merge_checks.length) {
+          expect(summary.preMergeChecks?.map((check) => check.passed)).toEqual([
+            true,
+            true,
+            true,
+          ]);
+        } else {
+          expect(summary.preMergeChecks).toBeUndefined();
+        }
+        if (config.review_effort) {
+          expect(summary.effort).toEqual({ score: 3 });
+        } else {
+          expect(summary.effort).toBeUndefined();
+        }
         expect(summary.security).toEqual({
           enabled: true,
           threshold: config.security_severity_threshold,
