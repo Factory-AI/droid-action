@@ -5,7 +5,6 @@ import * as path from "path";
 import { tempDir } from "../azure-devops/helpers";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../..");
-const SCRIPT = path.join(REPO_ROOT, "github/run-review.sh");
 const HEAD = "a".repeat(40);
 const WRITE_TOKEN = "ghs_write_token";
 const READ_TOKEN = "ghs_read_token";
@@ -15,11 +14,12 @@ afterAll(() => {
 });
 
 /**
- * Stub `bun` (entrypoints) and `droid` binaries record how run-review.sh
- * drives them, so every part is tested without network or models. The
- * entrypoint stubs report outputs the way @actions/core does. The validator
- * runs with a cleared environment, so the stub reads its settings from
- * stub.env and records the environment the validator received.
+ * Stub `bun` (entrypoints), `runuser` and `chown` binaries record how
+ * run-review.sh drives them, so every part is tested without network, models
+ * or root. The entrypoint stubs report outputs the way @actions/core does.
+ * The validator and runuser get cleared environments, so the stubs read their
+ * settings from stub.env; the validator stub records the environment it
+ * received, and runuser runs its command with the session user's HOME.
  */
 const BUN_STUB = `#!/usr/bin/env bash
 received_env="$(env)"
@@ -47,8 +47,8 @@ case "$*" in
     out review_reasoning_effort default
     out run_code_review "\${STUB_RUN_CODE_REVIEW:-true}"
     printf 'REVIEW_DEPTH<<EOF\\nshallow\\nEOF\\n' >> "$GITHUB_ENV"
-    mkdir -p "$RUNNER_TEMP/droid-prompts"
     echo "candidates prompt" > "$RUNNER_TEMP/droid-prompts/droid-prompt.txt"
+    echo "diff --git a/f b/f" > "$RUNNER_TEMP/droid-prompts/pr.diff"
     if [ -n "\${STUB_PREPARE_ERROR:-}" ]; then out prepare_error "$STUB_PREPARE_ERROR"; exit 1; fi
     ;;
   *github-review-lifecycle.ts)
@@ -64,17 +64,27 @@ case "$*" in
   *base-action/src/index.ts)
     printf '%s\\n' "$received_env" > "__STUB_DIR__/validator.env"
     if [ -n "\${STUB_VALIDATOR_ERROR:-}" ]; then out error_message "$STUB_VALIDATOR_ERROR"; exit 1; fi
+    echo approved > "$(dirname "$INPUT_PROMPT_FILE")/review_validated.json"
     ;;
   *github-post-review.ts)
-    echo "post token=$GITHUB_TOKEN effort=[$REASONING_EFFORT] check=$REVIEW_CHECK_ID bun_options=\${BUN_OPTIONS-unset} git_config=$(git config --get droid.planted || echo unreadable)" >> "$STUB_LOG"
+    echo "post token=$GITHUB_TOKEN effort=[$REASONING_EFFORT] check=$REVIEW_CHECK_ID bun_options=\${BUN_OPTIONS-unset} git_config=$(git config --get droid.planted || echo unreadable) validated=$(cat "$REVIEW_VALIDATED_PATH" 2>/dev/null) from=$REVIEW_VALIDATED_PATH diff=$REVIEW_DIFF_PATH:$(head -n 1 "$REVIEW_DIFF_PATH" 2>/dev/null)" >> "$STUB_LOG"
     if [ -n "\${STUB_POST_ERROR:-}" ]; then out error_message "$STUB_POST_ERROR"; exit 1; fi
     ;;
 esac
 exit 0
 `;
 
-const DROID_STUB = `#!/usr/bin/env bash
-echo "droid $*" >> "$STUB_LOG"
+const RUNUSER_STUB = `#!/usr/bin/env bash
+. "__STUB_DIR__/stub.env"
+[ "$1" = -u ] && [ "$3" = -- ] || exit 64
+echo "runuser $2 token=\${GITHUB_TOKEN-unset} \${*:4}" >> "$STUB_LOG"
+shift 3
+HOME="__STUB_DIR__/session-home" exec "$@"
+`;
+
+const CHOWN_STUB = `#!/usr/bin/env bash
+. "__STUB_DIR__/stub.env"
+echo "chown $*" >> "$STUB_LOG"
 `;
 
 const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
@@ -85,24 +95,41 @@ function machine() {
   dirs.push(root);
   const bin = path.join(root, "bin");
   fs.mkdirSync(bin);
-  fs.writeFileSync(
-    path.join(bin, "bun"),
-    BUN_STUB.replaceAll("__STUB_DIR__", root),
-    { mode: 0o755 },
+  const stubs = { bun: BUN_STUB, runuser: RUNUSER_STUB, chown: CHOWN_STUB };
+  for (const [name, stub] of Object.entries(stubs))
+    fs.writeFileSync(
+      path.join(bin, name),
+      stub.replaceAll("__STUB_DIR__", root),
+      {
+        mode: 0o755,
+      },
+    );
+  // A copy of droid-action, so that with SESSION_USER the directories above
+  // it are the test's own.
+  const action = path.join(root, "action");
+  fs.mkdirSync(path.join(action, "github"), { recursive: true });
+  fs.copyFileSync(
+    path.join(REPO_ROOT, "github/run-review.sh"),
+    path.join(action, "github/run-review.sh"),
   );
-  fs.writeFileSync(path.join(bin, "droid"), DROID_STUB, { mode: 0o755 });
+  fs.cpSync(
+    path.join(REPO_ROOT, ".factory/droids"),
+    path.join(action, ".factory/droids"),
+    { recursive: true },
+  );
   const checkout = path.join(root, "checkout");
   fs.mkdirSync(checkout);
   spawnSync("git", ["init", "-q", checkout]);
   const runnerTemp = path.join(root, "runner-temp");
+  fs.mkdirSync(runnerTemp);
   const home = path.join(root, "home");
+  const sessionHome = path.join(root, "session-home");
   const tmp = path.join(root, "tmp");
   fs.mkdirSync(tmp);
   const log = path.join(root, "calls.log");
   const validatorEnvFile = path.join(root, "validator.env");
   const prompts = path.join(runnerTemp, "droid-prompts");
-  const stateFile = path.join(prompts, "github-review-state");
-  const errorFile = path.join(prompts, "github-review-error");
+  const stateDir = path.join(runnerTemp, "github-review");
 
   const run = (
     part: "before" | "validate" | "after",
@@ -117,25 +144,29 @@ function machine() {
         .map(([name, value]) => `export ${name}=${shellQuote(value)}\n`)
         .join(""),
     );
-    const result = spawnSync("bash", [SCRIPT, part], {
-      encoding: "utf8",
-      cwd: checkout,
-      env: {
-        PATH: `${bin}:/usr/bin:/bin`,
-        HOME: home,
-        TMPDIR: tmp,
-        RUNNER_TEMP: runnerTemp,
-        STUB_LOG: log,
-        GITHUB_REPOSITORY: "acme/app",
-        PR_NUMBER: "7",
-        PR_HEAD_SHA: HEAD,
-        PR_ACTION: "synchronize",
-        GITHUB_TOKEN: part === "validate" ? READ_TOKEN : WRITE_TOKEN,
-        GITHUB_RUN_ID: "run-1",
-        FACTORY_API_KEY: "fk-123",
-        ...env,
+    const result = spawnSync(
+      "bash",
+      [path.join(action, "github/run-review.sh"), part],
+      {
+        encoding: "utf8",
+        cwd: checkout,
+        env: {
+          PATH: `${bin}:/usr/bin:/bin`,
+          HOME: home,
+          TMPDIR: tmp,
+          RUNNER_TEMP: runnerTemp,
+          STUB_LOG: log,
+          GITHUB_REPOSITORY: "acme/app",
+          PR_NUMBER: "7",
+          PR_HEAD_SHA: HEAD,
+          PR_ACTION: "synchronize",
+          GITHUB_TOKEN: part === "validate" ? READ_TOKEN : WRITE_TOKEN,
+          GITHUB_RUN_ID: "run-1",
+          FACTORY_API_KEY: "fk-123",
+          ...env,
+        },
       },
-    });
+    );
     const calls = fs.readFileSync(log, "utf8");
     return {
       status: result.status,
@@ -147,7 +178,7 @@ function machine() {
         .filter((l) => l.startsWith("bun "))
         .map((l) =>
           l.replace(
-            `bun --config=/dev/null --env-file=/dev/null run ${REPO_ROOT}/`,
+            `bun --config=/dev/null --env-file=/dev/null run ${action}/`,
             "",
           ),
         ),
@@ -165,7 +196,18 @@ function machine() {
         : undefined,
     };
   };
-  return { run, checkout, runnerTemp, home, tmp, stateFile, errorFile };
+  return {
+    run,
+    checkout,
+    runnerTemp,
+    home,
+    sessionHome,
+    tmp,
+    prompts,
+    stateDir,
+    stateFile: path.join(stateDir, "state"),
+    errorFile: path.join(prompts, "github-review-error"),
+  };
 }
 
 function filesUnder(dir: string): string[] {
@@ -290,7 +332,6 @@ describe("github/run-review.sh validate", () => {
     });
     expect(run.status).toBe(0);
     expect(run.entrypoints).toEqual([
-      "bun install --frozen-lockfile",
       "src/entrypoints/github-pr-event.ts",
       "src/entrypoints/prepare-validator.ts",
       "base-action/src/index.ts",
@@ -307,14 +348,11 @@ describe("github/run-review.sh validate", () => {
       FACTORY_API_KEY: "fk-123",
       DROID_EXEC_RUN_TYPE: "droid-review",
       FACTORY_DROID_AUTO_UPDATE_ENABLED: "false",
-      DETAILED_PERMISSION_MESSAGES: "1",
       INPUT_MAX_TURNS: "40",
-      INPUT_PROMPT_FILE: path.join(
-        m.runnerTemp,
-        "droid-prompts/droid-prompt.txt",
-      ),
+      INPUT_PROMPT_FILE: path.join(m.prompts, "droid-prompt.txt"),
       INPUT_DROID_ARGS: '--enabled-tools "Read"',
       INPUT_MCP_TOOLS: '{"mcpServers":{}}',
+      TMPDIR: expect.stringContaining(m.tmp),
       GITHUB_OUTPUT: expect.any(String),
     });
     expect(run.calls).not.toContain("lifecycle");
@@ -335,16 +373,6 @@ describe("github/run-review.sh validate", () => {
     expect(fs.readFileSync(m.errorFile, "utf8")).toContain(error);
     expect(run.calls).not.toContain("lifecycle");
   });
-
-  it("clears an earlier failure when a retry succeeds", () => {
-    const m = machine();
-    expect(m.run("before").status).toBe(0);
-    expect(m.run("validate", { STUB_VALIDATOR_ERROR: "timeout" }).status).toBe(
-      1,
-    );
-    expect(m.run("validate").status).toBe(0);
-    expect(fs.existsSync(m.errorFile)).toBe(false);
-  });
 });
 
 describe("github/run-review.sh after", () => {
@@ -355,7 +383,6 @@ describe("github/run-review.sh after", () => {
     const run = m.run("after");
     expect(run.status).toBe(0);
     expect(run.entrypoints).toEqual([
-      "bun install --frozen-lockfile",
       "src/entrypoints/github-pr-event.ts",
       "src/entrypoints/github-review-lifecycle.ts",
       "src/entrypoints/github-review-lifecycle.ts",
@@ -368,6 +395,7 @@ describe("github/run-review.sh after", () => {
     expect(run.calls).toContain(
       `post token=${WRITE_TOKEN} effort=[default] check=11`,
     );
+    expect(run.calls).toContain("validated=approved");
     expect(run.calls).not.toContain("phase=finalize");
   });
 
@@ -394,20 +422,6 @@ describe("github/run-review.sh after", () => {
     expect(run.calls).not.toContain("github-post-review.ts");
   });
 
-  it("reads validate's error only from a regular file", () => {
-    const m = machine();
-    expect(m.run("before").status).toBe(0);
-    const secret = path.join(m.home, "secret.txt");
-    fs.writeFileSync(secret, "TOP SECRET");
-    fs.symlinkSync(secret, m.errorFile);
-    const run = m.run("after");
-    expect(run.status).toBe(1);
-    expect(run.calls).toContain(
-      `lifecycle phase=finalize check=11 head=${HEAD} success=false error=The validator pass failed.`,
-    );
-    expect(run.calls + run.stdout + run.stderr).not.toContain("TOP SECRET");
-  });
-
   it("closes the check when posting fails", () => {
     const m = machine();
     expect(m.run("before").status).toBe(0);
@@ -429,13 +443,16 @@ describe("github/run-review.sh after", () => {
     },
   );
 
-  it("refuses a prepared review for a different commit", () => {
+  it("closes the check without posting when the review was prepared for another commit", () => {
     const m = machine();
     expect(m.run("before").status).toBe(0);
-    const run = m.run("after", { PR_HEAD_SHA: "d".repeat(40) });
+    const other = "d".repeat(40);
+    const run = m.run("after", { PR_HEAD_SHA: other });
     expect(run.status).toBe(1);
-    expect(run.stderr).toContain("nothing was posted");
-    expect(run.entrypoints).toEqual([]);
+    expect(run.calls).toContain(
+      `lifecycle phase=finalize check=11 head=${HEAD} success=false error=The prepared review is for ${HEAD}, not ${other}; nothing was posted.`,
+    );
+    expect(run.calls).not.toContain("github-post-review.ts");
   });
 
   it("sets only the allowlisted values from the state file", () => {
@@ -447,3 +464,113 @@ describe("github/run-review.sh after", () => {
     expect(run.calls).toContain("bun_options=unset");
   });
 });
+
+// runuser, and the stat and realpath flags the checks use, are Linux's.
+describe.skipIf(process.platform !== "linux")(
+  "github/run-review.sh with SESSION_USER",
+  () => {
+    const asRoot = { SESSION_USER: "reviewer" };
+
+    it("hands the clone over and reads the session's files as the session user", () => {
+      const m = machine();
+      const before = m.run("before", asRoot);
+      expect(before.status).toBe(0);
+      expect(before.calls).toContain(
+        `chown -R reviewer: -- ${m.prompts} ${m.checkout}\n`,
+      );
+      // The droids are copied as the session user, into its HOME.
+      expect(before.calls).toContain("runuser reviewer token=unset sh -c");
+      expect(
+        fs.existsSync(
+          path.join(m.sessionHome, ".factory/droids/security-reviewer.md"),
+        ),
+      ).toBe(true);
+      expect(fs.existsSync(path.join(m.home, ".factory"))).toBe(false);
+
+      expect(m.run("validate", { HOME: m.sessionHome }).status).toBe(0);
+      const after = m.run("after", asRoot);
+      expect(after.status).toBe(0);
+      for (const name of ["review_candidates.json", "review_validated.json"])
+        expect(after.calls).toContain(
+          `runuser reviewer token=unset cat -- ${path.join(m.prompts, name)}\n`,
+        );
+      // Posting reads those copies and before's own copy of the diff.
+      expect(after.calls).toContain("validated=approved from=");
+      expect(after.calls).not.toContain(`from=${m.prompts}`);
+      expect(after.calls).toContain(
+        `diff=${path.join(m.stateDir, "pr.diff")}:diff --git a/f b/f`,
+      );
+    });
+
+    it("reads validate's error as the session user", () => {
+      const m = machine();
+      expect(m.run("before", asRoot).status).toBe(0);
+      expect(
+        m.run("validate", {
+          HOME: m.sessionHome,
+          STUB_VALIDATOR_ERROR: "turn cap reached",
+        }).status,
+      ).toBe(1);
+      const run = m.run("after", asRoot);
+      expect(run.status).toBe(1);
+      expect(run.calls).toContain(
+        `runuser reviewer token=unset head -c 2000 -- ${m.errorFile}\n`,
+      );
+      expect(run.calls).toContain(
+        `lifecycle phase=finalize check=11 head=${HEAD} success=false error=turn cap reached`,
+      );
+    });
+
+    it("before replaces prompts an earlier session left instead of writing through them", () => {
+      const m = machine();
+      const elsewhere = `${m.runnerTemp}-elsewhere`;
+      fs.mkdirSync(elsewhere);
+      fs.symlinkSync(elsewhere, m.prompts);
+      expect(m.run("before", asRoot).status).toBe(0);
+      expect(fs.lstatSync(m.prompts).isDirectory()).toBe(true);
+      expect(fs.readdirSync(elsewhere)).toEqual([]);
+    });
+
+    it("before refuses a RUNNER_TEMP another user could change", () => {
+      const m = machine();
+      fs.chmodSync(m.runnerTemp, 0o777);
+      const run = m.run("before", asRoot);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toContain(
+        `Only root may be able to change ${m.runnerTemp} `,
+      );
+      expect(run.entrypoints).toEqual([]);
+    });
+
+    it("before refuses a RUNNER_TEMP reached through a symbolic link", () => {
+      const m = machine();
+      const link = `${m.runnerTemp}-link`;
+      fs.symlinkSync(m.runnerTemp, link);
+      const run = m.run("before", { ...asRoot, RUNNER_TEMP: link });
+      expect(run.status).toBe(1);
+      expect(run.stderr).toContain(`Give ${link} as ${m.runnerTemp},`);
+      expect(run.entrypoints).toEqual([]);
+    });
+
+    it("after refuses state another user could have written", () => {
+      const m = machine();
+      expect(m.run("before", asRoot).status).toBe(0);
+      fs.chmodSync(m.stateDir, 0o777);
+      const run = m.run("after", asRoot);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toContain(
+        `Only root may be able to change ${m.stateDir} `,
+      );
+      expect(run.entrypoints).toEqual([]);
+    });
+
+    it("will not run validate as another user than the session's", () => {
+      const m = machine();
+      expect(m.run("before", asRoot).status).toBe(0);
+      const run = m.run("validate", asRoot);
+      expect(run.status).toBe(2);
+      expect(run.stderr).toContain("Run validate as reviewer");
+      expect(run.entrypoints).toEqual([]);
+    });
+  },
+);

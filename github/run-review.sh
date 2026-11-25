@@ -29,10 +29,11 @@
 #                      process's environment, so it must never get the write one.
 #   GITHUB_RUN_ID      id of this run, the same in every part
 #   FACTORY_API_KEY    required by validate, for the validator pass
-# Optional: RUNNER_TEMP (default $TMPDIR or /tmp), GITHUB_RUN_ATTEMPT,
-# GITHUB_ACTOR (default: the PR author; ALLOWED_BOTS must list it when it is a
-# bot), and the review settings action.yml passes as environment variables
-# (REVIEW_DEPTH, AUTOMATIC_SECURITY_REVIEW...).
+# Optional: RUNNER_TEMP (an existing directory; default $TMPDIR or /tmp),
+# SESSION_USER (below), GITHUB_RUN_ATTEMPT, GITHUB_ACTOR (default: the PR
+# author; ALLOWED_BOTS must list it when it is a bot), and the review settings
+# action.yml passes as environment variables (REVIEW_DEPTH,
+# AUTOMATIC_SECURITY_REVIEW...). validate runs the droid on its PATH.
 #
 # before exits 78 when there is nothing to review: the PR moved past
 # PR_HEAD_SHA, or the review settings skip this event. Skip the session then;
@@ -41,9 +42,21 @@
 #
 # The write token stays inside before and after: neither leaves a copy on
 # disk, and every part sets its environment only from an allowlist of plain
-# values in the state file before leaves. The session and validate still run
-# as the same user and could change the code and tools after runs, so this is
-# not a sandbox.
+# values in the state file before leaves. A session running as the same user
+# could still change the code and tools after runs. To keep it out, run
+# before and after as root and set SESSION_USER to the user the session and
+# validate run as (Linux only):
+#   - droid-action, RUNNER_TEMP and every directory above them must be
+#     writable by root alone (sticky ones such as /tmp aside) and readable by
+#     SESSION_USER;
+#   - before hands the clone and $RUNNER_TEMP/droid-prompts over to
+#     SESSION_USER after its git work, and copies the droids the prompt uses
+#     into that user's ~/.factory/droids;
+#   - after runs no git and reads what the session and validate wrote as
+#     SESSION_USER; before and after keep their own files in
+#     $RUNNER_TEMP/github-review.
+# Root then runs only droid-action, bun from its own HOME (installed there
+# when missing), and the git, gh and curl on its PATH.
 set -uo pipefail
 
 PART="${1:-}"
@@ -60,12 +73,21 @@ esac
 if [ "$PART" = validate ]; then
   : "${FACTORY_API_KEY:?is required for the validator pass}"
 fi
+SESSION_USER="${SESSION_USER:-$(id -un)}"
+SPLIT_USERS=false
+if [ "$SESSION_USER" != "$(id -un)" ]; then SPLIT_USERS=true; fi
+if [ "$PART" = validate ] && [ "$SPLIT_USERS" = true ]; then
+  echo "Run validate as $SESSION_USER: its droid exec reads the PR's untrusted content." >&2
+  exit 2
+fi
 
-DROID_ACTION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DROID_ACTION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 BUN_VERSION=1.2.11
 export RUNNER_TEMP="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 PROMPTS_DIR="$RUNNER_TEMP/droid-prompts"
-STATE_FILE="$PROMPTS_DIR/github-review-state"
+# Written by before and after only.
+STATE_DIR="$RUNNER_TEMP/github-review"
+STATE_FILE="$STATE_DIR/state"
 # validate's error, for after to report on the check.
 ERROR_FILE="$PROMPTS_DIR/github-review-error"
 WORK_DIR="$(mktemp -d)"
@@ -75,11 +97,12 @@ NOTHING_TO_REVIEW=78
 export REPO_OWNER="${GITHUB_REPOSITORY%%/*}" REPO_NAME="${GITHUB_REPOSITORY#*/}"
 export REVIEW_CANDIDATES_PATH="$PROMPTS_DIR/review_candidates.json"
 export REVIEW_VALIDATED_PATH="$PROMPTS_DIR/review_validated.json"
+export REVIEW_LIFECYCLE_PATH="$STATE_DIR/review_lifecycle.json"
 # The entrypoints read their event and report outputs like a workflow step.
 export GITHUB_EVENT_NAME=pull_request GITHUB_EVENT_PATH="$WORK_DIR/event.json"
 export GITHUB_ENV="$WORK_DIR/env"
 : >"$GITHUB_ENV"
-export PATH="$HOME/.bun/bin:$HOME/.local/bin:$PATH"
+export PATH="$HOME/.bun/bin:$PATH"
 
 # What validate and after need from prepare.ts, as ENV_NAME=output_name. The
 # other outputs stay in $WORK_DIR, which is deleted on exit: some hold the token.
@@ -124,29 +147,65 @@ load_state() {
   done
 }
 
-# Loads the state before left, or exits when there is none for this commit.
+# Fails unless only root (or this user) can change the directory $1, given as
+# a canonical path, and the directories above it, apart from sticky ones such
+# as /tmp.
+check_owned() {
+  local dir owner mode
+  dir="$(realpath -e -- "$1")" || return 1
+  if [ "$dir" != "$1" ]; then
+    echo "Give $1 as $dir, without symbolic links, when SESSION_USER is set." >&2
+    return 1
+  fi
+  while :; do
+    read -r owner mode <<<"$(stat -c '%u %a' -- "$dir")"
+    if { [ "$owner" != 0 ] && [ "$owner" != "$(id -u)" ]; } ||
+      { ((8#$mode & 8#22)) && ! ((8#$mode & 8#1000)); }; then
+      echo "Only root may be able to change $dir when SESSION_USER is set." >&2
+      return 1
+    fi
+    [ "$dir" = / ] && return
+    dir="$(dirname -- "$dir")"
+  done
+}
+
+# Runs a command as SESSION_USER, with none of this environment: the session
+# user can read the environments of its own processes.
+as_session_user() {
+  if [ "$SPLIT_USERS" = true ]; then
+    env -i PATH="$PATH" runuser -u "$SESSION_USER" -- "$@"
+  else
+    "$@"
+  fi
+}
+
+# Loads the state before left. Without one there is nothing to do: before
+# skipped the review or failed, and closed any check it had opened.
 load_prepared() {
   if [ ! -f "$STATE_FILE" ]; then
     echo "No prepared review for this run ($STATE_FILE is missing); nothing to do."
     exit 0
   fi
+  if [ "$SPLIT_USERS" = true ]; then
+    check_owned "$DROID_ACTION_DIR" && check_owned "$STATE_DIR" || exit 1
+  fi
   load_state "$STATE_FILE"
+  if [ "$PART" = after ]; then REVIEW_OPEN=true; fi
   if [ "$REVIEW_HEAD_SHA" != "$PR_HEAD_SHA" ]; then
-    echo "The prepared review is for $REVIEW_HEAD_SHA, not $PR_HEAD_SHA; nothing was posted." >&2
-    exit 1
+    fail DROID_POST_ERROR_MESSAGE "The prepared review is for $REVIEW_HEAD_SHA, not $PR_HEAD_SHA; nothing was posted."
   fi
 }
 
-# Runs an entrypoint the way action.yml does: from the repository checkout,
-# with bun reading neither bunfig.toml nor .env from it, and with its outputs
-# in $WORK_DIR/<step>. Leading arguments go to env(1). @actions/core prints
-# ::add-mask:: commands holding the token for the Actions runner; nothing
-# reads them here, so they are dropped.
+# Runs an entrypoint the way action.yml does, from the current directory but
+# with bun reading neither bunfig.toml nor .env from it, with its temporary
+# files and outputs in $WORK_DIR. Leading arguments go to env(1).
+# @actions/core prints ::add-mask:: commands holding the token for the
+# Actions runner; nothing reads them here, so they are dropped.
 run_entrypoint() {
   local step="$1" file="$2"
   shift 2
   : >"$WORK_DIR/$step"
-  env "$@" GITHUB_OUTPUT="$WORK_DIR/$step" \
+  env "$@" TMPDIR="$WORK_DIR" GITHUB_OUTPUT="$WORK_DIR/$step" \
     bun --config=/dev/null --env-file=/dev/null run "$DROID_ACTION_DIR/$file" |
     awk '!/^::add-mask::/ { print; fflush() }'
 }
@@ -177,17 +236,19 @@ finish() {
 trap finish EXIT
 
 install_bun() {
-  if ! command -v bun >/dev/null 2>&1; then
-    echo "Installing bun $BUN_VERSION"
-    curl --retry 5 --retry-delay 2 -fsSL https://bun.sh/install |
-      bash -s "bun-v$BUN_VERSION" >/dev/null || return 1
-  fi
-  (cd "$DROID_ACTION_DIR" && bun install --frozen-lockfile)
+  command -v bun >/dev/null 2>&1 && return
+  echo "Installing bun $BUN_VERSION"
+  curl --retry 5 --retry-delay 2 -fsSL https://bun.sh/install |
+    bash -s "bun-v$BUN_VERSION" >/dev/null
 }
 
 before() {
-  rm -f "$STATE_FILE" "$ERROR_FILE" "$REVIEW_CANDIDATES_PATH" "$REVIEW_VALIDATED_PATH"
-  install_bun || exit 1
+  if [ "$SPLIT_USERS" = true ]; then
+    check_owned "$DROID_ACTION_DIR" && check_owned "$RUNNER_TEMP" || exit 1
+  fi
+  # New directories, so nothing another user left in them is written through.
+  rm -rf "$STATE_DIR" "$PROMPTS_DIR" && mkdir "$STATE_DIR" "$PROMPTS_DIR" || exit 1
+  install_bun && (cd "$DROID_ACTION_DIR" && bun install --frozen-lockfile) || exit 1
   run_entrypoint event src/entrypoints/github-pr-event.ts || exit 1
   local head
   head="$(value "$WORK_DIR/event" head_sha)"
@@ -222,21 +283,23 @@ before() {
   fi
 
   run_entrypoint lifecycle src/entrypoints/github-review-lifecycle.ts REVIEW_PHASE=candidates
-  # The security-reviewer subagent the candidates prompt can ask for.
-  mkdir -p "$HOME/.factory/droids" &&
-    cp -r "$DROID_ACTION_DIR/.factory/droids/." "$HOME/.factory/droids/" &&
-    mv "$WORK_DIR/state" "$STATE_FILE" || exit 1
+  # The security-reviewer subagent the candidates prompt can ask for, copied
+  # into the HOME sh sees as the session user.
+  # shellcheck disable=SC2016
+  as_session_user sh -c 'mkdir -p "$HOME/.factory/droids" && cp -r "$1/." "$HOME/.factory/droids/"' \
+    sh "$DROID_ACTION_DIR/.factory/droids" &&
+    cp "$PROMPTS_DIR/pr.diff" "$STATE_DIR/" || exit 1
+  if [ "$SPLIT_USERS" = true ]; then
+    # Git is done, so the session may have the clone and the prompts.
+    chown -R "$SESSION_USER:" -- "$PROMPTS_DIR" "$(git rev-parse --show-toplevel)" || exit 1
+  fi
+  mv "$WORK_DIR/state" "$STATE_FILE" || exit 1
   echo "Ready for the review session: prompt $PROMPTS_DIR/droid-prompt.txt, candidates $REVIEW_CANDIDATES_PATH."
 }
 
 validate() {
   load_prepared
-  rm -f "$ERROR_FILE"
-  install_bun || fail DROID_VALIDATOR_ERROR_MESSAGE "Could not install bun or droid-action's dependencies."
-  if ! command -v droid >/dev/null 2>&1; then
-    curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh ||
-      fail DROID_VALIDATOR_ERROR_MESSAGE "Could not install the droid CLI."
-  fi
+  install_bun || fail DROID_VALIDATOR_ERROR_MESSAGE "Could not install bun."
   run_entrypoint event src/entrypoints/github-pr-event.ts ||
     fail DROID_VALIDATOR_ERROR_MESSAGE "Could not read PR #$PR_NUMBER from GitHub."
 
@@ -252,8 +315,7 @@ validate() {
   # GitHub credential reaches the validator.
   local -a validator_env=(-i PATH="$PATH" HOME="$HOME" FACTORY_API_KEY="$FACTORY_API_KEY"
     DROID_EXEC_RUN_TYPE="$DROID_EXEC_RUN_TYPE" FACTORY_DROID_AUTO_UPDATE_ENABLED=false
-    DETAILED_PERMISSION_MESSAGES=1 INPUT_MAX_TURNS=40
-    INPUT_PROMPT_FILE="$PROMPTS_DIR/droid-prompt.txt"
+    INPUT_MAX_TURNS=40 INPUT_PROMPT_FILE="$PROMPTS_DIR/droid-prompt.txt"
     INPUT_DROID_ARGS="$(value "$WORK_DIR/validator-prompt" droid_args)"
     INPUT_MCP_TOOLS="$(value "$WORK_DIR/validator-prompt" mcp_tools)")
   if [ -n "${FACTORY_API_BASE_URL:-}" ]; then
@@ -264,20 +326,25 @@ validate() {
 }
 
 after() {
-  load_prepared
-  REVIEW_OPEN=true
-  install_bun || fail DROID_POST_ERROR_MESSAGE "Could not install bun or droid-action's dependencies."
   # The session could have planted git config that runs commands, in the
-  # checkout or a parent directory. With no repository, posting reads diffs
-  # through GitHub's API instead.
+  # clone or a parent directory, and after needs neither.
   export GIT_DIR=/dev/null
-  if [ -e "$ERROR_FILE" ]; then
-    # validate's pass could have replaced the file, so only a capped regular
-    # file is read.
-    local error=""
-    if [ -f "$ERROR_FILE" ] && [ ! -L "$ERROR_FILE" ]; then
-      error="$(head -c 2000 "$ERROR_FILE")"
-    fi
+  cd "$WORK_DIR" || exit 1
+  load_prepared
+  # Copies of what the session and validate wrote, read as SESSION_USER: root
+  # would follow a link they planted to one of its own files.
+  local name
+  for name in review_candidates.json review_validated.json; do
+    as_session_user cat -- "$PROMPTS_DIR/$name" >"$WORK_DIR/$name" 2>/dev/null ||
+      rm -f "$WORK_DIR/$name"
+  done
+  export REVIEW_CANDIDATES_PATH="$WORK_DIR/review_candidates.json" \
+    REVIEW_VALIDATED_PATH="$WORK_DIR/review_validated.json" \
+    REVIEW_DIFF_PATH="$STATE_DIR/pr.diff" \
+    REVIEW_POST_RESULTS_PATH="$STATE_DIR/review_post_results.json"
+  if [ -e "$ERROR_FILE" ] || [ -L "$ERROR_FILE" ]; then
+    local error
+    error="$(as_session_user head -c 2000 -- "$ERROR_FILE" 2>/dev/null)"
     fail DROID_VALIDATOR_ERROR_MESSAGE "${error:-The validator pass failed.}"
   fi
   run_entrypoint event src/entrypoints/github-pr-event.ts ||
