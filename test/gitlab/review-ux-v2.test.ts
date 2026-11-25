@@ -1857,9 +1857,9 @@ describe("GitLab v2 production entrypoints, local API only", () => {
       const ids = previous.changedFindings.map((f: { id: string }) => f.id);
       expect(ids).toEqual([finding.id]);
       expect(previous).not.toHaveProperty("verifyFixed");
-      expect(
-        await fs.readFile(path.join(directory, "mr.diff"), "utf8"),
-      ).toContain("--- a/src/x.ts\n+++ b/src/x.ts\n@@");
+      const diffPath = path.join(directory, "mr.diff");
+      const preparedDiff = await fs.readFile(diffPath, "utf8");
+      expect(preparedDiff).toContain("--- a/src/x.ts\n+++ b/src/x.ts\n@@");
       expect(
         t.requests.find((r) => r.path.includes("/repository/compare"))?.path,
       ).toContain(`from=${BASE}&to=${HEAD}`);
@@ -1940,10 +1940,11 @@ describe("GitLab v2 production entrypoints, local API only", () => {
         note: t.notes[0]!,
         state: previous,
       });
-      const policy = spyOn(
-        modelPolicy,
-        "applyModelPolicyFallback",
-      ).mockResolvedValue({ model: "gpt-5.4", reasoningEffort: undefined });
+      const policy = spyOn(modelPolicy, "applyModelPolicyFallback");
+      policy.mockResolvedValue({
+        model: "gpt-5.4",
+        reasoningEffort: undefined,
+      });
       try {
         await environment(async (directory) => {
           await prepareRun();
