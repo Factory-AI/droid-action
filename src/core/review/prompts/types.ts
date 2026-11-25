@@ -91,6 +91,17 @@ export type ReviewPromptSettings = {
   securityBlockOnHigh: ReviewUxConfig["security_block_on_high"];
 };
 
+/** Model-owned settings; callers may explicitly omit runtime-only policy. */
+export type ModelReviewPromptSettings = Pick<
+  ReviewPromptSettings,
+  | "depth"
+  | "diagram"
+  | "effort"
+  | "ignorePaths"
+  | "severityThreshold"
+  | "securitySeverityThreshold"
+>;
+
 export interface ReviewPromptContext {
   terminology: ReviewTerminology;
   /** PR number / MR IID */
@@ -121,7 +132,7 @@ export interface ReviewPromptContext {
   /** Where the change's code is (or is not) available, e.g. for a fork PR that is not checked out */
   sourceNote?: string;
   /** Effective trusted config, resolved before model execution. */
-  reviewSettings?: ReviewPromptSettings;
+  reviewSettings?: ReviewPromptSettings | ModelReviewPromptSettings;
   /** Optional trusted prior-review manifest; absence is valid on the first run. */
   priorFindingsPath?: string;
   /** The repository's own review guidelines, when it has any */

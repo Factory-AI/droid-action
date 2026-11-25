@@ -61,6 +61,8 @@ describe("GitLab lifecycle prompt protocol", () => {
     const prompt = generateGitlabReviewValidatorPrompt(context);
     expect(prompt).toContain("findingResolutions");
     expect(prompt).toContain("eligibleFixedIds");
+    expect(prompt).toContain("changedFindings");
+    expect(prompt).not.toContain("verifyFixed");
     expect(prompt).toContain("evidence");
     expect(prompt).toMatch(/one entry per candidate|one result per candidate/i);
     expect(prompt).toMatch(/absence is not|absent candidate.*not/i);
@@ -78,7 +80,10 @@ describe("GitLab lifecycle prompt protocol", () => {
       await writeFile(candidatesPath, JSON.stringify({ comments: [] }));
       await writeFile(
         priorPath,
-        JSON.stringify({ eligibleFixedIds: ["stable-prior"], verifyFixed: [] }),
+        JSON.stringify({
+          eligibleFixedIds: ["stable-prior"],
+          changedFindings: [],
+        }),
       );
       await writeFile(
         statePath,
@@ -113,6 +118,8 @@ describe("GitLab lifecycle prompt protocol", () => {
       expect(prompt).toContain(priorPath);
       expect(prompt).not.toContain("review_prior_findings.json");
       expect(prompt).toContain("findingResolutions");
+      expect(prompt).toContain("Verify fixes only for changedFindings entries");
+      expect(prompt).not.toContain("verifyFixed");
       expect(prompt).toContain("securitySeverity");
       expect(prompt).toContain('"securityBlockOnHigh": true');
     } finally {

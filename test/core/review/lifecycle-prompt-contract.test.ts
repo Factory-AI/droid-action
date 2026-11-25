@@ -77,8 +77,8 @@ describe("GitHub lifecycle prompt protocol", () => {
         expect(prompt).toMatch(/critical[\s\S]*high[\s\S]*medium[\s\S]*low/);
         expect(prompt).toContain('"severityThreshold": "P1"');
         expect(prompt).toContain('"securitySeverityThreshold": "high"');
-        expect(prompt).toContain('"securityBlockOnCritical": false');
-        expect(prompt).toContain('"securityBlockOnHigh": true');
+        expect(prompt).not.toContain('"securityBlockOnCritical":');
+        expect(prompt).not.toContain('"securityBlockOnHigh":');
         expect(prompt).toMatch(/dismissed/i);
         expect(prompt).toMatch(/untrusted/i);
       }, "/tmp/review/custom-prior.json");
