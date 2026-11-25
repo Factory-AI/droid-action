@@ -32,7 +32,10 @@ and are never printed to the job log.
    `enabledTools` and `settings`) runs as a cascade: the same skill runs
    first with the screen's tools and settings, its decline is the answer,
    and anything else goes to the judge itself, so every approval is the
-   judge's. Each attempt reports its `stage` (`screen` or `confirm`), and
+   judge's. The judge runs in a second workspace built before the screen
+   starts, so nothing the screen's commands write reaches it, and the run
+   fails (`pr_risk_evidence_changed`) if that workspace changed anyway.
+   Each attempt reports its `stage` (`screen` or `confirm`), and
    each session is tagged `riskAssessmentScreen` or `riskAssessmentConfirm`
    next to `riskAssessment`. A re-check skips the screen. A run that produced no answer is reported too, with a short
    reason, so the head is marked unavailable instead of keeping a stale

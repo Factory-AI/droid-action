@@ -1,11 +1,19 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   buildJudgeEnvironment,
   runPrRiskJudge,
 } from "../../../src/core/risk/judge";
+import { fingerprintPrRiskEvidence } from "../../../src/core/risk/evidence";
 import { buildPrRiskSnapshot } from "../../../src/core/risk/snapshot";
 import {
   RiskError,
@@ -478,7 +486,8 @@ describe("runPrRiskJudge", () => {
 });
 
 describe("runPrRiskJudge with a screen", () => {
-  let evidenceRoot = "";
+  let screenRoot = "";
+  let confirmRoot = "";
   const env = { PATH: process.env.PATH };
   const screen = {
     enabledTools: ["Read", "Grep"] as [string, ...string[]],
@@ -493,14 +502,27 @@ describe("runPrRiskJudge with a screen", () => {
   const decline = { ...validVerdict, verdict: false };
 
   beforeAll(async () => {
-    evidenceRoot = await mkdtemp(join(tmpdir(), "pr-risk-screen-test-"));
+    screenRoot = await mkdtemp(join(tmpdir(), "pr-risk-screen-test-"));
+    confirmRoot = await mkdtemp(join(tmpdir(), "pr-risk-confirm-test-"));
+    for (const root of [screenRoot, confirmRoot]) {
+      await mkdir(join(root, "evidence", "head"), { recursive: true });
+      await writeFile(join(root, "evidence", "pr.diff"), "+the change\n");
+      await writeFile(join(root, "evidence", "head", "app.ts"), "1;\n");
+    }
   });
 
   afterAll(async () => {
-    await rm(evidenceRoot, { recursive: true, force: true });
+    await rm(screenRoot, { recursive: true, force: true });
+    await rm(confirmRoot, { recursive: true, force: true });
   });
 
+  async function confirm() {
+    const evidence = evidenceAt(confirmRoot);
+    return { evidence, fingerprint: await fingerprintPrRiskEvidence(evidence) };
+  }
+
   type Invocation = {
+    cwd: string;
     tools: string | undefined;
     tags: string[];
     settings: unknown;
@@ -513,6 +535,7 @@ describe("runPrRiskJudge with a screen", () => {
     cwd: string,
   ): Promise<void> {
     invocations.push({
+      cwd,
       tools: args[args.indexOf("--only-tools") + 1],
       tags: args.flatMap((arg, index) =>
         args[index - 1] === "--tag" ? [arg] : [],
@@ -524,112 +547,128 @@ describe("runPrRiskJudge with a screen", () => {
     });
   }
 
-  it("lets a screen's decline stand without running the judge", async () => {
+  /** Runs the cascade with each session answering the next of `outputs`. */
+  async function cascadeRun(
+    outputs: unknown[],
+    overrides: Partial<Parameters<typeof runPrRiskJudge>[1]> = {},
+  ) {
     const invocations: Invocation[] = [];
     const attempts: RiskJudgeAttempt[] = [];
-
-    const verdict = await runPrRiskJudge(snapshot, {
+    const verdict = runPrRiskJudge(snapshot, {
       judge: cascade,
-      evidence: evidenceAt(evidenceRoot),
+      evidence: evidenceAt(screenRoot),
+      confirm: await confirm(),
       env,
       onAttempt: (attempt) => attempts.push(attempt),
       executeDroid: async ({ args, cwd }) => {
         await record(invocations, args, cwd);
-        return execSummary(decline, "screen-1");
+        const output = outputs[invocations.length - 1];
+        if (output instanceof Error) throw output;
+        return execSummary(output, `s${invocations.length}`);
       },
+      ...overrides,
     });
+    return { verdict, invocations, attempts };
+  }
 
-    expect(verdict).toEqual(decline);
-    expect(invocations).toEqual([
+  it("lets a screen's decline stand without running the judge", async () => {
+    const run = await cascadeRun([decline]);
+
+    expect(await run.verdict).toEqual(decline);
+    expect(run.invocations).toEqual([
       {
+        cwd: screenRoot,
         tools: "Read,Grep",
         tags: ["riskAssessment", "riskAssessmentScreen"],
         settings: screen.settings,
-        skill: expect.not.stringContaining("## Strict retry"),
+        skill: expect.stringContaining(join(screenRoot, "evidence", "pr.diff")),
       },
     ]);
-    expect(attempts).toEqual([
-      { sessionId: "screen-1", stage: "screen", valid: true },
+    expect(run.attempts).toEqual([
+      { sessionId: "s1", stage: "screen", valid: true },
     ]);
   });
 
-  it("hands a screen's approval to the judge, whose answer is the verdict", async () => {
-    const invocations: Invocation[] = [];
-    const attempts: RiskJudgeAttempt[] = [];
-    const outputs = [validVerdict, decline];
+  it("hands a screen's approval to the judge in its own workspace, whose answer is the verdict", async () => {
+    const run = await cascadeRun([validVerdict, decline]);
 
-    const verdict = await runPrRiskJudge(snapshot, {
-      judge: cascade,
-      evidence: evidenceAt(evidenceRoot),
-      env,
-      onAttempt: (attempt) => attempts.push(attempt),
-      executeDroid: async ({ args, cwd }) => {
-        await record(invocations, args, cwd);
-        return execSummary(
-          outputs[invocations.length - 1],
-          `s${invocations.length}`,
-        );
-      },
-    });
-
-    expect(verdict).toEqual(decline);
+    expect(await run.verdict).toEqual(decline);
     expect(
-      invocations.map(({ tools, tags, settings }) => ({
+      run.invocations.map(({ cwd, tools, tags, settings }) => ({
+        cwd,
         tools,
         tags,
         settings,
       })),
     ).toEqual([
       {
+        cwd: screenRoot,
         tools: "Read,Grep",
         tags: ["riskAssessment", "riskAssessmentScreen"],
         settings: screen.settings,
       },
       {
+        cwd: confirmRoot,
         tools: "Read,Grep,Task",
         tags: ["riskAssessment", "riskAssessmentConfirm"],
         settings: judge.settings,
       },
     ]);
-    expect(attempts).toEqual([
+    expect(run.invocations[1]?.skill).toContain(
+      join(confirmRoot, "evidence", "pr.diff"),
+    );
+    expect(run.invocations[1]?.skill).not.toContain(screenRoot);
+    expect(run.attempts).toEqual([
       { sessionId: "s1", stage: "screen", valid: true },
       { sessionId: "s2", stage: "confirm", valid: true },
     ]);
   });
 
-  it("sends a screen's invalid answer to the judge instead of retrying the screen", async () => {
-    const invocations: Invocation[] = [];
+  it("refuses to run the judge when its workspace changed while the screen ran", async () => {
     const attempts: RiskJudgeAttempt[] = [];
-    const outputs = [
+    let calls = 0;
+    const served = await confirm();
+
+    await expect(
+      runPrRiskJudge(snapshot, {
+        judge: cascade,
+        evidence: evidenceAt(screenRoot),
+        confirm: served,
+        env,
+        onAttempt: (attempt) => attempts.push(attempt),
+        executeDroid: async () => {
+          calls += 1;
+          await writeFile(
+            join(confirmRoot, "evidence", "head", "app.ts"),
+            "planted;\n",
+          );
+          return execSummary(validVerdict);
+        },
+      }),
+    ).rejects.toMatchObject({ reason: "pr_risk_evidence_changed" });
+    await writeFile(join(confirmRoot, "evidence", "head", "app.ts"), "1;\n");
+
+    expect(calls).toBe(1);
+    expect(attempts.map(({ stage }) => stage)).toEqual(["screen"]);
+  });
+
+  it("sends a screen's invalid answer to the judge instead of retrying the screen", async () => {
+    const run = await cascadeRun([
       "no verdict here",
       { ...validVerdict, confidence: 5 },
       validVerdict,
-    ];
-
-    const verdict = await runPrRiskJudge(snapshot, {
-      judge: cascade,
-      evidence: evidenceAt(evidenceRoot),
-      env,
-      onAttempt: (attempt) => attempts.push(attempt),
-      executeDroid: async ({ args, cwd }) => {
-        await record(invocations, args, cwd);
-        return execSummary(
-          outputs[invocations.length - 1],
-          `s${invocations.length}`,
-        );
-      },
-    });
-
-    expect(verdict).toEqual(validVerdict);
-    expect(invocations.map(({ tools }) => tools)).toEqual([
-      "Read,Grep",
-      "Read,Grep,Task",
-      "Read,Grep,Task",
     ]);
-    expect(invocations[1]?.skill).not.toContain("## Strict retry");
-    expect(invocations[2]?.skill).toContain("## Strict retry");
+
+    expect(await run.verdict).toEqual(validVerdict);
+    expect(run.invocations.map(({ cwd }) => cwd)).toEqual([
+      screenRoot,
+      confirmRoot,
+      confirmRoot,
+    ]);
+    expect(run.invocations[1]?.skill).not.toContain("## Strict retry");
+    expect(run.invocations[2]?.skill).toContain("## Strict retry");
     expect(
-      attempts.map(({ stage, valid, invalidReason }) => ({
+      run.attempts.map(({ stage, valid, invalidReason }) => ({
         stage,
         valid,
         invalidReason,
@@ -642,25 +681,13 @@ describe("runPrRiskJudge with a screen", () => {
   });
 
   it("records a screen whose process fails and lets the judge decide", async () => {
-    const attempts: RiskJudgeAttempt[] = [];
-    let calls = 0;
+    const run = await cascadeRun([
+      new RiskError("judge_timeout", "PR risk judge timed out"),
+      validVerdict,
+    ]);
 
-    const verdict = await runPrRiskJudge(snapshot, {
-      judge: cascade,
-      evidence: evidenceAt(evidenceRoot),
-      env,
-      onAttempt: (attempt) => attempts.push(attempt),
-      executeDroid: async () => {
-        calls += 1;
-        if (calls === 1) {
-          throw new RiskError("judge_timeout", "PR risk judge timed out");
-        }
-        return execSummary(validVerdict, "s2");
-      },
-    });
-
-    expect(verdict).toEqual(validVerdict);
-    expect(attempts).toEqual([
+    expect(await run.verdict).toEqual(validVerdict);
+    expect(run.attempts).toEqual([
       {
         stage: "screen",
         valid: false,
@@ -671,30 +698,56 @@ describe("runPrRiskJudge with a screen", () => {
     ]);
   });
 
+  it.each([
+    ["its first session", [validVerdict]],
+    ["its strict retry", [validVerdict, { ...validVerdict, confidence: 5 }]],
+  ])(
+    "records a judge whose process fails in %s before failing the run",
+    async (_name, answers) => {
+      const run = await cascadeRun([
+        ...answers,
+        new RiskError("judge_timeout", "PR risk judge timed out"),
+      ]);
+
+      await expect(run.verdict).rejects.toMatchObject({
+        reason: "judge_timeout",
+      });
+      expect(run.attempts.at(-1)).toEqual({
+        stage: "confirm",
+        valid: false,
+        invalidReason: "exec_error",
+        retryFeedback: ["<root>: the session produced no result"],
+      });
+      expect(run.attempts).toHaveLength(answers.length + 1);
+    },
+  );
+
+  it("does not run the screen without a workspace for the judge", async () => {
+    const run = await cascadeRun([validVerdict], { confirm: undefined });
+
+    expect(await run.verdict).toEqual(validVerdict);
+    expect(
+      run.invocations.map(({ cwd, tools, tags }) => ({ cwd, tools, tags })),
+    ).toEqual([
+      { cwd: screenRoot, tools: "Read,Grep,Task", tags: ["riskAssessment"] },
+    ]);
+    expect(run.attempts).toEqual([{ sessionId: "s1", valid: true }]);
+  });
+
   it("skips the screen for a judge decided by risk level alone", async () => {
     const { verdict: _omitted, ...answer } = validVerdict;
-    const invocations: Invocation[] = [];
-    const attempts: RiskJudgeAttempt[] = [];
-
-    await runPrRiskJudge(snapshot, {
+    const run = await cascadeRun([answer], {
       judge: { ...cascade, verdictField: "omitted" },
-      evidence: evidenceAt(evidenceRoot),
-      env,
-      onAttempt: (attempt) => attempts.push(attempt),
-      executeDroid: async ({ args, cwd }) => {
-        await record(invocations, args, cwd);
-        return execSummary(answer);
-      },
     });
 
-    expect(invocations.map(({ tools, tags }) => ({ tools, tags }))).toEqual([
-      { tools: "Read,Grep,Task", tags: ["riskAssessment"] },
-    ]);
-    expect(attempts).toEqual([{ sessionId: "session-1", valid: true }]);
+    await run.verdict;
+    expect(run.invocations.map(({ tools, tags }) => ({ tools, tags }))).toEqual(
+      [{ tools: "Read,Grep,Task", tags: ["riskAssessment"] }],
+    );
+    expect(run.attempts).toEqual([{ sessionId: "s1", valid: true }]);
   });
 
   it("skips the screen for a re-check, whose declines rest on the prior verdict", async () => {
-    const invocations: Invocation[] = [];
     const incremental = {
       mode: "enforce" as const,
       reason: "eligible",
@@ -702,15 +755,13 @@ describe("runPrRiskJudge with a screen", () => {
       priorBaseSha: "f".repeat(40),
       prior: { verdict: true, brief: "- Prior.", details: "Prior details." },
     };
-
-    await runPrRiskJudge(snapshot, {
-      judge: cascade,
+    const run = await cascadeRun([decline], {
       evidence: {
-        ...evidenceAt(evidenceRoot),
+        ...evidenceAt(screenRoot),
         incremental: {
-          interdiffPath: join(evidenceRoot, "interdiff.patch"),
-          priorDiffPath: join(evidenceRoot, "own-diff-at-prior.patch"),
-          focusPath: join(evidenceRoot, "focus.json"),
+          interdiffPath: join(screenRoot, "interdiff.patch"),
+          priorDiffPath: join(screenRoot, "own-diff-at-prior.patch"),
+          focusPath: join(screenRoot, "focus.json"),
           focus: {
             priorHeadSha: incremental.priorHeadSha,
             baseMoved: false,
@@ -721,16 +772,12 @@ describe("runPrRiskJudge with a screen", () => {
         },
       },
       incremental,
-      env,
-      executeDroid: async ({ args, cwd }) => {
-        await record(invocations, args, cwd);
-        return execSummary(decline);
-      },
     });
 
-    expect(invocations.map(({ tools, tags }) => ({ tools, tags }))).toEqual([
-      { tools: "Read,Grep,Task", tags: ["riskAssessment"] },
-    ]);
+    await run.verdict;
+    expect(run.invocations.map(({ tools, tags }) => ({ tools, tags }))).toEqual(
+      [{ tools: "Read,Grep,Task", tags: ["riskAssessment"] }],
+    );
   });
 
   it("keeps the served screen and lets a settle result carry each attempt's stage", () => {
@@ -746,6 +793,63 @@ describe("runPrRiskJudge with a screen", () => {
       }).success,
     ).toBe(true);
   });
+});
+
+describe("fingerprintPrRiskEvidence", () => {
+  let root = "";
+
+  beforeAll(async () => {
+    root = await mkdtemp(join(tmpdir(), "pr-risk-fingerprint-test-"));
+    await mkdir(join(root, "evidence", "head", "src"), { recursive: true });
+    await writeFile(join(root, "evidence", "pr.diff"), "+a\n");
+    await writeFile(join(root, "evidence", "head", "src", "a.ts"), "1;\n");
+  });
+
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it.each([
+    [
+      "a file's bytes",
+      () => writeFile(join(root, "evidence", "pr.diff"), "+b\n"),
+    ],
+    [
+      "a new file",
+      () => writeFile(join(root, "evidence", "head", "src", "b.ts"), "2;\n"),
+    ],
+    ["a removed file", () => rm(join(root, "evidence", "head", "src", "a.ts"))],
+    [
+      "a link in place of a file",
+      async () => {
+        await rm(join(root, "evidence", "head", "src", "a.ts"));
+        await symlink(
+          "/etc/hostname",
+          join(root, "evidence", "head", "src", "a.ts"),
+        );
+      },
+    ],
+  ])(
+    "changes with %s, and not with what is outside evidence/",
+    async (_name, change) => {
+      const evidence = evidenceAt(root);
+      const before = await fingerprintPrRiskEvidence(evidence);
+      await writeFile(join(root, "settings.json"), "{}");
+      expect(await fingerprintPrRiskEvidence(evidence)).toBe(before);
+
+      await change();
+      expect(await fingerprintPrRiskEvidence(evidence)).not.toBe(before);
+
+      await rm(join(root, "evidence", "head", "src"), {
+        recursive: true,
+        force: true,
+      });
+      await mkdir(join(root, "evidence", "head", "src"));
+      await writeFile(join(root, "evidence", "pr.diff"), "+a\n");
+      await writeFile(join(root, "evidence", "head", "src", "a.ts"), "1;\n");
+      expect(await fingerprintPrRiskEvidence(evidence)).toBe(before);
+    },
+  );
 });
 describe("buildJudgeEnvironment", () => {
   it("keeps the Factory key and the read token and drops every other credential of the job", () => {

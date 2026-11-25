@@ -1,7 +1,11 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { z } from "zod";
-import { writePrRiskSettings, writePrRiskSkill } from "./evidence";
+import {
+  fingerprintPrRiskEvidence,
+  writePrRiskSettings,
+  writePrRiskSkill,
+} from "./evidence";
 import { renderPrRiskSkill } from "./snapshot";
 import {
   RISK_JUDGE_SKILL_NAME,
@@ -26,6 +30,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 const MAX_DROID_OUTPUT_BYTES = 16 * 1024 * 1024;
+const NO_RESULT_FEEDBACK = "<root>: the session produced no result";
 
 /** The one JSON object `droid exec -o json` writes to stdout. */
 const execSummarySchema = z
@@ -62,6 +67,13 @@ export type RunPrRiskJudgeOptions = {
   env: NodeJS.ProcessEnv;
   droidBinary?: string;
   onAttempt?: (attempt: RiskJudgeAttempt) => void;
+  /**
+   * Where the judge runs when a screen runs first: a second workspace built
+   * from the same revisions before any session started, with the
+   * `fingerprintPrRiskEvidence` digest taken then. Without it the screen is
+   * not run.
+   */
+  confirm?: { evidence: PrRiskEvidenceWorkspace; fingerprint: string };
   executeDroid?: (input: DroidRiskJudgeInvocation) => Promise<string>;
 };
 
@@ -114,7 +126,7 @@ function parsePrRiskJudgeOutput(
     if (error instanceof SyntaxError || error instanceof z.ZodError) {
       return {
         invalidReason: "exec_error",
-        retryFeedback: ["<root>: the session produced no result"],
+        retryFeedback: [NO_RESULT_FEEDBACK],
       };
     }
     throw error;
@@ -168,20 +180,21 @@ function parsePrRiskJudgeOutput(
 
 async function executePrRiskDroid(
   args: readonly string[],
+  evidence: PrRiskEvidenceWorkspace,
   options: RunPrRiskJudgeOptions,
 ): Promise<string> {
   const timeoutMs = options.judge.timeoutSeconds * 1000;
   if (options.executeDroid) {
     return options.executeDroid({
       args,
-      cwd: options.evidence.rootDir,
+      cwd: evidence.rootDir,
       timeoutMs,
     });
   }
   try {
     return (
       await execFileAsync(options.droidBinary ?? "droid", args, {
-        cwd: options.evidence.rootDir,
+        cwd: evidence.rootDir,
         timeout: timeoutMs,
         maxBuffer: MAX_DROID_OUTPUT_BYTES,
         env: options.env,
@@ -217,6 +230,27 @@ async function executePrRiskDroid(
 }
 
 /**
+ * The judge's screen when this judgment runs one. A re-check, and a judge
+ * decided by risk level alone, have no plain decline to stand on and skip it.
+ */
+export function prRiskScreenFor(
+  judge: RiskJudge,
+  incremental: RiskIncremental | undefined,
+): RiskJudge["screen"] {
+  return incremental === undefined && judge.verdictField !== "omitted"
+    ? judge.screen
+    : undefined;
+}
+
+/** One stage's session: where it runs, with what, and how it is labelled. */
+type PrRiskJudgeInvocation = {
+  evidence: PrRiskEvidenceWorkspace;
+  skill: string;
+  args: readonly string[];
+  stage?: RiskJudgeStage;
+};
+
+/**
  * Runs the judge's skill against the exact-head workspace and returns the
  * answer validated against the compiled contract. The skill is the whole
  * prompt (`/pr-risk-judge`), its tools the whole tool surface, and its
@@ -225,11 +259,13 @@ async function executePrRiskDroid(
  * contract earns one strict retry naming the failed rules; the schema is
  * never weakened to rescue an invalid judgment.
  *
- * A judge served with a `screen` first runs the skill once with the screen's
- * tools and settings. A valid decline from it is the verdict; anything else
- * (an approval, an invalid answer, a failed session) goes to the judge
- * itself, so no approval rests on the screen. A re-check, and a judge
- * decided by risk level alone, have no decline to stand on and skip it.
+ * A judge served with a `screen` (see `prRiskScreenFor`) first runs the
+ * skill once with the screen's tools and settings. A valid decline from it is
+ * the verdict; anything else (an approval, an invalid answer, a failed
+ * session) goes to the judge itself, so no approval rests on the screen. The
+ * judge then runs in `confirm.evidence`, a second workspace built before the
+ * screen ran, so nothing the screen's commands wrote reaches it, and only if
+ * that workspace still matches the fingerprint taken when it was built.
  */
 export async function runPrRiskJudge(
   snapshot: PullRequestRiskSnapshot,
@@ -240,57 +276,68 @@ export async function runPrRiskJudge(
   const incremental =
     options.incremental !== undefined && evidence.incremental !== undefined;
   const contract = { incremental, verdictField: judge.verdictField };
-  const skill = renderPrRiskSkill(
-    judge.skill,
-    snapshot,
-    evidence,
-    options.incremental,
-  );
-  const screen =
-    judge.screen && !incremental && judge.verdictField !== "omitted"
-      ? judge.screen
-      : undefined;
+  const screen = options.confirm
+    ? prRiskScreenFor(judge, options.incremental)
+    : undefined;
 
-  const argsFor = (
-    settingsPath: string,
-    enabledTools: readonly string[],
+  const invocation = async (
+    at: PrRiskEvidenceWorkspace,
+    run: Pick<RiskJudge, "enabledTools" | "settings">,
     stage: RiskJudgeStage | undefined,
-  ) => [
-    "--settings",
-    settingsPath,
-    "exec",
-    // Exec ends the session outright on any command above its autonomy
-    // level, so the level has to cover everything a verification does
-    // (installs, builds, test runs). High still refuses destructive commands.
-    "--auto",
-    "high",
-    "--disable-builtin-skills",
-    "--tag",
-    RISK_SESSION_TAG,
-    ...(stage ? ["--tag", RISK_STAGE_SESSION_TAGS[stage]] : []),
-    "--only-tools",
-    enabledTools.join(","),
-    "--output-format",
-    "json",
-    "--cwd",
-    evidence.rootDir,
-    `/${RISK_JUDGE_SKILL_NAME}`,
-  ];
+  ): Promise<PrRiskJudgeInvocation> => ({
+    evidence: at,
+    skill: renderPrRiskSkill(judge.skill, snapshot, at, options.incremental),
+    stage,
+    args: [
+      "--settings",
+      await writePrRiskSettings(at, run.settings),
+      "exec",
+      // Exec ends the session outright on any command above its autonomy
+      // level, so the level has to cover everything a verification does
+      // (installs, builds, test runs). High still refuses destructive
+      // commands.
+      "--auto",
+      "high",
+      "--disable-builtin-skills",
+      "--tag",
+      RISK_SESSION_TAG,
+      ...(stage ? ["--tag", RISK_STAGE_SESSION_TAGS[stage]] : []),
+      "--only-tools",
+      run.enabledTools.join(","),
+      "--output-format",
+      "json",
+      "--cwd",
+      at.rootDir,
+      `/${RISK_JUDGE_SKILL_NAME}`,
+    ],
+  });
 
   const attempt = async (
-    args: readonly string[],
-    stage: RiskJudgeStage | undefined,
+    run: PrRiskJudgeInvocation,
     skillText: string,
   ): Promise<PrRiskJudgeParse> => {
-    await writePrRiskSkill(evidence, skillText);
-    const parsed = parsePrRiskJudgeOutput(
-      await executePrRiskDroid(args, options),
-      judge.scores,
-      contract,
-    );
+    await writePrRiskSkill(run.evidence, skillText);
+    const stage = run.stage ? { stage: run.stage } : {};
+    let stdout: string;
+    try {
+      stdout = await executePrRiskDroid(run.args, run.evidence, options);
+    } catch (error) {
+      // A cascade records every session it started, so settle sees which
+      // stage ran out of time or died even when the run fails.
+      if (run.stage && error instanceof RiskError) {
+        options.onAttempt?.({
+          ...stage,
+          valid: false,
+          invalidReason: "exec_error",
+          retryFeedback: [NO_RESULT_FEEDBACK],
+        });
+      }
+      throw error;
+    }
+    const parsed = parsePrRiskJudgeOutput(stdout, judge.scores, contract);
     options.onAttempt?.({
       ...(parsed.sessionId ? { sessionId: parsed.sessionId } : {}),
-      ...(stage ? { stage } : {}),
+      ...stage,
       valid: parsed.verdict !== undefined,
       ...(parsed.verdict === undefined
         ? {
@@ -308,46 +355,38 @@ export async function runPrRiskJudge(
     return parsed;
   };
 
-  if (screen) {
-    const screenArgs = argsFor(
-      await writePrRiskSettings(
-        evidence,
-        screen.settings,
-        "screen-settings.json",
-      ),
-      screen.enabledTools,
-      "screen",
-    );
+  let deciding: PrRiskJudgeInvocation;
+  if (screen && options.confirm) {
+    const screening = await invocation(evidence, screen, "screen");
     try {
-      const screened = await attempt(screenArgs, "screen", skill);
+      const screened = await attempt(screening, screening.skill);
       if (screened.verdict?.verdict === false) return screened.verdict;
     } catch (error) {
-      if (!(error instanceof RiskError)) throw error;
       // The judge still decides, so a screen that times out or dies costs
-      // only its own run; the attempt records that it produced nothing.
-      options.onAttempt?.({
-        stage: "screen",
-        valid: false,
-        invalidReason: "exec_error",
-        retryFeedback: ["<root>: the session produced no result"],
-      });
+      // only its own run.
+      if (!(error instanceof RiskError)) throw error;
     }
+    if (
+      (await fingerprintPrRiskEvidence(options.confirm.evidence)) !==
+      options.confirm.fingerprint
+    ) {
+      throw new RiskError(
+        "pr_risk_evidence_changed",
+        "The PR risk judge's evidence changed while the screen ran",
+      );
+    }
+    deciding = await invocation(options.confirm.evidence, judge, "confirm");
+  } else {
+    deciding = await invocation(evidence, judge, undefined);
   }
 
-  const stage = screen ? "confirm" : undefined;
-  const args = argsFor(
-    await writePrRiskSettings(evidence, judge.settings),
-    judge.enabledTools,
-    stage,
-  );
-  const first = await attempt(args, stage, skill);
+  const first = await attempt(deciding, deciding.skill);
   if (first.verdict) return first.verdict;
 
   const retry = await attempt(
-    args,
-    stage,
+    deciding,
     [
-      skill.trimEnd(),
+      deciding.skill.trimEnd(),
       "",
       "## Strict retry",
       "",

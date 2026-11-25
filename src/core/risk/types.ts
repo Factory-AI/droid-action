@@ -106,24 +106,21 @@ export type RiskBeginRequest = {
  * Anything else it answers goes to the judge itself, so every approval is the
  * judge's own.
  */
-export const RiskJudgeScreenSchema = z.object({
+const RiskJudgeRunSchema = z.object({
   enabledTools: z.array(z.string().min(1)).nonempty(),
   settings: z.record(z.unknown()),
 });
-export type RiskJudgeScreen = z.infer<typeof RiskJudgeScreenSchema>;
 
 export const RISK_JUDGE_STAGES = ["screen", "confirm"] as const;
 export type RiskJudgeStage = (typeof RISK_JUDGE_STAGES)[number];
 
-export const RiskJudgeSchema = z.object({
+export const RiskJudgeSchema = RiskJudgeRunSchema.extend({
   group: z.string().min(1),
   skill: z.string().min(1),
-  enabledTools: z.array(z.string().min(1)).nonempty(),
-  settings: z.record(z.unknown()),
   scores: z.record(z.tuple([z.number().int(), z.number().int()])),
   timeoutSeconds: z.number().int().positive(),
   verdictField: z.enum(RISK_VERDICT_FIELD_MODES).optional().catch("required"),
-  screen: RiskJudgeScreenSchema.optional(),
+  screen: RiskJudgeRunSchema.optional(),
   sha256: Sha256Schema,
 });
 export type RiskJudge = z.infer<typeof RiskJudgeSchema>;
