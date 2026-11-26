@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { retryWithBackoff } from "../../utils/retry";
 
 /** Ref a fork PR's head commit is fetched to. Nothing is checked out from it. */
@@ -34,15 +34,20 @@ export async function preparePullRequestHead({
   try {
     await retryWithBackoff(
       async () => {
-        execSync("git reset --hard HEAD", { encoding: "utf8", stdio: "pipe" });
-        execSync(`gh pr checkout ${prNumber}`, {
+        execFileSync("git", ["reset", "--hard", "HEAD"], {
+          encoding: "utf8",
+          stdio: "pipe",
+        });
+        execFileSync("gh", ["pr", "checkout", String(prNumber)], {
           encoding: "utf8",
           stdio: "pipe",
           env: { ...process.env, GH_TOKEN: githubToken },
         });
-        const branchName = execSync("git rev-parse --abbrev-ref HEAD", {
-          encoding: "utf8",
-        }).trim();
+        const branchName = execFileSync(
+          "git",
+          ["rev-parse", "--abbrev-ref", "HEAD"],
+          { encoding: "utf8" },
+        ).trim();
         console.log(`Successfully checked out PR branch: ${branchName}`);
       },
       { maxAttempts: 3, initialDelayMs: 3000, maxDelayMs: 15000 },
@@ -55,11 +60,19 @@ export async function preparePullRequestHead({
 }
 
 /**
- * A git command authenticated by gh, as gh does for its own git commands, so
- * it also works when actions/checkout did not persist a credential.
+ * Arguments for a git command authenticated by gh, as gh does for its own git
+ * commands, so it also works when actions/checkout did not persist a
+ * credential. Git and gh run with argument lists here, never a shell string:
+ * PR data such as a branch name can hold shell syntax.
  */
-export function ghAuthenticatedGit(args: string): string {
-  return `git -c credential.helper= -c "credential.helper=!gh auth git-credential" ${args}`;
+export function ghAuthenticatedGit(args: string[]): string[] {
+  return [
+    "-c",
+    "credential.helper=",
+    "-c",
+    "credential.helper=!gh auth git-credential",
+    ...args,
+  ];
 }
 
 function fetchForkHead(prNumber: number, githubToken: string): string | null {
@@ -68,10 +81,14 @@ function fetchForkHead(prNumber: number, githubToken: string): string | null {
     `PR #${prNumber} comes from a fork, so its code is not checked out. Fetching its commits to ${ref}.`,
   );
   try {
-    execSync(
-      ghAuthenticatedGit(
-        `fetch --no-tags origin +refs/pull/${prNumber}/head:${ref}`,
-      ),
+    execFileSync(
+      "git",
+      ghAuthenticatedGit([
+        "fetch",
+        "--no-tags",
+        "origin",
+        `+refs/pull/${prNumber}/head:${ref}`,
+      ]),
       {
         encoding: "utf8",
         stdio: "pipe",
@@ -92,10 +109,14 @@ function fetchForkHead(prNumber: number, githubToken: string): string | null {
 export function fetchedForkHeadRef(prNumber: number): string | null {
   const ref = forkHeadRef(prNumber);
   try {
-    execSync(`git rev-parse --verify --quiet ${ref}^{commit}`, {
-      encoding: "utf8",
-      stdio: "pipe",
-    });
+    execFileSync(
+      "git",
+      ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`],
+      {
+        encoding: "utf8",
+        stdio: "pipe",
+      },
+    );
     return ref;
   } catch {
     return null;

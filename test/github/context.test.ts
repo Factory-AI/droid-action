@@ -15,6 +15,7 @@ describe("automatic review input parsing", () => {
   const originalEnvironment = {
     AUTOMATIC_REVIEW: process.env.AUTOMATIC_REVIEW,
     AUTOMATIC_SECURITY_REVIEW: process.env.AUTOMATIC_SECURITY_REVIEW,
+    FACTORY_AUTOMATION: process.env.FACTORY_AUTOMATION,
   };
 
   beforeEach(() => {
@@ -128,4 +129,11 @@ describe("automatic review input parsing", () => {
       expect(shouldTriggerTag(parseGitHubContext())).toBe(false);
     },
   );
+
+  it("reads FACTORY_AUTOMATION, which github/run-review.sh sets", () => {
+    delete process.env.FACTORY_AUTOMATION;
+    expect(parseGitHubContext().inputs.factoryAutomation).toBe(false);
+    process.env.FACTORY_AUTOMATION = "true";
+    expect(parseGitHubContext().inputs.factoryAutomation).toBe(true);
+  });
 });

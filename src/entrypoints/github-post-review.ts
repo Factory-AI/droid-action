@@ -72,6 +72,7 @@ import {
   lifecycleWarning,
   listDroidThreads,
   loadBoundReviewLifecycle,
+  readPreparedPriorDiff,
   resolveDroidThread,
   reopenDroidThread,
   saveReviewLifecycle,
@@ -540,7 +541,11 @@ export async function run(
     diff = authoritativeDiff ?? "";
     const priorDiff =
       lifecycle.state.head && /^[a-f0-9]{7,64}$/i.test(lifecycle.state.head)
-        ? await optionalGitHubOperation(
+        ? ((await readPreparedPriorDiff({
+            base: lifecycle.state.head,
+            head: lifecycle.head,
+          })) ??
+          (await optionalGitHubOperation(
             () =>
               fetchImmutableReviewDiff(octokit, {
                 owner: lifecycle.owner,
@@ -550,7 +555,7 @@ export async function run(
                 direct: true,
               }),
             lifecycleWarning(lifecycle),
-          )
+          )))
         : undefined;
     const eligibleFixedIds =
       priorDiff === undefined

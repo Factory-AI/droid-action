@@ -1,7 +1,9 @@
-import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { git } from "../helpers/git";
+
+export { git };
 
 export type RecordedRequest = {
   method: string;
@@ -75,14 +77,6 @@ export function createFakeAdo() {
 
 export function tempDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-}
-
-export function git(cwd: string, ...args: string[]): string {
-  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
-  if (result.status !== 0) {
-    throw new Error(`git ${args.join(" ")} failed: ${result.stderr}`);
-  }
-  return result.stdout.trim();
 }
 
 /**

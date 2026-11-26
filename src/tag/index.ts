@@ -16,7 +16,10 @@ import { isAutomationContext } from "../github/context";
 import { prepareStewardMode } from "../steward";
 import { DroidRunType, resolveTagRunType, setDroidRunType } from "../run-type";
 import { DROID_APP_BOT_ID } from "../github/bot-identity";
-import { prepareConversationCommand } from "./commands/conversation";
+import {
+  prepareConversationCommand,
+  refuseUnsupportedCommand,
+} from "./commands/conversation";
 import { decodeReviewState, hasSummaryMarker } from "../core/review/markers";
 import { fetchPRBranchData } from "../github/data/pr-fetcher";
 
@@ -150,6 +153,17 @@ export async function prepareTagExecution({
         automaticSecurityReview: false,
       },
     };
+  }
+  if (
+    context.inputs.factoryAutomation &&
+    (commandContext?.command === "fill" ||
+      commandContext?.command === "security-full")
+  ) {
+    return refuseUnsupportedCommand({
+      context,
+      octokit,
+      command: commandContext.command,
+    });
   }
   const runType = resolveTagRunType({
     automaticReview: context.inputs.automaticReview,

@@ -34,9 +34,14 @@ import {
   readReviewLifecycle,
   replaceReviewDescription,
   saveReviewLifecycle,
+  savePreparedPriorDiff,
   fetchImmutableReviewDiff,
 } from "../../src/github/operations/review-lifecycle";
-import { resolveReviewUxConfig } from "../../src/core/review/config";
+import {
+  automaticReviewSkipReason,
+  resolveReviewUxConfig,
+  reviewConfigFromEnvironment,
+} from "../../src/core/review/config";
 import { reviewCheckConclusion } from "../../src/github/operations/review-checks";
 import { run as postReview } from "../../src/entrypoints/github-post-review";
 import { run as lifecyclePhase } from "../../src/entrypoints/github-review-lifecycle";
@@ -189,6 +194,19 @@ describe("review lifecycle production boundaries", () => {
             checkStatus = input.status;
             return { data: {} };
           },
+          // The checks this fixture created on the ref, all as check 50.
+          listForRef: async (input: any) => ({
+            data: {
+              check_runs: calls
+                .filter(
+                  (call) =>
+                    call.method === "checkCreate" &&
+                    call.input.head_sha === input.ref &&
+                    call.input.name === input.check_name,
+                )
+                .map(() => ({ id: 50 })),
+            },
+          }),
         },
         reactions: {
           createForIssue: async (input: any) => {
@@ -1589,6 +1607,93 @@ describe("review lifecycle production boundaries", () => {
       "Looks good to merge",
     );
   });
+  it("leaves an earlier failing check the head's latest when an automatic trigger is skipped", async () => {
+    process.env.FAIL_ON_SEVERITY = "P1";
+    const f = fixture([]);
+    await f.prepare();
+    await f.post([{ status: "approved", comment: finding() }]);
+    const checkCalls = () =>
+      f.calls.filter(
+        (call) =>
+          call.method === "checkCreate" || call.method === "checkUpdate",
+      );
+    expect(checkCalls().at(-1)?.input.conclusion).toBe("failure");
+    const settled = checkCalls().length;
+
+    const skipped = await prepareReviewLifecycle({
+      octokit: f.octokit,
+      context: f.context,
+      headSha: HEAD,
+      skipReason: automaticReviewSkipReason({
+        config: reviewConfigFromEnvironment(),
+        draft: false,
+        eventAction: "labeled",
+        manual: false,
+      }),
+    });
+
+    expect(skipped.skipReason).toBe("automatic trigger labeled is disabled");
+    expect(outputs.review_check_id).toBe("");
+    expect(checkCalls()).toHaveLength(settled);
+  });
+  it("gives a skipped automatic trigger the neutral check on a head with none", async () => {
+    // Even while a finding from an earlier head blocks.
+    process.env.FAIL_ON_SEVERITY = "P1";
+    const f = fixture();
+    await prepareReviewLifecycle({
+      octokit: f.octokit,
+      context: f.context,
+      headSha: HEAD,
+      skipReason:
+        "Automatic reviews are paused. Comment `@droid resume` to restart.",
+    });
+    expect(outputs.review_check_id).toBe("50");
+    expect(
+      f.calls.filter((call) => call.method === "checkCreate"),
+    ).toHaveLength(1);
+    expect(
+      f.calls.filter((call) => call.method === "checkUpdate").at(-1)?.input,
+    ).toMatchObject({ status: "completed", conclusion: "neutral" });
+  });
+  it("creates no check for a skipped run when it cannot list the head's checks", async () => {
+    const f = fixture();
+    spyOn(f.octokit.rest.checks, "listForRef").mockImplementation((async () => {
+      throw Object.assign(new Error("Resource not accessible"), {
+        status: 403,
+      });
+    }) as any);
+    await prepareReviewLifecycle({
+      octokit: f.octokit,
+      context: f.context,
+      headSha: HEAD,
+      skipReason: "automatic trigger labeled is disabled",
+    });
+    expect(f.calls.some((call) => call.method === "checkCreate")).toBe(false);
+  });
+  it.each([
+    ["failure", "over another check while its findings block", "P1", true],
+    ["neutral", "on a head with no other check", "P1", false],
+    ["neutral", "when nothing blocks", "", true],
+  ] as const)(
+    "completes a check made before the run skipped as %s %s",
+    async (conclusion, _when, failOnSeverity, otherCheck) => {
+      if (failOnSeverity) process.env.FAIL_ON_SEVERITY = failOnSeverity;
+      const f = fixture();
+      const prepared = await f.prepare();
+      if (otherCheck)
+        spyOn(f.octokit.rest.checks, "listForRef").mockResolvedValue({
+          data: { check_runs: [{ id: 49 }, { id: 50 }] },
+        } as any);
+      await finishReviewLifecycle({
+        octokit: f.octokit,
+        run: prepared.run,
+        input: { state: "skipped", skipReason: "No new changes since bbbbbbb" },
+      });
+      expect(
+        f.calls.filter((call) => call.method === "checkUpdate").at(-1)?.input,
+      ).toMatchObject({ status: "completed", conclusion });
+    },
+  );
   it("never resolves an absent finding and does not trust cached fixed eligibility", async () => {
     const f = fixture();
     f.setThreads(false);
@@ -1604,6 +1709,37 @@ describe("review lifecycle production boundaries", () => {
         .conclusion,
     ).toBe("neutral");
   });
+  // github/run-review.sh posts without git, and GitHub's three-dot comparison
+  // cannot stand for the previous tree once the PR was rebased.
+  it.each([
+    ["the diff preparation kept", OLD, "resolved"],
+    ["a kept diff of another range", BASE, "open"],
+    ["no kept diff", undefined, "open"],
+  ] as const)(
+    "without git after a rebase, judges a confirmed fix from %s",
+    async (_name, keptBase, state) => {
+      process.env.REVIEW_PRIOR_DIFF_PATH = join(directory, "prior_diff.json");
+      const f = fixture();
+      f.setThreads(false);
+      await f.prepare();
+      if (keptBase)
+        await savePreparedPriorDiff({ base: keptBase, head: HEAD }, DIFF);
+      spyOn(childProcess, "execFileSync").mockImplementation(() => {
+        throw new Error("Posting runs no git.");
+      });
+      await f.post(
+        [],
+        [
+          {
+            id: "f-known",
+            status: "fixed",
+            evidence: "The new timeout guard handles every request.",
+          },
+        ],
+      );
+      expect(decodeReviewState(f.body())?.findings[0]?.state).toBe(state);
+    },
+  );
   it("resolves only an explicit fixed decision grounded in authenticated changed code", async () => {
     const f = fixture();
     f.setThreads(false);

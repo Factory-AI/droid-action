@@ -29,6 +29,19 @@ const MOCK_PR_DATA = {
   reviews: { nodes: [] },
 } as any;
 
+/** Answers each command by its command line, as a shell would show it. */
+function answerCommands(answer: (cmd: string) => string) {
+  return ((file: string, args: readonly string[] = []) =>
+    answer([file, ...args].join(" "))) as typeof childProcess.execFileSync;
+}
+
+/** The command line of each call the spy saw. */
+function commandLines(spy: ReturnType<typeof spyOn>): string[] {
+  return spy.mock.calls.map((call: unknown[]) =>
+    [call[0], ...((call[1] as string[] | undefined) ?? [])].join(" "),
+  );
+}
+
 describe("prepareReviewMode", () => {
   const originalArgs = process.env.DROID_ARGS;
   const originalReviewModel = process.env.REVIEW_MODEL;
@@ -42,7 +55,7 @@ describe("prepareReviewMode", () => {
   let setOutputSpy: ReturnType<typeof spyOn>;
   let createInitialSpy: ReturnType<typeof spyOn>;
   let exportVariableSpy: ReturnType<typeof spyOn>;
-  let execSyncSpy: ReturnType<typeof spyOn>;
+  let execSpy: ReturnType<typeof spyOn>;
   let writeFileSpy: ReturnType<typeof spyOn>;
   let mkdirSpy: ReturnType<typeof spyOn>;
   let fetchSpy: ReturnType<typeof spyOn>;
@@ -89,18 +102,18 @@ describe("prepareReviewMode", () => {
     exportVariableSpy = spyOn(core, "exportVariable").mockImplementation(
       () => {},
     );
-    // Mock execSync for git commands
-    execSyncSpy = spyOn(childProcess, "execSync").mockImplementation(((
-      cmd: string,
-    ) => {
-      if (cmd.includes("merge-base")) {
-        return "abc123def456\n";
-      }
-      if (cmd.includes("diff")) {
-        return "diff --git a/file.ts b/file.ts\n+added line\n";
-      }
-      return "";
-    }) as typeof childProcess.execSync);
+    // Mock git and gh
+    execSpy = spyOn(childProcess, "execFileSync").mockImplementation(
+      answerCommands((cmd) => {
+        if (cmd.includes("merge-base")) {
+          return "abc123def456\n";
+        }
+        if (cmd.includes("diff")) {
+          return "diff --git a/file.ts b/file.ts\n+added line\n";
+        }
+        return "";
+      }),
+    );
     // Mock file system operations
     writeFileSpy = spyOn(fsPromises, "writeFile").mockResolvedValue();
     mkdirSpy = spyOn(fsPromises, "mkdir").mockResolvedValue(undefined);
@@ -116,7 +129,7 @@ describe("prepareReviewMode", () => {
     setOutputSpy.mockRestore();
     createInitialSpy.mockRestore();
     exportVariableSpy.mockRestore();
-    execSyncSpy.mockRestore();
+    execSpy.mockRestore();
     writeFileSpy.mockRestore();
     mkdirSpy.mockRestore();
     if (originalArgs === undefined) {
@@ -290,9 +303,7 @@ describe("prepareReviewMode", () => {
       trackingCommentId: 555,
     });
 
-    const commands = execSyncSpy.mock.calls.map((call: unknown[]) =>
-      String(call[0]),
-    );
+    const commands = commandLines(execSpy);
     expect(commands).toContain("gh pr checkout 26");
     expect(commands.some((cmd: string) => cmd.includes("refs/pull/"))).toBe(
       false,
@@ -332,9 +343,7 @@ describe("prepareReviewMode", () => {
       trackingCommentId: 555,
     });
 
-    const commands = execSyncSpy.mock.calls.map((call: unknown[]) =>
-      String(call[0]),
-    );
+    const commands = commandLines(execSpy);
     expect(
       commands.some(
         (cmd: string) =>
@@ -360,11 +369,13 @@ describe("prepareReviewMode", () => {
   });
 
   it("falls back to the API diff when a fork PR's commits cannot be fetched", async () => {
-    execSyncSpy.mockImplementation(((cmd: string) => {
-      if (cmd.includes("refs/pull/")) throw new Error("fetch failed");
-      if (cmd.startsWith("gh pr diff")) return "diff from api\n";
-      return "";
-    }) as typeof childProcess.execSync);
+    execSpy.mockImplementation(
+      answerCommands((cmd) => {
+        if (cmd.includes("refs/pull/")) throw new Error("fetch failed");
+        if (cmd.startsWith("gh pr diff")) return "diff from api\n";
+        return "";
+      }),
+    );
     const context = createMockContext({
       eventName: "issue_comment",
       isPR: true,
@@ -391,9 +402,7 @@ describe("prepareReviewMode", () => {
       trackingCommentId: 555,
     });
 
-    const commands = execSyncSpy.mock.calls.map((call: unknown[]) =>
-      String(call[0]),
-    );
+    const commands = commandLines(execSpy);
     expect(commands).toContain("gh pr diff 28");
     expect(commands.some((cmd: string) => cmd.includes("merge-base"))).toBe(
       false,

@@ -33,6 +33,7 @@ import { normalizeFinding } from "../../core/review/validated/finding";
 import { redactCredentials } from "../../utils/redact-credentials";
 import {
   createReviewCheck,
+  hasOtherReviewCheck,
   optionalGitHubOperation,
   reviewCheckConclusion,
   reviewCheckExternalId,
@@ -393,6 +394,39 @@ export async function fetchImmutableReviewDiff(
   if (typeof diff !== "string")
     throw new Error("GitHub did not return an immutable review diff.");
   return diff;
+}
+/**
+ * Keeps the previous reviewed head's diff to this head, as preparation
+ * computed it, for a posting step that runs no git: GitHub compares three-dot,
+ * which cannot stand for the previous tree after a rebase. Only when
+ * REVIEW_PRIOR_DIFF_PATH names a file the review session cannot write, as
+ * posting trusts it for fixed eligibility.
+ */
+export async function savePreparedPriorDiff(
+  range: { base: string; head: string },
+  diff: string,
+): Promise<void> {
+  const file = process.env.REVIEW_PRIOR_DIFF_PATH;
+  if (file) await fs.writeFile(file, JSON.stringify({ ...range, diff }));
+}
+/** The diff savePreparedPriorDiff kept for exactly this range, if any. */
+export async function readPreparedPriorDiff(range: {
+  base: string;
+  head: string;
+}): Promise<string | undefined> {
+  const file = process.env.REVIEW_PRIOR_DIFF_PATH;
+  if (!file) return undefined;
+  let saved: { base?: unknown; head?: unknown; diff?: unknown } | null;
+  try {
+    saved = JSON.parse(await fs.readFile(file, "utf8"));
+  } catch {
+    return undefined;
+  }
+  return saved?.base === range.base &&
+    saved.head === range.head &&
+    typeof saved.diff === "string"
+    ? saved.diff
+    : undefined;
 }
 export function lifecycleWarning(
   run: ReviewLifecycleRun,
@@ -876,18 +910,33 @@ export async function prepareReviewLifecycle(options: {
       "Droid could not read review metadata. Check pull-requests: write permissions; this review will continue without incremental memory.",
     );
   const jobUrl = `${GITHUB_SERVER_URL}/${owner}/${repo}/actions/runs/${options.context.runId}`;
-  run.checkId = await createReviewCheck({
-    octokit: checkClient(options.octokit),
-    owner,
-    repo,
-    head: run.head,
-    runId: run.runId,
-    runAttempt: run.runAttempt || "1",
-    securityOnly: run.securityOnly,
-    enabled: config.review_check_run,
-    jobUrl,
-    warn,
-  });
+  // A skipped run completes its check as neutral. On a head that already has
+  // a Droid Review check, that check would become the latest and hide the
+  // other one's result from branch protection, so the run creates none there.
+  const leaveChecksAlone =
+    !!run.skipReason &&
+    config.review_check_run &&
+    (await hasOtherReviewCheck({
+      octokit: checkClient(options.octokit),
+      owner,
+      repo,
+      head: run.head,
+      securityOnly: run.securityOnly,
+      warn,
+    }));
+  if (!leaveChecksAlone)
+    run.checkId = await createReviewCheck({
+      octokit: checkClient(options.octokit),
+      owner,
+      repo,
+      head: run.head,
+      runId: run.runId,
+      runAttempt: run.runAttempt || "1",
+      securityOnly: run.securityOnly,
+      enabled: config.review_check_run,
+      jobUrl,
+      warn,
+    });
   await createEyes(
     options.octokit,
     options.context,
@@ -1096,15 +1145,33 @@ export async function finishReviewLifecycle(options: {
           .reduce((sum, step) => sum + (step.durationSeconds || 0), 0),
     );
   }
-  const conclusion = reviewCheckConclusion(
+  const policy = {
+    failOnSeverity: config.fail_on_severity,
+    securityBlockOnCritical: config.security_block_on_critical,
+    securityBlockOnHigh: config.security_block_on_high,
+  };
+  let conclusion = reviewCheckConclusion(
     input.findings || [],
-    {
-      failOnSeverity: config.fail_on_severity,
-      securityBlockOnCritical: config.security_block_on_critical,
-      securityBlockOnHigh: config.security_block_on_high,
-    },
+    policy,
     failed || input.state === "failed",
   );
+  if (input.state === "skipped")
+    // A check made before the run knew it would skip must not pass the head
+    // over another Droid Review check while the findings it skipped to block.
+    conclusion =
+      run.checkId &&
+      reviewCheckConclusion(stateFindings(run.state), policy) === "failure" &&
+      (await hasOtherReviewCheck({
+        octokit: checkClient(options.octokit),
+        owner: run.owner,
+        repo: run.repo,
+        head: run.head,
+        securityOnly: run.securityOnly,
+        exceptId: run.checkId,
+        warn,
+      }))
+        ? "failure"
+        : "neutral";
   const output = renderCheckRun({
     ...input,
     phase: "completed",
@@ -1125,7 +1192,7 @@ export async function finishReviewLifecycle(options: {
     repo: run.repo,
     checkId: run.checkId,
     status: "completed",
-    conclusion: input.state === "skipped" ? "neutral" : conclusion,
+    conclusion,
     ...output,
     warn,
   });
