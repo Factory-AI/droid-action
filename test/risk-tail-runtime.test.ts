@@ -14,7 +14,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parse } from "yaml";
-import { judge, planFor, validVerdict } from "./core/risk/fixtures";
+import {
+  judge,
+  planFor,
+  validVerdict,
+  writeFakeDroid,
+} from "./core/risk/fixtures";
 
 type Step = {
   id?: string;
@@ -49,6 +54,7 @@ const exists = (path: string) =>
 describe("risk action tail steps", () => {
   let dir = "";
   let poisonedPath = "";
+  let droidBinary = "";
   let sentinel = "";
   let steps: Step[] = [];
   let settleBindings: Bindings;
@@ -73,6 +79,7 @@ describe("risk action tail steps", () => {
 
     sentinel = join(dir, "untrusted-code-ran");
     poisonedPath = join(dir, "poisoned-bin");
+    droidBinary = await writeFakeDroid(await mkdtemp(join(dir, "droid-")));
     await mkdir(poisonedPath);
     for (const name of ["bun", "env", "sha256sum", "shasum"]) {
       const path = join(poisonedPath, name);
@@ -192,7 +199,10 @@ describe("risk action tail steps", () => {
       env: {
         ...bindings,
         FACTORY_API_KEY: "factory-key",
-        RISK_API_BASE_URL: `http://127.0.0.1:${server?.port}`,
+        // The stand-in CLI sends where the real one would be pointed.
+        FACTORY_API_BASE_URL: `http://127.0.0.1:${server?.port}`,
+        RISK_DROID_BIN: droidBinary,
+        HOME: dir,
         RISK_PLAN_PATH: planPath,
         RISK_RESULT_PATH: resultPath,
         GITHUB_OUTPUT: outputPath,

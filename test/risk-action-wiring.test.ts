@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "fs/promises";
+import { tmpdir } from "os";
 import { join } from "path";
 import { parse } from "yaml";
 import { parseAppTokenPermissions } from "../src/github/token-permissions";
@@ -22,8 +24,9 @@ function load(relativePath: string): Step[] {
 }
 
 const rootSteps = load("action.yml");
+// The risk steps start with the Droid CLI install that begin runs through.
 const rootRiskStart = rootSteps.findIndex(
-  (candidate) => candidate.id === "risk_begin",
+  (candidate) => candidate.id === "risk_droid",
 );
 const rootRiskEnd =
   rootSteps.findIndex((candidate) => candidate.id === "risk_settle") + 1;
@@ -57,6 +60,66 @@ const HARDENED_SHELL = "/bin/bash --noprofile --norc -p -eo pipefail {0}";
 describe.each(variants)(
   "risk wiring of $file",
   ({ file, p, report, steps }) => {
+    it("installs the CLI with system tools only, whatever is ahead on PATH", async () => {
+      const install = steps.find((candidate) => candidate.id === `${p}droid`);
+      if (!install?.run || !install.shell) throw new Error("no install step");
+      const dir = await mkdtemp(join(tmpdir(), "risk-install-"));
+      try {
+        const hostile = join(dir, "hostile");
+        const home = join(dir, "home");
+        await mkdir(hostile);
+        await mkdir(home);
+        for (const tool of ["curl", "sh"]) {
+          await writeFile(
+            join(hostile, tool),
+            `#!/bin/sh\ntouch "${dir}/hijacked-${tool}"\n`,
+          );
+          await chmod(join(hostile, tool), 0o755);
+        }
+        const installer = join(dir, "installer.sh");
+        await writeFile(
+          installer,
+          `mkdir -p "$HOME/.local/bin"\nprintf '#!/bin/sh\\necho 0.0.0\\n' > "$HOME/.local/bin/droid"\nchmod +x "$HOME/.local/bin/droid"\n`,
+        );
+        const script = join(dir, "step.sh");
+        await writeFile(
+          script,
+          install.run.replace(
+            "https://app.factory.ai/cli",
+            `file://${installer}`,
+          ),
+        );
+        const output = join(dir, "output");
+        const child = Bun.spawn(
+          [...install.shell.split(" ").slice(0, -1), script],
+          {
+            env: {
+              PATH: `${hostile}:/usr/bin:/bin`,
+              HOME: home,
+              GITHUB_OUTPUT: output,
+              GITHUB_PATH: join(dir, "path"),
+            },
+            stdout: "pipe",
+            stderr: "pipe",
+          },
+        );
+        expect(await child.exited).toBe(0);
+        expect(existsSync(join(dir, "hijacked-curl"))).toBe(false);
+        expect(existsSync(join(dir, "hijacked-sh"))).toBe(false);
+        expect(readFileSync(output, "utf8")).toBe(
+          `path=${home}/.local/bin/droid\n`,
+        );
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("runs the judge with the CLI installed for begin and settle", () => {
+      const assess = steps.find((candidate) => candidate.id === `${p}assess`);
+      expect(assess?.env?.DROID_BIN).toBe(
+        `\${{ steps.${p}droid.outputs.path }}`,
+      );
+    });
     function step(id: string): Step {
       const found = steps.find((candidate) => candidate.id === p + id);
       if (!found) throw new Error(`${file} has no step with id ${p}${id}`);
@@ -222,7 +285,7 @@ describe.each(variants)(
 describe("risk assessment inside the full action", () => {
   const before = rootSteps.slice(0, rootRiskStart);
   const risk = rootSteps.slice(rootRiskStart, rootRiskEnd);
-  const begin = risk[0]!;
+  const begin = risk.find((candidate) => candidate.id === "risk_begin")!;
   const prepareStep = before.find((candidate) => candidate.id === "prepare")!;
   // What prepare reads to decide whether this run reviews, assesses, or both.
   const PLAN_INPUTS = {
@@ -346,12 +409,19 @@ describe("risk assessment inside the full action", () => {
     );
   });
 
-  it("installs its own Droid CLI instead of reusing the review's", () => {
-    const install = risk.find(
-      (candidate) => candidate.name === "Install Droid CLI for the risk judge",
-    );
+  it("installs its own Droid CLI, before begin, instead of reusing the review's", () => {
+    const install = risk[0];
+    expect(install?.id).toBe("risk_droid");
     expect(install?.run).toContain("https://app.factory.ai/cli");
+    expect(install?.run).toContain(
+      'echo "path=$HOME/.local/bin/droid" >> "$GITHUB_OUTPUT"',
+    );
     expect(JSON.stringify(risk)).not.toContain("path_to_droid_executable");
+    for (const id of ["risk_begin", "risk_settle"]) {
+      expect(risk.find((found) => found.id === id)?.env?.RISK_DROID_BIN).toBe(
+        "${{ steps.risk_droid.outputs.path }}",
+      );
+    }
   });
 
   // test/risk-tail-runtime.test.ts runs the standalone action's tail scripts
@@ -396,7 +466,11 @@ describe("what the review read, passed between two steps", () => {
       const fromPrepare = `\${{ steps.prepare.outputs.${name} }}`;
       expect(root.outputs?.[name]?.value).toBe(fromPrepare);
       // The bundled assessment is told the same thing the output says.
-      expect(rootSteps[rootRiskStart]?.env?.[variable]).toBe(fromPrepare);
+      expect(
+        rootSteps.find((candidate) => candidate.id === "risk_begin")?.env?.[
+          variable
+        ],
+      ).toBe(fromPrepare);
 
       expect(standalone.inputs?.[name]).toMatchObject({
         required: false,

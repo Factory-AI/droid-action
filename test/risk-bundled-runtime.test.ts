@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parse } from "yaml";
-import { planFor } from "./core/risk/fixtures";
+import { planFor, writeFakeDroid } from "./core/risk/fixtures";
 
 type Step = {
   id?: string;
@@ -42,6 +42,7 @@ const exists = (path: string) =>
 describe("full action risk steps before the judge", () => {
   let dir = "";
   let poisonedPath = "";
+  let droidBinary = "";
   let sentinel = "";
   let steps: Step[] = [];
   let frozen: Record<string, string | undefined> = {};
@@ -67,6 +68,7 @@ describe("full action risk steps before the judge", () => {
 
     sentinel = join(dir, "untrusted-code-ran");
     poisonedPath = join(dir, "poisoned-bin");
+    droidBinary = await writeFakeDroid(await mkdtemp(join(dir, "droid-")));
     await mkdir(poisonedPath);
     for (const name of ["bun", "env", "sha256sum", "shasum", "tr", "printf"]) {
       const path = join(poisonedPath, name);
@@ -153,7 +155,10 @@ describe("full action risk steps before the judge", () => {
       env: {
         ...bindings,
         FACTORY_API_KEY: "factory-key",
-        RISK_API_BASE_URL: `http://127.0.0.1:${server?.port}`,
+        // The stand-in CLI sends where the real one would be pointed.
+        FACTORY_API_BASE_URL: `http://127.0.0.1:${server?.port}`,
+        RISK_DROID_BIN: droidBinary,
+        HOME: dir,
         RISK_PR_NUMBER: "123",
         RISK_REVIEW_OUTCOME: "failure",
         RISK_DRY_RUN: "true",

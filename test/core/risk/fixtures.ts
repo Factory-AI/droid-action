@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { chmod, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type {
@@ -143,4 +144,45 @@ export async function createOriginAndCheckout(
   const checkoutDir = join(repoDir, "checkout");
   await git(repoDir, "clone", "-q", "origin.git", checkoutDir);
   return checkoutDir;
+}
+
+/**
+ * Writes a stand-in for the Droid CLI that answers `droid risk <step>` the
+ * way the real one does: it posts the request on stdin to
+ * `$FACTORY_API_BASE_URL` with the API key and prints `{status, body}`.
+ * It runs with the Bun running the tests, so it needs nothing on PATH.
+ */
+export async function writeFakeDroid(dir: string): Promise<string> {
+  const path = join(dir, "droid");
+  await writeFile(
+    path,
+    `#!${process.execPath}
+const step = process.argv[3];
+const input = JSON.parse(await Bun.stdin.text());
+try {
+  const response = await fetch(
+    \`\${process.env.FACTORY_API_BASE_URL}/api/internal/pr-risk/\${step}\`,
+    {
+      method: "POST",
+      headers: {
+        authorization: \`Bearer \${process.env.FACTORY_API_KEY}\`,
+        "content-type": "application/json",
+        ...(input.oidcToken ? { "x-github-oidc-token": input.oidcToken } : {}),
+      },
+      body: JSON.stringify(input.request),
+    },
+  );
+  let body = null;
+  try {
+    body = await response.json();
+  } catch {}
+  console.log(JSON.stringify({ status: response.status, body }));
+} catch (error) {
+  console.log(JSON.stringify({ error: "request_failed", message: String(error) }));
+  process.exit(1);
+}
+`,
+  );
+  await chmod(path, 0o755);
+  return path;
 }

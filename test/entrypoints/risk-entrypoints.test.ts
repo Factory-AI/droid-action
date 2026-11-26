@@ -34,6 +34,7 @@ import {
   judge,
   planFor,
   validVerdict,
+  writeFakeDroid,
 } from "../core/risk/fixtures";
 
 type Received = { path: string; headers: Headers; body: unknown };
@@ -74,6 +75,17 @@ describe("risk action entrypoints", () => {
   let failed: string[] = [];
   let factory: ReturnType<typeof fakeFactory> | undefined;
   const frozen: string[] = [];
+  let droidDir = "";
+  let droidBinary = "";
+
+  beforeAll(async () => {
+    droidDir = await mkdtemp(join(tmpdir(), "pr-risk-fake-droid-"));
+    droidBinary = await writeFakeDroid(droidDir);
+  });
+
+  afterAll(async () => {
+    await rm(droidDir, { recursive: true, force: true });
+  });
 
   function serve(answer: unknown) {
     factory = fakeFactory(answer);
@@ -93,7 +105,9 @@ describe("risk action entrypoints", () => {
       GITHUB_RUN_ID: "77",
       GITHUB_RUN_ATTEMPT: "2",
       FACTORY_API_KEY: "factory-key",
-      RISK_API_BASE_URL: factory?.url,
+      // The stand-in CLI sends where the real one would be pointed.
+      FACTORY_API_BASE_URL: factory?.url,
+      RISK_DROID_BIN: droidBinary,
       RISK_DRY_RUN: "true",
       RISK_PLAN_PATH: planPath,
       RISK_RESULT_PATH: resultPath,
@@ -383,9 +397,64 @@ describe("risk action entrypoints", () => {
       expect(received).toEqual([]);
       expect(await exists(planPath)).toBe(false);
     });
+
+    it("ignores the risk API URL input, with a warning, and asks the CLI's host", async () => {
+      const warnings: string[] = [];
+      spyOn(core, "warning").mockImplementation((message) => {
+        warnings.push(String(message));
+      });
+      const { received } = serve({ action: "skip", reason: "draft" });
+
+      await begin(
+        jobEnv({
+          GITHUB_EVENT_PATH: await eventFile(pullRequestEvent),
+          RISK_API_BASE_URL: "https://factory.ai.evil.com",
+        }),
+      );
+
+      expect(received).toHaveLength(1);
+      expect(warnings).toEqual([
+        expect.stringContaining("The risk API URL input is ignored"),
+      ]);
+    });
+
+    it("fails, sending nothing, without the Droid CLI", async () => {
+      const { received } = serve({ action: "judge", ...assignment });
+
+      await expect(
+        begin(
+          jobEnv({
+            GITHUB_EVENT_PATH: await eventFile(pullRequestEvent),
+            RISK_DROID_BIN: join(dir, "no-such-droid"),
+          }),
+        ),
+      ).rejects.toMatchObject({ reason: "droid_unavailable" });
+
+      expect(received).toEqual([]);
+      expect(await exists(planPath)).toBe(false);
+    });
   });
 
   describe("risk-assess", () => {
+    it("leaves a failed result, and runs no judge, for a judge API host that is not Factory's", async () => {
+      await mkdir(join(dir, "pr-risk"));
+      await writeFile(planPath, JSON.stringify(planFor()));
+
+      await assess(
+        [],
+        jobEnv({
+          GITHUB_WORKSPACE: dir,
+          DROID_BIN: join(dir, "no-such-droid"),
+          GH_TOKEN: "read-token",
+          RISK_JUDGE_API_BASE_URL: "https://evilfactory.ai",
+        }),
+      );
+
+      expect(JSON.parse(await readFile(resultPath, "utf8"))).toEqual({
+        result: { status: "failed", reason: "untrusted_api_url" },
+      });
+    });
+
     it("leaves a failed result when the plan cannot be read", async () => {
       await assess([], jobEnv({ GITHUB_WORKSPACE: dir }));
 

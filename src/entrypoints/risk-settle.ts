@@ -9,6 +9,7 @@
 
 import * as core from "@actions/core";
 import { getRiskOidcToken, settleRisk } from "../core/risk/client";
+import { droidRiskCall } from "../core/risk/droid-risk";
 import {
   buildSettleRequest,
   describeFailure,
@@ -18,7 +19,6 @@ import {
   riskPlanPath,
   riskResultPath,
 } from "../core/risk/plan";
-import { RISK_DEFAULT_API_BASE_URL } from "../core/risk/types";
 
 export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
   const plan = await readRiskPlan(riskPlanPath(env));
@@ -28,8 +28,11 @@ export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
     env.RISK_LEASE_TOKEN?.trim() || undefined,
   );
   const response = await settleRisk(request, {
-    baseUrl: env.RISK_API_BASE_URL?.trim() || RISK_DEFAULT_API_BASE_URL,
-    apiKey: requiredEnv("FACTORY_API_KEY", env),
+    call: droidRiskCall({
+      droidBinary: requiredEnv("RISK_DROID_BIN", env),
+      apiKey: requiredEnv("FACTORY_API_KEY", env),
+      env,
+    }),
     getOidcToken: () => getRiskOidcToken(plan.run.dryRun, env),
   });
 

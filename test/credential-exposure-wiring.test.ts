@@ -89,9 +89,10 @@ describe("credential exposure wiring", () => {
   ]) {
     it(`revokes the minted App token as the last step of ${relativePath}`, () => {
       const action = loadAction(relativePath);
-      // The full action's risk assessment steps follow the revocation.
+      // The full action's risk assessment steps, from the Droid CLI install
+      // they run through, follow the revocation.
       const riskStart = action.runs.steps.findIndex(
-        (candidate: { id?: string }) => candidate.id === "risk_begin",
+        (candidate: { id?: string }) => candidate.id === "risk_droid",
       );
       const last = action.runs.steps.at(riskStart === -1 ? -1 : riskStart - 1);
       expect(last.name).toBe("Revoke GitHub App token");
