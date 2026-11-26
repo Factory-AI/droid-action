@@ -421,13 +421,13 @@ describe("droid risk errors", () => {
   });
 
   it("reads a success that is not JSON as an answer it does not understand", async () => {
-    const { call } = stubCall([json(200, null)]);
+    const { call } = stubCall([json(200, null), json(200, null)]);
 
     await expect(
       beginRisk(beginRequest, clientOptions(call)),
-    ).rejects.toMatchObject({
-      reason: "invalid_response",
-      message: "PR risk begin answer was not JSON",
-    });
+    ).rejects.toMatchObject({ reason: "invalid_response" });
+    await expect(
+      settleRisk(settleRequest, clientOptions(call)),
+    ).rejects.toMatchObject({ reason: "invalid_response" });
   });
 });

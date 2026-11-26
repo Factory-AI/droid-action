@@ -126,7 +126,7 @@ async function post(
       if ("error" in answer) {
         // The CLI's transport message is not quoted, as for any request
         // that got no answer.
-        if (answer.error === "request_failed") {
+        if (answer.error === "request_failed" || !("message" in answer)) {
           throw new RiskRequestError(
             undefined,
             undefined,
@@ -142,12 +142,6 @@ async function post(
       }
       if (answer.status < 200 || answer.status > 299) {
         throw requestError(answer.status, answer.body, step);
-      }
-      if (answer.body === null) {
-        throw new RiskError(
-          "invalid_response",
-          `PR risk ${step} answer was not JSON`,
-        );
       }
       return answer.body;
     },

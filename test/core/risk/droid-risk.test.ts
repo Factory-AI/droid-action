@@ -101,4 +101,69 @@ describe("droidRiskCall", () => {
       ),
     ).rejects.toMatchObject({ reason: "droid_unavailable" });
   });
+  it("reads a CLI it stopped at the deadline as a request that got no answer, even when the CLI exits 143 itself", async () => {
+    const path = join(dir, "droid");
+    await writeFile(
+      path,
+      `#!/bin/sh
+trap 'exit 143' TERM
+cat > /dev/null
+while :; do sleep 0.05; done
+`,
+    );
+    await chmod(path, 0o755);
+
+    await expect(
+      droidRiskCall({ droidBinary: path, apiKey: "k", timeoutMs: 200 })(
+        "begin",
+        { request: {} },
+      ),
+    ).resolves.toEqual({ error: "request_failed" });
+  });
+
+  it("returns a begin answer larger than 1 MiB whole", async () => {
+    const instructions = "x".repeat(1536 * 1024);
+    const answerPath = join(dir, "answer.json");
+    await writeFile(
+      answerPath,
+      JSON.stringify({ status: 200, body: { action: "judge", instructions } }),
+    );
+    const path = join(dir, "droid");
+    await writeFile(
+      path,
+      `#!/bin/sh
+cat > /dev/null
+cat "${answerPath}"
+`,
+    );
+    await chmod(path, 0o755);
+
+    const answer = await droidRiskCall({ droidBinary: path, apiKey: "k" })(
+      "begin",
+      { request: {} },
+    );
+
+    expect(answer).toEqual({
+      status: 200,
+      body: { action: "judge", instructions },
+    });
+  });
+
+  it("reports an answer past the output bound instead of reading the CLI as outdated", async () => {
+    const path = join(dir, "droid");
+    await writeFile(
+      path,
+      `#!/bin/sh
+cat > /dev/null
+head -c 17000000 /dev/zero
+`,
+    );
+    await chmod(path, 0o755);
+
+    await expect(
+      droidRiskCall({ droidBinary: path, apiKey: "k" })("begin", {
+        request: {},
+      }),
+    ).rejects.toMatchObject({ reason: "droid_risk_output_too_large" });
+  });
 });

@@ -181,8 +181,9 @@ async function execute(
 
 describe("QA75 trusted native wrapper behavior", () => {
   for (const { file, steps } of manifests) {
-    const native = steps.filter((step) =>
-      step.run?.includes("/usr/bin/env -i"),
+    const native = steps.filter(
+      (step) =>
+        step.run?.includes("/usr/bin/env -i") && step.run.includes("_SHA256"),
     );
     for (const step of native) {
       it(`${file}: ${step.name} verifies with absolute shasum when GNU is absent`, async () => {

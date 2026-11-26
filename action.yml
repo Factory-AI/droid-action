@@ -1835,11 +1835,14 @@ runs:
     - name: Install Droid CLI for risk
       id: risk_droid
       if: ${{ !cancelled() && steps.prepare.outputs.run_risk == 'true' }}
-      shell: bash
+      shell: /bin/bash --noprofile --norc -p -eo pipefail {0}
       run: |
-        curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh
+        # The review's session could have put its own curl or sh ahead on
+        # PATH, so the installer runs with system tools only.
+        /usr/bin/env -i PATH=/usr/bin:/bin HOME="$HOME" /bin/sh -c \
+          '/usr/bin/curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | /bin/sh'
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-        "$HOME/.local/bin/droid" --version
+        /usr/bin/env -i PATH=/usr/bin:/bin HOME="$HOME" "$HOME/.local/bin/droid" --version
         echo "path=$HOME/.local/bin/droid" >> "$GITHUB_OUTPUT"
 
     # PR risk assessment, when prepare's run plan asks for one
@@ -2083,6 +2086,7 @@ runs:
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         GH_TOKEN: ${{ steps.risk_token.outputs.github_token || (steps.risk_token.outputs.use_workflow_token == 'true' && github.token) || '' }}
         RISK_JUDGE_API_BASE_URL: ${{ inputs.risk_judge_api_base_url }}
+        DROID_BIN: ${{ steps.risk_droid.outputs.path }}
         RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
         RISK_RESULT_PATH: ${{ runner.temp }}/pr-risk/result.json
     # The two steps below run in an environment holding only what is named

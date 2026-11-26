@@ -11,7 +11,13 @@ const RiskCallOutputSchema = z.union([
   z.object({ status: z.number().int(), body: z.unknown() }),
   z.object({ error: z.string(), message: z.string() }),
 ]);
-export type RiskCallOutput = z.infer<typeof RiskCallOutputSchema>;
+/**
+ * What the CLI printed, or a request this side gave up on (the CLI was
+ * stopped), which the caller retries like one that got no answer.
+ */
+export type RiskCallOutput =
+  | z.infer<typeof RiskCallOutputSchema>
+  | { error: "request_failed" };
 
 /** One risk step, sent by the Droid CLI. */
 export type RiskCall = (
@@ -24,7 +30,8 @@ const STEP_TIMEOUT_MS: Record<RiskStep, number> = {
   begin: 75_000,
   settle: 105_000,
 };
-const MAX_STDOUT_BYTES = 1024 * 1024;
+/** Bounds what is held in memory; a larger answer is reported, not parsed. */
+const MAX_STDOUT_BYTES = 16 * 1024 * 1024;
 
 /**
  * Hosts the CLI may be pointed at for testing. The CLI refuses any of them
@@ -45,6 +52,7 @@ export function droidRiskCall(options: {
   droidBinary: string;
   apiKey: string;
   env?: NodeJS.ProcessEnv;
+  timeoutMs?: number;
 }): RiskCall {
   const source = options.env ?? process.env;
   const env: NodeJS.ProcessEnv = {
@@ -62,15 +70,29 @@ export function droidRiskCall(options: {
         cwd: tmpdir(),
         env,
         stdio: ["pipe", "pipe", "ignore"],
-        timeout: STEP_TIMEOUT_MS[step],
       });
+      // Tracked here rather than read from the exit signal: the CLI handles
+      // SIGTERM itself and can exit 143 with no signal reported.
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        child.kill("SIGTERM");
+      }, options.timeoutMs ?? STEP_TIMEOUT_MS[step]);
       const chunks: Buffer[] = [];
       let bytes = 0;
+      let overflowed = false;
       child.stdout.on("data", (chunk: Buffer) => {
+        if (overflowed) return;
         bytes += chunk.byteLength;
-        if (bytes <= MAX_STDOUT_BYTES) chunks.push(chunk);
+        if (bytes > MAX_STDOUT_BYTES) {
+          overflowed = true;
+          child.kill("SIGTERM");
+          return;
+        }
+        chunks.push(chunk);
       });
       child.on("error", (error: NodeJS.ErrnoException) => {
+        clearTimeout(timer);
         reject(
           new RiskError(
             "droid_unavailable",
@@ -79,11 +101,18 @@ export function droidRiskCall(options: {
         );
       });
       child.on("close", (_code, signal) => {
-        if (signal) {
-          resolve({
-            error: "request_failed",
-            message: `droid risk ${step} did not finish (${signal})`,
-          });
+        clearTimeout(timer);
+        if (overflowed) {
+          reject(
+            new RiskError(
+              "droid_risk_output_too_large",
+              `The answer to \`droid risk ${step}\` was larger than ${MAX_STDOUT_BYTES} bytes`,
+            ),
+          );
+          return;
+        }
+        if (timedOut || signal) {
+          resolve({ error: "request_failed" });
           return;
         }
         const line = Buffer.concat(chunks)
