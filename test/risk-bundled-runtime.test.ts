@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parse } from "yaml";
-import { planFor } from "./core/risk/fixtures";
+import { planFor, writeFakeDroid } from "./core/risk/fixtures";
 
 type Step = {
   id?: string;
@@ -42,6 +42,7 @@ const exists = (path: string) =>
 describe("full action risk steps before the judge", () => {
   let dir = "";
   let poisonedPath = "";
+  let droidBinary = "";
   let sentinel = "";
   let steps: Step[] = [];
   let frozen: Record<string, string | undefined> = {};
@@ -67,6 +68,7 @@ describe("full action risk steps before the judge", () => {
 
     sentinel = join(dir, "untrusted-code-ran");
     poisonedPath = join(dir, "poisoned-bin");
+    droidBinary = await writeFakeDroid(await mkdtemp(join(dir, "droid-")));
     await mkdir(poisonedPath);
     for (const name of ["bun", "env", "sha256sum", "shasum", "tr", "printf"]) {
       const path = join(poisonedPath, name);
@@ -153,7 +155,10 @@ describe("full action risk steps before the judge", () => {
       env: {
         ...bindings,
         FACTORY_API_KEY: "factory-key",
-        RISK_API_BASE_URL: `http://127.0.0.1:${server?.port}`,
+        // The stand-in CLI sends where the real one would be pointed.
+        FACTORY_API_BASE_URL: `http://127.0.0.1:${server?.port}`,
+        RISK_DROID_BIN: droidBinary,
+        HOME: dir,
         RISK_PR_NUMBER: "123",
         RISK_REVIEW_OUTCOME: "failure",
         RISK_DRY_RUN: "true",
@@ -180,9 +185,7 @@ describe("full action risk steps before the judge", () => {
     }
   });
 
-  // The stand-in is not a Factory host, so the frozen bundle refuses it; the
-  // requests themselves are covered in-process by risk-entrypoints.test.ts.
-  it("runs the frozen bundle and runtime, looking nothing up on PATH, and sends nothing to a host that is not Factory's", async () => {
+  it("asks Factory through the frozen bundle and runtime, looking nothing up on PATH", async () => {
     const { repo: _repo, pr: _pr, run: _run, ...assignment } = planFor();
     answer = () => Response.json({ action: "judge", ...assignment });
     const { env, outputPath, planPath } = await beginEnv(
@@ -191,13 +194,24 @@ describe("full action risk steps before the judge", () => {
 
     const result = await runStep(step("risk_begin"), env);
 
-    expect(result.exit).toBe(1);
-    expect(result.stdout).toContain(
-      `Refusing to send the Factory API key to http://127.0.0.1:${server?.port}`,
-    );
-    expect(received).toEqual([]);
-    expect(await readFile(outputPath, "utf8")).toBe("");
-    expect(await exists(planPath)).toBe(false);
+    expect({ exit: result.exit, stderr: result.stderr }).toEqual({
+      exit: 0,
+      stderr: "",
+    });
+    expect(received).toHaveLength(1);
+    expect(received[0]?.path).toBe("/api/internal/pr-risk/begin");
+    expect(JSON.parse(received[0]?.body ?? "")).toMatchObject({
+      repo: "acme/app",
+      pr: 123,
+      reviewOutcome: "failure",
+      reviewConfig: { baseSha: "b".repeat(40), hasRules: true },
+    });
+    const output = await readFile(outputPath, "utf8");
+    expect(output).toMatch(/^action<<(\S+)\njudge\n\1\n/);
+    // The settle script was frozen before the review; a frozen copy of the
+    // begin script has no source to freeze it from again.
+    expect(output).not.toContain("review_settle_publisher_path");
+    expect(await exists(planPath)).toBe(true);
     expect(await exists(sentinel)).toBe(false);
   });
 

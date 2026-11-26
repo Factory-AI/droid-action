@@ -288,9 +288,9 @@ inputs:
     required: false
     default: ""
   risk_api_base_url:
-    description: "Factory API host that answers the risk assessment's begin and settle requests. Must be https on factory.ai or a subdomain of it; any other URL is refused and nothing is sent."
+    description: "Deprecated and ignored, with a warning when set: the Droid CLI sends the risk assessment's begin and settle requests to the Factory host it uses for everything else. Kept so existing workflows keep working."
     required: false
-    default: "https://app.factory.ai"
+    default: ""
   risk_judge_api_base_url:
     description: "Factory API host for the risk judge session only. Empty uses the Droid CLI's default. Must be https on factory.ai or a subdomain of it; any other URL is refused and nothing is sent."
     required: false
@@ -1828,6 +1828,20 @@ runs:
         GITHUB_TOKEN: ${{ steps.prepare.outputs.github_token }}
         OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
 
+    # Begin and settle are sent by `droid risk`, which sends the API key only
+    # to a Factory host. Installed here even when the review installed one:
+    # the judge, which runs this install too, must not start from an
+    # executable the review's session could have replaced.
+    - name: Install Droid CLI for risk
+      id: risk_droid
+      if: ${{ !cancelled() && steps.prepare.outputs.run_risk == 'true' }}
+      shell: bash
+      run: |
+        curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        "$HOME/.local/bin/droid" --version
+        echo "path=$HOME/.local/bin/droid" >> "$GITHUB_OUTPUT"
+
     # PR risk assessment, when prepare's run plan asks for one
     # (steps.prepare.outputs.run_risk). These steps are the last of the action
     # so the review's App token is already revoked, and they run
@@ -1874,7 +1888,9 @@ runs:
         fi
         /usr/bin/env -i \
           PATH=/usr/bin:/bin \
-          FACTORY_API_KEY="${FACTORY_API_KEY:-}" RISK_API_BASE_URL="${RISK_API_BASE_URL:-}" \
+          HOME="${HOME:-}" FACTORY_API_KEY="${FACTORY_API_KEY:-}" RISK_API_BASE_URL="${RISK_API_BASE_URL:-}" \
+          RISK_DROID_BIN="${RISK_DROID_BIN:-}" \
+          FACTORY_API_BASE_URL="${FACTORY_API_BASE_URL:-}" FACTORY_API_BASE_URL_EU="${FACTORY_API_BASE_URL_EU:-}" \
           RISK_PR_NUMBER="${RISK_PR_NUMBER:-}" RISK_REVIEW_OUTCOME="${RISK_REVIEW_OUTCOME:-}" \
           RISK_DRY_RUN="${RISK_DRY_RUN:-}" RISK_MANUAL="${RISK_MANUAL:-}" \
           RISK_REVIEW_BASE_SHA="${RISK_REVIEW_BASE_SHA:-}" RISK_REVIEW_HAS_RULES="${RISK_REVIEW_HAS_RULES:-}" \
@@ -1901,6 +1917,7 @@ runs:
         BASH_ENV: ""
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         RISK_API_BASE_URL: ${{ inputs.risk_api_base_url }}
+        RISK_DROID_BIN: ${{ steps.risk_droid.outputs.path }}
         # A comment on a pull request is an issue_comment event, which names
         # the pull request as an issue.
         RISK_PR_NUMBER: ${{ inputs.risk_pr_number || (github.event.issue.pull_request && github.event.issue.number) || '' }}
@@ -1919,16 +1936,6 @@ runs:
         RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
         RISK_RESULT_PATH: ${{ runner.temp }}/pr-risk/result.json
         RUNNER_TEMP: ${{ runner.temp }}
-
-    # Installed again even when the review installed one: the judge must not
-    # start from an executable the review's session could have replaced.
-    - name: Install Droid CLI for the risk judge
-      if: ${{ !cancelled() && steps.risk_begin.outputs.action == 'judge' }}
-      shell: bash
-      run: |
-        curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh
-        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-        "$HOME/.local/bin/droid" --version
 
     # `gh` is how the judge reads the pull request on GitHub and ripgrep backs
     # its Grep tool. GitHub-hosted images ship both; a judge without them
@@ -2172,7 +2179,8 @@ runs:
         fi
         /usr/bin/env -i \
           PATH=/usr/bin:/bin \
-          FACTORY_API_KEY="${FACTORY_API_KEY:-}" RISK_API_BASE_URL="${RISK_API_BASE_URL:-}" \
+          HOME="${HOME:-}" FACTORY_API_KEY="${FACTORY_API_KEY:-}" RISK_DROID_BIN="${RISK_DROID_BIN:-}" \
+          FACTORY_API_BASE_URL="${FACTORY_API_BASE_URL:-}" FACTORY_API_BASE_URL_EU="${FACTORY_API_BASE_URL_EU:-}" \
           RISK_PLAN_PATH="${RISK_PLAN_PATH:-}" RISK_RESULT_PATH="${RISK_RESULT_PATH:-}" \
           RISK_LEASE_TOKEN="${RISK_LEASE_TOKEN:-}" \
           ACTIONS_ID_TOKEN_REQUEST_URL="${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ACTIONS_ID_TOKEN_REQUEST_TOKEN="${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" \
@@ -2192,7 +2200,7 @@ runs:
         ENV: ""
         BASH_ENV: ""
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
-        RISK_API_BASE_URL: ${{ inputs.risk_api_base_url }}
+        RISK_DROID_BIN: ${{ steps.risk_droid.outputs.path }}
         RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
         RISK_RESULT_PATH: ${{ runner.temp }}/pr-risk/result.json
         RISK_LEASE_TOKEN: ${{ steps.risk_begin.outputs.lease_token }}

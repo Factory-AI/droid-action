@@ -67,9 +67,9 @@ inputs:
     required: false
     default: ""
   api_base_url:
-    description: "Factory API host that answers the begin and settle requests. Must be https on factory.ai or a subdomain of it; any other URL is refused and nothing is sent."
+    description: "Deprecated and ignored, with a warning when set: the Droid CLI sends the begin and settle requests to the Factory host it uses for everything else. Kept so existing workflows keep working."
     required: false
-    default: "https://app.factory.ai"
+    default: ""
   judge_api_base_url:
     description: "Factory API host for the judge session only. Empty uses the Droid CLI's default. Must be https on factory.ai or a subdomain of it; any other URL is refused and nothing is sent."
     required: false
@@ -108,6 +108,18 @@ runs:
         cd ${{ github.action_path }}/..
         bun install
 
+    # Begin and settle are sent by `droid risk`, which sends the API key only
+    # to a Factory host, so the CLI is installed before either; the judge
+    # runs the same install.
+    - name: Install Droid CLI
+      id: droid
+      shell: bash
+      run: |
+        curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        "$HOME/.local/bin/droid" --version
+        echo "path=$HOME/.local/bin/droid" >> "$GITHUB_OUTPUT"
+
     # Every `bun run` passes --config=/dev/null --env-file=/dev/null so Bun
     # does not load bunfig.toml (preload scripts) or .env files from the
     # caller's checkout into a process holding the job's credentials.
@@ -127,6 +139,7 @@ runs:
         BASH_ENV: ""
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
         RISK_API_BASE_URL: ${{ inputs.api_base_url }}
+        RISK_DROID_BIN: ${{ steps.droid.outputs.path }}
         RISK_PR_NUMBER: ${{ inputs.pr_number }}
         RISK_REVIEW_OUTCOME: ${{ inputs.review_outcome }}
         RISK_REVIEW_BASE_SHA: ${{ inputs.review_base_sha }}
@@ -135,14 +148,6 @@ runs:
         RISK_MANUAL: ${{ inputs.manual }}
         RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
         RISK_RESULT_PATH: ${{ runner.temp }}/pr-risk/result.json
-
-    - name: Install Droid CLI
-      if: steps.begin.outputs.action == 'judge'
-      shell: bash
-      run: |
-        curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh
-        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-        "$HOME/.local/bin/droid" --version
 
     # `gh` is how the judge reads the pull request on GitHub and ripgrep backs
     # its Grep tool. GitHub-hosted images ship both; a judge without them
@@ -227,7 +232,8 @@ runs:
     # neither trusts the action's checkout or PATH any more. Each runs a copy
     # of its script that was bundled before the judge started, with the Bun
     # that bundled it, after checking that neither file changed, and in an
-    # environment holding only what is named here.
+    # environment holding only what is named here. Settle sends through the
+    # Droid CLI installed before begin, by its absolute path.
 
     # Only the token minted above is revoked. The workflow token a dry run may
     # have read with belongs to the job and is never passed here.
@@ -320,7 +326,8 @@ runs:
         fi
         /usr/bin/env -i \
           PATH=/usr/bin:/bin \
-          FACTORY_API_KEY="${FACTORY_API_KEY:-}" RISK_API_BASE_URL="${RISK_API_BASE_URL:-}" \
+          HOME="${HOME:-}" FACTORY_API_KEY="${FACTORY_API_KEY:-}" RISK_DROID_BIN="${RISK_DROID_BIN:-}" \
+          FACTORY_API_BASE_URL="${FACTORY_API_BASE_URL:-}" FACTORY_API_BASE_URL_EU="${FACTORY_API_BASE_URL_EU:-}" \
           RISK_PLAN_PATH="${RISK_PLAN_PATH:-}" RISK_RESULT_PATH="${RISK_RESULT_PATH:-}" \
           RISK_LEASE_TOKEN="${RISK_LEASE_TOKEN:-}" \
           ACTIONS_ID_TOKEN_REQUEST_URL="${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ACTIONS_ID_TOKEN_REQUEST_TOKEN="${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" \
@@ -340,7 +347,7 @@ runs:
         ENV: ""
         BASH_ENV: ""
         FACTORY_API_KEY: ${{ inputs.factory_api_key }}
-        RISK_API_BASE_URL: ${{ inputs.api_base_url }}
+        RISK_DROID_BIN: ${{ steps.droid.outputs.path }}
         RISK_PLAN_PATH: ${{ runner.temp }}/pr-risk/plan.json
         RISK_RESULT_PATH: ${{ runner.temp }}/pr-risk/result.json
         RISK_LEASE_TOKEN: ${{ steps.begin.outputs.lease_token }}

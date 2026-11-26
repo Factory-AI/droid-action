@@ -22,8 +22,9 @@ function load(relativePath: string): Step[] {
 }
 
 const rootSteps = load("action.yml");
+// The risk steps start with the Droid CLI install that begin runs through.
 const rootRiskStart = rootSteps.findIndex(
-  (candidate) => candidate.id === "risk_begin",
+  (candidate) => candidate.id === "risk_droid",
 );
 const rootRiskEnd =
   rootSteps.findIndex((candidate) => candidate.id === "risk_settle") + 1;
@@ -222,7 +223,7 @@ describe.each(variants)(
 describe("risk assessment inside the full action", () => {
   const before = rootSteps.slice(0, rootRiskStart);
   const risk = rootSteps.slice(rootRiskStart, rootRiskEnd);
-  const begin = risk[0]!;
+  const begin = risk.find((candidate) => candidate.id === "risk_begin")!;
   const prepareStep = before.find((candidate) => candidate.id === "prepare")!;
   // What prepare reads to decide whether this run reviews, assesses, or both.
   const PLAN_INPUTS = {
@@ -346,12 +347,19 @@ describe("risk assessment inside the full action", () => {
     );
   });
 
-  it("installs its own Droid CLI instead of reusing the review's", () => {
-    const install = risk.find(
-      (candidate) => candidate.name === "Install Droid CLI for the risk judge",
-    );
+  it("installs its own Droid CLI, before begin, instead of reusing the review's", () => {
+    const install = risk[0];
+    expect(install?.id).toBe("risk_droid");
     expect(install?.run).toContain("https://app.factory.ai/cli");
+    expect(install?.run).toContain(
+      'echo "path=$HOME/.local/bin/droid" >> "$GITHUB_OUTPUT"',
+    );
     expect(JSON.stringify(risk)).not.toContain("path_to_droid_executable");
+    for (const id of ["risk_begin", "risk_settle"]) {
+      expect(risk.find((found) => found.id === id)?.env?.RISK_DROID_BIN).toBe(
+        "${{ steps.risk_droid.outputs.path }}",
+      );
+    }
   });
 
   // test/risk-tail-runtime.test.ts runs the standalone action's tail scripts
@@ -396,7 +404,11 @@ describe("what the review read, passed between two steps", () => {
       const fromPrepare = `\${{ steps.prepare.outputs.${name} }}`;
       expect(root.outputs?.[name]?.value).toBe(fromPrepare);
       // The bundled assessment is told the same thing the output says.
-      expect(rootSteps[rootRiskStart]?.env?.[variable]).toBe(fromPrepare);
+      expect(
+        rootSteps.find((candidate) => candidate.id === "risk_begin")?.env?.[
+          variable
+        ],
+      ).toBe(fromPrepare);
 
       expect(standalone.inputs?.[name]).toMatchObject({
         required: false,

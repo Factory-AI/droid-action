@@ -1,11 +1,9 @@
 import * as core from "@actions/core";
 import { z } from "zod";
 import { retryWithBackoff, type RetryOptions } from "../../utils/retry";
+import type { RiskCall, RiskStep } from "./droid-risk";
 import {
-  RISK_BEGIN_PATH,
   RISK_OIDC_AUDIENCE,
-  RISK_OIDC_HEADER,
-  RISK_SETTLE_PATH,
   RISK_UNKNOWN_ACTION,
   RISK_WORKFLOW_NOT_TRUSTED,
   RiskBeginResponseSchema,
@@ -13,13 +11,10 @@ import {
   RiskSettleResponseSchema,
   type RiskBeginRequest,
   type RiskBeginResponse,
-  type RiskFetch,
   type RiskSettleRequest,
   type RiskSettleResponse,
 } from "./types";
 
-const BEGIN_TIMEOUT_MS = 60_000;
-const SETTLE_TIMEOUT_MS = 90_000;
 const RETRYABLE_STATUSES = new Set([502, 503, 504]);
 
 const ErrorBodySchema = z.object({
@@ -28,22 +23,22 @@ const ErrorBodySchema = z.object({
 });
 
 export type RiskClientOptions = {
-  baseUrl: string;
-  apiKey: string;
+  /** Sends one step; `droidRiskCall` runs `droid risk`, which holds the key. */
+  call: RiskCall;
   /**
    * Mints the OIDC token that proves which workflow is asking. Resolving to
    * undefined sends the request without one, which Factory accepts only for
    * a dry run.
    */
   getOidcToken?: () => Promise<string | undefined>;
-  fetch?: RiskFetch;
   retry?: RetryOptions;
 };
 
 /**
  * Returns `raw` when it is an https URL on factory.ai or one of its
- * subdomains, and throws otherwise. The API key goes wherever this URL
- * points, and the URL comes from workflow inputs a pull request can change.
+ * subdomains, and throws otherwise. The judge session sends the API key to
+ * this URL, and the URL comes from a workflow input a pull request can
+ * change.
  */
 export function assertFactoryApiBaseUrl(raw: string): string {
   let url: URL | undefined;
@@ -100,69 +95,61 @@ export async function getRiskOidcToken(
  * Builds the error for a non-2xx answer from the problem document's `detail`
  * alone. The raw body is never quoted: it is not ours to print.
  */
-async function requestError(
-  response: Response,
-  label: string,
-): Promise<RiskRequestError> {
-  let problem: z.infer<typeof ErrorBodySchema> = {};
-  try {
-    const parsed = ErrorBodySchema.safeParse(await response.json());
-    if (parsed.success) problem = parsed.data;
-  } catch {
-    // Not JSON; the status alone describes the failure.
-  }
+function requestError(
+  status: number,
+  body: unknown,
+  step: RiskStep,
+): RiskRequestError {
+  const parsed = ErrorBodySchema.safeParse(body);
+  const problem = parsed.success ? parsed.data : {};
   return new RiskRequestError(
-    response.status,
+    status,
     problem.code,
-    `PR risk ${label} failed with status ${response.status}${
+    `PR risk ${step} failed with status ${status}${
       problem.detail ? `: ${problem.detail}` : ""
     }`,
   );
 }
 
 async function post(
-  path: string,
-  label: string,
-  body: unknown,
-  timeoutMs: number,
+  step: RiskStep,
+  request: unknown,
   options: RiskClientOptions,
 ): Promise<unknown> {
-  const request: RiskFetch = options.fetch ?? fetch;
-  const url = `${assertFactoryApiBaseUrl(options.baseUrl).replace(/\/+$/, "")}${path}`;
-  const payload = JSON.stringify(body);
   return retryWithBackoff(
     async () => {
       const oidcToken = await options.getOidcToken?.();
-      let response: Response;
-      try {
-        response = await request(url, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${options.apiKey}`,
-            "Content-Type": "application/json",
-            ...(oidcToken ? { [RISK_OIDC_HEADER]: oidcToken } : {}),
-          },
-          body: payload,
-          signal: AbortSignal.timeout(timeoutMs),
-        });
-      } catch (error) {
-        throw new RiskRequestError(
-          undefined,
-          undefined,
-          `PR risk ${label} request did not complete (${
-            error instanceof Error ? error.name : "error"
-          })`,
+      const answer = await options.call(step, {
+        request,
+        ...(oidcToken ? { oidcToken } : {}),
+      });
+      if ("error" in answer) {
+        // The CLI's transport message is not quoted, as for any request
+        // that got no answer.
+        if (answer.error === "request_failed") {
+          throw new RiskRequestError(
+            undefined,
+            undefined,
+            `PR risk ${step} request did not complete`,
+          );
+        }
+        throw new RiskError(
+          answer.error === "untrusted_api_url"
+            ? "untrusted_api_url"
+            : "droid_risk_failed",
+          answer.message,
         );
       }
-      if (!response.ok) throw await requestError(response, label);
-      try {
-        return await response.json();
-      } catch {
+      if (answer.status < 200 || answer.status > 299) {
+        throw requestError(answer.status, answer.body, step);
+      }
+      if (answer.body === null) {
         throw new RiskError(
           "invalid_response",
-          `PR risk ${label} answer was not JSON`,
+          `PR risk ${step} answer was not JSON`,
         );
       }
+      return answer.body;
     },
     {
       maxAttempts: 3,
@@ -217,13 +204,7 @@ export async function beginRisk(
 ): Promise<RiskBeginResponse> {
   let body: unknown;
   try {
-    body = await post(
-      RISK_BEGIN_PATH,
-      "begin",
-      request,
-      BEGIN_TIMEOUT_MS,
-      options,
-    );
+    body = await post("begin", request, options);
   } catch (error) {
     if (
       error instanceof RiskRequestError &&
@@ -245,13 +226,7 @@ export async function settleRisk(
   request: RiskSettleRequest,
   options: RiskClientOptions,
 ): Promise<RiskSettleResponse> {
-  const body = await post(
-    RISK_SETTLE_PATH,
-    "settle",
-    request,
-    SETTLE_TIMEOUT_MS,
-    options,
-  );
+  const body = await post("settle", request, options);
   if (namesUnknownVariant(RiskSettleResponseSchema, body)) {
     return { status: "unknown" };
   }

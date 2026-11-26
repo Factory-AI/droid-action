@@ -8,51 +8,46 @@ import {
   type RiskClientOptions,
 } from "../../../src/core/risk/client";
 import type {
+  RiskCall,
+  RiskCallOutput,
+  RiskStep,
+} from "../../../src/core/risk/droid-risk";
+import type {
   RiskBeginRequest,
   RiskBeginResponse,
-  RiskFetch,
   RiskSettleRequest,
 } from "../../../src/core/risk/types";
 import { judge, planFor } from "./fixtures";
 
-type Call = { url: string; headers: Headers; body: unknown };
+type Call = { step: RiskStep; request: unknown; oidcToken?: string };
 
-function stubFetch(answers: Array<Response | Error>): {
+/** Stands in for `droid risk`, answering each call in turn. */
+function stubCall(answers: RiskCallOutput[]): {
   calls: Call[];
-  fetch: RiskFetch;
+  call: RiskCall;
 } {
   const calls: Call[] = [];
   return {
     calls,
-    fetch: async (url, init) => {
-      calls.push({
-        url,
-        headers: new Headers(init.headers),
-        body: JSON.parse(String(init.body)),
-      });
+    call: async (step, input) => {
+      calls.push({ step, ...input });
       const answer = answers[calls.length - 1];
       if (!answer) throw new Error("unexpected request");
-      if (answer instanceof Error) throw answer;
       return answer;
     },
   };
 }
 
-function json(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
+function json(status: number, body: unknown): RiskCallOutput {
+  return { status, body };
 }
 
 function clientOptions(
-  fetch: RiskFetch,
+  call: RiskCall,
   overrides: Partial<RiskClientOptions> = {},
 ): RiskClientOptions {
   return {
-    baseUrl: "https://app.factory.ai/",
-    apiKey: "factory-key",
-    fetch,
+    call,
     retry: { initialDelayMs: 1 },
     ...overrides,
   };
@@ -90,59 +85,57 @@ afterEach(() => {
 });
 
 describe("beginRisk", () => {
-  it("posts the request with the API key and the workflow's OIDC token", async () => {
-    const { calls, fetch } = stubFetch([json(200, judgeAnswer)]);
+  it("sends the request with the workflow's OIDC token through droid risk begin", async () => {
+    const { calls, call } = stubCall([json(200, judgeAnswer)]);
 
     const answer = await beginRisk(
       beginRequest,
-      clientOptions(fetch, { getOidcToken: async () => "oidc-jwt" }),
+      clientOptions(call, { getOidcToken: async () => "oidc-jwt" }),
     );
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.url).toBe(
-      "https://app.factory.ai/api/internal/pr-risk/begin",
-    );
-    expect(calls[0]?.headers.get("authorization")).toBe("Bearer factory-key");
-    expect(calls[0]?.headers.get("content-type")).toBe("application/json");
-    expect(calls[0]?.headers.get("x-github-oidc-token")).toBe("oidc-jwt");
-    expect(calls[0]?.body).toEqual(beginRequest);
+    expect(calls[0]).toEqual({
+      step: "begin",
+      request: beginRequest,
+      oidcToken: "oidc-jwt",
+    });
     expect(answer).toEqual(judgeAnswer);
   });
 
-  it("sends no OIDC header when the run has no token to offer", async () => {
-    const { calls, fetch } = stubFetch([
+  it("sends no OIDC token when the run has none to offer", async () => {
+    const { calls, call } = stubCall([
       json(200, { action: "skip", reason: "nothing_to_assess" }),
     ]);
 
     await beginRisk(
       beginRequest,
-      clientOptions(fetch, { getOidcToken: async () => undefined }),
+      clientOptions(call, { getOidcToken: async () => undefined }),
     );
 
-    expect(calls[0]?.headers.has("x-github-oidc-token")).toBe(false);
+    expect(calls[0]).not.toHaveProperty("oidcToken");
   });
 
   it("turns Factory's refusal of an untrusted workflow into a skip", async () => {
-    const { fetch } = stubFetch([
+    const { call } = stubCall([
       json(403, {
         detail: "This workflow may not ask.",
         code: "workflow_not_trusted",
       }),
     ]);
 
-    expect(await beginRisk(beginRequest, clientOptions(fetch))).toEqual({
+    expect(await beginRisk(beginRequest, clientOptions(call))).toEqual({
       action: "skip",
       reason: "workflow_not_trusted",
     });
   });
 
   it("fails on any other refusal", async () => {
-    const { calls, fetch } = stubFetch([
+    const { calls, call } = stubCall([
       json(403, { detail: "Forbidden.", code: "org_disabled" }),
     ]);
 
     await expect(
-      beginRisk(beginRequest, clientOptions(fetch)),
+      beginRisk(beginRequest, clientOptions(call)),
     ).rejects.toMatchObject({
       reason: "http_403",
       message: "PR risk begin failed with status 403: Forbidden.",
@@ -151,7 +144,7 @@ describe("beginRisk", () => {
   });
 
   it("accepts reasons and fields it has never heard of", async () => {
-    const { fetch } = stubFetch([
+    const { call } = stubCall([
       json(200, {
         action: "hold",
         reason: "a_reason_added_later",
@@ -160,7 +153,7 @@ describe("beginRisk", () => {
       }),
     ]);
 
-    expect(await beginRisk(beginRequest, clientOptions(fetch))).toEqual({
+    expect(await beginRisk(beginRequest, clientOptions(call))).toEqual({
       action: "hold",
       reason: "a_reason_added_later",
       headSha: plan.headSha,
@@ -172,38 +165,38 @@ describe("beginRisk", () => {
       ...judgeAnswer,
       leaseToken: "test-lease-placeholder",
     };
-    const { fetch } = stubFetch([json(200, leased)]);
+    const { call } = stubCall([json(200, leased)]);
 
-    expect(await beginRisk(beginRequest, clientOptions(fetch))).toEqual(leased);
+    expect(await beginRisk(beginRequest, clientOptions(call))).toEqual(leased);
   });
 
   it("reads a skip reason it has never heard of as a plain skip", async () => {
-    const { fetch } = stubFetch([
+    const { call } = stubCall([
       json(200, { action: "skip", reason: "in_progress" }),
     ]);
 
-    expect(await beginRisk(beginRequest, clientOptions(fetch))).toEqual({
+    expect(await beginRisk(beginRequest, clientOptions(call))).toEqual({
       action: "skip",
       reason: "in_progress",
     });
   });
 
   it("reads an action added after this version as a skip", async () => {
-    const { fetch } = stubFetch([
+    const { call } = stubCall([
       json(200, { action: "an_action_added_later", headSha: plan.headSha }),
     ]);
 
-    expect(await beginRisk(beginRequest, clientOptions(fetch))).toEqual({
+    expect(await beginRisk(beginRequest, clientOptions(call))).toEqual({
       action: "skip",
       reason: "unknown_action",
     });
   });
   it("names what it could not understand by path and code, never by value", async () => {
-    const { fetch } = stubFetch([
+    const { call } = stubCall([
       json(200, { ...judgeAnswer, headSha: "SERVED-VALUE" }),
     ]);
 
-    const failure = await beginRisk(beginRequest, clientOptions(fetch)).catch(
+    const failure = await beginRisk(beginRequest, clientOptions(call)).catch(
       (error: unknown) => error,
     );
 
@@ -216,7 +209,7 @@ describe("beginRisk", () => {
   });
 
   it("quotes only the problem detail of a failed request", async () => {
-    const { fetch } = stubFetch([
+    const { call } = stubCall([
       json(500, {
         detail: "The judge is unavailable.",
         skill: "SERVED-SKILL-TEXT",
@@ -224,7 +217,7 @@ describe("beginRisk", () => {
       }),
     ]);
 
-    const failure = await beginRisk(beginRequest, clientOptions(fetch)).catch(
+    const failure = await beginRisk(beginRequest, clientOptions(call)).catch(
       (error: unknown) => error,
     );
 
@@ -236,38 +229,39 @@ describe("beginRisk", () => {
   });
 
   it("quotes nothing of a failure body that is not a problem document", async () => {
-    const { fetch } = stubFetch([
-      new Response("upstream exploded: token=sk-live-123", { status: 500 }),
+    const { call } = stubCall([
+      json(500, "upstream exploded: token=sk-live-123"),
     ]);
 
     await expect(
-      beginRisk(beginRequest, clientOptions(fetch)),
+      beginRisk(beginRequest, clientOptions(call)),
     ).rejects.toMatchObject({
       message: "PR risk begin failed with status 500",
     });
   });
 
   it("retries a gateway failure with a fresh OIDC token and does not retry a rejection", async () => {
-    const gateway = stubFetch([
-      new Response("bad gateway", { status: 503 }),
+    const gateway = stubCall([
+      json(503, null),
       json(200, { action: "skip", reason: "nothing_to_assess" }),
     ]);
     let minted = 0;
 
     await beginRisk(
       beginRequest,
-      clientOptions(gateway.fetch, {
+      clientOptions(gateway.call, {
         getOidcToken: async () => `oidc-${++minted}`,
       }),
     );
 
-    expect(
-      gateway.calls.map((call) => call.headers.get("x-github-oidc-token")),
-    ).toEqual(["oidc-1", "oidc-2"]);
+    expect(gateway.calls.map((sent) => sent.oidcToken)).toEqual([
+      "oidc-1",
+      "oidc-2",
+    ]);
 
-    const rejection = stubFetch([json(400, { detail: "Bad request." })]);
+    const rejection = stubCall([json(400, { detail: "Bad request." })]);
     await expect(
-      beginRisk(beginRequest, clientOptions(rejection.fetch)),
+      beginRisk(beginRequest, clientOptions(rejection.call)),
     ).rejects.toMatchObject({ reason: "http_400" });
     expect(rejection.calls).toHaveLength(1);
   });
@@ -275,7 +269,7 @@ describe("beginRisk", () => {
 
 describe("settleRisk", () => {
   it("posts the result and reads back what Factory published", async () => {
-    const { calls, fetch } = stubFetch([
+    const { calls, call } = stubCall([
       json(200, {
         status: "published",
         outcome: "unavailable",
@@ -284,12 +278,9 @@ describe("settleRisk", () => {
       }),
     ]);
 
-    const answer = await settleRisk(settleRequest, clientOptions(fetch));
+    const answer = await settleRisk(settleRequest, clientOptions(call));
 
-    expect(calls[0]?.url).toBe(
-      "https://app.factory.ai/api/internal/pr-risk/settle",
-    );
-    expect(calls[0]?.body).toEqual(settleRequest);
+    expect(calls[0]).toEqual({ step: "settle", request: settleRequest });
     expect(answer).toEqual({
       status: "published",
       outcome: "unavailable",
@@ -299,18 +290,18 @@ describe("settleRisk", () => {
   });
 
   it("reads a head that moved on as stale rather than as a failure", async () => {
-    const { fetch } = stubFetch([
+    const { call } = stubCall([
       json(200, { status: "stale_head", headSha: "e".repeat(40) }),
     ]);
 
-    expect(await settleRisk(settleRequest, clientOptions(fetch))).toEqual({
+    expect(await settleRisk(settleRequest, clientOptions(call))).toEqual({
       status: "stale_head",
       headSha: "e".repeat(40),
     });
   });
 
   it("reads a report Factory took without publishing as skipped, whatever the reason", async () => {
-    const { fetch } = stubFetch([
+    const { call } = stubCall([
       json(200, {
         status: "skipped",
         reason: "a_reason_added_later",
@@ -318,30 +309,33 @@ describe("settleRisk", () => {
       }),
     ]);
 
-    expect(await settleRisk(settleRequest, clientOptions(fetch))).toEqual({
+    expect(await settleRisk(settleRequest, clientOptions(call))).toEqual({
       status: "skipped",
       reason: "a_reason_added_later",
     });
   });
 
   it("reads a status added after this version as unknown rather than as a failure", async () => {
-    const { fetch } = stubFetch([
+    const { call } = stubCall([
       json(200, { status: "a_status_added_later", outcome: "approve" }),
     ]);
 
-    expect(await settleRisk(settleRequest, clientOptions(fetch))).toEqual({
+    expect(await settleRisk(settleRequest, clientOptions(call))).toEqual({
       status: "unknown",
     });
   });
   it("gives up after three attempts when no answer arrives, without quoting the transport error", async () => {
-    const down = new TypeError("fetch failed for https://app.factory.ai");
-    const { calls, fetch } = stubFetch([down, down, down]);
+    const down: RiskCallOutput = {
+      error: "request_failed",
+      message: "fetch failed for https://app.factory.ai",
+    };
+    const { calls, call } = stubCall([down, down, down]);
 
     await expect(
-      settleRisk(settleRequest, clientOptions(fetch)),
+      settleRisk(settleRequest, clientOptions(call)),
     ).rejects.toMatchObject({
       reason: "request_failed",
-      message: "PR risk settle request did not complete (TypeError)",
+      message: "PR risk settle request did not complete",
     });
     expect(calls).toHaveLength(3);
   });
@@ -395,28 +389,45 @@ describe("assertFactoryApiBaseUrl", () => {
       expect.objectContaining({ reason: "untrusted_api_url" }),
     );
   });
+});
 
-  it("sends no begin request to a host that is not Factory's", async () => {
-    const { calls, fetch } = stubFetch([json(200, { action: "skip" })]);
+describe("droid risk errors", () => {
+  it("fails, without retrying, when the CLI refuses the API host", async () => {
+    const { calls, call } = stubCall([
+      {
+        error: "untrusted_api_url",
+        message: "Refusing to send the Factory API key to https://evil.example",
+      },
+    ]);
 
     await expect(
-      beginRisk(
-        beginRequest,
-        clientOptions(fetch, { baseUrl: "https://factory.ai.evil.com" }),
-      ),
-    ).rejects.toMatchObject({ reason: "untrusted_api_url" });
-    expect(calls).toEqual([]);
+      beginRisk(beginRequest, clientOptions(call)),
+    ).rejects.toMatchObject({
+      reason: "untrusted_api_url",
+      message: "Refusing to send the Factory API key to https://evil.example",
+    });
+    expect(calls).toHaveLength(1);
   });
 
-  it("sends no settle request to a host that is not Factory's", async () => {
-    const { calls, fetch } = stubFetch([json(200, { status: "skipped" })]);
+  it("fails, without retrying, on any other CLI error", async () => {
+    const { calls, call } = stubCall([
+      { error: "invalid_input", message: "stdin must be one JSON object" },
+    ]);
 
     await expect(
-      settleRisk(
-        settleRequest,
-        clientOptions(fetch, { baseUrl: "http://127.0.0.1:8080" }),
-      ),
-    ).rejects.toMatchObject({ reason: "untrusted_api_url" });
-    expect(calls).toEqual([]);
+      settleRisk(settleRequest, clientOptions(call)),
+    ).rejects.toMatchObject({ reason: "droid_risk_failed" });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("reads a success that is not JSON as an answer it does not understand", async () => {
+    const { call } = stubCall([json(200, null)]);
+
+    await expect(
+      beginRisk(beginRequest, clientOptions(call)),
+    ).rejects.toMatchObject({
+      reason: "invalid_response",
+      message: "PR risk begin answer was not JSON",
+    });
   });
 });

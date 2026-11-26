@@ -11,6 +11,7 @@
 import * as core from "@actions/core";
 import { rm } from "node:fs/promises";
 import { beginRisk, getRiskOidcToken } from "../core/risk/client";
+import { droidRiskCall } from "../core/risk/droid-risk";
 import {
   buildRiskRun,
   describeFailure,
@@ -26,7 +27,6 @@ import {
 } from "../core/risk/plan";
 import {
   RISK_CAPABILITIES,
-  RISK_DEFAULT_API_BASE_URL,
   RISK_UNKNOWN_ACTION,
   RISK_WORKFLOW_NOT_TRUSTED,
   type RiskPlan,
@@ -38,6 +38,11 @@ export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
   const apiKey = requiredEnv("FACTORY_API_KEY", env);
   const dryRun = parseFlag(env.RISK_DRY_RUN);
   const manual = parseFlag(env.RISK_MANUAL);
+  if (env.RISK_API_BASE_URL?.trim()) {
+    core.warning(
+      "The risk API URL input is ignored: the Droid CLI sends the risk requests to the Factory host it uses for everything else. Remove it from the workflow.",
+    );
+  }
 
   // An earlier use of the action in this job must not be settled again as
   // this run's answer.
@@ -81,8 +86,11 @@ export async function run(env: NodeJS.ProcessEnv = process.env): Promise<void> {
       run: riskRun,
     },
     {
-      baseUrl: env.RISK_API_BASE_URL?.trim() || RISK_DEFAULT_API_BASE_URL,
-      apiKey,
+      call: droidRiskCall({
+        droidBinary: requiredEnv("RISK_DROID_BIN", env),
+        apiKey,
+        env,
+      }),
       getOidcToken: () => getRiskOidcToken(dryRun, env),
     },
   );

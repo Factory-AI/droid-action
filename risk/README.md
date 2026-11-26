@@ -13,10 +13,13 @@ and are never printed to the job log.
 
 ## How a run goes
 
-1. **Begin.** The action tells Factory which pull request and run this is.
-   Factory answers `skip`, `hold` or `judge`. For `skip` and `hold` the
+1. **Begin.** The action installs the Droid CLI and, through
+   `droid risk begin`, tells Factory which pull request and run this is. The
+   CLI sends the request, with the API key, to the Factory host it uses for
+   everything else, and only when that host is https on factory.ai or a
+   subdomain of it. Factory answers `skip`, `hold` or `judge`. For `skip` and `hold` the
    action stops there and succeeds.
-2. **Judge.** For `judge`, the action installs the Droid CLI, mints a
+2. **Judge.** For `judge`, the action mints a
    read-only GitHub token, fetches the exact base and head commits into the
    job's checkout, and runs one `droid exec` session over a temporary
    workspace that holds the diff, the changed-file list, the head checked out
@@ -24,7 +27,7 @@ and are never printed to the job log.
    `.factory/pr-risk/guidelines.md` when the repository has one. The
    changed-file list and its counts are computed from the same two commits
    as the diff; it names at most 3,000 files and counts the rest.
-3. **Settle.** The action reports the judged head and the judge's answer to
+3. **Settle.** Through `droid risk settle`, the action reports the judged head and the judge's answer to
    Factory. The answer is JSON with `verdict`, `brief`, `details`, and the
    judge's declared `scores`; a judge Factory serves with
    `"verdictField": "omitted"` is decided by risk level alone, so its
@@ -231,7 +234,7 @@ request of a `workflow_run` event, or from `pr_number`.
 | `over_size`                | no       |                               | Risk setting. What Factory does with a pull request over either size cap.                                       |
 | `skip_when_human_approved` | no       |                               | Risk setting. Whether Factory skips assessing a pull request a human has approved: `auto`, `always` or `never`. |
 | `rules`                    | no       |                               | Risk setting. Path rules in the format of `.factory/review.yaml`'s `rules` key.                                 |
-| `api_base_url`             | no       | `https://app.factory.ai`      | Factory API host that answers the begin and settle requests. Must be https on factory.ai or a subdomain of it.  |
+| `api_base_url`             | no       |                               | Deprecated and ignored, with a warning when set. The Droid CLI picks the Factory host.                          |
 | `judge_api_base_url`       | no       | the Droid CLI's default       | Factory API host for the judge session only. Must be https on factory.ai or a subdomain of it.                  |
 | `dry_run`                  | no       | `false`                       | Tells Factory this is a dry run. A dry run can also run without `id-token: write`.                              |
 | `manual`                   | no       | `true` on `workflow_dispatch` | Marks the run as an explicit request to assess.                                                                 |

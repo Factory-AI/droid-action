@@ -14,7 +14,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parse } from "yaml";
-import { judge, planFor, validVerdict } from "./core/risk/fixtures";
+import {
+  judge,
+  planFor,
+  validVerdict,
+  writeFakeDroid,
+} from "./core/risk/fixtures";
 
 type Step = {
   id?: string;
@@ -49,6 +54,7 @@ const exists = (path: string) =>
 describe("risk action tail steps", () => {
   let dir = "";
   let poisonedPath = "";
+  let droidBinary = "";
   let sentinel = "";
   let steps: Step[] = [];
   let settleBindings: Bindings;
@@ -73,6 +79,7 @@ describe("risk action tail steps", () => {
 
     sentinel = join(dir, "untrusted-code-ran");
     poisonedPath = join(dir, "poisoned-bin");
+    droidBinary = await writeFakeDroid(await mkdtemp(join(dir, "droid-")));
     await mkdir(poisonedPath);
     for (const name of ["bun", "env", "sha256sum", "shasum"]) {
       const path = join(poisonedPath, name);
@@ -192,7 +199,10 @@ describe("risk action tail steps", () => {
       env: {
         ...bindings,
         FACTORY_API_KEY: "factory-key",
-        RISK_API_BASE_URL: `http://127.0.0.1:${server?.port}`,
+        // The stand-in CLI sends where the real one would be pointed.
+        FACTORY_API_BASE_URL: `http://127.0.0.1:${server?.port}`,
+        RISK_DROID_BIN: droidBinary,
+        HOME: dir,
         RISK_PLAN_PATH: planPath,
         RISK_RESULT_PATH: resultPath,
         GITHUB_OUTPUT: outputPath,
@@ -203,23 +213,56 @@ describe("risk action tail steps", () => {
     };
   }
 
-  // The stand-in is not a Factory host, so the frozen bundle refuses it; the
-  // requests themselves are covered in-process by risk-entrypoints.test.ts.
-  it("runs the frozen bundle and runtime, looking nothing up on PATH, and sends nothing to a host that is not Factory's", async () => {
+  it("settles through the frozen bundle and runtime, looking nothing up on PATH", async () => {
     answer = () => Response.json({ status: "published", outcome: "approve" });
     const { env, outputPath } = await settleEnv(settleBindings);
 
     const result = await runStep(settleStep(), env);
 
-    expect(result.exit).toBe(1);
-    expect(result.stdout).toContain(
-      `Refusing to send the Factory API key to http://127.0.0.1:${server?.port}`,
+    expect(result.exit).toBe(0);
+    expect(received).toHaveLength(1);
+    expect(received[0]?.path).toBe("/api/internal/pr-risk/settle");
+    expect(received[0]?.headers.get("authorization")).toBe(
+      "Bearer factory-key",
     );
-    expect(received).toEqual([]);
+    expect(JSON.parse(received[0]?.body ?? "")).toMatchObject({
+      repo: "acme/app",
+      pr: 123,
+      result: { status: "judged", verdict: validVerdict },
+    });
     expect(await readFile(outputPath, "utf8")).toMatch(
-      /^outcome<<(\S+)\nfailed\n\1\n$/,
+      /^outcome<<(\S+)\napprove\n\1\n$/,
     );
     expect(await exists(sentinel)).toBe(false);
+  });
+
+  it("passes the lease token through the cleared environment to Factory", async () => {
+    answer = () => Response.json({ status: "published", outcome: "approve" });
+    const { env } = await settleEnv(settleBindings);
+
+    const result = await runStep(settleStep(), {
+      ...env,
+      RISK_LEASE_TOKEN: "test-lease-placeholder",
+    });
+
+    expect(result.exit).toBe(0);
+    expect(JSON.parse(received[0]?.body ?? "")).toMatchObject({
+      leaseToken: "test-lease-placeholder",
+    });
+  });
+
+  it("fails the step when Factory could not be given a verdict", async () => {
+    answer = () =>
+      Response.json({ status: "published", outcome: "unavailable" });
+    const { env } = await settleEnv(settleBindings);
+    await rm(env.RISK_RESULT_PATH);
+
+    const result = await runStep(settleStep(), env);
+
+    expect(result.exit).toBe(1);
+    expect(JSON.parse(received[0]?.body ?? "")).toMatchObject({
+      result: { status: "failed", reason: "runner_died" },
+    });
   });
 
   for (const tail of ["settle", "revoke"] as const) {
