@@ -2,6 +2,7 @@ import { record } from "../validated/finding";
 import { normalizeFinding } from "../validated/finding";
 import type { ReviewFinding, ReviewSeverity } from "../validated/types";
 import { redactSecrets } from "../render/helpers";
+import { truncateReviewText } from "../render/budget";
 
 export const SUMMARY_MARKER = "<!-- droid-review-summary:v1 -->";
 export type ReviewStateFinding = {
@@ -216,26 +217,107 @@ export function hasSummaryMarker(body: string): boolean {
     /^<!--\s*droid-review-summary:v1\s*-->$/.test(comment),
   );
 }
+/**
+ * Budget for the closed findings in the hidden state. Closed findings pile up
+ * on long-lived PRs; capping them leaves the 60 KiB summary budget for the
+ * open findings and the visible review.
+ */
+export const MAX_CLOSED_STATE_BYTES = 16 * 1024;
+
+function markerBytes(value: unknown): number {
+  // jsonMarker writes <, > and & as six-byte \u escapes.
+  const json = JSON.stringify(value);
+  return (
+    Buffer.byteLength(json, "utf8") + 5 * (json.match(/[<>&]/g)?.length ?? 0)
+  );
+}
+
+function closed(item: ReviewStateFinding): boolean {
+  return item.state !== "open" && !item.finding?.pendingThreadAction;
+}
+
+/**
+ * Closed findings keep only what deduplication, reopening, and later-round
+ * context read. Their full text already lives in the review thread or in the
+ * summary that reported them.
+ */
+function persistedItem(item: ReviewStateFinding): Record<string, unknown> {
+  const finding = item.finding;
+  if (!finding) return item;
+  if (closed(item))
+    return {
+      state: item.state,
+      ...(item.threadId !== undefined
+        ? { threadId: item.threadId }
+        : item.thread !== undefined
+          ? { thread: item.thread }
+          : {}),
+      ...(item.commentId !== undefined ? { commentId: item.commentId } : {}),
+      finding: {
+        id: finding.id,
+        title: truncateReviewText(finding.title, 140),
+        severity: finding.severity,
+        category: finding.category,
+        ...(finding.security
+          ? { security: true, securitySeverity: finding.securitySeverity }
+          : {}),
+        path: finding.path,
+        ...(finding.oldPath ? { oldPath: finding.oldPath } : {}),
+        line: finding.line,
+        side: finding.side,
+        body: "",
+        ...(finding.outside_diff ? { outside_diff: true } : {}),
+        ...(finding.fixedIn ? { fixedIn: finding.fixedIn } : {}),
+      },
+    };
+  return {
+    ...item,
+    id: finding.id,
+    sev: finding.severity,
+    path: undefined,
+    line: undefined,
+    title: undefined,
+    body: undefined,
+    finding: { ...finding, state: item.state },
+  };
+}
+
+/**
+ * Drops closed findings, oldest first, until they fit their budget.
+ * Thread-backed ones go first because the next post reloads them from their
+ * threads. Open findings and pending thread work are never dropped.
+ */
+function boundedFindings(state: ReviewState): Record<string, unknown>[] {
+  const items = state.findings.map(persistedItem);
+  let total = state.findings.reduce(
+    (sum, item, index) =>
+      closed(item) ? sum + markerBytes(items[index]) + 1 : sum,
+    0,
+  );
+  if (total <= MAX_CLOSED_STATE_BYTES) return items;
+  const threaded = (item: ReviewStateFinding) =>
+    item.threadId !== undefined ||
+    item.thread !== undefined ||
+    item.commentId !== undefined;
+  const order = state.findings
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => closed(item))
+    .sort((a, b) => Number(threaded(b.item)) - Number(threaded(a.item)));
+  const dropped = new Set<number>();
+  for (const { index } of order) {
+    if (total <= MAX_CLOSED_STATE_BYTES) break;
+    total -= markerBytes(items[index]) + 1;
+    dropped.add(index);
+  }
+  return items.filter((_, index) => !dropped.has(index));
+}
+
 export function encodeReviewState(state: ReviewState): string {
   return jsonMarker("droid-review-state:v1", {
     ...state,
-    findings: state.findings.map((item) =>
-      item.finding
-        ? {
-            ...item,
-            id: item.finding.id,
-            sev: item.finding.severity,
-            path: undefined,
-            line: undefined,
-            title: undefined,
-            body: undefined,
-            finding: { ...item.finding, state: item.state },
-          }
-        : item,
-    ),
+    findings: boundedFindings(state),
   });
 }
-
 /** Only owned persisted state, never validator/model input, carries lifecycle metadata. */
 function persistedFinding(value: unknown): ReviewFinding | undefined {
   const data = record(value);

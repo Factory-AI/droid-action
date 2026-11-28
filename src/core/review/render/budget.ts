@@ -12,7 +12,7 @@ const SUGGESTION_NOTICE =
 export class ReviewOutputBudgetError extends Error {
   constructor() {
     super(
-      "The review's essential finding identities and state exceed the output limit. Split the change into smaller reviews; no truncated state was published.",
+      "The review's essential finding identities and state exceed the output limit; no truncated state was published.",
     );
     this.name = "ReviewOutputBudgetError";
   }
@@ -181,6 +181,51 @@ function compactInput(
       : undefined,
   };
 }
+const hiddenOnly = new WeakSet<ReviewRenderInput>();
+/**
+ * Trims only the hidden state copy of open findings that have an inline
+ * thread, which holds their full text. Nothing visible changes.
+ */
+function trimHiddenState(input: ReviewRenderInput): ReviewRenderInput | null {
+  if (!input.reviewState) return null;
+  const trimmed: ReviewRenderInput = {
+    ...input,
+    reviewState: {
+      ...input.reviewState,
+      findings: input.reviewState.findings.map((item) =>
+        item.state === "open" &&
+        item.finding &&
+        (item.threadId !== undefined ||
+          item.finding.threadId !== undefined ||
+          item.finding.threadUrl !== undefined)
+          ? {
+              ...item,
+              finding: {
+                ...item.finding,
+                body: truncateReviewText(item.finding.body, 400),
+                why: "",
+                verification: "",
+                agent_prompt: truncateReviewText(
+                  item.finding.agent_prompt,
+                  400,
+                ),
+                suggestion: undefined,
+              },
+            }
+          : item,
+      ),
+    },
+  };
+  hiddenOnly.add(trimmed);
+  return trimmed;
+}
+/** Whether a renderer must tell readers that visible review context was shortened. */
+export function contextShortened(
+  compact: ReviewRenderInput,
+  input: ReviewRenderInput,
+): boolean {
+  return compact !== input && !hiddenOnly.has(compact);
+}
 /** Re-render compact structured data, never slice already-rendered Markdown/JSON. */
 export function fitReviewOutput(
   input: ReviewRenderInput,
@@ -189,8 +234,13 @@ export function fitReviewOutput(
 ): string {
   const initial = render(input);
   if (outputBytes(initial) <= MAX_REVIEW_OUTPUT_BYTES) return initial;
+  const hidden = trimHiddenState(input);
+  if (hidden) {
+    const result = render(hidden);
+    if (outputBytes(result) <= MAX_REVIEW_OUTPUT_BYTES) return result;
+  }
   for (const stage of [1, 2, 3]) {
-    const result = `${render(compactInput(input, stage))}${compactionNotice ? `\n\n${compactionNotice}` : ""}`;
+    const result = `${render(compactInput(hidden ?? input, stage))}${compactionNotice ? `\n\n${compactionNotice}` : ""}`;
     if (outputBytes(result) <= MAX_REVIEW_OUTPUT_BYTES) return result;
   }
   throw new ReviewOutputBudgetError();

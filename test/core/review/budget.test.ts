@@ -127,11 +127,11 @@ describe("automatic renderer output budgets", () => {
         ? "x".repeat(MAX_REVIEW_OUTPUT_BYTES + 1)
         : renderReviewStateNote(compact.reviewState);
     });
-    expect(attempted).toHaveLength(4);
-    expect(attempted.slice(0, 3).every((item) => item.findings?.[0]?.why)).toBe(
+    expect(attempted).toHaveLength(5);
+    expect(attempted.slice(0, 4).every((item) => item.findings?.[0]?.why)).toBe(
       true,
     );
-    const final = attempted[3]!;
+    const final = attempted[4]!;
     expect(final.findings).toHaveLength(1);
     expect(final.findings![0]).toMatchObject({
       id: finding.id,
@@ -230,7 +230,7 @@ describe("automatic renderer output budgets", () => {
     expect(outputBytes(body)).toBeLessThanOrEqual(MAX_REVIEW_OUTPUT_BYTES);
     expect(body).toContain("70 open findings");
     expect(body).not.toContain("Finding context:");
-    expect(body).toContain("Some optional review context was shortened");
+    expect(body).not.toContain("Some optional review context was shortened");
     expect(validateRenderedMarkdown(body)).toEqual([]);
     const decoded = decodeReviewState(body)!;
     expect(decoded.findings.map((item) => item.id)).toEqual(
